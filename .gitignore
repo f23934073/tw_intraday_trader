@@ -1,0 +1,30 @@
+# Environment variables & secrets (CRITICAL: Never commit API Keys!)
+.env
+*.env
+
+# Python Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest / Coverage / Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Shioaji logs & temporary files
+*.log
+shioaji.log

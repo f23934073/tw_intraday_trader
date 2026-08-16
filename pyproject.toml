@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tw-intraday-trader"
+version = "0.1.0"
+description = "台股盤中即時選股與交易決策系統 MVP"
+requires-python = ">=3.11"
+
+dependencies = [
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+broker = [
+    "shioaji>=1.7,<2",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["market_data*", "candidate*", "scoring*", "position*", "config*"]
