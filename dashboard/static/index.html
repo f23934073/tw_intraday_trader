@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="台股盤中掃描、候選評分與持倉風險監控儀表板">
+    <title>台股盤中雷達</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --page: light-dark(#edf2f5, #111820);
+        --surface: light-dark(#ffffff, #18232e);
+        --surface-soft: light-dark(#f6f8fa, #202d39);
+        --text: light-dark(#17212b, #edf3f7);
+        --muted: light-dark(#617183, #9bacba);
+        --line: light-dark(#d7e0e7, #334452);
+        --blue: light-dark(#1769d1, #74b5ff);
+        --green: light-dark(#16834c, #55d695);
+        --amber: light-dark(#a45d00, #ffc46b);
+        --teal: light-dark(#087f8c, #3fd2cf);
+        --red: light-dark(#b42318, #ff938b);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        background: var(--page);
+        color: var(--text);
+        margin: 0;
+        min-height: 100vh;
+        overflow: hidden;
+      }
+
+      button { font: inherit; }
+
+      .app-shell {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        margin: 0 auto;
+        max-width: 1680px;
+        min-height: 0;
+        padding: 18px 24px 14px;
+      }
+
+      .topbar {
+        align-items: center;
+        display: flex;
+        gap: 20px;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+
+      .brand { align-items: center; display: flex; gap: 12px; min-width: 0; }
+
+      .brand-mark {
+        align-items: center;
+        background: var(--blue);
+        border-radius: 12px;
+        color: light-dark(#ffffff, #081523);
+        display: flex;
+        font-size: 21px;
+        font-weight: 500;
+        height: 40px;
+        justify-content: center;
+        width: 40px;
+      }
+
+      h1 { font-size: 20px; font-weight: 500; letter-spacing: .01em; margin: 0; }
+
+      .subtitle { color: var(--muted); font-size: 13px; margin: 3px 0 0; }
+
+      .topbar-actions { align-items: center; display: flex; gap: 10px; }
+
+      .status {
+        align-items: center;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        display: inline-flex;
+        font-size: 13px;
+        gap: 8px;
+        padding: 8px 11px;
+        white-space: nowrap;
+      }
+
+      .status-dot { background: var(--amber); border-radius: 50%; height: 8px; width: 8px; }
+
+      .refresh-button {
+        background: var(--blue);
+        border: 1px solid var(--blue);
+        border-radius: 9px;
+        color: light-dark(#ffffff, #081523);
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        padding: 9px 13px;
+      }
+
+      .refresh-button:hover { filter: brightness(1.08); }
+      .refresh-button:focus-visible, .candidate-button:focus-visible, .positions-button:focus-visible, .drawer-close:focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 45%, transparent); outline-offset: 2px; }
+      .refresh-button:disabled { cursor: wait; opacity: .65; }
+
+      .positions-button {
+        align-items: center;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        color: var(--text);
+        cursor: pointer;
+        display: inline-flex;
+        font-size: 14px;
+        font-weight: 500;
+        gap: 7px;
+        padding: 8px 11px;
+      }
+
+      .positions-button:hover { border-color: var(--blue); color: var(--blue); }
+      .positions-count { background: color-mix(in srgb, var(--blue) 13%, var(--surface)); border-radius: 999px; color: var(--blue); font-size: 11px; min-width: 20px; padding: 2px 6px; }
+
+      .workspace-context {
+        align-items: center;
+        color: var(--muted);
+        display: flex;
+        flex-wrap: wrap;
+        font-size: 13px;
+        gap: 10px 18px;
+        justify-content: space-between;
+        margin: 0 0 12px;
+      }
+
+      .workspace-title { align-items: baseline; display: flex; flex-wrap: wrap; gap: 7px; }
+      .workspace-title strong { color: var(--text); font-size: 14px; font-weight: 600; }
+      .workspace-title span:last-child { color: var(--muted); }
+      .workspace-health { color: var(--muted); margin: 0; }
+      .workspace-health strong { color: var(--text); font-weight: 500; }
+
+      .dashboard-grid {
+        flex: 1;
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(250px, .72fr) minmax(0, 1.7fr);
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        min-width: 0;
+        padding: 17px;
+      }
+
+      .candidate-panel, .detail-panel { min-height: 0; }
+      .candidate-panel { display: flex; flex-direction: column; }
+      .detail-panel { overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+
+      .panel-heading { align-items: baseline; display: flex; justify-content: space-between; margin-bottom: 15px; }
+      .kicker { color: var(--muted); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; }
+      h2 { font-size: 16px; font-weight: 500; margin: 3px 0 0; }
+      .panel-count { color: var(--muted); font-size: 13px; }
+
+      .candidate-list { display: grid; flex: 1; gap: 7px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+
+      .candidate-button {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        color: var(--text);
+        cursor: pointer;
+        display: grid;
+        gap: 3px;
+        grid-template-columns: 1fr auto;
+        padding: 10px;
+        text-align: left;
+        width: 100%;
+      }
+
+      .candidate-button:hover { background: var(--surface-soft); border-color: var(--line); }
+
+      .candidate-button.selected {
+        background: color-mix(in srgb, var(--blue) 12%, var(--surface));
+        border-color: color-mix(in srgb, var(--blue) 36%, var(--line));
+      }
+
+      .candidate-symbol { font-size: 14px; font-weight: 500; }
+      .candidate-name { color: var(--muted); font-size: 12px; }
+      .candidate-score { align-self: center; color: var(--blue); font-size: 16px; font-variant-numeric: tabular-nums; font-weight: 500; grid-column: 2; grid-row: 1 / span 2; }
+
+      .selected-title { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+      .selected-title strong { font-size: 21px; font-weight: 500; }
+      .selected-title span { color: var(--muted); font-size: 14px; }
+
+      .source-badge, .decision-badge {
+        border-radius: 999px;
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+
+      .source-badge { background: color-mix(in srgb, var(--blue) 11%, var(--surface)); color: var(--blue) !important; }
+      .decision-badge.hold { background: color-mix(in srgb, var(--green) 13%, var(--surface)); color: var(--green); }
+      .decision-badge.exit { background: color-mix(in srgb, var(--red) 13%, var(--surface)); color: var(--red); }
+
+      .rule-line { color: var(--muted); font-size: 13px; margin: 9px 0 18px; }
+      .rule-line strong { color: var(--text); font-weight: 500; }
+
+      .metrics {
+        border-top: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        padding-top: 14px;
+      }
+
+      .metric { min-width: 0; padding-right: 10px; }
+      .metric + .metric { border-left: 1px solid var(--line); padding-left: 10px; }
+      .metric-label { color: var(--muted); font-size: 11px; }
+      .metric-value { font-size: 17px; font-variant-numeric: tabular-nums; font-weight: 500; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .metric-note { color: var(--muted); font-size: 11px; margin-top: 4px; }
+
+      .observation-grid {
+        border-top: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 16px;
+      }
+
+      .observation { min-width: 0; padding: 11px 10px 0 0; }
+      .observation:nth-child(2n) { border-left: 1px solid var(--line); padding-left: 10px; padding-right: 0; }
+      .observation-label { color: var(--muted); font-size: 11px; }
+      .observation-value { font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 500; margin-top: 4px; }
+      .observation-note { color: var(--muted); font-size: 11px; margin-top: 3px; }
+
+      .history-region { margin-top: 21px; }
+      .history-heading { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-bottom: 10px; }
+      .history-heading h3 { font-size: 15px; font-weight: 500; margin: 3px 0 0; }
+      .period-controls { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
+      .period-button {
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 12px;
+        padding: 5px 8px;
+      }
+      .period-button:hover { border-color: var(--blue); color: var(--blue); }
+      .period-button.active { background: color-mix(in srgb, var(--blue) 12%, var(--surface)); border-color: color-mix(in srgb, var(--blue) 45%, var(--line)); color: var(--blue); }
+      .period-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 45%, transparent); outline-offset: 2px; }
+      .history-chart { background: var(--surface-soft); border-radius: 10px; min-height: 260px; overflow: hidden; padding: 8px 6px 0; position: relative; }
+      .history-chart svg { cursor: crosshair; display: block; height: auto; touch-action: none; width: 100%; }
+      .history-empty { align-items: center; color: var(--muted); display: flex; font-size: 13px; justify-content: center; line-height: 1.55; min-height: 252px; padding: 18px; text-align: center; }
+      .chart-tooltip {
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        box-shadow: 0 10px 24px color-mix(in srgb, #000 18%, transparent);
+        display: none;
+        font-size: 11px;
+        min-width: 184px;
+        padding: 9px 10px;
+        pointer-events: none;
+        position: absolute;
+        z-index: 2;
+      }
+      .chart-tooltip.visible { display: block; }
+      .chart-tooltip-heading { color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 600; margin-bottom: 7px; }
+      .chart-tooltip-grid { display: grid; gap: 4px 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .chart-tooltip-item { color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+      .chart-tooltip-item strong { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 500; }
+      .chart-tooltip-indicators { border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px 9px; margin-top: 8px; padding-top: 7px; }
+      .chart-tooltip-indicators .ma5 { color: var(--amber); }
+      .chart-tooltip-indicators .ma20 { color: var(--blue); }
+      .chart-tooltip-indicators .ma60 { color: var(--teal); }
+      .history-meta { color: var(--muted); display: flex; flex-wrap: wrap; font-size: 11px; gap: 10px; line-height: 1.45; margin-top: 8px; }
+      .history-meta strong { color: var(--text); font-weight: 500; }
+      .ma-value { font-variant-numeric: tabular-nums; font-weight: 500; }
+      .ma-value.ma5 { color: var(--amber); }
+      .ma-value.ma20 { color: var(--blue); }
+      .ma-value.ma60 { color: var(--teal); }
+      .history-legend { display: flex; gap: 10px; }
+      .legend-key { align-items: center; display: inline-flex; gap: 4px; }
+      .legend-key::before { border-radius: 2px; content: ""; height: 8px; width: 8px; }
+      .legend-key.rise::before { background: var(--green); }
+      .legend-key.fall::before { background: var(--red); }
+
+      .score-region { margin-top: 23px; }
+      .score-header { align-items: end; display: flex; justify-content: space-between; }
+      .score-header strong { display: block; font-size: 27px; font-variant-numeric: tabular-nums; font-weight: 500; margin-top: 3px; }
+      .score-header span { color: var(--muted); font-size: 12px; text-align: right; }
+
+      .score-track { background: var(--surface-soft); border-radius: 8px; display: flex; gap: 2px; height: 12px; margin: 12px 0; overflow: hidden; }
+      .score-piece { background: var(--blue); height: 100%; }
+      .score-piece:nth-child(2n) { background: var(--green); }
+      .score-piece:nth-child(3n) { background: var(--amber); }
+
+      .score-row { align-items: center; color: var(--muted); display: grid; font-size: 13px; gap: 8px; grid-template-columns: 1fr auto; margin-top: 8px; }
+      .score-row strong { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+      .position-list { display: grid; gap: 20px; }
+      .position-card { border-top: 1px solid var(--line); padding-top: 14px; }
+      .position-top { align-items: center; display: flex; gap: 10px; justify-content: space-between; }
+      .position-name strong { font-size: 16px; font-weight: 500; }
+      .position-name span { color: var(--muted); font-size: 13px; margin-left: 5px; }
+      .pnl { font-size: 27px; font-variant-numeric: tabular-nums; font-weight: 500; margin: 17px 0 3px; }
+      .pnl.positive { color: var(--green); }
+      .pnl.negative { color: var(--red); }
+      .pnl-note { color: var(--muted); font-size: 12px; }
+
+      .price-lane { margin: 31px 4px 0; position: relative; }
+      .price-line { background: var(--line); height: 2px; width: 100%; }
+      .price-marker { bottom: -4px; position: absolute; transform: translateX(-50%); }
+      .price-marker::before { background: var(--text); border: 2px solid var(--surface); border-radius: 50%; content: ""; display: block; height: 10px; width: 10px; }
+      .price-marker.stop::before { background: var(--red); }
+      .price-marker.current::before { background: var(--green); height: 14px; width: 14px; }
+      .price-marker.target::before { background: var(--amber); }
+      .price-label { color: var(--muted); font-size: 11px; position: absolute; text-align: center; top: 16px; transform: translateX(-50%); white-space: nowrap; }
+      .price-label strong { color: var(--text); display: block; font-size: 12px; font-weight: 500; }
+      .position-footer { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 46px; }
+      .position-footer strong { color: var(--text); font-weight: 500; }
+
+      .data-footer {
+        border-top: 1px solid var(--line);
+        flex: none;
+        margin-top: 12px;
+        padding-top: 10px;
+      }
+
+      .footer-heading { color: var(--muted); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; }
+      .data-footer p { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 6px 0 0; }
+      .data-footer strong { color: var(--text); font-weight: 500; }
+
+      .position-drawer { inset: 0; pointer-events: none; position: fixed; visibility: hidden; z-index: 10; }
+      .position-drawer.open { pointer-events: auto; visibility: visible; }
+      .drawer-backdrop { background: color-mix(in srgb, var(--page) 62%, transparent); border: 0; cursor: default; inset: 0; opacity: 0; padding: 0; position: absolute; transition: opacity .18s ease; width: 100%; }
+      .position-drawer.open .drawer-backdrop { opacity: 1; }
+      .drawer-panel {
+        background: var(--surface);
+        border-left: 1px solid var(--line);
+        box-shadow: -16px 0 40px color-mix(in srgb, #000 24%, transparent);
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        max-width: 440px;
+        padding: 19px;
+        position: absolute;
+        right: 0;
+        top: 0;
+        transform: translateX(100%);
+        transition: transform .18s ease;
+        width: min(440px, 100vw);
+      }
+      .position-drawer.open .drawer-panel { transform: translateX(0); }
+      .drawer-heading { align-items: flex-start; display: flex; justify-content: space-between; margin-bottom: 17px; }
+      .drawer-heading h2 { font-size: 18px; }
+      .drawer-close { background: transparent; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); cursor: pointer; font-size: 18px; height: 32px; line-height: 1; width: 32px; }
+      .drawer-close:hover { border-color: var(--blue); color: var(--blue); }
+      .drawer-panel .position-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+
+      .empty, .error { color: var(--muted); font-size: 14px; padding: 16px 0; }
+      .error { color: var(--red); display: none; }
+
+      @media (max-width: 980px) {
+        .dashboard-grid { grid-template-columns: minmax(220px, .72fr) minmax(0, 1.35fr); }
+      }
+
+      @media (max-width: 700px) {
+        body { overflow: auto; }
+        .app-shell { height: auto; min-height: 100vh; overflow: visible; padding: 14px; }
+        .topbar { align-items: flex-start; flex-direction: column; }
+        .topbar-actions { flex-wrap: wrap; width: 100%; }
+        .status { flex: 1; }
+        .workspace-context { align-items: flex-start; flex-direction: column; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr; overflow: visible; }
+        .candidate-panel, .detail-panel { max-height: none; overflow: visible; }
+        .candidate-list { flex: none; max-height: 300px; }
+      }
+
+      @media (max-width: 430px) {
+        .topbar-actions { align-items: stretch; flex-direction: column; }
+        .refresh-button { width: 100%; }
+        .metrics { gap: 12px; grid-template-columns: 1fr; }
+        .metric { padding-right: 0; }
+        .metric + .metric { border-left: 0; border-top: 1px solid var(--line); padding: 12px 0 0; }
+        .observation-grid { grid-template-columns: 1fr; }
+        .observation, .observation:nth-child(2n) { border-left: 0; padding-left: 0; padding-right: 0; }
+        .observation + .observation { border-top: 1px solid var(--line); padding-top: 11px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">↗</div>
+          <div>
+            <h1>台股盤中雷達</h1>
+            <p class="subtitle">市場掃描 · 候選評估 · 持倉風險監控</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span class="status" id="status"><span class="status-dot" aria-hidden="true"></span>正在建立掃描快照</span>
+          <button class="positions-button" id="positions-toggle" type="button" aria-controls="positions-drawer" aria-expanded="false">持倉 <span class="positions-count" id="position-count">—</span></button>
+          <button class="refresh-button" id="refresh-button" type="button">重新掃描</button>
+        </div>
+      </header>
+
+      <section class="workspace-context" aria-label="目前功能與資料狀態">
+        <div class="workspace-title"><span class="kicker">功能</span><strong>選股雷達</strong><span>從候選清單選取後，右側直接查看完整評估與走勢。</span></div>
+        <p class="workspace-health" id="data-health">正在讀取最新掃描結果。</p>
+      </section>
+
+      <p class="error" id="error-message" role="alert"></p>
+
+      <section class="dashboard-grid" aria-label="市場掃描儀表板">
+        <section class="panel candidate-panel" aria-labelledby="candidate-heading">
+          <div class="panel-heading">
+            <div>
+              <div class="kicker">觀察</div>
+              <h2 id="candidate-heading">候選清單</h2>
+            </div>
+            <span class="panel-count" id="candidate-count">—</span>
+          </div>
+          <div class="candidate-list" id="candidate-list" aria-live="polite">
+            <p class="empty">正在讀取 Candidate…</p>
+          </div>
+        </section>
+
+        <section class="panel detail-panel" id="detail-panel" aria-labelledby="detail-heading" tabindex="-1">
+          <div id="candidate-detail">
+            <div class="kicker">評估</div>
+            <h2 id="detail-heading">正在讀取候選資料</h2>
+          </div>
+        </section>
+
+      </section>
+
+      <footer class="data-footer">
+        <div>
+          <div class="footer-heading">儀表板契約</div>
+          <p>畫面只讀取後端準備好的掃描快照；市場資料、候選規則、評分、持倉狀態與出場決策仍由後端程式負責。持倉可由右上角隨時開啟。</p>
+        </div>
+      </footer>
+    </main>
+
+    <div class="position-drawer" id="positions-drawer" aria-hidden="true">
+      <button class="drawer-backdrop" id="positions-backdrop" type="button" aria-label="關閉持倉面板"></button>
+      <aside class="drawer-panel" id="positions-panel" aria-labelledby="position-heading" aria-modal="true" role="dialog" tabindex="-1">
+        <div class="drawer-heading">
+          <div>
+            <div class="kicker">保護</div>
+            <h2 id="position-heading">目前持倉</h2>
+          </div>
+          <button class="drawer-close" id="positions-close" type="button" aria-label="關閉持倉面板">×</button>
+        </div>
+        <div class="position-list" id="position-list" aria-live="polite">
+          <p class="empty">正在讀取持倉資料…</p>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      const state = {
+        snapshot: null,
+        selectedSymbol: null,
+        historyPeriod: "1d",
+        historyByKey: {},
+        historyLoadingKey: null
+      };
+      const sourceLabels = { AUTO: "自動", MANUAL: "手動" };
+      const ruleLabels = {
+        gap_up: "跳空開高",
+        high_volume: "高成交量",
+        relative_volume: "相對成交量",
+        gap_score: "跳空分數",
+        above_vwap: "站上 VWAP",
+        stop_loss: "停損",
+        take_profit: "停利"
+      };
+      const escapeMap = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+
+      const statusElement = document.getElementById("status");
+      const errorElement = document.getElementById("error-message");
+      const refreshButton = document.getElementById("refresh-button");
+      const detailPanel = document.getElementById("detail-panel");
+      const positionsToggle = document.getElementById("positions-toggle");
+      const positionsDrawer = document.getElementById("positions-drawer");
+      const positionsPanel = document.getElementById("positions-panel");
+      const positionsClose = document.getElementById("positions-close");
+      const positionsBackdrop = document.getElementById("positions-backdrop");
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (character) => escapeMap[character]);
+      }
+
+      function formatNumber(value, digits = 2) {
+        if (value === null || value === undefined) return "—";
+        return Number(value).toLocaleString("zh-TW", {
+          maximumFractionDigits: digits,
+          minimumFractionDigits: digits
+        });
+      }
+
+      function formatVolume(value) {
+        if (value === null || value === undefined) return "—";
+        if (value >= 10000) return `${formatNumber(value / 10000, value % 10000 === 0 ? 0 : 1)} 萬`;
+        return `${Number(value).toLocaleString("zh-TW")} 股`;
+      }
+
+      function formatPercent(value) {
+        if (value === null || value === undefined) return "—";
+        const sign = value >= 0 ? "+" : "";
+        return `${sign}${formatNumber(value)}%`;
+      }
+
+      function formatSource(sources) {
+        return sources.map((source) => sourceLabels[source] || source).join("＋");
+      }
+
+      function formatRule(rule) {
+        return ruleLabels[rule] || rule;
+      }
+
+      function percentage(numerator, denominator) {
+        if (!denominator) return 0;
+        return Math.max(0, Math.min(100, numerator / denominator * 100));
+      }
+
+      function historyKey(symbol, period) {
+        return `${symbol}:${period}`;
+      }
+
+      function formatHistoryTimestamp(timestamp, resolution) {
+        const date = new Date(timestamp);
+        return date.toLocaleString("zh-TW", resolution === "5分鐘"
+          ? { hour: "2-digit", minute: "2-digit", hour12: false }
+          : { month: "numeric", day: "numeric" }
+        );
+      }
+
+      function chartNumber(value) {
+        if (value === null || value === undefined || value === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+      }
+
+      function renderMovingAverageMeta(history) {
+        if (history.period !== "3m" || !history.candles.length) return "";
+        const latest = history.candles[history.candles.length - 1];
+        return [
+          ["ma5", "MA5"],
+          ["ma20", "MA20"],
+          ["ma60", "MA60"]
+        ].map(([key, label]) => {
+          const value = chartNumber(latest[key]);
+          return value === null
+            ? ""
+            : `<span class="ma-value ${key}">${label} ${formatNumber(value)}</span>`;
+        }).join("");
+      }
+
+      function render(snapshot) {
+        state.snapshot = snapshot;
+        const candidates = getVisibleCandidates(snapshot.candidates);
+        if (!candidates.some((candidate) => candidate.symbol === state.selectedSymbol)) {
+          state.selectedSymbol = candidates[0]?.symbol || null;
+        }
+
+        renderStatus(snapshot);
+        renderCandidates(candidates);
+        renderCandidateDetail(candidates.find((candidate) => candidate.symbol === state.selectedSymbol));
+        renderPositions(snapshot.positions);
+        renderDataHealth(snapshot);
+      }
+
+      function getVisibleCandidates(candidates) {
+        return candidates
+          .filter((candidate) => Number(candidate.score.total) > 0)
+          .sort((left, right) => {
+            const scoreDifference = Number(right.score.total) - Number(left.score.total);
+            return scoreDifference || left.symbol.localeCompare(right.symbol, "en");
+          });
+      }
+
+      function renderStatus(snapshot) {
+        const timestamp = new Date(snapshot.generated_at).toLocaleTimeString("zh-TW", {
+          hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+        });
+        statusElement.innerHTML = `<span class="status-dot" aria-hidden="true"></span>單次快照 · ${escapeHtml(snapshot.provider.name)} · ${timestamp}`;
+      }
+
+      function renderCandidates(candidates) {
+        document.getElementById("candidate-count").textContent = `${candidates.length} 檔`;
+        const list = document.getElementById("candidate-list");
+
+        if (!candidates.length) {
+          list.innerHTML = '<p class="empty">目前沒有分數大於 0 的候選股票。</p>';
+          return;
+        }
+
+        list.innerHTML = candidates.map((candidate) => {
+          const selected = candidate.symbol === state.selectedSymbol;
+          return `
+            <button class="candidate-button ${selected ? "selected" : ""}" type="button" data-symbol="${escapeHtml(candidate.symbol)}" aria-pressed="${selected}">
+              <span class="candidate-symbol">${escapeHtml(candidate.symbol)}</span>
+              <span class="candidate-score">${candidate.score.total}</span>
+              <span class="candidate-name">${escapeHtml(candidate.stock.name)} · ${escapeHtml(formatSource(candidate.sources))}</span>
+            </button>
+          `;
+        }).join("");
+
+        list.querySelectorAll("[data-symbol]").forEach((button) => {
+          button.addEventListener("click", () => {
+            selectCandidate(button.dataset.symbol);
+          });
+        });
+      }
+
+      function selectCandidate(symbol) {
+        if (!symbol || !state.snapshot) return;
+        const candidateList = document.getElementById("candidate-list");
+        const candidateScrollTop = candidateList.scrollTop;
+        state.selectedSymbol = symbol;
+        render(state.snapshot);
+        document.getElementById("candidate-list").scrollTop = candidateScrollTop;
+        resetDetailScroll();
+        loadSelectedHistory();
+      }
+
+      function resetDetailScroll() {
+        if (window.matchMedia("(max-width: 700px)").matches) {
+          detailPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+        detailPanel.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      function renderCandidateDetail(candidate) {
+        const detail = document.getElementById("candidate-detail");
+
+        if (!candidate) {
+          detail.innerHTML = '<div class="kicker">評估</div><h2 id="detail-heading">沒有可顯示的 Candidate</h2><p class="empty">請先重新掃描或調整候選規則。</p>';
+          return;
+        }
+
+        const stock = candidate.stock;
+        const gapPct = stock.previous_close > 0 ? (stock.open - stock.previous_close) / stock.previous_close * 100 : null;
+        const changePct = stock.previous_close > 0 ? (stock.price - stock.previous_close) / stock.previous_close * 100 : null;
+        const dayPosition = stock.high > stock.low ? (stock.price - stock.low) / (stock.high - stock.low) * 100 : null;
+        const dayRangePct = stock.previous_close > 0 ? (stock.high - stock.low) / stock.previous_close * 100 : null;
+        const vwapDeviation = stock.vwap > 0 ? (stock.price - stock.vwap) / stock.vwap * 100 : null;
+        const scoreParts = candidate.score.details.map((detail) => `
+          <span class="score-piece" style="width:${percentage(detail.score, candidate.score.max)}%"></span>
+        `).join("");
+        const scoreRows = candidate.score.details.map((detail) => `
+          <div class="score-row"><span>${escapeHtml(formatRule(detail.rule))}</span><strong>+${detail.score} / ${detail.max_score}</strong></div>
+        `).join("");
+        const matchedRules = candidate.matched_rules.length
+          ? candidate.matched_rules.map(formatRule).join(" · ")
+          : "無自動選股規則";
+
+        detail.innerHTML = `
+          <div class="kicker">評估</div>
+          <div class="selected-title">
+            <strong>${escapeHtml(candidate.symbol)}</strong>
+            <span>${escapeHtml(stock.name)}</span>
+            <span class="source-badge">${escapeHtml(formatSource(candidate.sources))}</span>
+          </div>
+          <p class="rule-line">符合規則：<strong>${escapeHtml(matchedRules)}</strong></p>
+          <div class="metrics" aria-label="${escapeHtml(candidate.symbol)} 最新市場快照">
+            <div class="metric">
+              <div class="metric-label">目前價格</div>
+              <div class="metric-value">${formatNumber(stock.price)}</div>
+              <div class="metric-note">較昨收 ${changePct === null ? "—" : formatPercent(changePct)}</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">開盤／昨收</div>
+              <div class="metric-value">${formatNumber(stock.open)} / ${formatNumber(stock.previous_close)}</div>
+              <div class="metric-note">跳空 ${gapPct === null ? "—" : formatPercent(gapPct)}</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">成交量／VWAP</div>
+              <div class="metric-value">${formatVolume(stock.volume)} / ${formatNumber(stock.vwap)}</div>
+              <div class="metric-note">${stock.vwap === null ? "尚無 VWAP" : stock.price > stock.vwap ? "現價高於 VWAP" : "現價低於 VWAP"}</div>
+            </div>
+          </div>
+          <div class="observation-grid" aria-label="${escapeHtml(candidate.symbol)} 盤中觀察指標">
+            <div class="observation">
+              <div class="observation-label">日內位置</div>
+              <div class="observation-value">${dayPosition === null ? "—" : `${formatNumber(dayPosition, 0)}%`}</div>
+              <div class="observation-note">低 ${formatNumber(stock.low)} ／高 ${formatNumber(stock.high)}</div>
+            </div>
+            <div class="observation">
+              <div class="observation-label">VWAP 偏離</div>
+              <div class="observation-value">${formatPercent(vwapDeviation)}</div>
+              <div class="observation-note">${stock.vwap > 0 ? `VWAP ${formatNumber(stock.vwap)}` : "尚無 VWAP"}</div>
+            </div>
+            <div class="observation">
+              <div class="observation-label">日內振幅</div>
+              <div class="observation-value">${formatPercent(dayRangePct)}</div>
+              <div class="observation-note">以昨收為分母</div>
+            </div>
+            <div class="observation">
+              <div class="observation-label">相對量</div>
+              <div class="observation-value">${stock.relative_volume === null || stock.relative_volume === undefined ? "—" : `${formatNumber(stock.relative_volume)} 倍`}</div>
+              <div class="observation-note">${stock.relative_volume === null || stock.relative_volume === undefined ? "尚無資料" : "今日累積量／昨量"}</div>
+            </div>
+          </div>
+          ${renderHistory(candidate)}
+          <div class="score-region">
+            <div class="score-header">
+              <div><div class="kicker">買入評分</div><strong>${candidate.score.total} / ${candidate.score.max}</strong></div>
+              <span>可解釋的二元規則</span>
+            </div>
+            <div class="score-track" role="img" aria-label="買入評分組成">${scoreParts}</div>
+            ${scoreRows}
+          </div>
+        `;
+
+        detail.querySelectorAll("[data-history-period]").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.historyPeriod = button.dataset.historyPeriod;
+            renderCandidateDetail(candidate);
+            loadSelectedHistory();
+          });
+        });
+
+        const history = state.historyByKey[historyKey(candidate.symbol, state.historyPeriod)];
+        if (history?.status === "ready") {
+          bindCandlestickTooltip(detail, history);
+        }
+      }
+
+      function renderHistory(candidate) {
+        const key = historyKey(candidate.symbol, state.historyPeriod);
+        const history = state.historyByKey[key];
+        const controls = [
+          ["1d", "1日"],
+          ["5d", "5日"],
+          ["20d", "20日"],
+          ["3m", "3月"]
+        ].map(([period, label]) => `
+          <button class="period-button ${state.historyPeriod === period ? "active" : ""}" type="button" data-history-period="${period}" aria-pressed="${state.historyPeriod === period}">${label}</button>
+        `).join("");
+
+        let body = '<div class="history-empty">正在讀取來源 Kbar…</div>';
+        let meta = "Kbar 只會在選取這檔候選股時，才由後端向資料 Provider 查詢。";
+
+        if (history) {
+          if (history.status === "ready") {
+            body = renderCandlestickChart(history);
+            const sourceNote = history.source === "MockProvider"
+              ? "MockProvider 模擬資料"
+              : `${history.source} 來源資料`;
+            const candleTitle = history.resolution === "日"
+              ? `${history.label} K`
+              : `${history.label} ${history.resolution} K`;
+            const displayStart = history.display_start || history.candles[0].timestamp.slice(0, 10);
+            const displayEnd = history.display_end || history.candles[history.candles.length - 1].timestamp.slice(0, 10);
+            meta = `<span><strong>${escapeHtml(candleTitle)}</strong> · 顯示 ${escapeHtml(displayStart)} 至 ${escapeHtml(displayEnd)} · ${history.candles.length} 根</span>${renderMovingAverageMeta(history)}<span>${escapeHtml(sourceNote)}</span>`;
+          } else if (history.status === "empty") {
+            body = '<div class="history-empty">此期間沒有可繪製的 Kbar。可能為休市日、資料尚未建立，或 Provider 未回傳歷史行情。</div>';
+            meta = `${escapeHtml(history.start)} 至 ${escapeHtml(history.end)} · ${escapeHtml(history.source)} 未回傳 Kbar`;
+          } else if (history.status === "error") {
+            body = `<div class="history-empty">${escapeHtml(history.message)}</div>`;
+            meta = "保留目前掃描結果；可再次選擇週期重試。";
+          } else {
+            body = '<div class="history-empty">目前資料 Provider 未提供歷史 Kbar。</div>';
+            meta = `${escapeHtml(history.source)} 目前不支援 Kbar 查詢。`;
+          }
+        }
+
+        return `
+          <section class="history-region" aria-label="${escapeHtml(candidate.symbol)} 歷史 K 線">
+            <div class="history-heading">
+              <div><div class="kicker">走勢</div><h3>來源 K 線與成交量</h3></div>
+              <div class="period-controls" role="group" aria-label="K 線週期">${controls}</div>
+            </div>
+            <div class="history-chart" data-history-chart>${body}<div class="chart-tooltip" data-chart-tooltip aria-hidden="true"></div></div>
+            <div class="history-meta">${meta}</div>
+          </section>
+        `;
+      }
+
+      function bindCandlestickTooltip(detail, history) {
+        const chart = detail.querySelector("[data-history-chart]");
+        const tooltip = detail.querySelector("[data-chart-tooltip]");
+        const svg = chart?.querySelector("svg");
+        if (!chart || !tooltip || !svg) return;
+
+        const width = 640;
+        const height = 270;
+        const left = 46;
+        const right = 10;
+        const priceTop = 28;
+        const volumeBottom = 252;
+        const plotWidth = width - left - right;
+        const step = plotWidth / history.candles.length;
+
+        const hideTooltip = () => {
+          tooltip.classList.remove("visible");
+          tooltip.setAttribute("aria-hidden", "true");
+        };
+
+        svg.addEventListener("pointermove", (event) => {
+          const bounds = svg.getBoundingClientRect();
+          const viewX = (event.clientX - bounds.left) / bounds.width * width;
+          const viewY = (event.clientY - bounds.top) / bounds.height * height;
+          if (viewX < left || viewX > width - right || viewY < priceTop || viewY > volumeBottom) {
+            hideTooltip();
+            return;
+          }
+
+          const index = Math.min(
+            history.candles.length - 1,
+            Math.max(0, Math.floor((viewX - left) / step)),
+          );
+          const candle = history.candles[index];
+          tooltip.innerHTML = renderCandleTooltip(candle, history.resolution);
+          tooltip.classList.add("visible");
+          tooltip.setAttribute("aria-hidden", "false");
+
+          const chartBounds = chart.getBoundingClientRect();
+          const desiredLeft = event.clientX - chartBounds.left + 14;
+          const desiredTop = event.clientY - chartBounds.top + 14;
+          tooltip.style.left = `${Math.min(desiredLeft, chart.clientWidth - tooltip.offsetWidth - 8)}px`;
+          tooltip.style.top = `${Math.min(desiredTop, chart.clientHeight - tooltip.offsetHeight - 8)}px`;
+        });
+        svg.addEventListener("pointerleave", hideTooltip);
+      }
+
+      function renderCandleTooltip(candle, resolution) {
+        const date = new Date(candle.timestamp);
+        const timestamp = date.toLocaleString("zh-TW", resolution === "5分鐘"
+          ? { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }
+          : { year: "numeric", month: "numeric", day: "numeric" }
+        );
+        const values = [
+          ["開", formatNumber(candle.open)],
+          ["高", formatNumber(candle.high)],
+          ["低", formatNumber(candle.low)],
+          ["收", formatNumber(candle.close)],
+          ["成交量", formatVolume(candle.volume)]
+        ].map(([label, value]) => `<span class="chart-tooltip-item"><span>${label}</span><strong>${value}</strong></span>`).join("");
+        const indicators = [
+          ["ma5", "MA5"],
+          ["ma20", "MA20"],
+          ["ma60", "MA60"]
+        ].map(([key, label]) => {
+          const value = chartNumber(candle[key]);
+          return value === null ? "" : `<span class="${key}">${label} ${formatNumber(value)}</span>`;
+        }).join("");
+
+        return `
+          <div class="chart-tooltip-heading">${escapeHtml(timestamp)}</div>
+          <div class="chart-tooltip-grid">${values}</div>
+          ${indicators ? `<div class="chart-tooltip-indicators">${indicators}</div>` : ""}
+        `;
+      }
+
+      function renderCandlestickChart(history) {
+        const candles = history.candles;
+        const width = 640;
+        const height = 270;
+        const left = 46;
+        const right = 10;
+        const priceTop = 28;
+        const priceBottom = 190;
+        const volumeTop = 212;
+        const volumeBottom = 252;
+        const plotWidth = width - left - right;
+        const lows = candles.map((candle) => Number(candle.low));
+        const highs = candles.map((candle) => Number(candle.high));
+        const movingAverageSeries = [
+          { key: "ma5", label: "MA5", color: "var(--amber)" },
+          { key: "ma20", label: "MA20", color: "var(--blue)" },
+          { key: "ma60", label: "MA60", color: "var(--teal)" }
+        ].filter((series) => candles.some((candle) => chartNumber(candle[series.key]) !== null));
+        const movingAverageValues = movingAverageSeries.flatMap((series) => candles
+          .map((candle) => chartNumber(candle[series.key]))
+          .filter((value) => value !== null)
+        );
+        const rawMin = Math.min(...lows, ...movingAverageValues);
+        const rawMax = Math.max(...highs, ...movingAverageValues);
+        const baseSpan = Math.max(rawMax - rawMin, Math.abs(rawMax) * 0.002, 0.01);
+        const scaleMin = rawMin - baseSpan * 0.12;
+        const scaleMax = rawMax + baseSpan * 0.12;
+        const y = (price) => priceTop + (scaleMax - price) / (scaleMax - scaleMin) * (priceBottom - priceTop);
+        const step = plotWidth / candles.length;
+        const bodyWidth = Math.max(2, Math.min(14, step * 0.58));
+        const maxVolume = Math.max(...candles.map((candle) => Number(candle.volume)), 1);
+        const gridValues = [scaleMax, (scaleMax + scaleMin) / 2, scaleMin];
+        const grids = gridValues.map((value) => `
+          <line x1="${left}" x2="${width - right}" y1="${y(value)}" y2="${y(value)}" stroke="var(--line)" stroke-width="1" />
+          <text x="${left - 7}" y="${y(value) + 4}" text-anchor="end" fill="var(--muted)" font-size="10">${formatNumber(value)}</text>
+        `).join("");
+        const xForIndex = (index) => left + step * index + step / 2;
+        const bars = candles.map((candle, index) => {
+          const open = Number(candle.open);
+          const close = Number(candle.close);
+          const x = xForIndex(index);
+          const rising = close >= open;
+          const color = rising ? "var(--green)" : "var(--red)";
+          const bodyY = y(Math.max(open, close));
+          const bodyHeight = Math.max(2, Math.abs(y(open) - y(close)));
+          const volumeHeight = Number(candle.volume) / maxVolume * (volumeBottom - volumeTop);
+          return `
+            <line x1="${x}" x2="${x}" y1="${y(Number(candle.high))}" y2="${y(Number(candle.low))}" stroke="${color}" stroke-width="1.4" />
+            <rect x="${x - bodyWidth / 2}" y="${bodyY}" width="${bodyWidth}" height="${bodyHeight}" fill="${color}" rx="1" />
+            <rect x="${x - bodyWidth / 2}" y="${volumeBottom - volumeHeight}" width="${bodyWidth}" height="${volumeHeight}" fill="${color}" opacity=".55" rx="1" />
+          `;
+        }).join("");
+        const movingAverageLines = movingAverageSeries.map((series) => {
+          let drawing = false;
+          const path = candles.map((candle, index) => {
+            const value = chartNumber(candle[series.key]);
+            if (value === null) {
+              drawing = false;
+              return "";
+            }
+            const command = drawing ? "L" : "M";
+            drawing = true;
+            return `${command}${xForIndex(index).toFixed(2)} ${y(value).toFixed(2)}`;
+          }).join(" ");
+          return path
+            ? `<path d="${path}" fill="none" stroke="${series.color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />`
+            : "";
+        }).join("");
+        const highValue = Math.max(...highs);
+        const lowValue = Math.min(...lows);
+        const highIndex = highs.indexOf(highValue);
+        const lowIndex = lows.indexOf(lowValue);
+        const highX = xForIndex(highIndex);
+        const lowX = xForIndex(lowIndex);
+        const highY = y(highValue);
+        const lowY = y(lowValue);
+        const highLabelY = Math.max(23, highY - 9);
+        const lowLabelY = Math.min(priceBottom - 4, lowY + 14);
+        const extrema = `
+          <line x1="${highX}" x2="${highX}" y1="${highY}" y2="${highLabelY + 3}" stroke="var(--text)" stroke-width="1" />
+          <text x="${highX}" y="${highLabelY}" text-anchor="middle" fill="var(--text)" font-size="10">高 ${formatNumber(highValue)}</text>
+          <line x1="${lowX}" x2="${lowX}" y1="${lowY}" y2="${lowLabelY - 10}" stroke="var(--text)" stroke-width="1" />
+          <text x="${lowX}" y="${lowLabelY}" text-anchor="middle" fill="var(--text)" font-size="10">低 ${formatNumber(lowValue)}</text>
+        `;
+        const movingAverageLegend = movingAverageSeries.map((series, index) => `
+          <text x="${left + index * 48}" y="15" fill="${series.color}" font-size="10">${series.label}</text>
+        `).join("");
+        const last = candles[candles.length - 1];
+        const labelLimit = history.resolution === "日" ? 6 : 5;
+        const labelStep = Math.max(1, Math.ceil(candles.length / labelLimit));
+        const labels = candles.map((candle, index) => {
+          if (index % labelStep !== 0 && index !== candles.length - 1) return "";
+          const x = xForIndex(index);
+          return `<text x="${x}" y="266" text-anchor="middle" fill="var(--muted)" font-size="10">${escapeHtml(formatHistoryTimestamp(candle.timestamp, history.resolution))}</text>`;
+        }).join("") + `
+          <text x="${left}" y="207" fill="var(--muted)" font-size="10">成交量</text>
+        `;
+        const candleTitle = history.resolution === "日"
+          ? `${history.label} K`
+          : `${history.label} ${history.resolution} K`;
+
+        return `
+          <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(candleTitle)}，共 ${candles.length} 根，含成交量">
+            ${grids}
+            ${bars}
+            ${movingAverageLines}
+            <line x1="${left}" x2="${width - right}" y1="${y(Number(last.close))}" y2="${y(Number(last.close))}" stroke="var(--blue)" stroke-width="1" stroke-dasharray="3 3" />
+            ${extrema}
+            ${movingAverageLegend}
+            ${labels}
+          </svg>
+        `;
+      }
+
+      function renderPositions(positions) {
+        document.getElementById("position-count").textContent = String(positions.length);
+        const list = document.getElementById("position-list");
+
+        if (!positions.length) {
+          list.innerHTML = '<p class="empty">目前沒有可監控的持倉。</p>';
+          return;
+        }
+
+        list.innerHTML = positions.map((position) => {
+          const prices = [
+            position.exit.stop_price,
+            position.entry_price,
+            position.current_price,
+            position.exit.take_profit_price
+          ];
+          const min = Math.min(...prices);
+          const max = Math.max(...prices);
+          const spread = max - min || 1;
+          const marker = (value) => 7 + ((value - min) / spread * 86);
+          const positive = position.pnl_pct >= 0;
+          const decisionClass = position.exit.decision === "EXIT" ? "exit" : "hold";
+          const decisionLabel = position.exit.decision === "EXIT" ? "出場" : "持有";
+          const triggered = position.exit.triggered_rules.length
+            ? `觸發：${position.exit.triggered_rules.map(formatRule).join("、")}`
+            : "尚未觸發停損或停利";
+
+          return `
+            <article class="position-card">
+              <div class="position-top">
+                <div class="position-name"><strong>${escapeHtml(position.symbol)}</strong><span>${escapeHtml(position.stock.name)} · ${position.quantity.toLocaleString("zh-TW")} 股</span></div>
+                <span class="decision-badge ${decisionClass}">${decisionLabel}</span>
+              </div>
+              <div class="pnl ${positive ? "positive" : "negative"}">${formatPercent(position.pnl_pct)}</div>
+              <div class="pnl-note">未實現損益 ${position.pnl_amount >= 0 ? "+" : ""}${formatNumber(position.pnl_amount, 0)} 元 · 現價 ${formatNumber(position.current_price)}</div>
+              <div class="price-lane" role="img" aria-label="${escapeHtml(position.symbol)} 的停損、進場、現價與停利價格區間">
+                <div class="price-line"></div>
+                <span class="price-marker stop" style="left:${marker(position.exit.stop_price)}%"></span>
+                <span class="price-marker" style="left:${marker(position.entry_price)}%"></span>
+                <span class="price-marker current" style="left:${marker(position.current_price)}%"></span>
+                <span class="price-marker target" style="left:${marker(position.exit.take_profit_price)}%"></span>
+                <span class="price-label" style="left:${marker(position.exit.stop_price)}%"><strong>${formatNumber(position.exit.stop_price)}</strong>停損</span>
+                <span class="price-label" style="left:${marker(position.entry_price)}%"><strong>${formatNumber(position.entry_price)}</strong>進場</span>
+                <span class="price-label" style="left:${marker(position.current_price)}%"><strong>${formatNumber(position.current_price)}</strong>現價</span>
+                <span class="price-label" style="left:${marker(position.exit.take_profit_price)}%"><strong>${formatNumber(position.exit.take_profit_price)}</strong>停利</span>
+              </div>
+              <p class="position-footer"><strong>出場狀態：</strong>${escapeHtml(triggered)}。即使股票離開候選清單，仍持續監控持倉。</p>
+            </article>
+          `;
+        }).join("");
+      }
+
+      function renderDataHealth(snapshot) {
+        const missing = [
+          ...snapshot.market.missing_candidate_symbols,
+          ...snapshot.market.missing_position_symbols
+        ];
+        const missingText = missing.length ? `；${missing.length} 檔缺少最新資料` : "";
+        document.getElementById("data-health").innerHTML = `已從 <strong>${escapeHtml(snapshot.provider.name)}</strong> 載入 <strong>${snapshot.market.loaded_symbols}</strong> 檔股票。此畫面是單次掃描快照，不代表已連接即時逐筆行情或下單功能${missingText}。`;
+      }
+
+      async function loadSnapshot(refresh) {
+        refreshButton.disabled = true;
+        refreshButton.textContent = refresh ? "掃描中…" : "載入中…";
+        errorElement.style.display = "none";
+
+        try {
+          const response = await fetch(refresh ? "/api/dashboard/refresh" : "/api/dashboard/snapshot", {
+            method: refresh ? "POST" : "GET"
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          state.historyByKey = {};
+          state.historyLoadingKey = null;
+          render(await response.json());
+          loadSelectedHistory();
+        } catch (error) {
+          errorElement.textContent = `無法取得掃描快照：${error.message}`;
+          errorElement.style.display = "block";
+        } finally {
+          refreshButton.disabled = false;
+          refreshButton.textContent = "重新掃描";
+        }
+      }
+
+      async function loadSelectedHistory() {
+        const candidate = state.snapshot?.candidates.find((item) => item.symbol === state.selectedSymbol);
+        if (!candidate) return;
+
+        const key = historyKey(candidate.symbol, state.historyPeriod);
+        if (state.historyByKey[key]) return;
+
+        state.historyLoadingKey = key;
+        renderCandidateDetail(candidate);
+
+        try {
+          const response = await fetch(`/api/dashboard/candidates/${encodeURIComponent(candidate.symbol)}/history?period=${encodeURIComponent(state.historyPeriod)}`);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          state.historyByKey[key] = await response.json();
+        } catch (error) {
+          state.historyByKey[key] = {
+            status: "error",
+            message: `無法取得 Kbar：${error.message}`
+          };
+        } finally {
+          if (state.historyLoadingKey === key) state.historyLoadingKey = null;
+          if (historyKey(state.selectedSymbol, state.historyPeriod) === key) {
+            renderCandidateDetail(candidate);
+          }
+        }
+      }
+
+      function setPositionsDrawer(open) {
+        positionsDrawer.classList.toggle("open", open);
+        positionsDrawer.setAttribute("aria-hidden", String(!open));
+        positionsToggle.setAttribute("aria-expanded", String(open));
+        if (open) {
+          requestAnimationFrame(() => positionsPanel.focus());
+        } else {
+          positionsToggle.focus();
+        }
+      }
+
+      refreshButton.addEventListener("click", () => loadSnapshot(true));
+      positionsToggle.addEventListener("click", () => setPositionsDrawer(true));
+      positionsClose.addEventListener("click", () => setPositionsDrawer(false));
+      positionsBackdrop.addEventListener("click", () => setPositionsDrawer(false));
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && positionsDrawer.classList.contains("open")) {
+          setPositionsDrawer(false);
+        }
+      });
+      loadSnapshot(false);
+    </script>
+  </body>
+</html>

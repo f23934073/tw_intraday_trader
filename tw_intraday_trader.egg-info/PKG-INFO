@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: tw-intraday-trader
+Version: 0.1.0
+Summary: 台股盤中即時選股與交易決策系統 MVP
+Requires-Python: >=3.11
+Requires-Dist: fastapi<1,>=0.115
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: uvicorn<1,>=0.30
+Provides-Extra: broker
+Requires-Dist: shioaji<2,>=1.7; extra == "broker"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-cov>=5.0; extra == "dev"

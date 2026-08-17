@@ -19,6 +19,7 @@ app.py — Orchestration Layer
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -38,6 +39,39 @@ from scoring.models import BuyScoreResult
 from scoring.rules import AboveVWAPRule, GapScoreRule
 
 load_dotenv()
+
+
+@dataclass
+class CandidateEvaluation:
+    """Candidate 與其最新行情、買入評分的同一輪掃描結果。"""
+
+    candidate: Candidate
+    stock: StockData
+    score_result: BuyScoreResult
+
+
+@dataclass
+class PositionEvaluation:
+    """持倉與其最新行情、損益、出場規則結果。"""
+
+    position: Position
+    stock: StockData
+    pnl_pct: float
+    pnl_amount: float
+    triggered_exit_rules: list[str]
+
+
+@dataclass
+class ScanResult:
+    """供終端機與 Web 儀表板共用的單次市場掃描結果。"""
+
+    generated_at: datetime
+    provider_name: str
+    loaded_symbols: int
+    candidates: list[CandidateEvaluation]
+    missing_candidate_symbols: list[str]
+    positions: list[PositionEvaluation]
+    missing_position_symbols: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -178,21 +212,17 @@ def print_candidate(
 
 
 def print_position(
-    position: Position,
-    stock: StockData,
-    exit_rules: list[ExitRule],
+    evaluation: PositionEvaluation,
 ) -> None:
-    pnl_pct = (stock.price - position.entry_price) / position.entry_price * 100
-    pnl_amount = (stock.price - position.entry_price) * position.quantity
-    pnl_sign = "+" if pnl_pct >= 0 else ""
+    position = evaluation.position
+    stock = evaluation.stock
+    pnl_sign = "+" if evaluation.pnl_pct >= 0 else ""
 
-    triggered_exits: list[str] = [
-        rule.name
-        for rule in exit_rules
-        if rule.should_exit(position, stock)
-    ]
-
-    decision = f"🚨 EXIT  ({', '.join(triggered_exits)})" if triggered_exits else "✅ HOLD"
+    decision = (
+        f"🚨 EXIT  ({', '.join(evaluation.triggered_exit_rules)})"
+        if evaluation.triggered_exit_rules
+        else "✅ HOLD"
+    )
 
     print()
     print(f"  💰  {position.symbol} {stock.name}")
@@ -200,7 +230,10 @@ def print_position(
     print(f"      Current  : {stock.price:.2f}")
     print(f"      Quantity : {position.quantity:,}")
     print()
-    print(f"      PnL      : {pnl_sign}{pnl_pct:.2f}%  ({pnl_sign}{pnl_amount:,.0f})")
+    print(
+        f"      PnL      : {pnl_sign}{evaluation.pnl_pct:.2f}%"
+        f"  ({pnl_sign}{evaluation.pnl_amount:,.0f})"
+    )
     print()
     print(f"      Decision : {decision}")
     print()
@@ -212,10 +245,9 @@ def print_position(
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    # ---- 建立各模組 ----
-    market = build_provider()
-
+def run_scan(market: MarketDataProvider | None = None) -> ScanResult:
+    """執行一次完整掃描，回傳供不同呈現介面共用的決策結果。"""
+    market = market or build_provider()
     store = MarketDataStore()
 
     candidate_engine = CandidateEngine(
@@ -255,48 +287,96 @@ def main() -> None:
     # ---- 合併 Candidate Pool（AUTO + MANUAL 可同時存在）----
     candidates = merge_candidates(auto_candidates, manual_candidates)
 
-    # ---- 顯示 Header ----
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    print_header(timestamp)
+    candidate_evaluations: list[CandidateEvaluation] = []
+    missing_candidate_symbols: list[str] = []
 
-    # ---- 顯示各 Candidate 的 Buy Score ----
-    if candidates:
-        for c in candidates:
-            stock = store.get(c.symbol)
-            if stock is None:
-                print(f"\n  ⚠️  {c.symbol}: 市場資料中找不到此 Candidate")
-                continue
+    for candidate in candidates:
+        stock = store.get(candidate.symbol)
+        if stock is None:
+            missing_candidate_symbols.append(candidate.symbol)
+            continue
 
-            score_result = score_engine.calculate(stock)
-            if score_result.total_score >= settings.MIN_DISPLAY_SCORE:
-                print_candidate(c, score_result, stock)
+        score_result = score_engine.calculate(stock)
+        if score_result.total_score >= settings.MIN_DISPLAY_SCORE:
+            candidate_evaluations.append(
+                CandidateEvaluation(
+                    candidate=candidate,
+                    stock=stock,
+                    score_result=score_result,
+                )
+            )
+
+    position_evaluations: list[PositionEvaluation] = []
+    missing_position_symbols: list[str] = []
+
+    for position in position_manager.get_all():
+        stock = store.get(position.symbol)
+        if stock is None:
+            missing_position_symbols.append(position.symbol)
+            continue
+
+        pnl_pct = (stock.price - position.entry_price) / position.entry_price * 100
+        pnl_amount = (stock.price - position.entry_price) * position.quantity
+        triggered_exit_rules = [
+            rule.name
+            for rule in exit_rules
+            if rule.should_exit(position, stock)
+        ]
+        position_evaluations.append(
+            PositionEvaluation(
+                position=position,
+                stock=stock,
+                pnl_pct=pnl_pct,
+                pnl_amount=pnl_amount,
+                triggered_exit_rules=triggered_exit_rules,
+            )
+        )
+
+    return ScanResult(
+        generated_at=datetime.now(),
+        provider_name=type(market).__name__,
+        loaded_symbols=len(store),
+        candidates=candidate_evaluations,
+        missing_candidate_symbols=missing_candidate_symbols,
+        positions=position_evaluations,
+        missing_position_symbols=missing_position_symbols,
+    )
+
+
+def main() -> None:
+    result = run_scan()
+    print_header(result.generated_at.strftime("%H:%M:%S"))
+
+    if result.candidates:
+        for evaluation in result.candidates:
+            print_candidate(
+                evaluation.candidate,
+                evaluation.score_result,
+                evaluation.stock,
+            )
     else:
         print()
         print("  (No candidates found)")
         print()
         print(DIVIDER)
 
-    # ---- 持倉監控（Position 永遠監控，不論是否在 Candidate Pool）----
-    positions = position_manager.get_all()
+    for symbol in result.missing_candidate_symbols:
+        print(f"\n  ⚠️  {symbol}: 市場資料中找不到此 Candidate")
 
-    if positions:
-        print()
-        print("  POSITIONS")
+    print()
+    print("  POSITIONS")
 
-        for position in positions:
-            stock = store.get(position.symbol)
-            if stock is None:
-                print(f"\n  ⚠️  {position.symbol}: 市場資料中找不到此持倉股票")
-                continue
-
-            print_position(position, stock, exit_rules)
+    if result.positions:
+        for evaluation in result.positions:
+            print_position(evaluation)
     else:
-        print()
-        print("  POSITIONS")
         print()
         print("  (No positions)")
         print()
         print(DIVIDER)
+
+    for symbol in result.missing_position_symbols:
+        print(f"\n  ⚠️  {symbol}: 市場資料中找不到此持倉股票")
 
     print()
 

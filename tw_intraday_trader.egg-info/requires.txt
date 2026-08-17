@@ -1,0 +1,10 @@
+fastapi<1,>=0.115
+python-dotenv>=1.0
+uvicorn<1,>=0.30
+
+[broker]
+shioaji<2,>=1.7
+
+[dev]
+pytest>=8.0
+pytest-cov>=5.0

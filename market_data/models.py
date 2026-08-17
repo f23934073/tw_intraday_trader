@@ -40,7 +40,8 @@ class StockData:
     # Relative Volume（RVOL）：今天到目前為止成交量 ÷ 過去 N 日同期平均成交量
     # 例如 RVOL = 2.4 代表今天同期成交量是平常的 2.4 倍
     # 比絕對量閾值（volume >= 100000）更有意義，因為盤中不同時段的成交節奏不同
-    # MockProvider 目前暫不填入（None），未來接 Shioaji 歷史資料後計算
+    # ShioajiProvider 可填入 volume_ratio（今日累積量 ÷ 昨日成交量）。
+    # 若要嚴格的「過去 N 日同期平均」RVOL，仍需另外用歷史資料計算。
 
     market: str | None = None  # 'TWSE' / 'TPEX'，未來 Scanner 可依市場分流處理
 
@@ -54,3 +55,15 @@ class StockData:
     # ma5: float | None = None
     # ma20: float | None = None
     # atr: float | None = None
+
+
+@dataclass(frozen=True)
+class KBar:
+    """由市場資料 Provider 回傳的一根 OHLCV K 棒。"""
+
+    timestamp: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int

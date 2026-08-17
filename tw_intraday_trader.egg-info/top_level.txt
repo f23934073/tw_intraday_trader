@@ -1,0 +1,6 @@
+candidate
+config
+dashboard
+market_data
+position
+scoring
