@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from candidate.engine import CandidateEngine
-from candidate.models import Candidate, CandidateSource
+from candidate.models import CandidateSource
 from candidate.rules import GapUpRule, HighVolumeRule
 from market_data.models import StockData
 

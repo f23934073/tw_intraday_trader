@@ -1,7 +1,5 @@
 """Tests for PositionManager."""
 
-import pytest
-
 from position.manager import PositionManager
 from position.models import Position
 

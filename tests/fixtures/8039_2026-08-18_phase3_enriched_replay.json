@@ -1,0 +1,99 @@
+{
+  "schema_version": "momentum-replay-v1",
+  "dataset_id": "8039-20260818-phase3-enriched-synthetic-v1",
+  "session_id": "20260818-replay-phase3-enriched",
+  "session_date": "2026-08-18",
+  "timezone": "Asia/Taipei",
+  "content_sha256": "2bbc84b2cdc9a9cab5420045cbfe043bf8d40ea5502640e33ed8d24377d56ec2",
+  "row_count": 11,
+  "references": [
+    {
+      "symbol": "8039",
+      "exchange": "TSE",
+      "reference_price": "258.5",
+      "limit_up_price": "284.5",
+      "limit_down_price": "232.5",
+      "price_limit_applies": true,
+      "trading_unit_shares": 1000,
+      "source_updated_at": "2026-08-18"
+    }
+  ],
+  "events": [
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:06:00+08:00", "received_at": "2026-08-18T09:06:00+08:00", "ingress_sequence": 1,
+      "price": "265", "tick_volume_lots": 0, "total_volume_lots": 1806, "average_price": "263.00",
+      "intraday_high": "265", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 1000, "sell_aggressor_total_lots": 806
+    },
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:07:00+08:00", "received_at": "2026-08-18T09:07:00+08:00", "ingress_sequence": 2,
+      "price": "266", "tick_volume_lots": 1400, "total_volume_lots": 3206, "average_price": "264.00",
+      "intraday_high": "266", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 1800, "sell_aggressor_total_lots": 1406
+    },
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:09:00+08:00", "received_at": "2026-08-18T09:09:00+08:00", "ingress_sequence": 3,
+      "price": "267", "tick_volume_lots": 1300, "total_volume_lots": 4506, "average_price": "265.00",
+      "intraday_high": "267", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 2500, "sell_aggressor_total_lots": 2006
+    },
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:11:00+08:00", "received_at": "2026-08-18T09:11:00+08:00", "ingress_sequence": 4,
+      "price": "268", "tick_volume_lots": 1500, "total_volume_lots": 6006, "average_price": "266.00",
+      "intraday_high": "268", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 3300, "sell_aggressor_total_lots": 2706
+    },
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:13:00+08:00", "received_at": "2026-08-18T09:13:00+08:00", "ingress_sequence": 5,
+      "price": "270", "tick_volume_lots": 700, "total_volume_lots": 6706, "average_price": "267.00",
+      "intraday_high": "270", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 3700, "sell_aggressor_total_lots": 3006
+    },
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:14:00+08:00", "received_at": "2026-08-18T09:14:00+08:00", "ingress_sequence": 6,
+      "price": "275", "tick_volume_lots": 700, "total_volume_lots": 7406, "average_price": "268.00",
+      "intraday_high": "275", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 4100, "sell_aggressor_total_lots": 3306
+    },
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:15:00+08:00", "received_at": "2026-08-18T09:15:00+08:00", "ingress_sequence": 7,
+      "price": "271", "tick_volume_lots": 1400, "total_volume_lots": 8806, "average_price": "269.00",
+      "intraday_high": "275", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 4945, "sell_aggressor_total_lots": 3861
+    },
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:16:00+08:00", "received_at": "2026-08-18T09:16:00+08:00", "ingress_sequence": 8,
+      "price": "272", "tick_volume_lots": 0, "total_volume_lots": 8806, "average_price": "269.59",
+      "intraday_high": "275", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 4945, "sell_aggressor_total_lots": 3861
+    },
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:17:00+08:00", "received_at": "2026-08-18T09:17:00+08:00", "ingress_sequence": 9,
+      "price": "275", "tick_volume_lots": 1000, "total_volume_lots": 9806, "average_price": "270.10",
+      "intraday_high": "275", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 5800, "sell_aggressor_total_lots": 4006
+    },
+    {
+      "kind": "BIDASK", "symbol": "8039",
+      "event_at": "2026-08-18T09:17:59+08:00", "received_at": "2026-08-18T09:17:59+08:00", "ingress_sequence": 1,
+      "bid_prices": ["277.5", "277", "276.5"], "bid_volume_lots": [1500, 1000, 800],
+      "ask_prices": ["278", "278.5", "279"], "ask_volume_lots": [700, 600, 500]
+    },
+    {
+      "kind": "TICK", "symbol": "8039",
+      "event_at": "2026-08-18T09:18:00+08:00", "received_at": "2026-08-18T09:18:00+08:00", "ingress_sequence": 10,
+      "price": "278", "tick_volume_lots": 1306, "total_volume_lots": 11112, "average_price": "270.76",
+      "intraday_high": "278", "intraday_low": "258.5", "raw_tick_type": 0, "aggressor_side": "UNKNOWN",
+      "buy_aggressor_total_lots": 6919, "sell_aggressor_total_lots": 4193
+    }
+  ]
+}

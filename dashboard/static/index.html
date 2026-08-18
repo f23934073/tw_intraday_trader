@@ -35,14 +35,75 @@
       button { font: inherit; }
 
       .app-shell {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        gap: 18px;
+        grid-template-columns: 224px minmax(0, 1fr);
         height: 100vh;
-        margin: 0 auto;
-        max-width: 1680px;
+        margin: 0;
+        max-width: none;
         min-height: 0;
         padding: 18px 24px 14px;
       }
+
+      .app-sidebar {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        min-height: 0;
+        overflow: hidden;
+        padding: 16px 12px;
+        position: relative;
+        z-index: 30;
+      }
+
+      .sidebar-brand { align-items: center; display: flex; gap: 10px; padding: 2px 4px 12px; }
+      .sidebar-brand-copy { min-width: 0; }
+      .sidebar-brand h1 { font-size: 16px; white-space: nowrap; }
+      .sidebar-brand .subtitle { font-size: 11px; line-height: 1.4; }
+      .sidebar-section-label { color: var(--muted); font-size: 10px; letter-spacing: .08em; padding: 0 7px; text-transform: uppercase; }
+      .sidebar-nav { display: grid; gap: 5px; min-height: 0; overflow-y: auto; }
+      .sidebar-spacer { flex: 1; min-height: 10px; }
+      .sidebar-note { border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.5; padding: 12px 7px 0; }
+      .nav-item {
+        align-items: center;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 9px;
+        color: var(--muted);
+        cursor: pointer;
+        display: flex;
+        gap: 9px;
+        min-height: 40px;
+        padding: 8px 9px;
+        text-align: left;
+        width: 100%;
+      }
+      .nav-item:hover { background: var(--surface-soft); border-color: var(--line); color: var(--text); }
+      .nav-item.active { background: color-mix(in srgb, var(--blue) 13%, var(--surface)); border-color: color-mix(in srgb, var(--blue) 35%, var(--line)); color: var(--blue); }
+      .nav-item-icon { align-items: center; background: color-mix(in srgb, var(--muted) 12%, var(--surface)); border-radius: 6px; display: inline-flex; flex: 0 0 24px; font-size: 12px; height: 24px; justify-content: center; }
+      .nav-item.active .nav-item-icon { background: color-mix(in srgb, var(--blue) 18%, var(--surface)); }
+      .nav-item-copy { display: grid; gap: 2px; min-width: 0; }
+      .nav-item-copy strong { color: inherit; font-size: 13px; font-weight: 600; }
+      .nav-item-copy small { color: var(--muted); font-size: 10px; }
+      .nav-item .positions-count { margin-left: auto; }
+
+      .app-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+      .topbar-heading { align-items: baseline; display: flex; gap: 9px; min-width: 0; }
+      .topbar-heading h2 { font-size: 18px; margin: 0; white-space: nowrap; }
+      .topbar-description { color: var(--muted); font-size: 12px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .sidebar-toggle { align-items: center; background: transparent; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); cursor: pointer; display: inline-flex; font-size: 15px; height: 30px; justify-content: center; position: relative; width: 30px; z-index: 1; }
+      .app-shell.sidebar-mobile-open .sidebar-toggle { z-index: 31; }
+      .app-shell.sidebar-collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+      .app-shell.sidebar-collapsed .app-sidebar { padding-left: 8px; padding-right: 8px; }
+      .app-shell.sidebar-collapsed .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+      .app-shell.sidebar-collapsed .sidebar-brand-copy, .app-shell.sidebar-collapsed .sidebar-section-label, .app-shell.sidebar-collapsed .nav-item-copy, .app-shell.sidebar-collapsed .sidebar-note { display: none; }
+      .app-shell.sidebar-collapsed .sidebar-nav { overflow: visible; }
+      .app-shell.sidebar-collapsed .nav-item { justify-content: center; padding-left: 5px; padding-right: 5px; }
+      .app-shell.sidebar-collapsed .nav-item .positions-count { display: none; }
+      .app-shell.sidebar-collapsed ~ .position-drawer .drawer-panel { left: 106px; width: calc(100vw - 106px); }
 
       .topbar {
         align-items: center;
@@ -71,7 +132,8 @@
 
       .subtitle { color: var(--muted); font-size: 13px; margin: 3px 0 0; }
 
-      .topbar-actions { align-items: center; display: flex; gap: 10px; }
+      .topbar-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; min-width: 0; }
+      .topbar-actions > * { flex-shrink: 0; }
 
       .status {
         align-items: center;
@@ -100,7 +162,7 @@
       }
 
       .refresh-button:hover { filter: brightness(1.08); }
-      .refresh-button:focus-visible, .candidate-button:focus-visible, .positions-button:focus-visible, .drawer-close:focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 45%, transparent); outline-offset: 2px; }
+      .refresh-button:focus-visible, .candidate-button:focus-visible, .positions-button:focus-visible, .order-ticket-button:focus-visible, .order-submit:focus-visible, .cancel-order:focus-visible, .drawer-close:focus-visible, .nav-item:focus-visible, .sidebar-toggle:focus-visible, .workspace-tab:focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 45%, transparent); outline-offset: 2px; }
       .refresh-button:disabled { cursor: wait; opacity: .65; }
 
       .positions-button {
@@ -119,6 +181,32 @@
 
       .positions-button:hover { border-color: var(--blue); color: var(--blue); }
       .positions-count { background: color-mix(in srgb, var(--blue) 13%, var(--surface)); border-radius: 999px; color: var(--blue); font-size: 11px; min-width: 20px; padding: 2px 6px; }
+      .simulation-status { color: var(--teal); }
+      .simulation-status .status-dot { background: var(--teal); }
+      .simulation-status.waiting { color: var(--amber); }
+      .simulation-status.waiting .status-dot { background: var(--amber); }
+      .simulation-status.degraded { color: var(--red); }
+      .simulation-status.degraded .status-dot { background: var(--red); }
+      .momentum-top-status { color: var(--amber); }
+      .momentum-top-status .status-dot { background: var(--amber); }
+      .momentum-top-status.active { color: var(--red); }
+      .momentum-top-status.active .status-dot { background: var(--red); }
+      .momentum-top-status.degraded { color: var(--red); }
+      .order-ticket-button, .order-submit {
+        background: var(--blue);
+        border: 1px solid var(--blue);
+        border-radius: 9px;
+        color: light-dark(#ffffff, #081523);
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        padding: 9px 13px;
+      }
+      .order-ticket-button:hover, .order-submit:hover { filter: brightness(1.08); }
+      .order-ticket-button:disabled, .order-submit:disabled { cursor: wait; opacity: .65; }
+      .app-sidebar .order-ticket-button { background: transparent; border-color: transparent; color: var(--muted); font-size: inherit; font-weight: 400; padding: 8px 9px; }
+      .app-sidebar .order-ticket-button:hover { background: var(--surface-soft); border-color: var(--line); color: var(--text); filter: none; }
+      .app-sidebar .order-ticket-button.active { background: color-mix(in srgb, var(--blue) 13%, var(--surface)); border-color: color-mix(in srgb, var(--blue) 35%, var(--line)); color: var(--blue); }
 
       .workspace-context {
         align-items: center;
@@ -137,6 +225,67 @@
       .workspace-health { color: var(--muted); margin: 0; }
       .workspace-health strong { color: var(--text); font-weight: 500; }
 
+      .workspace-view { display: none; min-height: 0; }
+      .workspace-view.active { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+      .overview-summary { display: grid; flex: none; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
+      .summary-card { background: var(--surface); border: 1px solid var(--line); border-radius: 11px; min-width: 0; padding: 11px 13px; }
+      .summary-card-label { color: var(--muted); font-size: 11px; }
+      .summary-card-value { font-size: 19px; font-variant-numeric: tabular-nums; font-weight: 600; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .summary-card-note { color: var(--muted); font-size: 10px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .summary-card-value.good { color: var(--green); }
+      .summary-card-value.waiting { color: var(--amber); }
+      .summary-card-value.alert { color: var(--red); }
+
+      .momentum-panel { flex: none; margin-bottom: 14px; padding: 14px 16px; }
+      .momentum-heading { align-items: flex-start; display: flex; gap: 14px; justify-content: space-between; margin-bottom: 12px; }
+      .momentum-heading h2 { font-size: 17px; }
+      .momentum-heading-copy { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 4px 0 0; }
+      .momentum-source { align-items: flex-end; color: var(--muted); display: flex; flex-direction: column; font-size: 11px; gap: 4px; text-align: right; }
+      .momentum-source strong { color: var(--amber); font-size: 12px; font-weight: 600; }
+      .momentum-layout { display: grid; gap: 12px; grid-template-columns: 1.08fr 1.35fr .9fr; }
+      .momentum-card { background: var(--surface-soft); border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 11px; min-width: 0; padding: 12px; }
+      .momentum-hero-top { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+      .momentum-symbol { align-items: baseline; display: flex; flex-wrap: wrap; gap: 6px; }
+      .momentum-symbol strong { font-size: 18px; font-weight: 600; }
+      .momentum-symbol span { color: var(--muted); font-size: 12px; }
+      .momentum-stage, .momentum-candidate-badge { background: color-mix(in srgb, var(--red) 13%, var(--surface)); border-radius: 999px; color: var(--red); font-size: 11px; font-weight: 600; padding: 4px 8px; white-space: nowrap; }
+      .momentum-stage.breakout { background: color-mix(in srgb, var(--amber) 14%, var(--surface)); color: var(--amber); }
+      .momentum-stage.near-limit-up, .momentum-stage.limit-touched { background: color-mix(in srgb, var(--red) 19%, var(--surface)); }
+      .momentum-price-grid { display: grid; gap: 7px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 10px; }
+      .momentum-price-item { min-width: 0; }
+      .momentum-price-item span { color: var(--muted); display: block; font-size: 10px; }
+      .momentum-price-item strong { display: block; font-size: 14px; font-variant-numeric: tabular-nums; font-weight: 550; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .momentum-entry { border-left: 3px solid var(--red); color: var(--muted); font-size: 11px; line-height: 1.45; margin-top: 10px; padding-left: 8px; }
+      .momentum-entry strong { color: var(--text); display: block; font-size: 12px; }
+      .momentum-timeline { align-items: center; display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+      .momentum-timeline-step { align-items: center; color: var(--muted); display: inline-flex; font-size: 10px; gap: 5px; }
+      .momentum-timeline-step::after { color: var(--line); content: "→"; }
+      .momentum-timeline-step:last-child::after { content: ""; }
+      .momentum-timeline-step strong { color: var(--text); font-weight: 550; }
+      .momentum-evidence-header { align-items: flex-end; display: flex; justify-content: space-between; }
+      .momentum-evidence-score strong { display: block; font-size: 23px; font-variant-numeric: tabular-nums; font-weight: 600; }
+      .momentum-evidence-score span, .momentum-evidence-meta { color: var(--muted); font-size: 10px; }
+      .momentum-evidence-meta { line-height: 1.45; text-align: right; }
+      .momentum-evidence-grid { display: grid; gap: 5px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 9px; }
+      .momentum-evidence { align-items: center; border-top: 1px solid var(--line); display: grid; font-size: 10px; gap: 5px; grid-template-columns: auto 1fr auto; min-width: 0; padding-top: 6px; }
+      .momentum-evidence-mark { color: var(--green); font-size: 12px; }
+      .momentum-evidence.fail .momentum-evidence-mark { color: var(--red); }
+      .momentum-evidence.unknown .momentum-evidence-mark { color: var(--amber); }
+      .momentum-evidence-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .momentum-evidence-points { color: var(--muted); font-variant-numeric: tabular-nums; }
+      .momentum-disclaimer { color: var(--muted); font-size: 10px; line-height: 1.45; margin: 8px 0 0; }
+      .momentum-alert-heading { align-items: baseline; display: flex; justify-content: space-between; }
+      .momentum-alert-heading strong { font-size: 12px; }
+      .momentum-alert-heading span { color: var(--muted); font-size: 10px; }
+      .momentum-alerts { display: grid; gap: 6px; margin-top: 8px; max-height: 125px; overflow-y: auto; }
+      .momentum-alert { border-left: 3px solid var(--red); padding-left: 8px; }
+      .momentum-alert strong { display: block; font-size: 11px; line-height: 1.35; }
+      .momentum-alert-meta { color: var(--muted); font-size: 10px; margin-top: 2px; }
+      .momentum-ack { background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 10px; margin-top: 5px; padding: 3px 6px; }
+      .momentum-ack:hover { border-color: var(--blue); color: var(--blue); }
+      .momentum-ack:focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 45%, transparent); outline-offset: 2px; }
+      .momentum-empty { align-items: center; color: var(--muted); display: flex; font-size: 12px; justify-content: center; min-height: 120px; text-align: center; }
+
       .dashboard-grid {
         flex: 1;
         display: grid;
@@ -145,6 +294,8 @@
         min-height: 0;
         overflow: hidden;
       }
+
+      .overview-view .dashboard-grid { min-height: 0; }
 
       .panel {
         background: var(--surface);
@@ -321,6 +472,40 @@
       .position-footer { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 46px; }
       .position-footer strong { color: var(--text); font-weight: 500; }
 
+      .order-form { border-bottom: 1px solid var(--line); display: grid; gap: 12px; padding-bottom: 18px; }
+      .order-fields { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .order-field { display: grid; gap: 5px; }
+      .order-field label, .order-note, .order-card-meta, .order-card-note { color: var(--muted); font-size: 12px; }
+      .order-field input, .order-field select {
+        background: var(--surface-soft);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--text);
+        font: inherit;
+        min-width: 0;
+        padding: 8px 9px;
+      }
+      .order-field input:focus, .order-field select:focus { border-color: var(--blue); outline: 0; }
+      .order-note { line-height: 1.5; margin: 0; }
+      .order-message { color: var(--green); display: none; font-size: 13px; line-height: 1.5; margin: 0; }
+      .order-message.visible { display: block; }
+      .order-submit { justify-self: start; }
+      .order-section-heading { align-items: baseline; display: flex; justify-content: space-between; margin: 17px 0 10px; }
+      .order-section-heading h3 { font-size: 15px; font-weight: 500; margin: 0; }
+      .order-list { display: grid; gap: 10px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+      .order-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+      .order-card-top { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+      .order-card-title { font-size: 14px; font-weight: 500; }
+      .order-card-title span { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 5px; }
+      .order-status { border-radius: 999px; font-size: 11px; padding: 3px 7px; white-space: nowrap; }
+      .order-status.filled { background: color-mix(in srgb, var(--green) 13%, var(--surface)); color: var(--green); }
+      .order-status.submitted { background: color-mix(in srgb, var(--amber) 13%, var(--surface)); color: var(--amber); }
+      .order-status.cancelled, .order-status.rejected { background: color-mix(in srgb, var(--red) 13%, var(--surface)); color: var(--red); }
+      .order-card-meta { line-height: 1.6; margin-top: 8px; }
+      .order-card-note { margin: 5px 0 0; }
+      .cancel-order { background: transparent; border: 1px solid var(--line); border-radius: 7px; color: var(--text); cursor: pointer; font-size: 12px; margin-top: 9px; padding: 5px 8px; }
+      .cancel-order:hover { border-color: var(--red); color: var(--red); }
+
       .data-footer {
         border-top: 1px solid var(--line);
         flex: none;
@@ -334,23 +519,23 @@
 
       .position-drawer { inset: 0; pointer-events: none; position: fixed; visibility: hidden; z-index: 10; }
       .position-drawer.open { pointer-events: auto; visibility: visible; }
-      .drawer-backdrop { background: color-mix(in srgb, var(--page) 62%, transparent); border: 0; cursor: default; inset: 0; opacity: 0; padding: 0; position: absolute; transition: opacity .18s ease; width: 100%; }
-      .position-drawer.open .drawer-backdrop { opacity: 1; }
+      .drawer-backdrop { display: none; }
       .drawer-panel {
         background: var(--surface);
-        border-left: 1px solid var(--line);
+        border: 1px solid var(--line);
+        border-radius: 15px;
         box-shadow: -16px 0 40px color-mix(in srgb, #000 24%, transparent);
         display: flex;
         flex-direction: column;
-        height: 100%;
-        max-width: 440px;
-        padding: 19px;
+        height: calc(100vh - 32px);
+        left: 266px;
+        max-width: none;
+        padding: 22px 28px;
         position: absolute;
-        right: 0;
-        top: 0;
-        transform: translateX(100%);
+        top: 18px;
+        transform: translateX(0);
         transition: transform .18s ease;
-        width: min(440px, 100vw);
+        width: calc(100vw - 266px);
       }
       .position-drawer.open .drawer-panel { transform: translateX(0); }
       .drawer-heading { align-items: flex-start; display: flex; justify-content: space-between; margin-bottom: 17px; }
@@ -359,90 +544,267 @@
       .drawer-close:hover { border-color: var(--blue); color: var(--blue); }
       .drawer-panel .position-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 
+      .backtest-drawer { z-index: 20; }
+      .backtest-drawer .drawer-panel { width: calc(100vw - 266px); }
+      .backtest-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+      .strategy-catalog-drawer { z-index: 25; }
+      .strategy-catalog-drawer .drawer-panel { width: calc(100vw - 266px); }
+      .workspace-tabs { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 16px; padding: 0 0 0 2px; }
+      .workspace-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; font-size: 12px; margin-bottom: -1px; padding: 10px 12px 9px; }
+      .workspace-tab:hover { color: var(--text); }
+      .workspace-tab.active { border-bottom-color: var(--blue); color: var(--blue); font-weight: 600; }
+      .backtest-card.tab-panel { display: none; }
+      .backtest-card.tab-panel.active { display: block; grid-column: 1 / -1; }
+      .strategy-catalog-list { display: grid; gap: 9px; margin-top: 12px; }
+      .strategy-catalog-card { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 10px; padding: 11px; }
+      .strategy-catalog-card-heading { align-items: flex-start; display: flex; gap: 8px; justify-content: space-between; }
+      .strategy-catalog-card-heading strong { font-size: 13px; font-weight: 600; }
+      .strategy-catalog-card-heading span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+      .strategy-catalog-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+      .strategy-catalog-badge { background: color-mix(in srgb, var(--blue) 11%, var(--surface)); border-radius: 999px; color: var(--blue); font-size: 10px; padding: 3px 7px; }
+      .strategy-catalog-badge.experimental, .strategy-catalog-badge.draft { background: color-mix(in srgb, var(--amber) 13%, var(--surface)); color: var(--amber); }
+      .strategy-catalog-badge.deprecated, .strategy-catalog-badge.archived { background: color-mix(in srgb, var(--red) 12%, var(--surface)); color: var(--red); }
+      .strategy-catalog-description { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 8px 0 0; }
+      .strategy-catalog-details { color: var(--muted); display: grid; font-size: 10px; gap: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 8px; }
+      .strategy-catalog-details strong { color: var(--text); font-weight: 500; }
+      .strategy-catalog-parameters { background: var(--surface); border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; margin-top: 8px; overflow-wrap: anywhere; padding: 7px; white-space: pre-wrap; }
+      .backtest-intro { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0 0 14px; }
+      .backtest-notice { background: color-mix(in srgb, var(--amber) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--line)); border-radius: 9px; color: var(--muted); font-size: 12px; line-height: 1.5; margin-bottom: 14px; padding: 10px 12px; }
+      .backtest-notice strong { color: var(--text); font-weight: 600; }
+      .backtest-grid { display: grid; gap: 12px; grid-template-columns: minmax(230px, .75fr) minmax(360px, 1.25fr); }
+      .backtest-card { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 11px; min-width: 0; padding: 13px; }
+      .backtest-card.wide { grid-column: 1 / -1; }
+      .backtest-card h3 { font-size: 14px; font-weight: 600; margin: 0; }
+      .backtest-card-copy { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 5px 0 10px; }
+      .backtest-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+      .backtest-button { background: var(--blue); border: 1px solid var(--blue); border-radius: 7px; color: light-dark(#ffffff, #081523); cursor: pointer; font-size: 12px; font-weight: 600; padding: 7px 9px; }
+      .backtest-button:hover { filter: brightness(1.08); }
+      .backtest-button.secondary { background: transparent; border-color: var(--line); color: var(--text); }
+      .backtest-button.danger { background: transparent; border-color: color-mix(in srgb, var(--red) 55%, var(--line)); color: var(--red); }
+      .backtest-button:disabled { cursor: wait; opacity: .65; }
+      .backtest-form-grid { display: grid; gap: 9px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .backtest-field { display: grid; gap: 4px; min-width: 0; }
+      .backtest-field.wide { grid-column: 1 / -1; }
+      .backtest-field label { color: var(--muted); font-size: 11px; }
+      .backtest-field input, .backtest-field select { background: var(--surface); border: 1px solid var(--line); border-radius: 7px; color: var(--text); font: inherit; font-size: 12px; min-width: 0; padding: 7px; width: 100%; }
+      .strategy-groups { display: grid; gap: 9px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 10px; }
+      .strategy-group { border-top: 1px solid var(--line); min-width: 0; padding-top: 8px; }
+      .strategy-group-heading { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+      .strategy-group-heading strong { display: block; font-size: 12px; margin: 0; }
+      .strategy-selection-count { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; padding: 2px 7px; }
+      .strategy-selection-help { color: var(--muted); font-size: 10px; line-height: 1.4; margin: 4px 0 6px; }
+      .strategy-option { align-items: flex-start; display: flex; font-size: 11px; gap: 6px; line-height: 1.35; margin-top: 6px; }
+      .strategy-option input { accent-color: var(--blue); margin-top: 2px; }
+      .strategy-option span { color: var(--muted); display: block; font-size: 10px; margin-top: 2px; }
+      .backtest-list { display: grid; gap: 7px; max-height: 190px; overflow-y: auto; }
+      .backtest-list-item { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--text); cursor: pointer; display: grid; gap: 3px; padding: 8px; text-align: left; width: 100%; }
+      .backtest-list-item:hover, .backtest-list-item.selected { border-color: var(--blue); }
+      .backtest-list-item strong { font-size: 12px; font-weight: 600; }
+      .backtest-list-item span { color: var(--muted); font-size: 10px; }
+      .backtest-status { border-radius: 999px; font-size: 10px; font-weight: 600; padding: 2px 6px; width: fit-content; }
+      .backtest-status.completed { background: color-mix(in srgb, var(--green) 14%, var(--surface)); color: var(--green); }
+      .backtest-status.running, .backtest-status.queued, .backtest-status.preflight, .backtest-status.cancelling { background: color-mix(in srgb, var(--amber) 14%, var(--surface)); color: var(--amber); }
+      .backtest-status.failed, .backtest-status.cancelled { background: color-mix(in srgb, var(--red) 14%, var(--surface)); color: var(--red); }
+      .backtest-metrics { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 10px; }
+      .backtest-metric { border-left: 1px solid var(--line); min-width: 0; padding-left: 8px; }
+      .backtest-metric:first-child { border-left: 0; padding-left: 0; }
+      .backtest-metric span { color: var(--muted); display: block; font-size: 10px; }
+      .backtest-metric strong { display: block; font-size: 15px; font-variant-numeric: tabular-nums; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .backtest-chart { background: var(--surface); border-radius: 8px; margin-top: 11px; min-height: 130px; overflow: hidden; padding: 6px; }
+      .backtest-chart svg { display: block; height: auto; width: 100%; }
+      .backtest-section-heading { align-items: center; display: flex; gap: 8px; justify-content: space-between; margin-top: 14px; }
+      .backtest-section-heading h3 { font-size: 13px; }
+      .backtest-table-wrap { margin-top: 7px; max-height: 230px; overflow: auto; }
+      .backtest-table { border-collapse: collapse; font-size: 11px; min-width: 720px; width: 100%; }
+      .backtest-table th { color: var(--muted); font-weight: 500; text-align: left; }
+      .backtest-table th, .backtest-table td { border-bottom: 1px solid var(--line); padding: 7px 6px; vertical-align: top; }
+      .backtest-table td.positive { color: var(--green); }
+      .backtest-table td.negative { color: var(--red); }
+      .backtest-trade-button { background: transparent; border: 0; color: var(--blue); cursor: pointer; font: inherit; padding: 0; text-align: left; }
+      .backtest-trade-detail { background: var(--surface); border-left: 3px solid var(--blue); color: var(--muted); font-size: 11px; line-height: 1.55; margin-top: 9px; padding: 9px; }
+      .backtest-trade-detail strong { color: var(--text); }
+      .backtest-empty { color: var(--muted); font-size: 12px; padding: 8px 0; }
+
+      @media (max-width: 760px) {
+        .backtest-grid { grid-template-columns: 1fr; }
+        .backtest-card.wide { grid-column: auto; }
+        .strategy-groups, .backtest-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+
       .empty, .error { color: var(--muted); font-size: 14px; padding: 16px 0; }
       .error { color: var(--red); display: none; }
 
       @media (max-width: 980px) {
         .dashboard-grid { grid-template-columns: minmax(220px, .72fr) minmax(0, 1.35fr); }
+        .momentum-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .momentum-alert-card { grid-column: 1 / -1; }
+        .momentum-alerts { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; }
       }
 
       @media (max-width: 700px) {
         body { overflow: auto; }
-        .app-shell { height: auto; min-height: 100vh; overflow: visible; padding: 14px; }
+        .app-shell { display: block; height: auto; min-height: 100vh; overflow: visible; padding: 0; }
+        .app-sidebar { border-radius: 0 15px 15px 0; bottom: 0; left: 0; position: fixed; top: 0; transform: translateX(-105%); transition: transform .18s ease; width: min(280px, 88vw); }
+        .app-shell.sidebar-mobile-open .app-sidebar { box-shadow: 16px 0 40px color-mix(in srgb, #000 24%, transparent); transform: translateX(0); }
+        .app-shell.sidebar-collapsed { display: block; }
+        .app-shell.sidebar-collapsed .app-sidebar { padding-left: 12px; padding-right: 12px; }
+        .app-shell.sidebar-collapsed .sidebar-brand-copy, .app-shell.sidebar-collapsed .sidebar-section-label, .app-shell.sidebar-collapsed .nav-item-copy, .app-shell.sidebar-collapsed .sidebar-note { display: block; }
+        .app-shell.sidebar-collapsed .sidebar-nav { overflow-y: auto; }
+        .app-shell.sidebar-collapsed .nav-item { justify-content: flex-start; padding-left: 9px; padding-right: 9px; }
+        .app-main { min-height: 100vh; padding: 14px; }
         .topbar { align-items: flex-start; flex-direction: column; }
         .topbar-actions { flex-wrap: wrap; width: 100%; }
         .status { flex: 1; }
+        .topbar-heading { width: 100%; }
+        .topbar-description { display: none; }
         .workspace-context { align-items: flex-start; flex-direction: column; }
+        .overview-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .momentum-layout { grid-template-columns: 1fr; }
+        .momentum-alert-card { grid-column: auto; }
+        .momentum-alerts { grid-template-columns: 1fr; }
         .dashboard-grid { display: grid; grid-template-columns: 1fr; overflow: visible; }
         .candidate-panel, .detail-panel { max-height: none; overflow: visible; }
         .candidate-list { flex: none; max-height: 300px; }
+        .drawer-panel, .backtest-drawer .drawer-panel, .strategy-catalog-drawer .drawer-panel { height: 100%; left: 0; padding: 16px; top: 0; width: 100vw; }
       }
 
       @media (max-width: 430px) {
         .topbar-actions { align-items: stretch; flex-direction: column; }
         .refresh-button { width: 100%; }
+        .momentum-heading { flex-direction: column; }
+        .momentum-source { align-items: flex-start; text-align: left; }
+        .momentum-price-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .momentum-evidence-grid { grid-template-columns: 1fr; }
         .metrics { gap: 12px; grid-template-columns: 1fr; }
         .metric { padding-right: 0; }
         .metric + .metric { border-left: 0; border-top: 1px solid var(--line); padding: 12px 0 0; }
         .observation-grid { grid-template-columns: 1fr; }
         .observation, .observation:nth-child(2n) { border-left: 0; padding-left: 0; padding-right: 0; }
         .observation + .observation { border-top: 1px solid var(--line); padding-top: 11px; }
+        .order-fields { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
     <main class="app-shell">
-      <header class="topbar">
-        <div class="brand">
+      <aside class="app-sidebar" id="app-sidebar" aria-label="主要功能導覽">
+        <div class="sidebar-brand">
           <div class="brand-mark" aria-hidden="true">↗</div>
-          <div>
+          <div class="sidebar-brand-copy">
             <h1>台股盤中雷達</h1>
-            <p class="subtitle">市場掃描 · 候選評估 · 持倉風險監控</p>
+            <p class="subtitle">市場掃描 · 候選評估</p>
           </div>
         </div>
-        <div class="topbar-actions">
-          <span class="status" id="status"><span class="status-dot" aria-hidden="true"></span>正在建立掃描快照</span>
-          <button class="positions-button" id="positions-toggle" type="button" aria-controls="positions-drawer" aria-expanded="false">持倉 <span class="positions-count" id="position-count">—</span></button>
-          <button class="refresh-button" id="refresh-button" type="button">重新掃描</button>
-        </div>
-      </header>
+        <div class="sidebar-section-label">工作區</div>
+        <nav class="sidebar-nav" aria-label="研究與監控">
+          <button class="nav-item active" type="button" data-workspace="overview" aria-label="市場總覽" aria-current="page">
+            <span class="nav-item-icon" aria-hidden="true">⌂</span><span class="nav-item-copy"><strong>市場總覽</strong><small>候選與資料健康</small></span>
+          </button>
+          <button class="nav-item" type="button" data-workspace="momentum" aria-label="盤中動能">
+            <span class="nav-item-icon" aria-hidden="true">↗</span><span class="nav-item-copy"><strong>盤中動能</strong><small>Replay 證據與告警</small></span>
+          </button>
+          <button class="positions-button nav-item" id="strategy-toggle" data-workspace="strategy" type="button" aria-label="策略目錄" aria-controls="strategy-catalog-drawer" aria-expanded="false">
+            <span class="nav-item-icon" aria-hidden="true">≋</span><span class="nav-item-copy"><strong>策略目錄</strong><small>版本與執行 binding</small></span>
+          </button>
+          <button class="positions-button nav-item" id="backtest-toggle" data-workspace="backtest" type="button" aria-label="歷史回測" aria-controls="backtest-drawer" aria-expanded="false">
+            <span class="nav-item-icon" aria-hidden="true">◫</span><span class="nav-item-copy"><strong>歷史回測</strong><small>資料、策略與比較</small></span>
+          </button>
+        </nav>
+        <div class="sidebar-section-label">本機紙上模擬</div>
+        <nav class="sidebar-nav" aria-label="紙上模擬">
+          <button class="positions-button nav-item" id="orders-toggle" data-workspace="orders" type="button" aria-label="委託" aria-controls="orders-drawer" aria-expanded="false">
+            <span class="nav-item-icon" aria-hidden="true">☷</span><span class="nav-item-copy"><strong>委託</strong><small>送出、取消與狀態</small></span><span class="positions-count" id="order-count">—</span>
+          </button>
+          <button class="order-ticket-button nav-item" id="order-ticket-button" data-workspace="order-ticket" type="button" aria-label="模擬下單">
+            <span class="nav-item-icon" aria-hidden="true">＋</span><span class="nav-item-copy"><strong>模擬下單</strong><small>建立本機限價單</small></span>
+          </button>
+          <button class="positions-button nav-item" id="positions-toggle" data-workspace="positions" type="button" aria-label="持倉" aria-controls="positions-drawer" aria-expanded="false">
+            <span class="nav-item-icon" aria-hidden="true">▣</span><span class="nav-item-copy"><strong>持倉</strong><small>成交部位與損益</small></span><span class="positions-count" id="position-count">—</span>
+          </button>
+        </nav>
+        <div class="sidebar-spacer"></div>
+        <p class="sidebar-note">本機模擬只使用本地記憶體，不會送出券商委託。重新整理不會建立新的行情來源。</p>
+      </aside>
 
-      <section class="workspace-context" aria-label="目前功能與資料狀態">
-        <div class="workspace-title"><span class="kicker">功能</span><strong>選股雷達</strong><span>從候選清單選取後，右側直接查看完整評估與走勢。</span></div>
-        <p class="workspace-health" id="data-health">正在讀取最新掃描結果。</p>
-      </section>
-
-      <p class="error" id="error-message" role="alert"></p>
-
-      <section class="dashboard-grid" aria-label="市場掃描儀表板">
-        <section class="panel candidate-panel" aria-labelledby="candidate-heading">
-          <div class="panel-heading">
+      <div class="app-main">
+        <header class="topbar">
+          <div class="topbar-heading">
+            <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-controls="app-sidebar" aria-expanded="true" aria-label="隱藏功能導覽">☰</button>
             <div>
-              <div class="kicker">觀察</div>
-              <h2 id="candidate-heading">候選清單</h2>
+              <div class="kicker" id="workspace-kicker">工作區</div>
+              <h2 id="workspace-heading">市場總覽</h2>
             </div>
-            <span class="panel-count" id="candidate-count">—</span>
+            <p class="topbar-description" id="workspace-description">候選清單、資料健康與選中標的評估</p>
           </div>
-          <div class="candidate-list" id="candidate-list" aria-live="polite">
-            <p class="empty">正在讀取 Candidate…</p>
+          <div class="topbar-actions">
+            <span class="status" id="status"><span class="status-dot" aria-hidden="true"></span>正在建立掃描快照</span>
+            <span class="status simulation-status" id="simulation-status"><span class="status-dot" aria-hidden="true"></span>正在建立本機模擬</span>
+            <button class="refresh-button" id="refresh-button" type="button">重新掃描</button>
           </div>
+        </header>
+
+        <section class="workspace-view active" id="overview-view" data-workspace-view="overview">
+          <section class="workspace-context" aria-label="目前功能與資料狀態">
+            <div class="workspace-title"><span class="kicker">目前工作區</span><strong>市場總覽</strong><span>先看資料健康與候選，再進入個股評估或紙上模擬。</span></div>
+            <p class="workspace-health" id="data-health">正在讀取最新掃描結果。</p>
+          </section>
+
+          <p class="error" id="error-message" role="alert"></p>
+
+          <section class="overview-summary" aria-label="市場總覽摘要">
+            <article class="summary-card"><div class="summary-card-label">可觀察候選</div><div class="summary-card-value" id="overview-candidate-count">—</div><div class="summary-card-note">分數大於 0 的標的</div></article>
+            <article class="summary-card"><div class="summary-card-label">待處理委託</div><div class="summary-card-value" id="overview-order-count">—</div><div class="summary-card-note">本機模擬 SUBMITTED</div></article>
+            <article class="summary-card"><div class="summary-card-label">已成交持倉</div><div class="summary-card-value" id="overview-position-count">—</div><div class="summary-card-note">由本機成交推導</div></article>
+            <article class="summary-card"><div class="summary-card-label">資料狀態</div><div class="summary-card-value waiting" id="overview-data-status">讀取中</div><div class="summary-card-note" id="overview-data-note">等待最新掃描</div></article>
+          </section>
+
+          <section class="dashboard-grid" aria-label="市場掃描儀表板">
+            <section class="panel candidate-panel" aria-labelledby="candidate-heading">
+              <div class="panel-heading">
+                <div>
+                  <div class="kicker">觀察</div>
+                  <h2 id="candidate-heading">候選清單</h2>
+                </div>
+                <span class="panel-count" id="candidate-count">—</span>
+              </div>
+              <div class="candidate-list" id="candidate-list" aria-live="polite">
+                <p class="empty">正在讀取 Candidate…</p>
+              </div>
+            </section>
+
+            <section class="panel detail-panel" id="detail-panel" aria-labelledby="detail-heading" tabindex="-1">
+              <div id="candidate-detail">
+                <div class="kicker">評估</div>
+                <h2 id="detail-heading">正在讀取候選資料</h2>
+              </div>
+            </section>
+          </section>
         </section>
 
-        <section class="panel detail-panel" id="detail-panel" aria-labelledby="detail-heading" tabindex="-1">
-          <div id="candidate-detail">
-            <div class="kicker">評估</div>
-            <h2 id="detail-heading">正在讀取候選資料</h2>
-          </div>
+        <section class="workspace-view" id="momentum-view" data-workspace-view="momentum">
+          <section class="panel momentum-panel" aria-labelledby="momentum-heading">
+            <div class="momentum-heading">
+              <div>
+                <div class="kicker">Replay Evidence</div>
+                <h2 id="momentum-heading">盤中動能證據</h2>
+                <p class="momentum-heading-copy">這是獨立研究工具，不再作為首頁主畫面；Evidence Score 是規則證據，不是漲停機率。</p>
+              </div>
+              <div class="momentum-source" id="momentum-source">正在讀取資料來源…</div>
+              <span class="status momentum-top-status" id="momentum-status"><span class="status-dot" aria-hidden="true"></span>讀取中</span>
+            </div>
+            <div id="momentum-content" aria-live="polite" aria-busy="true">
+              <div class="momentum-empty">正在建立本機 Momentum projection…</div>
+            </div>
+          </section>
         </section>
 
-      </section>
-
-      <footer class="data-footer">
-        <div>
-          <div class="footer-heading">儀表板契約</div>
-          <p>畫面只讀取後端準備好的掃描快照；市場資料、候選規則、評分、持倉狀態與出場決策仍由後端程式負責。持倉可由右上角隨時開啟。</p>
-        </div>
-      </footer>
+        <footer class="data-footer">
+          <div>
+            <div class="footer-heading">儀表板契約</div>
+            <p>市場資料、候選規則與評分由後端程式負責。持倉與掛單行情使用 Shioaji Tick／BidAsk；模擬委託只寫入本機記憶體，不會送出 Shioaji 或真實券商委託，重啟後會清空。</p>
+          </div>
+        </footer>
+      </div>
     </main>
 
     <div class="position-drawer" id="positions-drawer" aria-hidden="true">
@@ -450,24 +812,179 @@
       <aside class="drawer-panel" id="positions-panel" aria-labelledby="position-heading" aria-modal="true" role="dialog" tabindex="-1">
         <div class="drawer-heading">
           <div>
-            <div class="kicker">保護</div>
-            <h2 id="position-heading">目前持倉</h2>
+            <div class="kicker">本機模擬</div>
+            <h2 id="position-heading">已成交持倉</h2>
           </div>
           <button class="drawer-close" id="positions-close" type="button" aria-label="關閉持倉面板">×</button>
         </div>
         <div class="position-list" id="position-list" aria-live="polite">
-          <p class="empty">正在讀取持倉資料…</p>
+          <p class="empty">正在讀取模擬持倉資料…</p>
+        </div>
+      </aside>
+    </div>
+
+    <div class="position-drawer" id="orders-drawer" aria-hidden="true">
+      <button class="drawer-backdrop" id="orders-backdrop" type="button" aria-label="關閉模擬下單面板"></button>
+      <aside class="drawer-panel" id="orders-panel" aria-labelledby="orders-heading" aria-modal="true" role="dialog" tabindex="-1">
+        <div class="drawer-heading">
+          <div>
+            <div class="kicker">本機紙上模擬</div>
+            <h2 id="orders-heading">模擬下單與委託</h2>
+          </div>
+          <button class="drawer-close" id="orders-close" type="button" aria-label="關閉模擬下單面板">×</button>
+        </div>
+        <form class="order-form" id="order-form">
+          <div class="order-fields">
+            <div class="order-field"><label for="order-symbol">股票代碼</label><input id="order-symbol" name="symbol" inputmode="numeric" required></div>
+            <div class="order-field"><label for="order-side">方向</label><select id="order-side" name="side"><option value="BUY">買進</option><option value="SELL">賣出</option></select></div>
+            <div class="order-field"><label for="order-lots">張數（1 張＝1,000 股）</label><input id="order-lots" name="lots" min="1" step="1" type="number" value="1" required></div>
+            <div class="order-field"><label for="order-price">限價</label><input id="order-price" name="limit_price" min="0.01" step="0.01" type="number" required></div>
+          </div>
+          <p class="order-note" id="order-preview">買進以賣一、賣出以買一判斷模擬成交；未達限價則保留在委託清單。</p>
+          <p class="order-message" id="order-message" role="status"></p>
+          <p class="error" id="order-error" role="alert"></p>
+          <button class="order-submit" id="order-submit" type="submit">送出本機模擬委託</button>
+        </form>
+        <div class="order-section-heading"><h3>委託紀錄</h3><span class="panel-count" id="order-list-count">—</span></div>
+        <div class="order-list" id="order-list" aria-live="polite"><p class="empty">正在讀取模擬委託資料…</p></div>
+      </aside>
+    </div>
+
+    <div class="position-drawer backtest-drawer" id="backtest-drawer" aria-hidden="true">
+      <button class="drawer-backdrop" id="backtest-backdrop" type="button" aria-label="關閉歷史回測工作區"></button>
+      <aside class="drawer-panel" id="backtest-panel" aria-labelledby="backtest-heading" aria-modal="true" role="dialog" tabindex="-1">
+        <div class="drawer-heading">
+          <div>
+            <div class="kicker">研究工具</div>
+            <h2 id="backtest-heading">歷史回測</h2>
+          </div>
+          <button class="drawer-close" id="backtest-close" type="button" aria-label="關閉歷史回測工作區">×</button>
+        </div>
+        <div class="backtest-body">
+          <p class="backtest-intro">在既有資料集上複選買入與賣出策略，使用下一根 Kbar 的成交模型模擬。所有結果、策略版本、成交與調整 lineage 都會保存至回測資料庫。</p>
+          <div class="backtest-notice" id="backtest-notice">正在讀取歷史資料集與回測能力…</div>
+
+          <div class="workspace-tabs" role="tablist" aria-label="歷史回測工作流程">
+            <button class="workspace-tab active" id="backtest-tab-data" type="button" role="tab" aria-selected="true" aria-controls="backtest-panel-data" data-backtest-tab="data">1. 準備歷史資料</button>
+            <button class="workspace-tab" id="backtest-tab-setup" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-setup" data-backtest-tab="setup">2. 設定策略組合</button>
+            <button class="workspace-tab" id="backtest-tab-runs" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-runs" data-backtest-tab="runs">3. 回測工作與結果</button>
+            <button class="workspace-tab" id="backtest-tab-compare" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-compare" data-backtest-tab="compare">4. Baseline／Challenger 比較</button>
+          </div>
+
+          <div class="backtest-grid">
+            <section class="backtest-card tab-panel active" id="backtest-panel-data" role="tabpanel" aria-labelledby="backtest-tab-data" data-backtest-panel="data">
+              <h3 id="backtest-data-heading">1. 準備歷史資料</h3>
+              <p class="backtest-card-copy">從目前 Provider 建立三年 Kbar 資料集會在背景執行。若只含目前仍在市的標的，結果會明確標示 survivorship bias，不能視為正式研究通過。</p>
+              <div class="backtest-notice" id="backtest-incremental-status" role="status">正在讀取收盤後自動增量同步狀態…</div>
+              <div class="backtest-field">
+                <label for="backtest-sync-years">下載年數</label>
+                <select id="backtest-sync-years"><option value="3" selected>3 年</option><option value="1">1 年</option><option value="5">5 年</option></select>
+              </div>
+              <div class="backtest-actions">
+                <button class="backtest-button" id="backtest-sync" type="button">建立資料集</button>
+                <button class="backtest-button secondary" id="backtest-refresh" type="button">重新整理</button>
+              </div>
+              <div class="backtest-list" id="backtest-dataset-list" aria-live="polite"><p class="backtest-empty">尚未讀取資料集。</p></div>
+            </section>
+
+            <section class="backtest-card tab-panel" id="backtest-panel-setup" role="tabpanel" aria-labelledby="backtest-tab-setup" data-backtest-panel="setup">
+              <h3 id="backtest-config-heading">2. 設定策略組合</h3>
+              <p class="backtest-card-copy">每個策略都有固定版本。任一策略達標（ANY）、全部達標（ALL）或至少 N 個達標，都只會產生一個可追溯的交易決策。</p>
+              <form id="backtest-run-form">
+                <div class="backtest-form-grid">
+                  <div class="backtest-field wide"><label for="backtest-dataset">資料集</label><select id="backtest-dataset" required></select></div>
+                  <div class="backtest-field"><label for="backtest-entry-policy">買入組合</label><select id="backtest-entry-policy"><option value="ANY">ANY（任一）</option><option value="ALL">ALL（全部）</option><option value="AT_LEAST_N">至少 N 個</option></select></div>
+                  <div class="backtest-field"><label for="backtest-entry-min">買入 N</label><input id="backtest-entry-min" min="1" step="1" type="number" value="1"></div>
+                  <div class="backtest-field"><label for="backtest-exit-policy">賣出組合</label><select id="backtest-exit-policy"><option value="ANY">ANY（任一）</option><option value="ALL">ALL（全部）</option><option value="AT_LEAST_N">至少 N 個</option></select></div>
+                  <div class="backtest-field"><label for="backtest-exit-min">賣出 N</label><input id="backtest-exit-min" min="1" step="1" type="number" value="1"></div>
+                  <div class="backtest-field"><label for="backtest-cash">起始資金（元）</label><input id="backtest-cash" min="1000" step="1000" type="number" value="10000000"></div>
+                  <div class="backtest-field"><label for="backtest-position-fraction">每檔資金比例</label><input id="backtest-position-fraction" min="0.01" max="1" step="0.01" type="number" value="0.10"></div>
+                  <div class="backtest-field"><label for="backtest-win-rate">目標勝率</label><input id="backtest-win-rate" min="0" max="1" step="0.01" type="number" value="0.50"></div>
+                  <div class="backtest-field"><label for="backtest-oos-trades">最少 OOS 交易數</label><input id="backtest-oos-trades" min="1" step="1" type="number" value="30"></div>
+                </div>
+                <div class="strategy-groups">
+                  <div class="strategy-group"><div class="strategy-group-heading"><strong>買入策略</strong><span class="strategy-selection-count" id="backtest-entry-count">尚未選擇</span></div><p class="strategy-selection-help" id="backtest-entry-help">可選 1 個單獨執行，也可複選多個後套用買入組合條件。</p><div id="backtest-entry-strategies"></div></div>
+                  <div class="strategy-group"><div class="strategy-group-heading"><strong>賣出策略</strong><span class="strategy-selection-count" id="backtest-exit-count">尚未選擇</span></div><p class="strategy-selection-help" id="backtest-exit-help">可選 1 個單獨執行，也可複選多個後套用賣出組合條件。</p><div id="backtest-exit-strategies"></div></div>
+                </div>
+                <p class="backtest-card-copy" id="backtest-form-message" role="status"></p>
+                <div class="backtest-actions"><button class="backtest-button" id="backtest-run-submit" type="submit">建立回測</button></div>
+              </form>
+            </section>
+
+            <section class="backtest-card wide tab-panel" id="backtest-panel-runs" role="tabpanel" aria-labelledby="backtest-tab-runs" data-backtest-panel="runs">
+              <div class="panel-heading">
+                <div><div class="kicker">持久化紀錄</div><h3 id="backtest-run-heading">回測工作與結果</h3></div>
+                <span class="panel-count" id="backtest-run-count">—</span>
+              </div>
+              <div class="backtest-list" id="backtest-run-list" aria-live="polite"><p class="backtest-empty">尚未建立回測。</p></div>
+              <div id="backtest-result" aria-live="polite"></div>
+            </section>
+
+            <section class="backtest-card wide tab-panel" id="backtest-panel-compare" role="tabpanel" aria-labelledby="backtest-tab-compare" data-backtest-panel="compare">
+              <h3 id="backtest-compare-heading">4. Baseline／Challenger 比較</h3>
+              <p class="backtest-card-copy">只能比較相同資料集、成本、資金與執行設定的已完成 run。差異是關聯證據，不等同因果保證。</p>
+              <div class="backtest-form-grid">
+                <div class="backtest-field"><label for="backtest-baseline">Baseline</label><select id="backtest-baseline"></select></div>
+                <div class="backtest-field"><label for="backtest-challenger">Challenger</label><select id="backtest-challenger"></select></div>
+                <div class="backtest-field wide"><label for="backtest-change-note">複製調整說明</label><input id="backtest-change-note" maxlength="300" placeholder="例如：加入動能突破買入策略"></div>
+              </div>
+              <div class="backtest-actions"><button class="backtest-button secondary" id="backtest-clone" type="button">以目前設定複製並調整</button><button class="backtest-button" id="backtest-compare" type="button">比較兩個已完成 Run</button></div>
+              <div id="backtest-comparison"></div>
+            </section>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="position-drawer strategy-catalog-drawer" id="strategy-catalog-drawer" aria-hidden="true">
+      <button class="drawer-backdrop" id="strategy-catalog-backdrop" type="button" aria-label="關閉策略目錄"></button>
+      <aside class="drawer-panel" id="strategy-catalog-panel" aria-labelledby="strategy-catalog-heading" aria-modal="true" role="dialog" tabindex="-1">
+        <div class="drawer-heading">
+          <div>
+            <div class="kicker">Strategy Catalog</div>
+            <h2 id="strategy-catalog-heading">策略目錄</h2>
+          </div>
+          <button class="drawer-close" id="strategy-catalog-close" type="button" aria-label="關閉策略目錄">×</button>
+        </div>
+        <div class="backtest-body">
+          <p class="backtest-intro">這裡集中顯示盤前、開盤、盤中、收盤與持倉生命週期策略。參數可版本化保存；資料庫定義只描述設定，不會直接執行任意程式碼。</p>
+          <div class="backtest-form-grid">
+            <div class="backtest-field"><label for="strategy-catalog-role">策略角色</label><select id="strategy-catalog-role"><option value="">全部</option><option value="CANDIDATE">候選</option><option value="SCORE">評分</option><option value="SIGNAL">訊號</option><option value="ENTRY">買入</option><option value="EXIT">賣出</option></select></div>
+            <div class="backtest-field"><label for="strategy-catalog-phase">時段</label><select id="strategy-catalog-phase"><option value="">全部</option><option value="PRE_MARKET">盤前</option><option value="OPENING">開盤</option><option value="INTRADAY">盤中</option><option value="END_OF_DAY">收盤</option><option value="POSITION_LIFECYCLE">持倉生命週期</option><option value="ALL_SESSION">全時段</option></select></div>
+            <div class="backtest-field"><label for="strategy-catalog-status">狀態</label><select id="strategy-catalog-status"><option value="">全部</option><option value="ACTIVE">啟用</option><option value="EXPERIMENTAL">實驗中</option><option value="DRAFT">草稿</option><option value="DEPRECATED">已淘汰</option></select></div>
+            <div class="backtest-actions"><button class="backtest-button secondary" id="strategy-catalog-refresh" type="button">重新整理</button></div>
+          </div>
+          <p class="backtest-card-copy" id="strategy-catalog-notice" role="status">正在讀取策略目錄…</p>
+          <div class="strategy-catalog-list" id="strategy-catalog-list" aria-live="polite"><p class="backtest-empty">尚未讀取策略定義。</p></div>
         </div>
       </aside>
     </div>
 
     <script>
       const state = {
+        workspace: "overview",
         snapshot: null,
         selectedSymbol: null,
         historyPeriod: "1d",
         historyByKey: {},
-        historyLoadingKey: null
+        historyLoadingKey: null,
+        simulationProjectionLoading: false,
+        momentum: null,
+        momentumLoading: false,
+        momentumRenderKey: null,
+        strategyCatalog: { strategies: [], loading: false },
+        backtest: {
+          capabilities: null,
+          incrementalSync: null,
+          datasets: [],
+          strategies: [],
+          runs: [],
+          activeRunId: null,
+          activeResult: null,
+          activeTrade: null,
+          activeTab: "data",
+          polling: false
+        }
       };
       const sourceLabels = { AUTO: "自動", MANUAL: "手動" };
       const ruleLabels = {
@@ -485,11 +1002,141 @@
       const errorElement = document.getElementById("error-message");
       const refreshButton = document.getElementById("refresh-button");
       const detailPanel = document.getElementById("detail-panel");
+      const momentumStatus = document.getElementById("momentum-status");
+      const momentumSource = document.getElementById("momentum-source");
+      const momentumContent = document.getElementById("momentum-content");
+      const simulationStatus = document.getElementById("simulation-status");
+      const ordersToggle = document.getElementById("orders-toggle");
+      const orderTicketButton = document.getElementById("order-ticket-button");
+      const ordersDrawer = document.getElementById("orders-drawer");
+      const ordersPanel = document.getElementById("orders-panel");
+      const ordersClose = document.getElementById("orders-close");
+      const ordersBackdrop = document.getElementById("orders-backdrop");
+      const orderForm = document.getElementById("order-form");
+      const orderSymbol = document.getElementById("order-symbol");
+      const orderSide = document.getElementById("order-side");
+      const orderLots = document.getElementById("order-lots");
+      const orderPrice = document.getElementById("order-price");
+      const orderSubmit = document.getElementById("order-submit");
+      const orderError = document.getElementById("order-error");
+      const orderMessage = document.getElementById("order-message");
       const positionsToggle = document.getElementById("positions-toggle");
       const positionsDrawer = document.getElementById("positions-drawer");
       const positionsPanel = document.getElementById("positions-panel");
       const positionsClose = document.getElementById("positions-close");
       const positionsBackdrop = document.getElementById("positions-backdrop");
+      const strategyToggle = document.getElementById("strategy-toggle");
+      const strategyCatalogDrawer = document.getElementById("strategy-catalog-drawer");
+      const strategyCatalogPanel = document.getElementById("strategy-catalog-panel");
+      const strategyCatalogClose = document.getElementById("strategy-catalog-close");
+      const strategyCatalogBackdrop = document.getElementById("strategy-catalog-backdrop");
+      const strategyCatalogRefreshButton = document.getElementById("strategy-catalog-refresh");
+      const strategyCatalogRole = document.getElementById("strategy-catalog-role");
+      const strategyCatalogPhase = document.getElementById("strategy-catalog-phase");
+      const strategyCatalogStatus = document.getElementById("strategy-catalog-status");
+      const strategyCatalogNotice = document.getElementById("strategy-catalog-notice");
+      const strategyCatalogList = document.getElementById("strategy-catalog-list");
+      const backtestToggle = document.getElementById("backtest-toggle");
+      const backtestDrawer = document.getElementById("backtest-drawer");
+      const backtestPanel = document.getElementById("backtest-panel");
+      const backtestClose = document.getElementById("backtest-close");
+      const backtestBackdrop = document.getElementById("backtest-backdrop");
+      const backtestNotice = document.getElementById("backtest-notice");
+      const backtestIncrementalStatus = document.getElementById("backtest-incremental-status");
+      const backtestSyncButton = document.getElementById("backtest-sync");
+      const backtestRefreshButton = document.getElementById("backtest-refresh");
+      const backtestSyncYears = document.getElementById("backtest-sync-years");
+      const backtestDatasetList = document.getElementById("backtest-dataset-list");
+      const backtestDataset = document.getElementById("backtest-dataset");
+      const backtestRunForm = document.getElementById("backtest-run-form");
+      const backtestRunSubmit = document.getElementById("backtest-run-submit");
+      const backtestFormMessage = document.getElementById("backtest-form-message");
+      const backtestRunList = document.getElementById("backtest-run-list");
+      const backtestRunCount = document.getElementById("backtest-run-count");
+      const backtestResult = document.getElementById("backtest-result");
+      const backtestCloneButton = document.getElementById("backtest-clone");
+      const backtestCompareButton = document.getElementById("backtest-compare");
+      const backtestBaseline = document.getElementById("backtest-baseline");
+      const backtestChallenger = document.getElementById("backtest-challenger");
+      const backtestComparison = document.getElementById("backtest-comparison");
+      const sidebarToggle = document.getElementById("sidebar-toggle");
+      const overviewView = document.getElementById("overview-view");
+      const momentumView = document.getElementById("momentum-view");
+      const workspaceKicker = document.getElementById("workspace-kicker");
+      const workspaceHeading = document.getElementById("workspace-heading");
+      const workspaceDescription = document.getElementById("workspace-description");
+      const workspaceNavButtons = [...document.querySelectorAll("[data-workspace]")];
+      const backtestTabs = [...document.querySelectorAll("[data-backtest-tab]")];
+
+      const workspaceMeta = {
+        overview: ["工作區", "市場總覽", "候選清單、資料健康與選中標的評估"],
+        momentum: ["研究工具", "盤中動能", "Replay 規則證據與待確認告警"],
+        strategy: ["研究工具", "策略目錄", "策略版本、時段與 execution binding"],
+        backtest: ["研究工具", "歷史回測", "資料準備、策略組合、結果與比較"],
+        orders: ["本機紙上模擬", "委託", "查看送出、成交、取消與拒絕的委託"],
+        "order-ticket": ["本機紙上模擬", "模擬下單", "建立只存在本機記憶體的限價委託"],
+        positions: ["本機紙上模擬", "持倉", "查看已成交部位、行情與未實現損益"]
+      };
+
+      function setWorkspace(workspace) {
+        state.workspace = workspace;
+        closeMobileSidebar();
+        const [kicker, heading, description] = workspaceMeta[workspace] || workspaceMeta.overview;
+        workspaceKicker.textContent = kicker;
+        workspaceHeading.textContent = heading;
+        workspaceDescription.textContent = description;
+        workspaceNavButtons.forEach((button) => {
+          const active = button.dataset.workspace === workspace;
+          button.classList.toggle("active", active);
+          if (active) button.setAttribute("aria-current", "page");
+          else button.removeAttribute("aria-current");
+        });
+        overviewView.classList.toggle("active", workspace === "overview");
+        momentumView.classList.toggle("active", workspace === "momentum");
+        const drawerNames = {
+          orders: ["orders", "order-ticket"],
+          positions: ["positions"],
+          strategy: ["strategy"],
+          backtest: ["backtest"]
+        };
+        Object.entries(drawerNames).forEach(([drawerName, workspaceNames]) => {
+          const drawer = { orders: ordersDrawer, positions: positionsDrawer, strategy: strategyCatalogDrawer, backtest: backtestDrawer }[drawerName];
+          if (!workspaceNames.includes(workspace)) {
+            drawer.classList.remove("open");
+            drawer.setAttribute("aria-hidden", "true");
+            const toggle = { orders: ordersToggle, positions: positionsToggle, strategy: strategyToggle, backtest: backtestToggle }[drawerName];
+            toggle.setAttribute("aria-expanded", "false");
+          }
+        });
+      }
+
+      function syncSidebarToggle() {
+        const shell = document.querySelector(".app-shell");
+        const mobile = window.matchMedia("(max-width: 700px)").matches;
+        const expanded = mobile
+          ? shell.classList.contains("sidebar-mobile-open")
+          : !shell.classList.contains("sidebar-collapsed");
+        sidebarToggle.setAttribute("aria-expanded", String(expanded));
+        sidebarToggle.setAttribute("aria-label", expanded ? "隱藏功能導覽" : "顯示功能導覽");
+      }
+
+      function closeMobileSidebar() {
+        if (!window.matchMedia("(max-width: 700px)").matches) return;
+        document.querySelector(".app-shell")?.classList.remove("sidebar-mobile-open");
+        syncSidebarToggle();
+      }
+
+      function setBacktestTab(tabName) {
+        state.backtest.activeTab = tabName;
+        backtestTabs.forEach((tab) => {
+          const active = tab.dataset.backtestTab === tabName;
+          tab.classList.toggle("active", active);
+          tab.setAttribute("aria-selected", String(active));
+        });
+        document.querySelectorAll("[data-backtest-panel]").forEach((panel) => {
+          panel.classList.toggle("active", panel.dataset.backtestPanel === tabName);
+        });
+      }
 
       function escapeHtml(value) {
         return String(value).replace(/[&<>"']/g, (character) => escapeMap[character]);
@@ -515,12 +1162,127 @@
         return `${sign}${formatNumber(value)}%`;
       }
 
+      function formatQuoteTime(timestamp) {
+        if (!timestamp) return "等待即時行情";
+        return new Date(timestamp).toLocaleTimeString("zh-TW", {
+          hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+        });
+      }
+
       function formatSource(sources) {
         return sources.map((source) => sourceLabels[source] || source).join("＋");
       }
 
       function formatRule(rule) {
         return ruleLabels[rule] || rule;
+      }
+
+      const momentumRuleLabels = {
+        price_above_vwap: "站上 VWAP",
+        breakout: "突破前高",
+        return_2m: "2 分鐘動能",
+        distance_to_limit: "距離漲停",
+        volume_acceleration_2m: "成交量加速",
+        external_ratio_rising: "外盤比上升",
+        opening_volume_context: "開盤量能情境"
+      };
+
+      function formatMomentumTime(timestamp) {
+        if (!timestamp) return "—";
+        return new Date(timestamp).toLocaleTimeString("zh-TW", {
+          hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+        });
+      }
+
+      function momentumStageClass(stage) {
+        return ["BREAKOUT", "ACCELERATING", "NEAR_LIMIT_UP", "LIMIT_TOUCHED"].includes(stage)
+          ? stage.toLowerCase().replaceAll("_", "-")
+          : "";
+      }
+
+      function renderMomentum(momentum) {
+        state.momentum = momentum;
+        state.momentumRenderKey = momentum.summary?.projection_digest || null;
+        const pendingAlerts = (momentum.alerts || []).filter((alert) => !alert.acknowledged_at);
+        const item = (momentum.items || [])[0];
+        momentumContent.setAttribute("aria-busy", "false");
+        momentumStatus.classList.remove("degraded");
+        momentumStatus.classList.toggle("active", Boolean(item && pendingAlerts.length));
+        momentumStatus.innerHTML = `<span class="status-dot" aria-hidden="true"></span>漲停加速 · ${pendingAlerts.length} 則`;
+        momentumSource.innerHTML = `<strong>${momentum.source?.is_live ? "即時行情" : "Replay fixture／非即時"}</strong><span>${escapeHtml(momentum.source?.dataset_id || "未知資料集")} · as of ${formatMomentumTime(momentum.source?.as_of)}</span>`;
+
+        if (!item) {
+          momentumContent.innerHTML = '<div class="momentum-empty">目前沒有 Momentum projection。</div>';
+          return;
+        }
+
+        const episode = item.episode || {};
+        const entry = item.entry_opportunity || {};
+        const evidence = (item.signal.details || []).map((detail) => {
+          const stateClass = detail.passed === true ? "pass" : detail.passed === false ? "fail" : "unknown";
+          const mark = detail.passed === true ? "✓" : detail.passed === false ? "×" : "?";
+          return `
+            <div class="momentum-evidence ${stateClass}" title="${escapeHtml(detail.observed_value || detail.missing_reason || "無觀測值")}">
+              <span class="momentum-evidence-mark" aria-hidden="true">${mark}</span>
+              <span class="momentum-evidence-label">${escapeHtml(momentumRuleLabels[detail.rule] || detail.rule)}</span>
+              <span class="momentum-evidence-points">${detail.points_awarded}/${detail.points_possible}</span>
+            </div>
+          `;
+        }).join("");
+        const timeline = (episode.transitions || []).map((transition) => `
+          <span class="momentum-timeline-step"><span>${formatMomentumTime(transition.occurred_at)}</span><strong>${escapeHtml(transition.to_stage_label)}</strong></span>
+        `).join("");
+        const alerts = pendingAlerts.length
+          ? pendingAlerts.map((alert) => `
+              <article class="momentum-alert">
+                <strong>${escapeHtml(alert.headline)}</strong>
+                <div class="momentum-alert-meta">${formatMomentumTime(alert.occurred_at)} · ${escapeHtml(alert.config_version)}</div>
+                <button class="momentum-ack" type="button" data-momentum-alert="${escapeHtml(alert.alert_id)}">確認告警</button>
+              </article>
+            `).join("")
+          : '<p class="momentum-disclaimer">目前沒有待確認告警；已確認事件仍保留在後端 audit history。</p>';
+        const lockLabel = episode.limit_locked === true
+          ? "已鎖住"
+          : episode.limit_locked === false
+            ? "已打開"
+            : "五檔狀態不明";
+        const reasonText = (entry.reason_labels || []).join("；") || "條件已通過";
+
+        momentumContent.innerHTML = `
+          <div class="momentum-layout">
+            <article class="momentum-card">
+              <div class="momentum-hero-top">
+                <div class="momentum-symbol"><strong>${escapeHtml(item.symbol)}</strong><span>${escapeHtml(item.name || "")}</span></div>
+                <span class="momentum-stage ${momentumStageClass(item.current_stage)}">${escapeHtml(item.current_stage_label)}</span>
+              </div>
+              <div class="momentum-price-grid" aria-label="${escapeHtml(item.symbol)} 漲停加速市場證據">
+                <div class="momentum-price-item"><span>目前價格</span><strong>${formatNumber(item.market.price)}</strong></div>
+                <div class="momentum-price-item"><span>漲停價</span><strong>${formatNumber(item.market.limit_up_price)}</strong></div>
+                <div class="momentum-price-item"><span>距漲停</span><strong>${formatNumber(item.market.distance_to_limit_pct)}%</strong></div>
+                <div class="momentum-price-item"><span>2 分鐘動能</span><strong>${formatPercent(item.market.return_2m_pct)}</strong></div>
+              </div>
+              <div class="momentum-entry"><strong>Momentum Entry：${escapeHtml(entry.status_label || "尚未評估")}</strong>${escapeHtml(reasonText)} · 風險等級 ${escapeHtml(entry.risk_level || "—")}</div>
+              <div class="momentum-timeline" aria-label="Momentum episode 階段時間線">${timeline}</div>
+              <p class="momentum-disclaimer">Episode ${escapeHtml(episode.episode_id || "—")} · ${escapeHtml(episode.created_by_signal_family_label || "—")} 建立 → ${escapeHtml(episode.current_signal_family_label || "—")} 接手 · ${escapeHtml(lockLabel)}</p>
+            </article>
+            <article class="momentum-card">
+              <div class="momentum-evidence-header">
+                <div class="momentum-evidence-score"><strong>${item.signal.evidence_score} / ${item.signal.evidence_max_score}</strong><span>Evidence Score · hypothesis_v0</span></div>
+                <div class="momentum-evidence-meta">${item.signal.passed_rule_count}/${item.signal.total_rule_count} 條成立<br>${escapeHtml(item.signal.family_label)} · ${escapeHtml(item.signal.data_health)}</div>
+              </div>
+              <div class="momentum-evidence-grid">${evidence}</div>
+              <p class="momentum-disclaimer">${escapeHtml(momentum.disclaimer)}</p>
+            </article>
+            <article class="momentum-card momentum-alert-card">
+              <div class="momentum-alert-heading"><strong>待確認告警</strong><span>${pendingAlerts.length} 則</span></div>
+              <div class="momentum-alerts">${alerts}</div>
+            </article>
+          </div>
+        `;
+
+        momentumContent.querySelectorAll("[data-momentum-alert]").forEach((button) => {
+          button.addEventListener("click", () => acknowledgeMomentumAlert(button.dataset.momentumAlert));
+        });
       }
 
       function percentage(numerator, denominator) {
@@ -564,15 +1326,22 @@
       function render(snapshot) {
         state.snapshot = snapshot;
         const candidates = getVisibleCandidates(snapshot.candidates);
+        const simulation = snapshot.simulation || {
+          session: { label: "本機紙上模擬", available_cash: null, notice: "尚未取得模擬 session。" },
+          orders: [],
+          positions: []
+        };
         if (!candidates.some((candidate) => candidate.symbol === state.selectedSymbol)) {
           state.selectedSymbol = candidates[0]?.symbol || null;
         }
 
         renderStatus(snapshot);
+        renderSimulation(simulation);
         renderCandidates(candidates);
         renderCandidateDetail(candidates.find((candidate) => candidate.symbol === state.selectedSymbol));
-        renderPositions(snapshot.positions);
-        renderDataHealth(snapshot);
+        renderPositions(simulation.positions);
+        renderOrders(simulation.orders);
+        renderDataHealth(snapshot, simulation);
       }
 
       function getVisibleCandidates(candidates) {
@@ -591,8 +1360,34 @@
         statusElement.innerHTML = `<span class="status-dot" aria-hidden="true"></span>單次快照 · ${escapeHtml(snapshot.provider.name)} · ${timestamp}`;
       }
 
+      function renderSimulation(simulation) {
+        const session = simulation.session || {};
+        const label = session.label || "本機紙上模擬";
+        const subscribedCount = (session.subscribed_symbols || []).length;
+        const stateLabel = session.stream_error
+          ? "行情異常"
+          : session.streaming && subscribedCount && session.last_quote_received_at
+            ? `即時 ${formatQuoteTime(session.last_quote_received_at)}`
+            : session.streaming && subscribedCount
+              ? "等待行情"
+              : session.streaming
+                ? "串流待命"
+                : "Snapshot";
+        simulationStatus.classList.toggle("degraded", Boolean(session.stream_error));
+        simulationStatus.classList.toggle("waiting", !session.stream_error && !session.last_quote_received_at);
+        simulationStatus.innerHTML = `<span class="status-dot" aria-hidden="true"></span>${escapeHtml(label)} · ${escapeHtml(stateLabel)}`;
+        document.getElementById("position-count").textContent = String((simulation.positions || []).length);
+        document.getElementById("order-count").textContent = String((simulation.orders || []).filter((order) => order.status === "SUBMITTED").length);
+        document.getElementById("overview-position-count").textContent = String((simulation.positions || []).length);
+        document.getElementById("overview-order-count").textContent = String((simulation.orders || []).filter((order) => order.status === "SUBMITTED").length);
+        document.getElementById("order-preview").textContent = session.available_cash === null || session.available_cash === undefined
+          ? "買進以賣一、賣出以買一判斷模擬成交；未達限價則保留在委託清單。"
+          : `可用虛擬現金：${formatNumber(session.available_cash, 0)} 元。買進以賣一、賣出以買一判斷模擬成交。`;
+      }
+
       function renderCandidates(candidates) {
         document.getElementById("candidate-count").textContent = `${candidates.length} 檔`;
+        document.getElementById("overview-candidate-count").textContent = `${candidates.length} 檔`;
         const list = document.getElementById("candidate-list");
 
         if (!candidates.length) {
@@ -602,11 +1397,12 @@
 
         list.innerHTML = candidates.map((candidate) => {
           const selected = candidate.symbol === state.selectedSymbol;
+          const momentum = state.momentum?.items?.find((item) => item.symbol === candidate.symbol);
           return `
             <button class="candidate-button ${selected ? "selected" : ""}" type="button" data-symbol="${escapeHtml(candidate.symbol)}" aria-pressed="${selected}">
               <span class="candidate-symbol">${escapeHtml(candidate.symbol)}</span>
               <span class="candidate-score">${candidate.score.total}</span>
-              <span class="candidate-name">${escapeHtml(candidate.stock.name)} · ${escapeHtml(formatSource(candidate.sources))}</span>
+              <span class="candidate-name">${escapeHtml(candidate.stock.name)} · ${escapeHtml(formatSource(candidate.sources))}${momentum ? ` · <span class="momentum-candidate-badge">${escapeHtml(momentum.current_stage_label)}</span>` : ""}</span>
             </button>
           `;
         }).join("");
@@ -669,6 +1465,7 @@
             <span class="source-badge">${escapeHtml(formatSource(candidate.sources))}</span>
           </div>
           <p class="rule-line">符合規則：<strong>${escapeHtml(matchedRules)}</strong></p>
+          <button class="order-ticket-button detail-order-button" type="button" data-order-symbol="${escapeHtml(candidate.symbol)}" data-order-price="${escapeHtml(stock.price)}">以 ${formatNumber(stock.price)} 模擬買進</button>
           <div class="metrics" aria-label="${escapeHtml(candidate.symbol)} 最新市場快照">
             <div class="metric">
               <div class="metric-label">目前價格</div>
@@ -726,6 +1523,13 @@
             loadSelectedHistory();
           });
         });
+
+        const orderButton = detail.querySelector("[data-order-symbol]");
+        if (orderButton) {
+          orderButton.addEventListener("click", () => {
+            openOrderTicket(orderButton.dataset.orderSymbol, orderButton.dataset.orderPrice);
+          });
+        }
 
         const history = state.historyByKey[historyKey(candidate.symbol, state.historyPeriod)];
         if (history?.status === "ready") {
@@ -975,64 +1779,97 @@
       }
 
       function renderPositions(positions) {
-        document.getElementById("position-count").textContent = String(positions.length);
         const list = document.getElementById("position-list");
 
         if (!positions.length) {
-          list.innerHTML = '<p class="empty">目前沒有可監控的持倉。</p>';
+          list.innerHTML = '<p class="empty">目前沒有已成交的本機模擬持倉。</p>';
           return;
         }
 
         list.innerHTML = positions.map((position) => {
-          const prices = [
-            position.exit.stop_price,
-            position.entry_price,
-            position.current_price,
-            position.exit.take_profit_price
-          ];
-          const min = Math.min(...prices);
-          const max = Math.max(...prices);
-          const spread = max - min || 1;
-          const marker = (value) => 7 + ((value - min) / spread * 86);
-          const positive = position.pnl_pct >= 0;
-          const decisionClass = position.exit.decision === "EXIT" ? "exit" : "hold";
-          const decisionLabel = position.exit.decision === "EXIT" ? "出場" : "持有";
-          const triggered = position.exit.triggered_rules.length
-            ? `觸發：${position.exit.triggered_rules.map(formatRule).join("、")}`
-            : "尚未觸發停損或停利";
+          const positive = position.unrealized_pnl >= 0;
 
           return `
             <article class="position-card">
               <div class="position-top">
-                <div class="position-name"><strong>${escapeHtml(position.symbol)}</strong><span>${escapeHtml(position.stock.name)} · ${position.quantity.toLocaleString("zh-TW")} 股</span></div>
-                <span class="decision-badge ${decisionClass}">${decisionLabel}</span>
+                <div class="position-name"><strong>${escapeHtml(position.symbol)}</strong><span>${escapeHtml(position.name)} · ${position.quantity.toLocaleString("zh-TW")} 股</span></div>
+                <span class="decision-badge hold">已成交</span>
               </div>
-              <div class="pnl ${positive ? "positive" : "negative"}">${formatPercent(position.pnl_pct)}</div>
-              <div class="pnl-note">未實現損益 ${position.pnl_amount >= 0 ? "+" : ""}${formatNumber(position.pnl_amount, 0)} 元 · 現價 ${formatNumber(position.current_price)}</div>
-              <div class="price-lane" role="img" aria-label="${escapeHtml(position.symbol)} 的停損、進場、現價與停利價格區間">
-                <div class="price-line"></div>
-                <span class="price-marker stop" style="left:${marker(position.exit.stop_price)}%"></span>
-                <span class="price-marker" style="left:${marker(position.entry_price)}%"></span>
-                <span class="price-marker current" style="left:${marker(position.current_price)}%"></span>
-                <span class="price-marker target" style="left:${marker(position.exit.take_profit_price)}%"></span>
-                <span class="price-label" style="left:${marker(position.exit.stop_price)}%"><strong>${formatNumber(position.exit.stop_price)}</strong>停損</span>
-                <span class="price-label" style="left:${marker(position.entry_price)}%"><strong>${formatNumber(position.entry_price)}</strong>進場</span>
-                <span class="price-label" style="left:${marker(position.current_price)}%"><strong>${formatNumber(position.current_price)}</strong>現價</span>
-                <span class="price-label" style="left:${marker(position.exit.take_profit_price)}%"><strong>${formatNumber(position.exit.take_profit_price)}</strong>停利</span>
-              </div>
-              <p class="position-footer"><strong>出場狀態：</strong>${escapeHtml(triggered)}。即使股票離開候選清單，仍持續監控持倉。</p>
+              <div class="pnl ${positive ? "positive" : "negative"}">${formatPercent(position.unrealized_pnl_pct)}</div>
+              <div class="pnl-note">未實現損益 ${position.unrealized_pnl >= 0 ? "+" : ""}${formatNumber(position.unrealized_pnl, 0)} 元 · 市值 ${formatNumber(position.market_value, 0)} 元</div>
+              <p class="position-footer"><strong>平均成交價：</strong>${formatNumber(position.average_price)} · <strong>最新成交：</strong>${formatNumber(position.current_price)} · <strong>買一／賣一：</strong>${formatNumber(position.bid_price)}／${formatNumber(position.ask_price)}<br><strong>行情時間：</strong>${escapeHtml(formatQuoteTime(position.last_quote_at))} · <strong>已實現損益：</strong>${position.realized_pnl >= 0 ? "+" : ""}${formatNumber(position.realized_pnl, 0)} 元。</p>
             </article>
           `;
         }).join("");
       }
 
-      function renderDataHealth(snapshot) {
+      function orderStatusLabel(status) {
+        return { SUBMITTED: "已送出", FILLED: "已成交", CANCELLED: "已取消", REJECTED: "已拒絕" }[status] || status;
+      }
+
+      function orderStatusClass(status) {
+        return String(status || "").toLowerCase();
+      }
+
+      function formatOrderTime(timestamp) {
+        if (!timestamp) return "—";
+        return new Date(timestamp).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+      }
+
+      function renderOrders(orders) {
+        document.getElementById("order-list-count").textContent = `${orders.length} 筆`;
+        const list = document.getElementById("order-list");
+        if (!orders.length) {
+          list.innerHTML = '<p class="empty">目前沒有本機模擬委託。</p>';
+          return;
+        }
+
+        list.innerHTML = orders.map((order) => {
+          const side = order.side === "BUY" ? "買進" : "賣出";
+          const filled = order.status === "FILLED";
+          const note = order.reason
+            ? escapeHtml(order.reason)
+            : filled
+              ? `成交 ${formatNumber(order.filled_quantity, 0)} 股 @ ${formatNumber(order.filled_price)}`
+              : `限價 ${formatNumber(order.limit_price)} · 預估 ${formatNumber(order.estimated_amount, 0)} 元`;
+          return `
+            <article class="order-card">
+              <div class="order-card-top">
+                <div class="order-card-title">${escapeHtml(order.symbol)} <span>${escapeHtml(order.name)} · ${side} ${order.lots} 張</span></div>
+                <span class="order-status ${orderStatusClass(order.status)}">${escapeHtml(orderStatusLabel(order.status))}</span>
+              </div>
+              <div class="order-card-meta">${formatOrderTime(order.updated_at)} · ${escapeHtml(order.origin === "MANUAL_WEB" ? "網頁手動" : order.origin)}</div>
+              <p class="order-card-note">${note}</p>
+              ${order.status === "SUBMITTED" ? `<button class="cancel-order" type="button" data-cancel-order="${escapeHtml(order.order_id)}">取消委託</button>` : ""}
+            </article>
+          `;
+        }).join("");
+
+        list.querySelectorAll("[data-cancel-order]").forEach((button) => {
+          button.addEventListener("click", () => cancelSimulationOrder(button.dataset.cancelOrder));
+        });
+      }
+
+      function renderDataHealth(snapshot, simulation) {
         const missing = [
           ...snapshot.market.missing_candidate_symbols,
           ...snapshot.market.missing_position_symbols
         ];
         const missingText = missing.length ? `；${missing.length} 檔缺少最新資料` : "";
-        document.getElementById("data-health").innerHTML = `已從 <strong>${escapeHtml(snapshot.provider.name)}</strong> 載入 <strong>${snapshot.market.loaded_symbols}</strong> 檔股票。此畫面是單次掃描快照，不代表已連接即時逐筆行情或下單功能${missingText}。`;
+        const session = simulation.session || {};
+        const streamText = session.streaming
+          ? `持倉與掛單已啟用 Shioaji Tick／BidAsk，目前訂閱 ${(session.subscribed_symbols || []).length} 檔`
+          : session.stream_error || "持倉與掛單目前使用 Snapshot 行情";
+        const notice = session.notice || "本機模擬狀態尚未取得。";
+        document.getElementById("data-health").innerHTML = `候選清單已從 <strong>${escapeHtml(snapshot.provider.name)}</strong> 載入 <strong>${snapshot.market.loaded_symbols}</strong> 檔單次快照${missingText}；${escapeHtml(streamText)}。${escapeHtml(notice)}`;
+        const dataStatus = document.getElementById("overview-data-status");
+        const dataNote = document.getElementById("overview-data-note");
+        const degraded = Boolean(missing.length || session.stream_error);
+        dataStatus.textContent = degraded ? "需注意" : "正常";
+        dataStatus.classList.toggle("good", !degraded);
+        dataStatus.classList.toggle("alert", degraded);
+        dataStatus.classList.remove("waiting");
+        dataNote.textContent = `${snapshot.market.loaded_symbols} 檔快照 · ${session.streaming ? "Tick／BidAsk" : "Snapshot"}`;
       }
 
       async function loadSnapshot(refresh) {
@@ -1055,6 +1892,153 @@
         } finally {
           refreshButton.disabled = false;
           refreshButton.textContent = "重新掃描";
+        }
+      }
+
+      function newIdempotencyKey(prefix) {
+        if (window.crypto?.randomUUID) return `${prefix}-${window.crypto.randomUUID()}`;
+        return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+
+      function openOrderTicket(symbol, price) {
+        const selectedCandidate = state.snapshot?.candidates.find((candidate) => candidate.symbol === state.selectedSymbol);
+        const selectedSymbol = symbol || selectedCandidate?.symbol;
+        const selectedPrice = price || selectedCandidate?.stock?.price;
+        if (selectedSymbol) orderSymbol.value = selectedSymbol;
+        if (selectedPrice !== undefined && selectedPrice !== null) orderPrice.value = Number(selectedPrice).toFixed(2);
+        orderSide.value = "BUY";
+        orderError.style.display = "none";
+        orderMessage.classList.remove("visible");
+        setOrdersDrawer(true, "order-ticket");
+        requestAnimationFrame(() => orderSymbol.focus());
+      }
+
+      function setOrdersDrawer(open, workspace = "orders") {
+        if (open) setWorkspace(workspace);
+        else setWorkspace("overview");
+        ordersDrawer.classList.toggle("open", open);
+        ordersDrawer.setAttribute("aria-hidden", String(!open));
+        ordersToggle.setAttribute("aria-expanded", String(open));
+        if (open) {
+          requestAnimationFrame(() => ordersPanel.focus());
+        } else {
+          ordersToggle.focus();
+        }
+      }
+
+      async function loadSimulationProjection() {
+        if (state.simulationProjectionLoading || !state.snapshot) return;
+        state.simulationProjectionLoading = true;
+        try {
+          const response = await fetch("/api/simulation/projection", { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const simulation = await response.json();
+          state.snapshot = { ...state.snapshot, simulation };
+          renderSimulation(simulation);
+          renderPositions(simulation.positions || []);
+          renderOrders(simulation.orders || []);
+          renderDataHealth(state.snapshot, simulation);
+        } finally {
+          state.simulationProjectionLoading = false;
+        }
+      }
+
+      async function loadMomentumProjection() {
+        if (state.momentumLoading) return;
+        state.momentumLoading = true;
+        try {
+          const response = await fetch("/api/dashboard/momentum", { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const momentum = await response.json();
+          const changed = state.momentumRenderKey !== momentum.summary?.projection_digest;
+          state.momentum = momentum;
+          if (changed) {
+            renderMomentum(momentum);
+            if (state.snapshot) renderCandidates(getVisibleCandidates(state.snapshot.candidates));
+          }
+        } catch (error) {
+          momentumStatus.classList.remove("active");
+          momentumStatus.classList.add("degraded");
+          momentumStatus.innerHTML = `<span class="status-dot" aria-hidden="true"></span>漲停加速讀取失敗 · ${escapeHtml(error.message)}`;
+          momentumContent.setAttribute("aria-busy", "false");
+          momentumContent.innerHTML = `<div class="momentum-empty">無法讀取本機 Momentum projection：${escapeHtml(error.message)}</div>`;
+        } finally {
+          state.momentumLoading = false;
+        }
+      }
+
+      async function acknowledgeMomentumAlert(alertId) {
+        if (!alertId) return;
+        try {
+          const response = await fetch(`/api/dashboard/momentum/alerts/${encodeURIComponent(alertId)}/acknowledge`, { method: "POST" });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+          renderMomentum(payload);
+        } catch (error) {
+          momentumStatus.classList.add("degraded");
+          momentumStatus.innerHTML = `<span class="status-dot" aria-hidden="true"></span>告警確認失敗 · ${escapeHtml(error.message)}`;
+        }
+      }
+
+      async function submitSimulationOrder(event) {
+        event.preventDefault();
+        const symbol = orderSymbol.value.trim();
+        const lots = Number(orderLots.value);
+        const limitPrice = Number(orderPrice.value);
+        orderError.style.display = "none";
+        orderMessage.classList.remove("visible");
+
+        if (!symbol || !Number.isInteger(lots) || lots <= 0 || !Number.isFinite(limitPrice) || limitPrice <= 0) {
+          orderError.textContent = "請輸入股票代碼、正確張數與大於 0 的限價。";
+          orderError.style.display = "block";
+          return;
+        }
+
+        orderSubmit.disabled = true;
+        orderSubmit.textContent = "送單中…";
+        try {
+          const response = await fetch("/api/simulation/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              symbol,
+              side: orderSide.value,
+              lots,
+              limit_price: limitPrice,
+              idempotency_key: newIdempotencyKey("manual")
+            })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+          await loadSimulationProjection();
+          orderMessage.textContent = `${payload.order.symbol} ${payload.order.side === "BUY" ? "買進" : "賣出"}委託${orderStatusLabel(payload.order.status)}。`;
+          orderMessage.classList.add("visible");
+        } catch (error) {
+          orderError.textContent = `無法送出模擬委託：${error.message}`;
+          orderError.style.display = "block";
+        } finally {
+          orderSubmit.disabled = false;
+          orderSubmit.textContent = "送出本機模擬委託";
+        }
+      }
+
+      async function cancelSimulationOrder(orderId) {
+        if (!orderId) return;
+        orderError.style.display = "none";
+        try {
+          const response = await fetch(`/api/simulation/orders/${encodeURIComponent(orderId)}/cancel`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idempotency_key: newIdempotencyKey("cancel") })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+          await loadSimulationProjection();
+          orderMessage.textContent = "委託已取消。";
+          orderMessage.classList.add("visible");
+        } catch (error) {
+          orderError.textContent = `無法取消委託：${error.message}`;
+          orderError.style.display = "block";
         }
       }
 
@@ -1086,6 +2070,8 @@
       }
 
       function setPositionsDrawer(open) {
+        if (open) setWorkspace("positions");
+        else setWorkspace("overview");
         positionsDrawer.classList.toggle("open", open);
         positionsDrawer.setAttribute("aria-hidden", String(!open));
         positionsToggle.setAttribute("aria-expanded", String(open));
@@ -1096,15 +2082,640 @@
         }
       }
 
+      function pollSimulationProjection() {
+        if (document.visibilityState !== "visible") return;
+        loadSimulationProjection().catch((error) => {
+          simulationStatus.classList.remove("waiting");
+          simulationStatus.classList.add("degraded");
+          simulationStatus.innerHTML = `<span class="status-dot" aria-hidden="true"></span>本機模擬行情更新失敗 · ${escapeHtml(error.message)}`;
+        });
+      }
+
+      function formatBacktestPercent(value, digits = 2) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+        return `${formatNumber(Number(value) * 100, digits)}%`;
+      }
+
+      function backtestStatusLabel(value) {
+        return {
+          QUEUED: "排隊中", PREFLIGHT: "預檢中", RUNNING: "執行中", CANCELLING: "取消中",
+          COMPLETED: "已完成", CANCELLED: "已取消", FAILED: "失敗"
+        }[value] || value || "—";
+      }
+
+      async function backtestFetch(path, options = {}) {
+        const response = await fetch(path, { cache: "no-store", ...options });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+        return payload;
+      }
+
+      const strategyRoleLabels = { CANDIDATE: "候選", SCORE: "評分", SIGNAL: "訊號", ENTRY: "買入", EXIT: "賣出" };
+      const strategyPhaseLabels = { PRE_MARKET: "盤前", OPENING: "開盤", INTRADAY: "盤中", END_OF_DAY: "收盤", POSITION_LIFECYCLE: "持倉生命週期", ALL_SESSION: "全時段" };
+      const strategyStatusLabels = { ACTIVE: "啟用", EXPERIMENTAL: "實驗中", DRAFT: "草稿", DEPRECATED: "已淘汰", ARCHIVED: "封存" };
+
+      function setStrategyCatalogDrawer(open) {
+        if (open) setWorkspace("strategy");
+        else setWorkspace("overview");
+        strategyCatalogDrawer.classList.toggle("open", open);
+        strategyCatalogDrawer.setAttribute("aria-hidden", String(!open));
+        strategyToggle.setAttribute("aria-expanded", String(open));
+        if (open) {
+          requestAnimationFrame(() => strategyCatalogPanel.focus());
+        } else {
+          strategyToggle.focus();
+        }
+      }
+
+      function renderStrategyCatalog() {
+        const strategies = state.strategyCatalog.strategies;
+        strategyCatalogNotice.textContent = `${strategies.length} 個策略版本；相同 strategy_id 的邏輯變更請建立新 version。`;
+        if (!strategies.length) {
+          strategyCatalogList.innerHTML = '<p class="backtest-empty">目前沒有符合篩選條件的策略。</p>';
+          return;
+        }
+        strategyCatalogList.innerHTML = strategies.map((strategy) => {
+          const role = strategyRoleLabels[strategy.role] || strategy.role || "—";
+          const phase = strategyPhaseLabels[strategy.session_phase] || strategy.session_phase || "—";
+          const status = strategyStatusLabels[strategy.status] || strategy.status || "—";
+          const statusClass = String(strategy.status || "").toLowerCase();
+          const parameters = JSON.stringify(strategy.parameters || {}, null, 2);
+          return `
+            <article class="strategy-catalog-card">
+              <div class="strategy-catalog-card-heading"><strong>${escapeHtml(strategy.display_name_zh_tw)}</strong><span>${escapeHtml(strategy.strategy_id)} · ${escapeHtml(strategy.version)}</span></div>
+              <div class="strategy-catalog-badges"><span class="strategy-catalog-badge">${escapeHtml(role)}</span><span class="strategy-catalog-badge">${escapeHtml(phase)}</span><span class="strategy-catalog-badge ${statusClass}">${escapeHtml(status)}</span></div>
+              <p class="strategy-catalog-description">${escapeHtml(strategy.description_zh_tw || "尚未填寫策略說明")}</p>
+              <div class="strategy-catalog-details"><span>執行 binding：<strong>${escapeHtml(strategy.execution_binding || "僅 metadata／尚未接線")}</strong></span><span>資料來源：<strong>${escapeHtml(strategy.source || "—")}</strong></span><span>能力：<strong>${escapeHtml((strategy.required_capabilities || []).join("、") || "—")}</strong></span><span>版本摘要：<strong title="${escapeHtml(strategy.definition_digest || "")}">${escapeHtml((strategy.definition_digest || "").slice(0, 12) || "—")}</strong></span></div>
+              <div class="strategy-catalog-parameters">${escapeHtml(parameters)}</div>
+            </article>
+          `;
+        }).join("");
+      }
+
+      async function refreshStrategyCatalog() {
+        if (state.strategyCatalog.loading) return;
+        state.strategyCatalog.loading = true;
+        strategyCatalogNotice.textContent = "正在讀取策略目錄…";
+        const query = new URLSearchParams();
+        if (strategyCatalogRole.value) query.set("role", strategyCatalogRole.value);
+        if (strategyCatalogPhase.value) query.set("session_phase", strategyCatalogPhase.value);
+        if (strategyCatalogStatus.value) query.set("status", strategyCatalogStatus.value);
+        try {
+          const payload = await backtestFetch(`/api/strategies${query.toString() ? `?${query.toString()}` : ""}`);
+          state.strategyCatalog.strategies = payload.strategies || [];
+          renderStrategyCatalog();
+        } catch (error) {
+          strategyCatalogNotice.textContent = `策略目錄讀取失敗：${error.message}`;
+          strategyCatalogList.innerHTML = '<p class="backtest-empty">請稍後重新整理。</p>';
+        } finally {
+          state.strategyCatalog.loading = false;
+        }
+      }
+
+      function selectedBacktestStrategies(side) {
+        return [...document.querySelectorAll(`[data-backtest-strategy="${side}"]:checked`)]
+          .map((input) => input.value);
+      }
+
+      function syncBacktestStrategyControls(side) {
+        const prefix = side === "ENTRY" ? "entry" : "exit";
+        const label = side === "ENTRY" ? "買入" : "賣出";
+        const selectedCount = selectedBacktestStrategies(side).length;
+        const policy = document.getElementById(`backtest-${prefix}-policy`);
+        const minimum = document.getElementById(`backtest-${prefix}-min`);
+        const count = document.getElementById(`backtest-${prefix}-count`);
+        count.textContent = selectedCount === 0
+          ? "尚未選擇"
+          : selectedCount === 1 ? "已選 1 個 · 單一策略" : `已選 ${selectedCount} 個 · 多策略`;
+        minimum.max = String(Math.max(1, selectedCount));
+        if (Number(minimum.value) > Math.max(1, selectedCount)) minimum.value = String(Math.max(1, selectedCount));
+        minimum.disabled = policy.value !== "AT_LEAST_N";
+        minimum.setAttribute("aria-label", `${label}至少觸發策略數`);
+      }
+
+      function validateBacktestStrategyPolicy(side, selected) {
+        const prefix = side === "ENTRY" ? "entry" : "exit";
+        const label = side === "ENTRY" ? "買入" : "賣出";
+        const policy = document.getElementById(`backtest-${prefix}-policy`).value;
+        const minimum = Number(document.getElementById(`backtest-${prefix}-min`).value);
+        if (!selected.length) throw new Error(`請至少選擇一個${label}策略。`);
+        if (policy === "AT_LEAST_N" && (!Number.isInteger(minimum) || minimum < 1 || minimum > selected.length)) {
+          throw new Error(`${label}的 N 必須介於 1 與已選策略數量 ${selected.length}。`);
+        }
+      }
+
+      function setBacktestDrawer(open) {
+        if (open) setWorkspace("backtest");
+        else setWorkspace("overview");
+        backtestDrawer.classList.toggle("open", open);
+        backtestDrawer.setAttribute("aria-hidden", String(!open));
+        backtestToggle.setAttribute("aria-expanded", String(open));
+        if (open) {
+          requestAnimationFrame(() => backtestPanel.focus());
+        } else {
+          backtestToggle.focus();
+        }
+      }
+
+      function renderBacktestNotice() {
+        const capabilities = state.backtest.capabilities;
+        if (!capabilities) return;
+        const providerWarning = capabilities.provider_supports_kbars
+          ? "可由目前資料 Provider 準備 Kbar。"
+          : "目前資料 Provider 不支援歷史 Kbar；可改用已匯入資料集。";
+        backtestNotice.innerHTML = `<strong>${escapeHtml(capabilities.database)}</strong> 保存 immutable run、策略版本與交易紀錄。${escapeHtml(providerWarning)}<br>${escapeHtml(capabilities.safety)}`;
+        backtestSyncButton.disabled = !capabilities.enabled || !capabilities.provider_supports_kbars;
+        backtestRunSubmit.disabled = !capabilities.enabled;
+      }
+
+      function renderBacktestIncrementalStatus() {
+        const payload = state.backtest.incrementalSync;
+        if (!payload) return;
+        const schedule = payload.schedule || {};
+        const job = payload.latest_job;
+        const labels = {
+          STOPPED: "尚未啟動",
+          DISABLED: "已停用",
+          WAITING_FOR_CLOSE: "等待收盤",
+          WAITING_FOR_TRADING_DAY: "等待交易日",
+          WAITING_FOR_BASE: "等待初始資料集",
+          BLOCKED_BY_ACTIVE_JOB: "等待既有下載工作",
+          SYNC_IN_PROGRESS: "增量同步中",
+          SUBMITTED: "已提交",
+          COMPLETED: "本日同步完成",
+          ERROR: "排程錯誤"
+        };
+        const scheduleLabel = labels[schedule.state] || schedule.state || "未知";
+        const latest = job
+          ? `<br>最近工作：${escapeHtml(job.job_id)} · ${escapeHtml(backtestStatusLabel(job.status))} · ${escapeHtml(job.progress_message || "")}`
+          : "<br>尚無增量同步紀錄。";
+        backtestIncrementalStatus.innerHTML = `<strong>收盤後自動增量同步：${escapeHtml(scheduleLabel)}</strong> · 每個工作日 ${escapeHtml(schedule.close_time || "14:30")}（${escapeHtml(schedule.timezone || "Asia/Taipei")}）<br>${escapeHtml(schedule.message || "只下載各檔 watermark 之後的新 Kbar；舊資料集保持不變。")} ${latest}`;
+      }
+
+      function renderBacktestSetup(remembered = {}) {
+        const entry = state.backtest.strategies.filter((strategy) => strategy.side === "ENTRY");
+        const exit = state.backtest.strategies.filter((strategy) => strategy.side === "EXIT");
+        const entrySelected = new Set(remembered.entry || selectedBacktestStrategies("ENTRY"));
+        const exitSelected = new Set(remembered.exit || selectedBacktestStrategies("EXIT"));
+        if (!entrySelected.size && entry[0]) entrySelected.add(entry[0].strategy_id);
+        if (!exitSelected.size) exit.forEach((strategy) => exitSelected.add(strategy.strategy_id));
+        const renderStrategies = (items, side, selected) => items.map((strategy) => `
+          <label class="strategy-option" title="${escapeHtml(JSON.stringify(strategy.parameters || {}))}">
+            <input type="checkbox" data-backtest-strategy="${side}" value="${escapeHtml(strategy.strategy_id)}" aria-describedby="backtest-${side === "ENTRY" ? "entry" : "exit"}-help" ${selected.has(strategy.strategy_id) ? "checked" : ""}>
+            <span><strong>${escapeHtml(strategy.display_name_zh_tw)}</strong><span>${escapeHtml(strategy.strategy_id)} · ${escapeHtml(strategy.version)} · ${escapeHtml(strategyPhaseLabels[strategy.session_phase] || strategy.session_phase || "全時段")}</span></span>
+          </label>
+        `).join("") || '<p class="backtest-empty">沒有可用策略。</p>';
+        document.getElementById("backtest-entry-strategies").innerHTML = renderStrategies(entry, "ENTRY", entrySelected);
+        document.getElementById("backtest-exit-strategies").innerHTML = renderStrategies(exit, "EXIT", exitSelected);
+        document.querySelectorAll("[data-backtest-strategy]").forEach((input) => {
+          input.addEventListener("change", () => syncBacktestStrategyControls(input.dataset.backtestStrategy));
+        });
+        ["ENTRY", "EXIT"].forEach((side) => {
+          const prefix = side === "ENTRY" ? "entry" : "exit";
+          document.getElementById(`backtest-${prefix}-policy`).onchange = () => syncBacktestStrategyControls(side);
+          syncBacktestStrategyControls(side);
+        });
+
+        const priorDataset = remembered.dataset || backtestDataset.value;
+        const datasets = state.backtest.datasets;
+        backtestDataset.innerHTML = datasets.length
+          ? datasets.map((dataset) => `<option value="${escapeHtml(dataset.dataset_id)}">${escapeHtml(dataset.dataset_id.slice(0, 18))}… · ${escapeHtml(dataset.start_date)} ～ ${escapeHtml(dataset.end_date)} · ${dataset.bar_count.toLocaleString("zh-TW")} 根${dataset.research_eligible ? "" : " · exploratory"}</option>`).join("")
+          : '<option value="">請先建立或匯入 READY 資料集</option>';
+        if (priorDataset && datasets.some((dataset) => dataset.dataset_id === priorDataset)) backtestDataset.value = priorDataset;
+
+        backtestDatasetList.innerHTML = datasets.length ? datasets.map((dataset) => `
+          <button class="backtest-list-item" type="button" data-backtest-dataset="${escapeHtml(dataset.dataset_id)}">
+            <strong>${escapeHtml(dataset.dataset_id)}</strong>
+            <span>${escapeHtml(dataset.source)} · ${escapeHtml(dataset.profile)} · ${dataset.bar_count.toLocaleString("zh-TW")} 根 · ${dataset.research_eligible ? "可作正式研究檢核" : "探索性（CURRENT_SNAPSHOT）"}</span>
+            <span>${escapeHtml(dataset.start_date)} ～ ${escapeHtml(dataset.end_date)}${dataset.storage_format === "JSONL_DELTA_V1" ? ` · 增量 ${Number(dataset.delta_bar_count || 0).toLocaleString("zh-TW")} 根 · parent ${escapeHtml(dataset.parent_dataset_id || "—")}` : " · 完整基礎資料集"}${dataset.issues?.length ? ` · ${escapeHtml(dataset.issues[0])}` : ""}</span>
+          </button>
+        `).join("") : '<p class="backtest-empty">尚未有 READY 資料集。請建立，或使用匯入的 date-effective 資料集。</p>';
+        backtestDatasetList.querySelectorAll("[data-backtest-dataset]").forEach((button) => {
+          button.addEventListener("click", () => { backtestDataset.value = button.dataset.backtestDataset; });
+        });
+      }
+
+      function renderBacktestRuns() {
+        const runs = state.backtest.runs;
+        backtestRunCount.textContent = `${runs.length} 個 Run`;
+        backtestRunList.innerHTML = runs.length ? runs.map((run) => `
+          <button class="backtest-list-item ${run.run_id === state.backtest.activeRunId ? "selected" : ""}" type="button" data-backtest-run="${escapeHtml(run.run_id)}">
+            <strong>${escapeHtml(run.run_id.slice(0, 24))}…</strong>
+            <span class="backtest-status ${String(run.status).toLowerCase()}">${escapeHtml(backtestStatusLabel(run.status))}</span>
+            <span>${escapeHtml(run.progress_message || "等待處理")} · ${formatNumber((run.progress || 0) * 100, 0)}%</span>
+            <span>${escapeHtml(run.created_at || "")} · ${escapeHtml(run.config?.change_note || "原始設定")}</span>
+          </button>
+        `).join("") : '<p class="backtest-empty">尚未建立回測。資料集 READY 後可在上方選擇策略。</p>';
+        backtestRunList.querySelectorAll("[data-backtest-run]").forEach((button) => {
+          button.addEventListener("click", () => loadBacktestRunDetails(button.dataset.backtestRun));
+        });
+
+        const completed = runs.filter((run) => run.status === "COMPLETED");
+        const oldBaseline = backtestBaseline.value;
+        const oldChallenger = backtestChallenger.value;
+        const options = completed.length
+          ? completed.map((run) => `<option value="${escapeHtml(run.run_id)}">${escapeHtml(run.run_id.slice(0, 24))}… · ${escapeHtml(run.config?.change_note || "原始設定")}</option>`).join("")
+          : '<option value="">尚無已完成 Run</option>';
+        backtestBaseline.innerHTML = options;
+        backtestChallenger.innerHTML = options;
+        if (completed.some((run) => run.run_id === oldBaseline)) backtestBaseline.value = oldBaseline;
+        if (completed.some((run) => run.run_id === oldChallenger)) backtestChallenger.value = oldChallenger;
+        if (completed.length > 1 && !oldChallenger) backtestChallenger.value = completed[1].run_id;
+      }
+
+      function renderBacktestEquityChart(equity = [], drawdown = []) {
+        if (!equity.length) return '<p class="backtest-empty">尚無每日權益曲線。</p>';
+        const width = 760;
+        const height = 135;
+        const padding = 16;
+        const values = equity.map((point) => Number(point.equity));
+        const low = Math.min(...values);
+        const high = Math.max(...values);
+        const span = Math.max(high - low, 1);
+        const x = (index) => padding + index / Math.max(1, values.length - 1) * (width - padding * 2);
+        const y = (value) => height - padding - (value - low) / span * (height - padding * 2);
+        const path = values.map((value, index) => `${index ? "L" : "M"}${x(index).toFixed(1)} ${y(value).toFixed(1)}`).join(" ");
+        const maxDrawdown = Math.max(0, ...drawdown.map((point) => Number(point.drawdown || 0)));
+        return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="每日權益曲線，最大回撤 ${formatBacktestPercent(maxDrawdown)}"><line x1="${padding}" x2="${width - padding}" y1="${padding}" y2="${padding}" stroke="var(--line)"/><line x1="${padding}" x2="${width - padding}" y1="${height - padding}" y2="${height - padding}" stroke="var(--line)"/><path d="${path}" fill="none" stroke="var(--blue)" stroke-linejoin="round" stroke-width="2"/><text x="${padding}" y="12" fill="var(--muted)" font-size="10">${formatNumber(high, 0)}</text><text x="${padding}" y="${height - 3}" fill="var(--muted)" font-size="10">${formatNumber(low, 0)}</text></svg>`;
+      }
+
+      function renderBacktestTradeChart(chart) {
+        const bars = chart.bars || [];
+        if (!bars.length) return '<p class="backtest-empty">資料集沒有可顯示的交易 Kbar。</p>';
+        const width = 760;
+        const height = 190;
+        const left = 36;
+        const right = 12;
+        const top = 23;
+        const bottom = 166;
+        const highs = bars.map((bar) => Number(bar.high));
+        const lows = bars.map((bar) => Number(bar.low));
+        const rawLow = Math.min(...lows);
+        const rawHigh = Math.max(...highs);
+        const margin = Math.max((rawHigh - rawLow) * .08, .01);
+        const low = rawLow - margin;
+        const high = rawHigh + margin;
+        const xStep = (width - left - right) / bars.length;
+        const x = (index) => left + xStep * index + xStep / 2;
+        const y = (price) => top + (high - price) / (high - low) * (bottom - top);
+        const bodyWidth = Math.max(2, Math.min(9, xStep * .58));
+        const candles = bars.map((bar, index) => {
+          const open = Number(bar.open);
+          const close = Number(bar.close);
+          const color = close >= open ? "var(--green)" : "var(--red)";
+          return `<line x1="${x(index)}" x2="${x(index)}" y1="${y(Number(bar.high))}" y2="${y(Number(bar.low))}" stroke="${color}"/><rect x="${x(index) - bodyWidth / 2}" y="${y(Math.max(open, close))}" width="${bodyWidth}" height="${Math.max(2, Math.abs(y(open) - y(close)))}" fill="${color}" rx="1"/>`;
+        }).join("");
+        const marker = (item) => {
+          const index = bars.findIndex((bar) => bar.timestamp === item.at);
+          if (index < 0) return "";
+          const color = item.side === "ENTRY" ? "var(--blue)" : "var(--amber)";
+          const direction = item.side === "ENTRY" ? -1 : 1;
+          const lineEnd = Math.max(15, Math.min(bottom - 3, y(Number(item.price)) + direction * 24));
+          return `<line x1="${x(index)}" x2="${x(index)}" y1="${y(Number(item.price))}" y2="${lineEnd}" stroke="${color}" stroke-width="1.5"/><text x="${x(index)}" y="${lineEnd + (direction < 0 ? -3 : 11)}" text-anchor="middle" fill="${color}" font-size="10">${item.side === "ENTRY" ? "買入" : "賣出"} ${formatNumber(item.price)}</text>`;
+        };
+        return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(chart.symbol)} 交易期間 K 線，藍色為買入、黃色為賣出"><line x1="${left}" x2="${width - right}" y1="${top}" y2="${top}" stroke="var(--line)"/><line x1="${left}" x2="${width - right}" y1="${bottom}" y2="${bottom}" stroke="var(--line)"/><text x="${left - 4}" y="${top + 4}" text-anchor="end" fill="var(--muted)" font-size="10">${formatNumber(high)}</text><text x="${left - 4}" y="${bottom + 4}" text-anchor="end" fill="var(--muted)" font-size="10">${formatNumber(low)}</text>${candles}${(chart.markers || []).map(marker).join("")}</svg>`;
+      }
+
+      function renderBacktestResult() {
+        const data = state.backtest.activeResult;
+        if (!data) {
+          if (state.backtest.activeRunId) backtestResult.innerHTML = '<p class="backtest-empty">正在讀取回測結果…</p>';
+          return;
+        }
+        const { run, summary, equity, drawdown, trades, attribution } = data;
+        if (run.status !== "COMPLETED") {
+          const canCancel = ["QUEUED", "PREFLIGHT", "RUNNING"].includes(run.status);
+          const canRetry = ["FAILED", "CANCELLED"].includes(run.status);
+          backtestResult.innerHTML = `<div class="backtest-trade-detail"><strong>${escapeHtml(backtestStatusLabel(run.status))}</strong> · ${escapeHtml(run.progress_message || "等待處理")}${run.error_message ? `<br><span class="negative">${escapeHtml(run.error_message)}</span>` : ""}<div class="backtest-actions">${canCancel ? `<button class="backtest-button danger" type="button" data-backtest-cancel="${escapeHtml(run.run_id)}">取消回測</button>` : ""}${canRetry ? `<button class="backtest-button secondary" type="button" data-backtest-retry="${escapeHtml(run.run_id)}">重試原設定</button>` : ""}</div></div>`;
+          bindBacktestResultButtons();
+          return;
+        }
+        const oos = summary.oos || {};
+        const full = summary.full || {};
+        const metrics = [
+          ["OOS 勝率", formatBacktestPercent(oos.win_rate)],
+          ["OOS 95% CI", Array.isArray(oos.win_rate_ci) ? `${formatBacktestPercent(oos.win_rate_ci[0], 1)} ～ ${formatBacktestPercent(oos.win_rate_ci[1], 1)}` : "—"],
+          ["淨損益", `${Number(oos.net_pnl || 0) >= 0 ? "+" : ""}${formatNumber(oos.net_pnl || 0, 0)}`],
+          ["最大回撤", formatBacktestPercent(summary.equity?.max_drawdown)]
+        ].map(([label, value]) => `<div class="backtest-metric"><span>${label}</span><strong>${value}</strong></div>`).join("");
+        const tradeRows = (trades.trades || []).map((trade) => `
+          <tr><td><button class="backtest-trade-button" type="button" data-backtest-trade="${escapeHtml(trade.trade_id)}">${escapeHtml(trade.symbol)} ${escapeHtml(trade.name || "")}</button></td><td>${escapeHtml(formatOrderTime(trade.entry.filled_at))}</td><td>${escapeHtml(trade.entry_decision.primary_strategy_id)}</td><td>${escapeHtml(trade.exit_decision.primary_strategy_id)}</td><td class="${Number(trade.net_pnl) >= 0 ? "positive" : "negative"}">${Number(trade.net_pnl) >= 0 ? "+" : ""}${formatNumber(trade.net_pnl, 0)}</td></tr>
+        `).join("") || '<tr><td colspan="5" class="backtest-empty">沒有已平倉交易。</td></tr>';
+        const attributionRows = (attribution.rows || []).filter((row) => row.role !== "EVALUATION").map((row) => `<tr><td>${escapeHtml(row.role)}</td><td>${escapeHtml(row.strategy_id)}</td><td>${row.primary_trades || 0}</td><td>${row.participated_in_trades || 0}</td><td class="${Number(row.primary_net_pnl || 0) >= 0 ? "positive" : "negative"}">${formatNumber(row.primary_net_pnl || 0, 0)}</td></tr>`).join("") || '<tr><td colspan="5" class="backtest-empty">尚無交易歸因。</td></tr>';
+        backtestResult.innerHTML = `
+          <div class="backtest-trade-detail"><strong>${escapeHtml(summary.verdict)}</strong> · ${summary.reasons?.length ? escapeHtml(summary.reasons.join("；")) : "資料與 OOS 檢核通過"}<br><span>完整已平倉 ${full.closed_trades || 0} 筆；OOS ${oos.closed_trades || 0} 筆；Profit Factor ${oos.profit_factor_display || (oos.profit_factor === null ? "—" : formatNumber(oos.profit_factor))}；Expectancy ${formatNumber(oos.expectancy || 0, 0)}</span></div>
+          <div class="backtest-metrics">${metrics}</div>
+          <div class="backtest-chart">${renderBacktestEquityChart(equity.daily_equity, drawdown.drawdown)}</div>
+          <div class="backtest-actions"><a class="backtest-button secondary" href="/api/backtests/runs/${encodeURIComponent(run.run_id)}/trades.csv">匯出交易 CSV</a></div>
+          <div class="backtest-section-heading"><h3>交易明細</h3><span class="panel-count">${trades.total || 0} 筆</span></div>
+          <div class="backtest-table-wrap"><table class="backtest-table"><thead><tr><th>標的</th><th>進場</th><th>主要買入策略</th><th>主要賣出策略</th><th>淨損益</th></tr></thead><tbody>${tradeRows}</tbody></table></div>
+          <div id="backtest-trade-detail"></div>
+          <div class="backtest-section-heading"><h3>策略歸因</h3><span class="panel-count">primary／參與交易分開統計</span></div>
+          <div class="backtest-table-wrap"><table class="backtest-table"><thead><tr><th>方向</th><th>策略版本</th><th>主要交易</th><th>參與交易</th><th>主要淨損益</th></tr></thead><tbody>${attributionRows}</tbody></table></div>
+        `;
+        backtestResult.querySelectorAll("[data-backtest-trade]").forEach((button) => {
+          button.addEventListener("click", () => loadBacktestTrade(button.dataset.backtestTrade));
+        });
+      }
+
+      function bindBacktestResultButtons() {
+        backtestResult.querySelector("[data-backtest-cancel]")?.addEventListener("click", async (event) => {
+          await changeBacktestRun(event.currentTarget.dataset.backtestCancel, "cancel");
+        });
+        backtestResult.querySelector("[data-backtest-retry]")?.addEventListener("click", async (event) => {
+          await changeBacktestRun(event.currentTarget.dataset.backtestRetry, "retry");
+        });
+      }
+
+      async function refreshBacktestWorkspace() {
+        const remembered = { dataset: backtestDataset.value, entry: selectedBacktestStrategies("ENTRY"), exit: selectedBacktestStrategies("EXIT") };
+        const [capabilities, incrementalSync, datasetsPayload, strategiesPayload, runsPayload] = await Promise.all([
+          backtestFetch("/api/backtests/capabilities"),
+          backtestFetch("/api/backtests/datasets/incremental-sync"),
+          backtestFetch("/api/backtests/datasets"),
+          backtestFetch("/api/backtests/strategies"),
+          backtestFetch("/api/backtests/runs")
+        ]);
+        state.backtest.capabilities = capabilities;
+        state.backtest.incrementalSync = incrementalSync;
+        state.backtest.datasets = datasetsPayload.datasets || [];
+        state.backtest.strategies = strategiesPayload.strategies || [];
+        state.backtest.runs = runsPayload.runs || [];
+        renderBacktestNotice();
+        renderBacktestIncrementalStatus();
+        renderBacktestSetup(remembered);
+        renderBacktestRuns();
+        const active = state.backtest.runs.find((run) => run.run_id === state.backtest.activeRunId);
+        if (!active) {
+          state.backtest.activeRunId = null;
+          state.backtest.activeResult = null;
+          backtestResult.innerHTML = "";
+        } else if (active.status !== "COMPLETED") {
+          state.backtest.activeResult = { run: active };
+          renderBacktestResult();
+        }
+      }
+
+      async function loadBacktestRunDetails(runId) {
+        if (!runId) return;
+        state.backtest.activeRunId = runId;
+        state.backtest.activeResult = null;
+        renderBacktestRuns();
+        renderBacktestResult();
+        try {
+          const run = await backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}`);
+          if (run.status !== "COMPLETED") {
+            state.backtest.activeResult = { run };
+            renderBacktestResult();
+            return;
+          }
+          const [summary, equity, drawdown, trades, attribution] = await Promise.all([
+            backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/summary`),
+            backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/equity`),
+            backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/drawdown`),
+            backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/trades?page=1&page_size=100`),
+            backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/strategy-attribution`)
+          ]);
+          state.backtest.activeResult = { run, summary, equity, drawdown, trades, attribution };
+          renderBacktestResult();
+        } catch (error) {
+          backtestResult.innerHTML = `<p class="backtest-empty">無法讀取回測結果：${escapeHtml(error.message)}</p>`;
+        }
+      }
+
+      async function loadBacktestTrade(tradeId) {
+        const runId = state.backtest.activeRunId;
+        const target = document.getElementById("backtest-trade-detail");
+        if (!runId || !tradeId || !target) return;
+        target.innerHTML = '<p class="backtest-empty">正在讀取交易決策、策略證據與 Kbar…</p>';
+        try {
+          const [trade, chart] = await Promise.all([
+            backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/trades/${encodeURIComponent(tradeId)}`),
+            backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/trades/${encodeURIComponent(tradeId)}/chart`)
+          ]);
+          const evidence = (side, evaluations) => evaluations.map((item) => `<li><strong>${escapeHtml(item.strategy_name)}</strong> (${escapeHtml(item.strategy_version)})：${escapeHtml(item.reason)}<br><span>觀測 ${escapeHtml(JSON.stringify(item.observed))}；門檻 ${escapeHtml(JSON.stringify(item.threshold))}</span></li>`).join("") || "<li>沒有觸發策略。</li>";
+          const chartSummary = chart.bars.length ? `${chart.bars.length} 根 Kbar，買入 ${formatNumber(chart.markers[0].price)}／賣出 ${formatNumber(chart.markers[1].price)}` : "沒有可顯示的 Kbar";
+          target.innerHTML = `<div class="backtest-trade-detail"><strong>${escapeHtml(trade.symbol)} ${escapeHtml(trade.name || "")}</strong> · ${chartSummary}<div class="backtest-chart">${renderBacktestTradeChart(chart)}</div>買入主策略：${escapeHtml(trade.entry_decision.primary_strategy_id)}；賣出主策略：${escapeHtml(trade.exit_decision.primary_strategy_id)}<br><strong>買入觸發證據</strong><ul>${evidence("ENTRY", trade.entry_strategies || [])}</ul><strong>賣出觸發證據</strong><ul>${evidence("EXIT", trade.exit_strategies || [])}</ul></div>`;
+        } catch (error) {
+          target.innerHTML = `<p class="backtest-empty">無法讀取交易細節：${escapeHtml(error.message)}</p>`;
+        }
+      }
+
+      async function startBacktestDatasetSync() {
+        backtestSyncButton.disabled = true;
+        backtestSyncButton.textContent = "建立中…";
+        try {
+          const job = await backtestFetch("/api/backtests/datasets/sync", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ years: Number(backtestSyncYears.value) })
+          });
+          backtestFormMessage.textContent = "資料集工作已建立，背景下載中；可繼續操作頁面。";
+          await pollBacktestDatasetJob(job.job_id);
+        } catch (error) {
+          backtestFormMessage.textContent = `無法建立資料集：${error.message}`;
+        } finally {
+          backtestSyncButton.textContent = "建立資料集";
+          backtestSyncButton.disabled = !state.backtest.capabilities?.provider_supports_kbars;
+        }
+      }
+
+      async function pollBacktestDatasetJob(jobId) {
+        for (let attempt = 0; attempt < 720; attempt += 1) {
+          const job = await backtestFetch(`/api/backtests/datasets/jobs/${encodeURIComponent(jobId)}`);
+          backtestFormMessage.textContent = `${backtestStatusLabel(job.status)} · ${job.progress_message || ""} · ${formatNumber((job.progress || 0) * 100, 0)}%`;
+          if (["COMPLETED", "FAILED", "CANCELLED"].includes(job.status)) {
+            await refreshBacktestWorkspace();
+            if (job.status !== "COMPLETED") throw new Error(job.error_message || "資料集工作未完成");
+            return;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        }
+        throw new Error("資料集工作等待逾時；工作仍可能在背景繼續，可稍後重新整理。");
+      }
+
+      function backtestRunRequest() {
+        const entry = selectedBacktestStrategies("ENTRY");
+        const exit = selectedBacktestStrategies("EXIT");
+        if (!backtestDataset.value) throw new Error("請先選擇 READY 歷史資料集。");
+        validateBacktestStrategyPolicy("ENTRY", entry);
+        validateBacktestStrategyPolicy("EXIT", exit);
+        return {
+          dataset_id: backtestDataset.value,
+          entry_strategy_ids: entry,
+          exit_strategy_ids: exit,
+          entry_policy: document.getElementById("backtest-entry-policy").value,
+          exit_policy: document.getElementById("backtest-exit-policy").value,
+          entry_min_trigger_count: Number(document.getElementById("backtest-entry-min").value),
+          exit_min_trigger_count: Number(document.getElementById("backtest-exit-min").value),
+          priority_order: [...exit, ...entry],
+          starting_cash: document.getElementById("backtest-cash").value,
+          position_fraction: document.getElementById("backtest-position-fraction").value,
+          target_win_rate: document.getElementById("backtest-win-rate").value,
+          minimum_oos_trades: Number(document.getElementById("backtest-oos-trades").value),
+          idempotency_key: newIdempotencyKey("backtest")
+        };
+      }
+
+      async function submitBacktestRun(event) {
+        event.preventDefault();
+        try {
+          const request = backtestRunRequest();
+          backtestRunSubmit.disabled = true;
+          backtestRunSubmit.textContent = "建立中…";
+          const payload = await backtestFetch("/api/backtests/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) });
+          state.backtest.activeRunId = payload.run.run_id;
+          state.backtest.activeResult = { run: payload.run };
+          backtestFormMessage.textContent = "回測已建立；資料只會從封存資料集讀取。";
+          await refreshBacktestWorkspace();
+          await loadBacktestRunDetails(payload.run.run_id);
+        } catch (error) {
+          backtestFormMessage.textContent = `無法建立回測：${error.message}`;
+        } finally {
+          backtestRunSubmit.disabled = false;
+          backtestRunSubmit.textContent = "建立回測";
+        }
+      }
+
+      async function changeBacktestRun(runId, action) {
+        try {
+          const path = action === "cancel" ? `/api/backtests/runs/${encodeURIComponent(runId)}/cancel` : `/api/backtests/runs/${encodeURIComponent(runId)}/retry`;
+          const options = action === "cancel" ? { method: "POST" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idempotency_key: newIdempotencyKey("backtest-retry") }) };
+          const payload = await backtestFetch(path, options);
+          state.backtest.activeRunId = (payload.run || payload).run_id || runId;
+          await refreshBacktestWorkspace();
+          await loadBacktestRunDetails(state.backtest.activeRunId);
+        } catch (error) {
+          backtestFormMessage.textContent = `無法${action === "cancel" ? "取消" : "重試"}回測：${error.message}`;
+        }
+      }
+
+      async function cloneBacktestRun() {
+        const runId = state.backtest.activeRunId;
+        const changeNote = document.getElementById("backtest-change-note").value.trim();
+        if (!runId) { backtestFormMessage.textContent = "請先選擇一個既有回測。"; return; }
+        if (!changeNote) { backtestFormMessage.textContent = "請填寫調整說明，才能建立可比較的 challenger。"; return; }
+        try {
+          const request = backtestRunRequest();
+          const payload = await backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/clone`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idempotency_key: newIdempotencyKey("backtest-clone"), change_note: changeNote, overrides: { strategy_set: { entry_strategy_ids: request.entry_strategy_ids, exit_strategy_ids: request.exit_strategy_ids, entry_policy: request.entry_policy, exit_policy: request.exit_policy, entry_min_trigger_count: request.entry_min_trigger_count, exit_min_trigger_count: request.exit_min_trigger_count, priority_order: request.priority_order }, starting_cash: request.starting_cash, position_fraction: request.position_fraction, target_win_rate: request.target_win_rate, minimum_oos_trades: request.minimum_oos_trades } })
+          });
+          state.backtest.activeRunId = payload.run.run_id;
+          await refreshBacktestWorkspace();
+          await loadBacktestRunDetails(payload.run.run_id);
+        } catch (error) {
+          backtestFormMessage.textContent = `無法複製回測：${error.message}`;
+        }
+      }
+
+      async function compareBacktestRuns() {
+        if (!backtestBaseline.value || !backtestChallenger.value) { backtestComparison.innerHTML = '<p class="backtest-empty">請選擇兩個已完成 Run。</p>'; return; }
+        if (backtestBaseline.value === backtestChallenger.value) { backtestComparison.innerHTML = '<p class="backtest-empty">Baseline 與 Challenger 必須不同。</p>'; return; }
+        try {
+          const comparison = await backtestFetch("/api/backtests/comparisons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ baseline_run_id: backtestBaseline.value, challenger_run_id: backtestChallenger.value }) });
+          const deltas = comparison.deltas || {};
+          backtestComparison.innerHTML = `<div class="backtest-trade-detail"><strong>${escapeHtml(comparison.verdict)}</strong> · ${escapeHtml(comparison.message)}<br>勝率差：${formatBacktestPercent(deltas.win_rate)}；期望值差：${formatNumber(deltas.expectancy || 0, 0)}；最大回撤差：${formatBacktestPercent(deltas.max_drawdown)}${comparison.win_rate_delta_ci ? `<br>群集 bootstrap 勝率差 95% CI：${formatBacktestPercent(comparison.win_rate_delta_ci[0])} ～ ${formatBacktestPercent(comparison.win_rate_delta_ci[1])}` : ""}${comparison.config_diff?.length ? `<br>不可比較欄位：${escapeHtml(comparison.config_diff.map((item) => item.field).join("、"))}` : ""}</div>`;
+        } catch (error) {
+          backtestComparison.innerHTML = `<p class="backtest-empty">無法比較：${escapeHtml(error.message)}</p>`;
+        }
+      }
+
+      function pollBacktestWorkspace() {
+        if (document.visibilityState !== "visible" || !backtestDrawer.classList.contains("open") || state.backtest.polling) return;
+        state.backtest.polling = true;
+        refreshBacktestWorkspace().then(async () => {
+          const active = state.backtest.runs.find((run) => run.run_id === state.backtest.activeRunId);
+          if (active?.status === "COMPLETED" && state.backtest.activeResult?.run?.status !== "COMPLETED") await loadBacktestRunDetails(active.run_id);
+        }).catch((error) => { backtestNotice.textContent = `回測工作區更新失敗：${error.message}`; }).finally(() => { state.backtest.polling = false; });
+      }
+
+      function pollMomentumProjection() {
+        if (document.visibilityState !== "visible") return;
+        loadMomentumProjection();
+      }
+
+      sidebarToggle.addEventListener("click", () => {
+        const mobile = window.matchMedia("(max-width: 700px)").matches;
+        const shell = document.querySelector(".app-shell");
+        if (mobile) {
+          const open = !shell.classList.contains("sidebar-mobile-open");
+          shell.classList.toggle("sidebar-mobile-open", open);
+        } else {
+          const collapsed = !shell.classList.contains("sidebar-collapsed");
+          shell.classList.toggle("sidebar-collapsed", collapsed);
+        }
+        syncSidebarToggle();
+      });
+      workspaceNavButtons.filter((button) => ["overview", "momentum"].includes(button.dataset.workspace)).forEach((button) => {
+        button.addEventListener("click", () => {
+          setWorkspace(button.dataset.workspace);
+        });
+      });
+      window.addEventListener("resize", syncSidebarToggle);
+      syncSidebarToggle();
+      backtestTabs.forEach((tab) => tab.addEventListener("click", () => setBacktestTab(tab.dataset.backtestTab)));
       refreshButton.addEventListener("click", () => loadSnapshot(true));
-      positionsToggle.addEventListener("click", () => setPositionsDrawer(true));
+      ordersToggle.addEventListener("click", () => {
+        setOrdersDrawer(true);
+        pollSimulationProjection();
+      });
+      orderTicketButton.addEventListener("click", () => openOrderTicket());
+      ordersClose.addEventListener("click", () => setOrdersDrawer(false));
+      ordersBackdrop.addEventListener("click", () => setOrdersDrawer(false));
+      orderForm.addEventListener("submit", submitSimulationOrder);
+      positionsToggle.addEventListener("click", () => {
+        setPositionsDrawer(true);
+        pollSimulationProjection();
+      });
       positionsClose.addEventListener("click", () => setPositionsDrawer(false));
       positionsBackdrop.addEventListener("click", () => setPositionsDrawer(false));
+      strategyToggle.addEventListener("click", async () => {
+        setStrategyCatalogDrawer(true);
+        await refreshStrategyCatalog();
+      });
+      strategyCatalogClose.addEventListener("click", () => setStrategyCatalogDrawer(false));
+      strategyCatalogBackdrop.addEventListener("click", () => setStrategyCatalogDrawer(false));
+      strategyCatalogRefreshButton.addEventListener("click", () => refreshStrategyCatalog());
+      [strategyCatalogRole, strategyCatalogPhase, strategyCatalogStatus].forEach((select) => {
+        select.addEventListener("change", () => refreshStrategyCatalog());
+      });
+      backtestToggle.addEventListener("click", async () => {
+        setBacktestDrawer(true);
+        try {
+          await refreshBacktestWorkspace();
+        } catch (error) {
+          backtestNotice.textContent = `無法讀取回測工作區：${error.message}`;
+        }
+      });
+      backtestClose.addEventListener("click", () => setBacktestDrawer(false));
+      backtestBackdrop.addEventListener("click", () => setBacktestDrawer(false));
+      backtestRefreshButton.addEventListener("click", () => refreshBacktestWorkspace().catch((error) => { backtestNotice.textContent = `無法重新整理：${error.message}`; }));
+      backtestSyncButton.addEventListener("click", startBacktestDatasetSync);
+      backtestRunForm.addEventListener("submit", submitBacktestRun);
+      backtestCloneButton.addEventListener("click", cloneBacktestRun);
+      backtestCompareButton.addEventListener("click", compareBacktestRuns);
       document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && positionsDrawer.classList.contains("open")) {
+        if (event.key !== "Escape") return;
+        if (strategyCatalogDrawer.classList.contains("open")) {
+          setStrategyCatalogDrawer(false);
+        } else if (backtestDrawer.classList.contains("open")) {
+          setBacktestDrawer(false);
+        } else if (ordersDrawer.classList.contains("open")) {
+          setOrdersDrawer(false);
+        } else if (positionsDrawer.classList.contains("open")) {
           setPositionsDrawer(false);
         }
       });
+      document.addEventListener("visibilitychange", () => {
+        pollSimulationProjection();
+        pollMomentumProjection();
+        pollBacktestWorkspace();
+      });
+      window.setInterval(pollSimulationProjection, 2000);
+      window.setInterval(pollMomentumProjection, 2000);
+      window.setInterval(pollBacktestWorkspace, 3000);
+      refreshStrategyCatalog();
+      loadMomentumProjection();
       loadSnapshot(false);
     </script>
   </body>

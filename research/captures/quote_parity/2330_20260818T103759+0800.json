@@ -1,0 +1,4893 @@
+{
+  "schema_version": "quote_parity_capture_v0",
+  "sdk_version": "1.7.2",
+  "symbol": "2330",
+  "simulation": true,
+  "started_at": "2026-08-18T10:37:59.425295+08:00",
+  "ended_at": "2026-08-18T10:38:20.140146+08:00",
+  "duration_seconds": 20,
+  "callback_counts": {
+    "quote": 62,
+    "tick": 3,
+    "bidask": 47
+  },
+  "callback_errors": [],
+  "quote_capture": {
+    "source_mode": "QUOTE",
+    "symbol": "2330",
+    "observations": [
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "TRADE",
+        "event_time": "2026-08-18T10:38:00.356992+08:00",
+        "received_at": "2026-08-18T10:38:00.379643+08:00",
+        "is_baseline": true,
+        "total_volume_lots": 7524,
+        "total_amount": "18044375000",
+        "last_price": "2380",
+        "average_price": "2398.24",
+        "raw_tick_type": 1,
+        "bid_side_total_lots": 3414,
+        "ask_side_total_lots": 4110,
+        "bid_prices": [],
+        "bid_volume_lots": [],
+        "ask_prices": [],
+        "ask_volume_lots": []
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:00.356992+08:00",
+        "received_at": "2026-08-18T10:38:00.379643+08:00",
+        "is_baseline": true,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          528,
+          489,
+          524,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:00.463483+08:00",
+        "received_at": "2026-08-18T10:38:00.398348+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          554,
+          528,
+          489,
+          524,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:00.860996+08:00",
+        "received_at": "2026-08-18T10:38:00.798561+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          554,
+          528,
+          489,
+          524,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:01.011475+08:00",
+        "received_at": "2026-08-18T10:38:00.946689+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "TRADE",
+        "event_time": "2026-08-18T10:38:01.566013+08:00",
+        "received_at": "2026-08-18T10:38:01.607777+08:00",
+        "is_baseline": false,
+        "total_volume_lots": 7525,
+        "total_amount": "18046755000",
+        "last_price": "2380",
+        "average_price": "2398.23",
+        "raw_tick_type": 1,
+        "bid_side_total_lots": 3415,
+        "ask_side_total_lots": 4110,
+        "bid_prices": [],
+        "bid_volume_lots": [],
+        "ask_prices": [],
+        "ask_volume_lots": []
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:01.566013+08:00",
+        "received_at": "2026-08-18T10:38:01.607777+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:02.260329+08:00",
+        "received_at": "2026-08-18T10:38:02.220411+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          554,
+          529,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "TRADE",
+        "event_time": "2026-08-18T10:38:03.584627+08:00",
+        "received_at": "2026-08-18T10:38:03.517423+08:00",
+        "is_baseline": false,
+        "total_volume_lots": 7526,
+        "total_amount": "18049135000",
+        "last_price": "2380",
+        "average_price": "2398.23",
+        "raw_tick_type": 1,
+        "bid_side_total_lots": 3416,
+        "ask_side_total_lots": 4110,
+        "bid_prices": [],
+        "bid_volume_lots": [],
+        "ask_prices": [],
+        "ask_volume_lots": []
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:03.584627+08:00",
+        "received_at": "2026-08-18T10:38:03.517423+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          554,
+          529,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:03.973542+08:00",
+        "received_at": "2026-08-18T10:38:03.904435+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          529,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:04.644285+08:00",
+        "received_at": "2026-08-18T10:38:04.681560+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:04.644420+08:00",
+        "received_at": "2026-08-18T10:38:04.681925+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          488,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:04.644425+08:00",
+        "received_at": "2026-08-18T10:38:04.682068+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          488,
+          522,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:04.644426+08:00",
+        "received_at": "2026-08-18T10:38:04.682220+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:05.111924+08:00",
+        "received_at": "2026-08-18T10:38:05.051691+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:05.503758+08:00",
+        "received_at": "2026-08-18T10:38:05.440885+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          553,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:05.934124+08:00",
+        "received_at": "2026-08-18T10:38:05.870917+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          553,
+          529,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:05.985161+08:00",
+        "received_at": "2026-08-18T10:38:05.924018+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          553,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:06.250460+08:00",
+        "received_at": "2026-08-18T10:38:06.181606+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:06.362833+08:00",
+        "received_at": "2026-08-18T10:38:06.298646+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:07.022825+08:00",
+        "received_at": "2026-08-18T10:38:07.022769+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          529,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:07.022866+08:00",
+        "received_at": "2026-08-18T10:38:07.023688+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          529,
+          489,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:07.022903+08:00",
+        "received_at": "2026-08-18T10:38:07.023942+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          529,
+          489,
+          523,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:07.022938+08:00",
+        "received_at": "2026-08-18T10:38:07.024101+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          529,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:08.793067+08:00",
+        "received_at": "2026-08-18T10:38:08.720055+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          529,
+          489,
+          523,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "TRADE",
+        "event_time": "2026-08-18T10:38:09.403320+08:00",
+        "received_at": "2026-08-18T10:38:09.389563+08:00",
+        "is_baseline": false,
+        "total_volume_lots": 7537,
+        "total_amount": "18075260000",
+        "last_price": "2375",
+        "average_price": "2398.2",
+        "raw_tick_type": 2,
+        "bid_side_total_lots": 3416,
+        "ask_side_total_lots": 4121,
+        "bid_prices": [],
+        "bid_volume_lots": [],
+        "ask_prices": [],
+        "ask_volume_lots": []
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.403320+08:00",
+        "received_at": "2026-08-18T10:38:09.389563+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          529,
+          489,
+          523,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.431673+08:00",
+        "received_at": "2026-08-18T10:38:09.389772+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          528,
+          489,
+          523,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.431748+08:00",
+        "received_at": "2026-08-18T10:38:09.389913+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          528,
+          488,
+          523,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.431763+08:00",
+        "received_at": "2026-08-18T10:38:09.390045+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.431780+08:00",
+        "received_at": "2026-08-18T10:38:09.390167+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          528,
+          488,
+          522,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.627582+08:00",
+        "received_at": "2026-08-18T10:38:09.568577+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          542,
+          528,
+          488,
+          522,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.670430+08:00",
+        "received_at": "2026-08-18T10:38:09.610637+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          535,
+          528,
+          488,
+          522,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.712400+08:00",
+        "received_at": "2026-08-18T10:38:09.641145+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          543,
+          528,
+          488,
+          522,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.926863+08:00",
+        "received_at": "2026-08-18T10:38:09.859574+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          543,
+          528,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:10.271046+08:00",
+        "received_at": "2026-08-18T10:38:10.202658+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          543,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:10.896373+08:00",
+        "received_at": "2026-08-18T10:38:10.834083+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          543,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:11.288545+08:00",
+        "received_at": "2026-08-18T10:38:11.229568+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:11.496958+08:00",
+        "received_at": "2026-08-18T10:38:11.431626+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          538,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:11.861793+08:00",
+        "received_at": "2026-08-18T10:38:11.796753+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          546,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:12.140299+08:00",
+        "received_at": "2026-08-18T10:38:12.072611+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          546,
+          529,
+          488,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:12.340909+08:00",
+        "received_at": "2026-08-18T10:38:12.273005+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          546,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:13.083125+08:00",
+        "received_at": "2026-08-18T10:38:13.073039+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:13.382420+08:00",
+        "received_at": "2026-08-18T10:38:13.316810+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          530,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:13.382450+08:00",
+        "received_at": "2026-08-18T10:38:13.317193+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          530,
+          490,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:13.382462+08:00",
+        "received_at": "2026-08-18T10:38:13.317282+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          530,
+          490,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:13.382482+08:00",
+        "received_at": "2026-08-18T10:38:13.317351+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          530,
+          490,
+          526,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.263490+08:00",
+        "received_at": "2026-08-18T10:38:14.189567+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          546,
+          530,
+          490,
+          526,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.263506+08:00",
+        "received_at": "2026-08-18T10:38:14.189961+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          545,
+          530,
+          490,
+          526,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.264162+08:00",
+        "received_at": "2026-08-18T10:38:14.190101+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          530,
+          490,
+          526,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.281176+08:00",
+        "received_at": "2026-08-18T10:38:14.210937+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          529,
+          490,
+          526,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.281221+08:00",
+        "received_at": "2026-08-18T10:38:14.211285+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          529,
+          489,
+          526,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.281258+08:00",
+        "received_at": "2026-08-18T10:38:14.211426+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          529,
+          489,
+          525,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.281306+08:00",
+        "received_at": "2026-08-18T10:38:14.211597+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.309669+08:00",
+        "received_at": "2026-08-18T10:38:14.231492+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          549,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.444034+08:00",
+        "received_at": "2026-08-18T10:38:14.368658+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          549,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.752293+08:00",
+        "received_at": "2026-08-18T10:38:14.713947+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:15.290153+08:00",
+        "received_at": "2026-08-18T10:38:15.223408+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:15.697036+08:00",
+        "received_at": "2026-08-18T10:38:15.634688+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          529,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:16.410907+08:00",
+        "received_at": "2026-08-18T10:38:16.344672+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          529,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:17.373275+08:00",
+        "received_at": "2026-08-18T10:38:17.301742+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          542,
+          529,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:17.486821+08:00",
+        "received_at": "2026-08-18T10:38:17.413501+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          550,
+          529,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:17.900306+08:00",
+        "received_at": "2026-08-18T10:38:17.832686+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          550,
+          530,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:18.246654+08:00",
+        "received_at": "2026-08-18T10:38:18.194551+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          530,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "QUOTE",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:19.015509+08:00",
+        "received_at": "2026-08-18T10:38:18.947113+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          549,
+          530,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      }
+    ],
+    "reconnect_attempted": false,
+    "continuity_verified_after_reconnect": null
+  },
+  "tick_bidask_capture": {
+    "source_mode": "TICK_BIDASK",
+    "symbol": "2330",
+    "observations": [
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:00.356992+08:00",
+        "received_at": "2026-08-18T10:38:00.381005+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          528,
+          489,
+          524,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:00.463483+08:00",
+        "received_at": "2026-08-18T10:38:00.398716+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          554,
+          528,
+          489,
+          524,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:00.860996+08:00",
+        "received_at": "2026-08-18T10:38:00.799044+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          554,
+          528,
+          489,
+          524,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:01.011475+08:00",
+        "received_at": "2026-08-18T10:38:00.947572+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "TRADE",
+        "event_time": "2026-08-18T10:38:01.566013+08:00",
+        "received_at": "2026-08-18T10:38:01.608168+08:00",
+        "is_baseline": false,
+        "total_volume_lots": 7525,
+        "total_amount": "18046755000",
+        "last_price": "2380",
+        "average_price": "2398.23",
+        "raw_tick_type": 1,
+        "bid_side_total_lots": 3415,
+        "ask_side_total_lots": 4110,
+        "bid_prices": [],
+        "bid_volume_lots": [],
+        "ask_prices": [],
+        "ask_volume_lots": []
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:01.566013+08:00",
+        "received_at": "2026-08-18T10:38:01.608438+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:02.260329+08:00",
+        "received_at": "2026-08-18T10:38:02.221069+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          554,
+          529,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "TRADE",
+        "event_time": "2026-08-18T10:38:03.584627+08:00",
+        "received_at": "2026-08-18T10:38:03.517776+08:00",
+        "is_baseline": false,
+        "total_volume_lots": 7526,
+        "total_amount": "18049135000",
+        "last_price": "2380",
+        "average_price": "2398.23",
+        "raw_tick_type": 1,
+        "bid_side_total_lots": 3416,
+        "ask_side_total_lots": 4110,
+        "bid_prices": [],
+        "bid_volume_lots": [],
+        "ask_prices": [],
+        "ask_volume_lots": []
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:03.584627+08:00",
+        "received_at": "2026-08-18T10:38:03.517851+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          554,
+          529,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:03.973542+08:00",
+        "received_at": "2026-08-18T10:38:03.905013+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          529,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:04.644285+08:00",
+        "received_at": "2026-08-18T10:38:04.682364+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:04.644426+08:00",
+        "received_at": "2026-08-18T10:38:04.696717+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          313,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:05.111924+08:00",
+        "received_at": "2026-08-18T10:38:05.052068+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:05.503758+08:00",
+        "received_at": "2026-08-18T10:38:05.441424+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          553,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:05.934124+08:00",
+        "received_at": "2026-08-18T10:38:05.871436+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          553,
+          529,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:05.985161+08:00",
+        "received_at": "2026-08-18T10:38:05.948254+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          553,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:06.250460+08:00",
+        "received_at": "2026-08-18T10:38:06.182159+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:06.362833+08:00",
+        "received_at": "2026-08-18T10:38:06.299176+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          528,
+          488,
+          522,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:07.022938+08:00",
+        "received_at": "2026-08-18T10:38:07.024252+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          529,
+          489,
+          523,
+          276
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:08.793067+08:00",
+        "received_at": "2026-08-18T10:38:08.720628+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          555,
+          529,
+          489,
+          523,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.403320+08:00",
+        "received_at": "2026-08-18T10:38:09.390310+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          529,
+          489,
+          523,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.431673+08:00",
+        "received_at": "2026-08-18T10:38:09.390408+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          528,
+          489,
+          523,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "TRADE",
+        "event_time": "2026-08-18T10:38:09.403320+08:00",
+        "received_at": "2026-08-18T10:38:09.390469+08:00",
+        "is_baseline": false,
+        "total_volume_lots": 7537,
+        "total_amount": "18075260000",
+        "last_price": "2375",
+        "average_price": "2398.2",
+        "raw_tick_type": 2,
+        "bid_side_total_lots": 3416,
+        "ask_side_total_lots": 4121,
+        "bid_prices": [],
+        "bid_volume_lots": [],
+        "ask_prices": [],
+        "ask_volume_lots": []
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.431780+08:00",
+        "received_at": "2026-08-18T10:38:09.450427+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          528,
+          488,
+          522,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.627582+08:00",
+        "received_at": "2026-08-18T10:38:09.577993+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          542,
+          528,
+          488,
+          522,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.712400+08:00",
+        "received_at": "2026-08-18T10:38:09.697139+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          543,
+          528,
+          488,
+          522,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:09.926863+08:00",
+        "received_at": "2026-08-18T10:38:09.859794+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          543,
+          528,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:10.271046+08:00",
+        "received_at": "2026-08-18T10:38:10.202929+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          543,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          239,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:10.896373+08:00",
+        "received_at": "2026-08-18T10:38:10.834387+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          543,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:11.288545+08:00",
+        "received_at": "2026-08-18T10:38:11.230872+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:11.496958+08:00",
+        "received_at": "2026-08-18T10:38:11.432009+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          538,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:11.861793+08:00",
+        "received_at": "2026-08-18T10:38:11.797216+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          546,
+          529,
+          488,
+          524,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:12.140299+08:00",
+        "received_at": "2026-08-18T10:38:12.076916+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          546,
+          529,
+          488,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:12.340909+08:00",
+        "received_at": "2026-08-18T10:38:12.273347+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          546,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:13.083125+08:00",
+        "received_at": "2026-08-18T10:38:13.073988+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:13.382420+08:00",
+        "received_at": "2026-08-18T10:38:13.317425+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          530,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:13.382482+08:00",
+        "received_at": "2026-08-18T10:38:13.325270+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          530,
+          490,
+          526,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.264162+08:00",
+        "received_at": "2026-08-18T10:38:14.190235+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          530,
+          490,
+          526,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.281176+08:00",
+        "received_at": "2026-08-18T10:38:14.211785+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          544,
+          529,
+          490,
+          526,
+          275
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.309669+08:00",
+        "received_at": "2026-08-18T10:38:14.322397+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          549,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          314,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.444034+08:00",
+        "received_at": "2026-08-18T10:38:14.448111+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          549,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:14.752293+08:00",
+        "received_at": "2026-08-18T10:38:14.714422+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          547,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:15.290153+08:00",
+        "received_at": "2026-08-18T10:38:15.223793+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          529,
+          489,
+          525,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:15.697036+08:00",
+        "received_at": "2026-08-18T10:38:15.635304+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          529,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          315,
+          210,
+          237,
+          588,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:16.410907+08:00",
+        "received_at": "2026-08-18T10:38:16.346991+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          529,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:17.373275+08:00",
+        "received_at": "2026-08-18T10:38:17.302032+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          542,
+          529,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:17.486821+08:00",
+        "received_at": "2026-08-18T10:38:17.414066+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          550,
+          529,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:17.900306+08:00",
+        "received_at": "2026-08-18T10:38:17.832952+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          550,
+          530,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:18.246654+08:00",
+        "received_at": "2026-08-18T10:38:18.194980+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          548,
+          530,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      },
+      {
+        "source_mode": "TICK_BIDASK",
+        "symbol": "2330",
+        "kind": "BOOK",
+        "event_time": "2026-08-18T10:38:19.015509+08:00",
+        "received_at": "2026-08-18T10:38:18.950371+08:00",
+        "is_baseline": false,
+        "total_volume_lots": null,
+        "total_amount": null,
+        "last_price": null,
+        "average_price": null,
+        "raw_tick_type": null,
+        "bid_side_total_lots": null,
+        "ask_side_total_lots": null,
+        "bid_prices": [
+          "2375",
+          "2370",
+          "2365",
+          "2360",
+          "2355"
+        ],
+        "bid_volume_lots": [
+          549,
+          530,
+          489,
+          526,
+          274
+        ],
+        "ask_prices": [
+          "2380",
+          "2385",
+          "2390",
+          "2395",
+          "2400"
+        ],
+        "ask_volume_lots": [
+          316,
+          210,
+          237,
+          587,
+          785
+        ]
+      }
+    ],
+    "reconnect_attempted": false,
+    "continuity_verified_after_reconnect": null
+  },
+  "preliminary_report": {
+    "status": "INCOMPLETE",
+    "symbol": "2330",
+    "criteria_version": null,
+    "metrics": {
+      "quote_trade_count": 3,
+      "tick_bidask_trade_count": 3,
+      "quote_book_count": 61,
+      "tick_bidask_book_count": 47,
+      "trade_event_count_ratio": "1",
+      "book_event_count_ratio": "0.7704918032786885245901639344",
+      "terminal_volume_delta_lots": 0,
+      "terminal_amount_delta": "0",
+      "terminal_average_price_delta": "0.0",
+      "terminal_bid_side_volume_delta_lots": 0,
+      "terminal_ask_side_volume_delta_lots": 0,
+      "terminal_tick_type_equal": true,
+      "latest_trade_time_delta_ms": 0.0,
+      "latest_book_time_delta_ms": 0.0,
+      "quote_p50_latency_ms": -64.786,
+      "tick_bidask_p50_latency_ms": -62.334,
+      "p50_latency_delta_ms": 2.451999999999998,
+      "quote_p95_latency_ms": 37.643,
+      "tick_bidask_p95_latency_ms": 42.155,
+      "p95_latency_delta_ms": 4.5120000000000005,
+      "quote_p99_latency_ms": 41.764,
+      "tick_bidask_p99_latency_ms": 52.291,
+      "p99_latency_delta_ms": 10.526999999999994,
+      "quote_max_gap_ms": 1770.1290000000001,
+      "tick_bidask_max_gap_ms": 1770.1290000000001,
+      "max_gap_delta_ms": 0.0,
+      "latest_book_equal": true,
+      "derived_digest_equal": null,
+      "quote_reconnect_continuity": null,
+      "tick_bidask_reconnect_continuity": null
+    },
+    "incomplete_reasons": [
+      "criteria_not_frozen"
+    ],
+    "failed_checks": []
+  },
+  "qualification_note": "INCOMPLETE until reviewed criteria, reconnect test, and derived feature/signal/stage/alert digests are supplied"
+}

@@ -62,7 +62,7 @@ MANUAL_WATCHLIST: set[str] = {
 # Provider
 # ---------------------------------------------------------------------------
 
-# 'mock'   — 使用 MockProvider（不需網路，開發與測試用）
+# 'mock'   — 使用 MockProvider（不需網路，開發與測試用；預設）
 # 'shioaji' — 使用 ShioajiProvider（需安裝 broker extra 與設定環境變數）
 PROVIDER: str = "mock"
 

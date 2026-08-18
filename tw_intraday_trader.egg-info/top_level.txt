@@ -1,6 +1,13 @@
+backtest
 candidate
 config
 dashboard
+features
 market_data
 position
+runtime
 scoring
+signals
+simulation
+strategy_catalog
+trading

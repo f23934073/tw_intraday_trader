@@ -21,6 +21,7 @@ class CandidateSource(StrEnum):
     """
 
     AUTO = "AUTO"
+    SCANNER = "SCANNER"
     MANUAL = "MANUAL"
     POSITION = "POSITION"       # 未來：持倉股票自動進候選池
     NEWS = "NEWS"               # 未來：新聞訊號

@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-import pytest
-
 from candidate.rules import GapUpRule
 from market_data.models import StockData
 

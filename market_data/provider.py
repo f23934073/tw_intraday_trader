@@ -10,14 +10,64 @@ from __future__ import annotations
 
 import os
 import random
+from collections import deque
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import TYPE_CHECKING
+from threading import RLock
+from time import monotonic, sleep
+from typing import TYPE_CHECKING, Callable
 from zoneinfo import ZoneInfo
 
-from market_data.models import KBar, StockData
+from market_data.models import KBar, RealtimeQuoteUpdate, StockData
 
 if TYPE_CHECKING:
     pass
+
+
+@dataclass(frozen=True)
+class MarketDataUsage:
+    """Provider-neutral view of the current market-data traffic allowance."""
+
+    connections: int
+    bytes_used: int
+    limit_bytes: int
+    remaining_bytes: int
+
+
+class MarketDataLimitReached(RuntimeError):
+    """Raised before a historical query would exceed a Provider safety limit."""
+
+
+class _RollingRequestLimiter:
+    """Small thread-safe rolling-window limiter used by Shioaji Kbar queries."""
+
+    def __init__(
+        self,
+        *,
+        max_calls: int,
+        window_seconds: float,
+        clock: Callable[[], float] = monotonic,
+        sleep: Callable[[float], None] = sleep,
+    ) -> None:
+        self._max_calls = max_calls
+        self._window_seconds = window_seconds
+        self._clock = clock
+        self._sleep = sleep
+        self._calls: deque[float] = deque()
+        self._lock = RLock()
+
+    def wait(self) -> None:
+        while True:
+            with self._lock:
+                now = self._clock()
+                threshold = now - self._window_seconds
+                while self._calls and self._calls[0] <= threshold:
+                    self._calls.popleft()
+                if len(self._calls) < self._max_calls:
+                    self._calls.append(now)
+                    return
+                delay = self._window_seconds - (now - self._calls[0])
+            self._sleep(max(delay, 0.001))
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +91,31 @@ class MarketDataProvider:
     def get_kbars(self, symbol: str, start: date, end: date) -> list[KBar]:
         """取得一個商品在指定日期區間內的 OHLCV Kbar。"""
         raise NotImplementedError
+
+    def market_data_usage(self) -> MarketDataUsage | None:
+        """Return traffic usage when the Provider exposes it."""
+        return None
+
+    def supports_streaming_quotes(self) -> bool:
+        """是否能推送正規化後的 Tick／BidAsk 行情。"""
+        return False
+
+    def start_quote_stream(
+        self,
+        handler: Callable[[RealtimeQuoteUpdate], None],
+    ) -> None:
+        """註冊即時行情接收端；不支援串流的 Provider 不會被呼叫。"""
+        raise NotImplementedError
+
+    def sync_quote_subscriptions(self, symbols: set[str]) -> set[str]:
+        """使 Tick／BidAsk 訂閱集合與 symbols 一致。"""
+        raise NotImplementedError
+
+    def stop_quote_stream(self) -> None:
+        """停止本 Provider 建立的行情訂閱。"""
+
+    def close(self) -> None:
+        """釋放 Provider 持有的外部連線。"""
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +359,10 @@ class ShioajiProvider(MarketDataProvider):
     """
 
     SNAPSHOT_BATCH_SIZE = 500
+    MAX_STREAMING_SYMBOLS = 100  # 每檔各占 Tick 與 BidAsk，官方總上限 200。
+    KBAR_MAX_CALLS_PER_10_SECONDS = 40
+    KBAR_REQUEST_WINDOW_SECONDS = 10.0
+    KBAR_MIN_REMAINING_BYTES = 16 * 1024 * 1024
 
     def __init__(self) -> None:
         try:
@@ -313,7 +392,19 @@ class ShioajiProvider(MarketDataProvider):
         simulation = simulation_str != "false"
 
         self._api = sj.Shioaji(simulation=simulation)
-        accounts = self._api.login(api_key=api_key, secret_key=secret)
+        accounts = self._api.login(
+            api_key=api_key,
+            secret_key=secret,
+            subscribe_trade=False,
+        )
+
+        self._stream_lock = RLock()
+        self._stream_handler: Callable[[RealtimeQuoteUpdate], None] | None = None
+        self._streaming_symbols: set[str] = set()
+        self._kbar_request_limiter = _RollingRequestLimiter(
+            max_calls=self.KBAR_MAX_CALLS_PER_10_SECONDS,
+            window_seconds=self.KBAR_REQUEST_WINDOW_SECONDS,
+        )
 
         mode = "模擬盤" if simulation else "正式環境"
         print(f"  [ShioajiProvider] 登入成功（{mode}），帳號數：{len(accounts)}")
@@ -389,8 +480,224 @@ class ShioajiProvider(MarketDataProvider):
 
         return results
 
+    def supports_streaming_quotes(self) -> bool:
+        return True
+
+    def start_quote_stream(
+        self,
+        handler: Callable[[RealtimeQuoteUpdate], None],
+    ) -> None:
+        """安裝一次 Tick／BidAsk callback；callback 只做正規化與轉交。"""
+        with self._stream_lock:
+            if self._stream_handler is not None and self._stream_handler is not handler:
+                raise RuntimeError("Shioaji 即時行情接收端已經啟動")
+            self._stream_handler = handler
+
+        try:
+            self._api.set_on_tick_stk_v1_callback(self._on_tick_stk_v1)
+            self._api.set_on_bidask_stk_v1_callback(self._on_bidask_stk_v1)
+        except Exception:
+            with self._stream_lock:
+                self._stream_handler = None
+            raise
+
+    def sync_quote_subscriptions(self, symbols: set[str]) -> set[str]:
+        """只對持倉／掛單需要的股票維持成對 Tick 與 BidAsk 訂閱。"""
+        normalized = {str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()}
+        if len(normalized) > self.MAX_STREAMING_SYMBOLS:
+            raise ValueError(
+                f"Tick＋BidAsk 最多可同時監控 {self.MAX_STREAMING_SYMBOLS} 檔股票"
+            )
+
+        with self._stream_lock:
+            current = set(self._streaming_symbols)
+
+        for symbol in sorted(current - normalized):
+            contract = self._stock_contract(symbol)
+            errors: list[Exception] = []
+            for quote_type in ("tick", "bid_ask"):
+                try:
+                    self._api.unsubscribe(contract, quote_type=quote_type)
+                except Exception as error:
+                    errors.append(error)
+            if errors:
+                raise RuntimeError(f"無法取消 {symbol} 即時行情訂閱") from errors[0]
+            with self._stream_lock:
+                self._streaming_symbols.discard(symbol)
+
+        for symbol in sorted(normalized - current):
+            contract = self._stock_contract(symbol)
+            tick_subscribed = False
+            try:
+                self._api.subscribe(contract, quote_type="tick")
+                tick_subscribed = True
+                self._api.subscribe(contract, quote_type="bid_ask")
+            except Exception:
+                if tick_subscribed:
+                    try:
+                        self._api.unsubscribe(contract, quote_type="tick")
+                    except Exception:
+                        pass
+                raise
+            with self._stream_lock:
+                self._streaming_symbols.add(symbol)
+
+        with self._stream_lock:
+            return set(self._streaming_symbols)
+
+    def stop_quote_stream(self) -> None:
+        """盡力取消本服務建立的訂閱並移除 callbacks。"""
+        try:
+            self.sync_quote_subscriptions(set())
+        finally:
+            for clear_callback in (
+                self._api.clear_on_tick_stk_v1_callback,
+                self._api.clear_on_bidask_stk_v1_callback,
+            ):
+                try:
+                    clear_callback()
+                except Exception:
+                    pass
+            with self._stream_lock:
+                self._stream_handler = None
+
+    def close(self) -> None:
+        """取消行情 callback 並明確登出，避免 native threads 留到 interpreter 關閉。"""
+        try:
+            self.stop_quote_stream()
+        finally:
+            self._api.logout()
+
+    def _stock_contract(self, symbol: str) -> object:
+        contract = self._api.Contracts.Stocks[symbol]
+        if contract is None:
+            raise KeyError(f"Contract not found: {symbol}")
+        return contract
+
+    def _on_tick_stk_v1(self, *callback_args: object) -> None:
+        event = callback_args[-1] if callback_args else None
+        if event is None or bool(getattr(event, "intraday_odd", False)):
+            return
+        price = self._positive_float(getattr(event, "close", None))
+        if price is None:
+            return
+        self._dispatch_stream_update(
+            RealtimeQuoteUpdate(
+                symbol=str(getattr(event, "code", "")).strip().upper(),
+                kind="TICK",
+                exchange_timestamp=self._stream_timestamp(event),
+                received_at=datetime.now(ZoneInfo("Asia/Taipei")),
+                last_price=price,
+            )
+        )
+
+    def _on_bidask_stk_v1(self, *callback_args: object) -> None:
+        event = callback_args[-1] if callback_args else None
+        if event is None or bool(getattr(event, "intraday_odd", False)):
+            return
+        bid_price = self._first_positive(getattr(event, "bid_price", None))
+        ask_price = self._first_positive(getattr(event, "ask_price", None))
+        if bid_price is None and ask_price is None:
+            return
+        self._dispatch_stream_update(
+            RealtimeQuoteUpdate(
+                symbol=str(getattr(event, "code", "")).strip().upper(),
+                kind="BIDASK",
+                exchange_timestamp=self._stream_timestamp(event),
+                received_at=datetime.now(ZoneInfo("Asia/Taipei")),
+                bid_price=bid_price,
+                ask_price=ask_price,
+            )
+        )
+
+    def _dispatch_stream_update(self, update: RealtimeQuoteUpdate) -> None:
+        if not update.symbol:
+            return
+        with self._stream_lock:
+            handler = self._stream_handler
+        if handler is not None:
+            handler(update)
+
+    @staticmethod
+    def _stream_timestamp(event: object) -> datetime:
+        taipei = ZoneInfo("Asia/Taipei")
+        value = getattr(event, "datetime", None)
+        if isinstance(value, datetime):
+            return value.replace(tzinfo=taipei) if value.tzinfo is None else value.astimezone(taipei)
+        if isinstance(value, (list, tuple)) and len(value) >= 6:
+            parts = [int(part) for part in value[:7]]
+            return datetime(*parts, tzinfo=taipei)
+
+        event_date = getattr(event, "date", None)
+        event_time = getattr(event, "time", None)
+        if isinstance(event_date, date) and isinstance(event_time, time):
+            combined = datetime.combine(event_date, event_time)
+            return combined.replace(tzinfo=taipei) if combined.tzinfo is None else combined.astimezone(taipei)
+        return datetime.now(taipei)
+
+    @classmethod
+    def _first_positive(cls, values: object) -> float | None:
+        if values is None:
+            return None
+        try:
+            iterator = iter(values)  # type: ignore[arg-type]
+        except TypeError:
+            return None
+        for value in iterator:
+            price = cls._positive_float(value)
+            if price is not None:
+                return price
+        return None
+
+    @staticmethod
+    def _positive_float(value: object) -> float | None:
+        try:
+            number = float(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+        return number if number > 0 else None
+
     def supports_kbars(self) -> bool:
         return True
+
+    def market_data_usage(self) -> MarketDataUsage | None:
+        """Normalize Shioaji's usage object without exposing SDK types."""
+        raw = self._api.usage()
+
+        def value(field: str) -> int:
+            if isinstance(raw, dict):
+                return int(raw.get(field, 0) or 0)
+            return int(getattr(raw, field, 0) or 0)
+
+        return MarketDataUsage(
+            connections=value("connections"),
+            bytes_used=value("bytes"),
+            limit_bytes=value("limit_bytes"),
+            remaining_bytes=value("remaining_bytes"),
+        )
+
+    def _wait_for_kbar_slot(self) -> None:
+        limiter = getattr(self, "_kbar_request_limiter", None)
+        if limiter is None:
+            limiter = _RollingRequestLimiter(
+                max_calls=self.KBAR_MAX_CALLS_PER_10_SECONDS,
+                window_seconds=self.KBAR_REQUEST_WINDOW_SECONDS,
+            )
+            self._kbar_request_limiter = limiter
+        limiter.wait()
+
+    def _guard_kbar_capacity(self) -> None:
+        usage = self.market_data_usage()
+        if usage is None or usage.limit_bytes <= 0:
+            return
+        if usage.remaining_bytes <= self.KBAR_MIN_REMAINING_BYTES:
+            remaining_mib = usage.remaining_bytes / 1024 / 1024
+            limit_mib = usage.limit_bytes / 1024 / 1024
+            raise MarketDataLimitReached(
+                "Shioaji 歷史行情剩餘流量不足："
+                f"剩餘 {remaining_mib:.1f} MiB／上限 {limit_mib:.0f} MiB；"
+                "已保留安全緩衝並停止查詢"
+            )
 
     def get_kbars(self, symbol: str, start: date, end: date) -> list[KBar]:
         """取得 Shioaji 的原始 Kbar，並維持 SDK 與系統模型的隔離。"""
@@ -403,12 +710,20 @@ class ShioajiProvider(MarketDataProvider):
         if contract is None:
             raise KeyError(f"Contract not found: {symbol}")
 
+        self._wait_for_kbar_slot()
+        self._guard_kbar_capacity()
         raw_kbars = self._api.kbars(
             contract=contract,
             start=start.isoformat(),
             end=end.isoformat(),
         )
-        return self._map_kbars(raw_kbars)
+        bars = self._map_kbars(raw_kbars)
+        if not bars:
+            # Shioaji documents empty market-data responses after traffic
+            # exhaustion. Recheck immediately so callers cannot persist the
+            # response as a successfully completed historical partition.
+            self._guard_kbar_capacity()
+        return bars
 
     @staticmethod
     def _kbar_values(kbars: object, field: str) -> list[object]:

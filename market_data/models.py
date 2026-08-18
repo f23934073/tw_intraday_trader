@@ -67,3 +67,16 @@ class KBar:
     low: float
     close: float
     volume: int
+
+
+@dataclass(frozen=True)
+class RealtimeQuoteUpdate:
+    """資料來源推送的一筆即時成交或五檔最佳價更新。"""
+
+    symbol: str
+    kind: str  # "TICK" / "BIDASK"
+    exchange_timestamp: datetime
+    received_at: datetime
+    last_price: float | None = None
+    bid_price: float | None = None
+    ask_price: float | None = None

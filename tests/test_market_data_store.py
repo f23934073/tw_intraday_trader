@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-import pytest
-
 from market_data.models import StockData
 from market_data.store import MarketDataStore
 
