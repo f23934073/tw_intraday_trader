@@ -1,5 +1,124 @@
 # Findings and Decisions
 
+## 2026-08-19 — Freshness Calibration Evidence
+
+### Requirements
+
+- The approved baseline is immutable: P0-1 through P0-14, FeePolicyV1, and RoundingPolicyV1 remain `FROZEN`; `FreshnessPolicyV1` is the sole `BLOCKING_EVIDENCE`.
+- Scope is evidence only. Do not start Portfolio Phase 1 or add Portfolio domain contracts.
+- Calibrate eight distinct values: UI/Risk Tick and BidAsk freshness, plus broker positions, orders, accounting, and buying-power evidence freshness.
+- Quote latency and broker/account freshness are separate datasets and analyses. Neither may be inferred from the other.
+- Thresholds remain unset unless immutable captured evidence and data-quality review support them.
+
+### Initial decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Use a standalone data-only calibration harness | Preserve the frozen Portfolio domain while making raw timing evidence inspectable and reproducible. |
+| Keep broker/account calibration isolated from quote capture | The existing runtime is market-data-only, and the approved contract requires separate broker/account SLA evidence. |
+
+### Discovery findings
+
+- `market_data.models.RealtimeQuoteUpdate` already carries `exchange_timestamp` and `received_at`; the Shioaji provider emits normalized Tick and BidAsk updates with both timestamps.
+- `simulation.service` keeps separate trade and book receive times, while existing quote execution uses a book-received timestamp. The calibration artifact should capture the raw callback receipt and a separate store-updated timestamp without changing the frozen Portfolio model.
+- The repository already contains a data-only `market_data.shioaji_quote_capture` capture path, digest-validated capture artifacts, and `market_data.quote_qualification`; those are designed for Quote-versus-Tick/BidAsk parity, not for freezing FreshnessPolicyV1 thresholds.
+- The current search found market-data streaming with `subscribe_trade=False`, but no implemented broker account read adapter or accounting polling capture path. Broker/account threshold evidence therefore requires a separately authorized read-only source or must remain unavailable; it cannot be inferred from the quote captures.
+- The two existing parity artifacts cannot establish freshness thresholds: `8039` recorded zero callbacks in 20 seconds; `2330` recorded callbacks only for about 20 seconds. Neither has `store_updated_at`, connection-state transitions, liquidity/session labels, or independent broker/account observations. They remain callback-path evidence only.
+- The `2330` artifact contains callback receipts earlier than the supplied market event time for some book updates. Calibration must preserve and count such clock-skew observations; it must never clip them into valid non-negative latency.
+- Offline artifact validation on 2026-08-19 confirmed the insufficiency: the
+  20.772745-second `8039` capture has zero callbacks/observations; the
+  20.714851-second `2330` capture has 116 retained observations, 96 with
+  negative event-to-receipt latency. These samples are callback-path evidence,
+  not threshold-quality data.
+- Added `market_data.freshness_calibration` and
+  `scripts/capture_quote_freshness.py`: a Tick/BidAsk-only, bounded capture
+  writes exclusive-create JSON evidence with market/callback/store timestamps,
+  monotonic timing, reviewer-supplied cohort labels, lifecycle state, SHA-256
+  inspection, and no threshold-selection code. The declared store boundary is
+  only the calibration buffer, not a future Portfolio projection.
+- A rendered technical evidence report has been validated with a partial
+  snapshot. It records all eight values as unset, preserves the separate
+  broker/account evidence gap, and prohibits a quote-to-account SLA inference.
+
+### Preparation scope (in progress)
+
+- Cohort labels must be selected and frozen before a capture starts, but no
+  label will be assigned from reputation or the two insufficient samples. The
+  capture records the reviewer-supplied label as provenance rather than treating
+  it as a market-data fact.
+- Non-sensitive preflight may verify local runtime/CLI, host timezone, artifact
+  creation semantics, and credential *presence* only. It must not emit secret
+  values, call order/account endpoints, or use an empty after-hours capture as
+  calibration evidence.
+- Local preflight on 2026-08-19 passed without reading secret values: the
+  optional Shioaji SDK is installed, both required credential categories are
+  configured, and the host UTC offset is `+08:00`, matching the explicit
+  `Asia/Taipei` capture timezone. This verifies readiness, not clock accuracy
+  or market-data quality.
+- Current provider code confirms Tick/BidAsk-only streaming with
+  `subscribe_trade=False` and a 100-symbol paired-subscription cap. The
+  repository's separate momentum stream also registers SDK lifecycle events;
+  the calibration collector should preserve those lifecycle transitions rather
+  than fabricate connection health from callback arrival alone.
+- The reusable lifecycle model distinguishes disconnect, reconnecting,
+  reconnected, subscription acknowledgements, and subscription failures. The
+  calibration artifact needs raw SDK lifecycle provenance plus its conservative
+  mapped connection/subscription state so an empty callback interval is not
+  misclassified as market-data staleness.
+- Existing tests provide concrete lifecycle evidence: SDK event `(500, 12)` is
+  treated as reconnecting, `(200, 13)` as reconnected, and paired Tick/BidAsk
+  acknowledgements use event code `16`. The calibration collector can record
+  these state changes without adding a Portfolio concern.
+- The capture currently marks subscriptions active immediately after request;
+  this is not valid acknowledgement evidence. The narrow correction is to keep
+  `PENDING` until both `TIC` and `QUO` acknowledgements for a configured symbol
+  are received, then persist the raw lifecycle inputs alongside the mapped
+  state.
+- Preparation artifacts are now ready: the cohort manifest template freezes
+  reviewer-supplied labels before collection; the preflight/review checklist
+  records required integrity, clock, lifecycle, and segmentation checks; and
+  the broker/account intake defines read-only authorization and timing metadata
+  without creating an adapter.
+
+
+## 2026-08-19 — Basic strategy expansion implementation
+
+- The user has now explicitly authorized implementation of `architecture/basic_strategy_expansion_implementation_plan.md`.
+- Preserve the current unrelated worktree changes in `backtest/historical_download.py`, `market_data/provider.py`, download scripts/tests, README, and separate `.planning/` sessions.
+- Apply the approved sequence: capability preflight first, then pure indicators/features, then five experimental strategies, Dashboard defaults, and verification.
+- Use the minimum new abstractions needed by the five strategies; do not build a strategy DSL, optimizer, broker adapter, or live-money path.
+
+## 2026-08-19 — Basic strategy expansion planning
+
+- The requested deliverable is a reviewable implementation plan, not product-code implementation.
+- The proposed batch is Opening Range Breakout entry, EMA crossover entry, RSI/Bollinger mean-reversion entry, ATR stop exit, and time stop exit.
+- Preserve the repository boundary: strategies produce historical decisions or future intents; they do not call Shioaji order APIs or authorize real-money execution.
+- External research is supporting context only. Published ORB evidence for TAIEX futures does not establish profitability for Taiwan cash equities; all imported parameters must remain hypotheses until Taiwan-stock OOS and walk-forward evidence passes.
+- Public indicator definitions can standardize calculations, but indicator availability is not evidence that a trading rule is profitable.
+- The current executable backtest registry contains two entries and three exits. New catalog rows are not executable unless their immutable definition digest and server-side execution binding exactly match a registered implementation.
+- `HistoricalBar` already supplies timezone-aware OHLCV plus optional amount, so the proposed indicators do not require a new raw market-data source.
+- `StrategyContext` currently exposes only the current bar, previous close, session open/high, cumulative volume/VWAP, bar count, last-bar flag, and entry price. ORB needs a frozen opening-range state; EMA/RSI/Bollinger/ATR need rolling bar history or precomputed features; ATR trailing exits and time stops also need position lifecycle state.
+- The engine is deterministic, long-only, one-entry-per-symbol-per-day, and executes decisions on the next bar. New strategies must preserve those semantics and must not trigger from an unfinished or future bar.
+- The worktree already contains unrelated modified product and planning files from concurrent work. Phase 9 will avoid those files and create only a standalone architecture plan plus updates to the root planning records.
+- The existing `features/` engine is Tick/BidAsk-, DataHealth-, and event-ID-specific. Its semantics should not be imported directly into historical Kbar evaluation. The plan should introduce a small pure Kbar indicator layer first and require parity fixtures before any future live reuse.
+- Strategy parameters are immutable catalog metadata, and a backtest run currently selects strategy IDs rather than arbitrary per-run parameter overrides. The first slice should keep fixed research defaults per strategy version; parameter changes create a new version instead of adding a browser parameter tuner.
+- The strategy and backtest UI already render definitions and executable ENTRY/EXIT choices from the APIs. Once registry/catalog matching is correct, the new strategies should appear without a new endpoint or a new strategy-specific form.
+- ATR exits require an explicit as-of rule: ATR used for an entry or same-bar protective exit must be based only on bars completed before the entry fill bar. Otherwise the fill bar's future high/low would leak into the stop distance.
+- The prior architecture plan already requires as-of-only context, next-bar fills, deterministic aggregation, immutable definitions, and no-look-ahead tests. Phase 9 should extend those contracts rather than introduce a second strategy framework.
+- Dataset manifests currently expose only generic `OHLCV`. Their profile is inferred from total observations per date, not cadence per symbol/session, so a multi-symbol daily dataset can be misclassified as one-minute data. ORB and intraday indicators must not rely on this heuristic.
+- `create_run()` currently validates strategy side/registration but does not enforce each strategy's `required_capabilities` against the selected dataset. Capability preflight is a prerequisite, not an optional polish item.
+- The plan should introduce explicit derived dataset capabilities such as `KBAR_INTRADAY`, `BAR_INTERVAL_SECONDS=60|300`, and `SESSION_BOUNDARIES`, computed from per-symbol/session intervals and coverage. Daily or irregular data must fail closed for ORB, time-stop, and intraday rolling strategies.
+- The engine already stores `entry_event_index` internally and prevents exit evaluation on the entry event. It does not expose holding bars, entry time, peak price, or ATR-at-entry to strategies; position feature state can be extended without altering persistent database schema because run results remain JSON payloads.
+- The current backtest application loads the full dataset into memory. This plan should keep the first strategy slice compatible with that engine and avoid bundling an unrelated streaming-engine rewrite, while documenting bounded rolling buffers so the strategy layer does not add unbounded per-symbol history.
+- Source review: the NTU/IEEE TORB paper uses one-minute intraday index-futures data and includes TAIEX, so it supports ORB as a research candidate but not direct transfer of performance claims to Taiwan cash equities: https://scholars.lib.ntu.edu.tw/entities/publication/d69ecf33-892c-4f8a-9a88-2af1bcc4efcd
+- Source review: the Santa Fe Institute record identifies moving-average and trading-range-break rules as simple, long-studied technical rules, but its Dow Jones sample is not Taiwan intraday evidence: https://web-prod.santafe.edu/research/results/working-papers/simple-technical-trading-rules-and-the-stochastic-
+- Source review: TA-Lib documents EMA/BBANDS, RSI, and ATR with explicit lookback/unstable-period behavior. The implementation plan must freeze warm-up and seeding semantics and return `INSUFFICIENT_DATA`, not silently substitute zeros: https://ta-lib.github.io/ta-lib-python/func_groups/overlap_studies.html ; https://ta-lib.github.io/ta-lib-python/func_groups/momentum_indicators.html ; https://ta-lib.github.io/ta-lib-python/func_groups/volatility_indicators.html
+- Source review: TWSE currently documents regular trading as 09:00–13:30 and distinguishes general stock sell tax from the reduced eligible day-trading rate. Strategy comparisons must keep session boundaries and cost scenarios explicit: https://wwwc.twse.com.tw/en/about/company/guide.html
+- Runtime dependency decision: do not add TA-Lib merely to implement five functions. Use small pure Decimal-based calculations with hand-worked/golden fixtures; optionally compare results to TA-Lib in a non-required qualification test, but freeze this project's own formula/version contract.
+- Final plan decision: implementation order is capability preflight -> pure rolling features/engine v2 -> ORB -> EMA and RSI/Bollinger -> ATR and Time Stop -> research qualification.
+- Final plan decision: new experimental strategies must not become default-selected; legacy ACTIVE entry/exit defaults remain the baseline until the user explicitly chooses a challenger.
+- Final plan decision: no SQL table is required for the first slice; strategy definitions and dataset capability evolution fit existing JSON contracts, while old manifests remain immutable and fail closed for the new strategies.
+
 ## Requirements
 
 - Review the attached five-stage development proposal for adjustments and optimizations.
@@ -129,3 +248,69 @@
 
 - Official documentation was reviewed as of 2026-08-18; volatile API limits and supported operations should be rechecked at implementation time.
 - Browser verification used the real local Shioaji feed: stream badge, subscription count, advancing quote time, cancel/pending behavior, ask-side fill, position count, bid/ask/current-price fields, and PnL all rendered correctly with no console errors.
+
+## Basic strategy expansion implementation findings (2026-08-19)
+
+- The pre-change repository baseline is green: 29 focused backtest tests pass; the full suite has 326 passing and 1 skipped test.
+- Dataset manifests already carry `profile` and `capabilities`, but all current creation paths only advertise `OHLCV`.
+- `create_from_partitions()` counts bars per `(symbol, session)` while `_seal()` counts all symbols per date. The latter can misclassify a multi-symbol daily dataset as intraday.
+- Incremental datasets currently inherit their parent's profile and capabilities without re-evaluating the combined immutable bar chain.
+- The backtest application validates strategy side but does not compare a strategy definition's required capabilities with the selected dataset.
+- Dashboard defaults are positional instead of status-based, so introducing experimental strategies would silently change the default entry and enable all new exits.
+- Adding an optional manifest field can silently change the recomputed digest of legacy JSON. The implementation therefore remembers whether `cadence_summary` existed and omits it when reserializing old manifests.
+- Legacy strategy runs produce byte-equivalent engine result payloads under frozen v1 and v2; v1 explicitly rejects the five feature-dependent strategies.
+- ATR propagation is engine-tested end to end: the signal-bar ATR travels through the pending entry, becomes immutable position context at fill, triggers on a later completed bar, and exits on the following open.
+- The final suite has 337 passing and 1 skipped test. Python compilation, Dashboard inline JavaScript compilation, and whitespace validation also pass.
+- The implemented slice remains historical/data-only: no CA activation, trade subscription, broker callback, or broker order submission was introduced.
+
+## Previous-day premarket watchlist planning findings (2026-08-19)
+
+- The requested watchlist must be fully available before the open using only data whose market date is earlier than the target session; `PREOPEN_INDICATIVE` is explicitly out of scope.
+- The existing `premarket_gap_watchlist_v1` is `DRAFT` and unsuitable for this slice because its contract requires pre-open indicative prices.
+- The current Candidate flow and unified strategy catalog are reusable seams, but repository evidence must determine whether a durable watchlist projection and as-of-date API already exist.
+- The worktree already contains strategy-expansion and unrelated downloader/provider/night-session changes; this phase is plan-only and must not modify product code.
+- `CandidateEngine` consumes current `StockData` snapshots and applies OR-combined rules; it cannot truthfully evaluate an as-of-previous-session watchlist without a separate historical input contract.
+- `Candidate` stores only `symbol`, source set, and matched rule names. That is insufficient for a durable premarket artifact because it lacks target session, source dataset digest, evaluation timestamp, and observed evidence.
+- The repository already has `CandidatePool`/discovery-source seams and a separate TAIFEX premarket context module/tests. The stock watchlist plan should reuse the pool boundary but remain independent from the market-level TAIFEX context.
+- Current Dashboard candidate history is on-demand for symbols already in the snapshot and derives the date range from `datetime.now()`. A premarket watchlist requires an explicit target session/as-of contract rather than this UI cache path.
+- `CandidateDiscovery` is the better downstream seam than the legacy `Candidate`: it already carries timezone-aware discovery/expiry timestamps, priority, rank types, and immutable evidence, and `CandidatePool` merges it without treating discovery as a buy signal.
+- `CandidatePool` admits every non-scanner source immediately and currently has no target-session identity. A prior-session watchlist source therefore needs explicit expiry at the target session boundary and must not rely on process-lifetime pool history as the reproducible artifact.
+- `CandidateSource` has no dedicated prior-session/watchlist value. Reusing generic `USER_STRATEGY` would lose provenance; the plan should add an explicit source while preserving existing AUTO/SCANNER/MANUAL/POSITION semantics.
+- Strategy catalog metadata supports a PRE_MARKET CANDIDATE family and immutable versions. New watchlist definitions can be code-owned `EXPERIMENTAL` bindings without changing the existing pre-open gap draft.
+- Repository search found tracked `tests/test_premarket_*` imports but no readable `premarket/` package at the expected path. This checkout inconsistency must be resolved before any implementation phase reuses the TAIFEX premarket module.
+- Follow-up shows the `premarket/` package and `config/premarket.py` truly do not exist in this checkout, while ignored/untracked-looking premarket test files are present. The implementation plan must treat the separate TAIFEX plan/files as concurrent, unavailable work and define no dependency on them.
+- The existing after-close scheduler only excludes weekends; it has no holiday/makeup-session calendar. A prior-session watchlist must use a versioned TWSE/TPEX trading calendar or fail closed rather than infer previous session as calendar day minus one.
+- `HistoricalDatasetCatalog.load_bars()` materializes the entire immutable dataset. Reusing it directly for an every-day full-market screen would be correct for a small fixture but inefficient for a multi-year market dataset; the plan needs a bounded recent-session read or a derived daily-bar artifact.
+- Current historical capabilities distinguish OHLCV/intraday/1m/session boundaries but do not explicitly certify complete daily bars. The watchlist must require a daily aggregation/completeness capability and never calculate from a partially synchronized target session.
+- `HistoricalBar.amount` is currently populated as `close × volume` for Provider downloads, while `KBar` itself exposes only OHLCV. Liquidity filters must label this as a traded-value proxy unless a source-backed turnover field is introduced.
+- Session-scoped `InstrumentReferenceStore` supports momentum eligibility, but it is not a date-effective listing/delisting universe. Operational next-session screening and historical research eligibility must remain separate.
+- During planning, untracked `config/premarket.py`, `config/taifex_calendar_2026.json`, and partial `premarket/` files appeared from concurrent work. They are user/concurrent changes, remain outside this plan's edit scope, and cannot be treated as a stable dependency until that work is complete and reviewed.
+- `CandidatePoolDecision` hashes admission metadata but drops each discovery's detailed evidence. The immutable watchlist artifact must remain queryable for UI/research evidence even after its symbols are converted to CandidateDiscovery items.
+- The main Dashboard still uses legacy `run_scan()` (`CandidateEngine` plus manual list), while CandidatePool belongs to the Momentum subscription universe. The implementation must explicitly project the new watchlist in the Dashboard and separately adapt it into CandidatePool; changing only CandidatePool would not make the list visible in the current dashboard.
+- Existing runtime composition is provider/dashboard/simulation oriented and contains no durable research-artifact service. A read-only watchlist projection can be composed separately, similar to the Momentum dashboard service, to avoid initializing provider or order paths.
+- Existing backtest job persistence already supports arbitrary job kinds and immutable resource IDs. It can coordinate watchlist generation, but artifact content should have its own catalog/repository contract rather than overloading CandidatePool history.
+- Instrument references do not include security type/listing intervals. The plan requires a date-effective universe input with explicit equity eligibility; it must not infer common-stock status from a four-digit symbol.
+- Existing `candidate/rules.py` operates on floating-point current `StockData` and global settings. Prior-session strategies need separate immutable Decimal daily-feature inputs and version-owned parameters; they should not be added as more `CandidateRule.match(StockData)` implementations.
+- The Dashboard already has a market-overview candidate panel and strategy-catalog drawer. The smallest truthful UI is a separate read-only `盤前觀察池` panel/status in the overview, with drill-down evidence, rather than silently mixing historical candidates into the current score-sorted candidate list.
+- Current backtest persistence has durable jobs but no watchlist artifact tables. A forward migration can add manifest/entry rows for bounded reads while preserving immutable JSON evidence and supporting both SQLite and PostgreSQL adapters.
+- Existing UI tests are static HTML contracts and service/API tests use injected providers. The plan should add watchlist domain fixtures plus service/API/UI tests without requiring Shioaji or network access.
+- The concurrent TAIFEX work also modified package discovery to include `premarket*`. The stock watchlist should use a distinct `watchlist*` package include to avoid namespace and rollout coupling.
+- The finalized design uses an explicit target session `T` and calendar-derived prior session `P`; the pure engine receives both and may read only sessions through `P`.
+- The first reviewable implementation slice is calendar/universe contracts, shared indicators, immutable daily derivation, Momentum v1, artifact persistence, and deterministic CLI. CandidatePool, Dashboard, scheduler activation, NR7, and Oversold follow only after the evidence layer is verified.
+- A current-snapshot equity universe may support an operational next-session artifact, but it must be marked `research_eligible=false`; historical out-of-sample evidence requires a date-effective universe.
+- The completed plan is `architecture/previous_day_premarket_watchlist_implementation_plan.md`; it changes no product behavior and keeps all three definitions `EXPERIMENTAL`.
+
+## Previous-day watchlist Phase 0-3 review findings (2026-08-19)
+
+- The three strategies remain candidate generators, not demonstrated trading strategies; Watchlist, intraday confirmation, BuyScore, and entry decision must remain separate stages.
+- Corporate actions are a P0 blocker for formal validation. Preserve raw OHLCV, derive a consistently adjusted OHLC series, store the adjustment factor/type/source/digest, and forbid mixing raw and adjusted fields inside one indicator.
+- Momentum needs `daily_return` and `close_location` evidence to distinguish strong closes from high-volume distribution. The initial research design should compare baseline, positive-return, close-location, and combined variants rather than promote `0.6` directly to a production threshold.
+- A one-price bar makes `close_location` undefined and must be classified before strategy evaluation.
+- Rename the normalized NR7 strategy to `nr7_compression_watchlist_v1`; it is direction-neutral and must wait for next-session NR7-high/ORB/VWAP confirmation before any LONG bias.
+- Hard-exclude one-price or limit-locked false compressions from NR7. Merely touching a price limit while retaining a real range should remain a flagged research cohort rather than an automatic exclusion.
+- Momentum limit-up observations should be flagged and evaluated separately from ordinary momentum instead of silently mixed into one population.
+- Oversold remains `EXPERIMENTAL` and confirmation-only; it must not block the first Momentum artifact slice.
+- Formal validation must be net of date-effective commission, minimum fee, transaction tax, bid/ask, and slippage. Gross performance alone cannot pass a promotion gate.
+- The user authorized rewriting the plan's Phase 0-3, not implementing product code.
+- Corporate-action adjustment itself needs point-in-time semantics: historical target `T` uses an `adjustment_as_of=P` view containing only actions effective and available by the generation cutoff. A vendor's later fully adjusted series must not rewrite old artifacts.
+- Raw daily bars and adjusted views should therefore be separate immutable layers; adjusted-view identity includes raw derivation, as-of session, adjustment snapshot, and reference-data digest.

@@ -324,6 +324,23 @@ def test_enriched_8039_stream_reaches_accelerating_shadow_projection():
     runtime.close()
 
 
+def test_shadow_runtime_acknowledges_local_alert_without_external_action():
+    replay = dataset()
+    runtime, stream, clock = build_runtime()
+    subscribe_8039(runtime, clock)
+
+    for envelope in replay.events:
+        clock.advance_to(envelope.received_at)
+        stream.emit(for_shadow(envelope))
+        runtime.process_pending()
+
+    alert_id = runtime.pending_alerts()[0].alert_id
+    runtime.acknowledge_alert(alert_id, acknowledged_at=at(9, 20))
+
+    assert alert_id not in {alert.alert_id for alert in runtime.pending_alerts()}
+    runtime.close()
+
+
 def test_capacity_eviction_is_exposed_as_a_specific_miss_reason():
     refs = (reference("8039"), reference("2330"))
     runtime, stream, clock = build_runtime(
@@ -452,6 +469,24 @@ def test_stale_pair_recovers_only_after_fresh_book_and_tick_evidence():
     assert snapshot.health.state is DataHealthState.HEALTHY
     assert snapshot.health.reconnect_epoch == 1
     assert snapshot.connection_state is StreamConnectionState.RUNNING
+
+    runtime.close()
+
+
+def test_staleness_check_uses_latest_health_time_after_draining_queue():
+    replay = dataset()
+    runtime, stream, clock = build_runtime()
+    subscribe_8039(runtime, clock)
+    pending_tick = moved(
+        replay.events[0],
+        event_at=at(9, 6, 1),
+        sequence=1,
+        event_id="pending-tick-after-dashboard-time",
+    )
+    stream.emit(pending_tick)
+
+    assert runtime.check_staleness(evaluated_at=clock.now()) is False
+    assert runtime.snapshot().health.as_of == pending_tick.received_at
 
     runtime.close()
 

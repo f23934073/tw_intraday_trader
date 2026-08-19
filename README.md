@@ -50,7 +50,52 @@ python3 -m dashboard
 
 瀏覽器開啟 `http://127.0.0.1:8000`。首頁預設是「市場總覽」：先看候選數、資料健康、待處理委託與已成交持倉，再選取候選股查看完整評估。左側功能欄可收合成圖示列；手機版會變成可滑出的導覽。候選清單仍是單次掃描快照，只有按下「重新掃描」才會再次執行全市場掃描。選取候選股後，預設顯示 1 日來源 Kbar，也可切換 5 日、20 日或 3 月；3 月日 K 額外顯示 MA5／MA20／MA60、成交量與區間高低點。歷史資料只會在選取該股票時向後端查詢；長週期會由後端分段取得，避免超過資料來源的單次 Kbar 查詢限制。
 
-「盤中動能」已從首頁主畫面移到左側的獨立研究工作區，固定讀取 immutable 8039 Replay fixture，用來展示 `ACCELERATING` stage、Evidence Score、episode timeline、告警確認與 Entry／RiskGate 狀態。它會明確標示「Replay fixture／非即時」；瀏覽器每 2 秒只讀本機 Momentum projection，不會因此啟動 Shioaji Provider、重新計算訊號或送出委託。Evidence Score 是 `hypothesis_v0` 規則證據，不是漲停機率。
+### 台指期夜盤盤前情境
+
+市場總覽會另外顯示「台指期夜盤」panel。後端依 versioned TAIFEX calendar 找出下一個一般交易日與實際夜盤窗口；例如星期一使用前一個交易日 15:00 到隔日 05:00，不會把星期日當成夜盤。2026 calendar artifact 的資料狀態截至 2026-08-19，包含年度休市日與 2026-07-10 臨時休市；超出覆蓋年度時會回傳 `UNAVAILABLE`，不使用 weekday 猜測。
+
+`query_not_before` 是實際 `session_end + 5 分鐘`，只表示可以開始查詢。`READY` 還必須通過版本化 completeness predicate、session 起訖、OHLCV、時間排序及 live contract identity 檢核。MockProvider 使用固定且明確標記的完整 fixture，因此可顯示 `READY`；Shioaji Kbar 的 finalization 尚未由真實 Kbar／Tick capture 證明，所以目前即使查到數值仍會保持 `PENDING`，不會因為時間已到或 query 有資料就假裝完整。
+
+Context 只把 Shioaji `FuturesInfo.reference` 顯示為「Shioaji 參考價」。TAIFEX settlement 只能來自另一份 Reconciliation Artifact；兩份 immutable artifact 以 `context_digest` 在 projection 階段連結，reconciliation 不會回寫 context health。V0 只顯示 `session_move_pct`、`session_range_pct`、`provider_reference_change_pct` 等 signed metrics，沒有 `FLAT`、方向或 regime 分類。
+
+Raw source、Context 與 Reconciliation 預設以 content-addressed JSON 分開保存在 `data/premarket/`；程式重啟後會重新驗證 canonical digest 與路徑 identity，檔案遭竄改時 fail closed。下列命令可單次產生 current/as-of Context、Kbar/Tick qualification 與 TAIFEX 官方日報 reconciliation。歷史 backfill 不使用這個 current/as-of Context 命令，也不會用現在的 `TXFR1.target_code` 補過去 identity。
+
+```bash
+PROVIDER=shioaji .venv/bin/python scripts/capture_taifex_night_context.py
+PROVIDER=shioaji .venv/bin/python scripts/capture_taifex_night_qualification.py
+.venv/bin/python scripts/capture_taifex_night_reconciliation.py \
+  --context-digest <existing-context-sha256>
+```
+
+Qualification 是 completed-session 的單次 after-market query，不放進 dashboard polling。即使 Tick／Kbar OHLCV 一致，狀態仍是 `CAPTURED_UNQUALIFIED`，直到 source completion evidence 經 review 後另行版本化。TAIFEX 夜盤日報的 settlement 欄若為 `-` 就保存為 `null`，不拿 Shioaji reference 代替；官方成交量包含價差與鉅額交易契約，在與 Shioaji volume basis 證明一致前只保存、不做等值比較，因此 OHLC 相符時 reconciliation 仍是 `PARTIAL`。
+
+這個 panel 是 observation-only：不會改 Candidate、Buy Score、RiskGate、本機模擬成交或任何委託。`taifex_overnight_context_v0` 在策略目錄中是 `EXPERIMENTAL` SIGNAL；既有 `premarket_gap_watchlist_v1` 仍是 `DRAFT`。可用下列 feature flags 關閉 capture 或 UI；日盤確認與策略影響在 V0 固定不啟用，設定為 `true` 會 fail closed：
+
+```bash
+TAIFEX_PREMARKET_CAPTURE_ENABLED=true
+TAIFEX_PREMARKET_DASHBOARD_ENABLED=true
+TAIFEX_DAY_OPEN_CONFIRMATION_ENABLED=false
+TAIFEX_CONTEXT_AFFECTS_DECISIONS=false
+```
+
+「盤中動能」是獨立的即時 Shadow 研究工作區。後端每 30 秒掃描一次目前候選池，並對候選以 Shioaji Tick＋BidAsk 持續重算 `hypothesis_v0` 的盤中 Evidence Score。清單會列出每檔候選的盤中分數、策略是否觸發、所有已成立規則及其觀測值、候選規則、最後訊號時間與資料狀態；點選任一列可開啟唯讀明細 Dialog，查看候選快照、盤中 feature、完整規則證據、資料時間與版本。
+
+瀏覽器第一次以 `GET /api/dashboard/momentum` 取得全部觀察股與 `stream_id + revision`，後續由 `/ws/dashboard/momentum` 接續推送完整 row delta。後端預設每 500ms 比對一次已完成的 projection，只有內容變更才增加 revision 並推送；沒有成交時仍每 10 秒送 heartbeat。WebSocket 健康時不會再每 2 秒 GET Momentum API；斷線期間才啟用 2 秒 HTTP fallback，並以 cursor replay 或完整 resync 避免漏資料。Dialog 沿用同一份 browser state，不會在點擊時再次查詢 Provider。
+
+「等待 Tick／BidAsk 暖機」表示該檔尚未形成可評估 projection，不是前端更新卡住。Shioaji 行情本身是事件推送；Tick 有 `average_price` 時 VWAP 可立即取得，BidAsk 到齊後也能建立五檔指標，但成交量加速需要目前 2 分鐘 window 加上至少 4 個完整的 2 分鐘 baseline window，因此完整 Evidence Score 約需 10 分鐘連續 Tick coverage。候選池更新時間和 Tick／BidAsk 訊號時間會分開顯示，不能把掃描快照誤認為即時分數。
+
+Momentum WebSocket 預設啟用，第一版只支援目前的單一 Uvicorn process。可用下列環境變數調整或回退；多 worker／多 replica 需先加入外部 stream broker，不能直接沿用 process-local revision：
+
+```bash
+MOMENTUM_DASHBOARD_WS_ENABLED=true
+MOMENTUM_DASHBOARD_WS_COALESCE_SECONDS=0.5
+MOMENTUM_DASHBOARD_WS_HEARTBEAT_SECONDS=10
+MOMENTUM_DASHBOARD_WS_REPLAY_CAPACITY=256
+MOMENTUM_DASHBOARD_WS_SEND_TIMEOUT_SECONDS=2
+MOMENTUM_DASHBOARD_WS_MAX_CLIENTS=32
+```
+
+每檔候選使用一對 Tick／BidAsk 訂閱，最多同時評估 100 檔。超過容量、尚未收到完整行情或訂閱尚未確認的候選仍會出現在清單中，但會標示無法評估原因，絕不顯示為 0 分。若即時 Shioaji 資料未配置或連線失敗，畫面會直接顯示「即時資料不可用」，不會退回固定 Replay 資料。Evidence Score 是規則證據，不是漲停機率，也不是買進或下單指令。
 
 左側的「模擬下單」可建立本機紙上限價委託；「委託」可查看已送出、成交、取消或拒絕的紀錄；「持倉」只顯示由已成交模擬委託建立的股票與其平均成交價、最新成交、買一／賣一、市值和損益。這些功能會開啟整頁工作區；瀏覽器每 2 秒讀取一次本機投影，不會因畫面更新而輪詢 Shioaji snapshot 或帳務 API。
 
@@ -72,6 +117,25 @@ python3 -m dashboard
 點選交易可查看該筆進出場的主要策略、所有同時觸發策略、門檻與當時觀測值；也可以匯出 CSV。
 
 回測使用獨立的 `backtest/` composition：只讀已封存的資料集，買入訊號最早在下一根 Kbar 才成交，並納入手續費、賣出證交稅與滑價。它不會啟動本機紙上模擬、Shioaji 下單、帳務、CA 或 trade subscription。
+
+`backtest-engine-v2` 另外提供五個預設不勾選的 1 分 K `EXPERIMENTAL` 策略：開盤區間突破、EMA(5/20) 黃金交叉、RSI／布林通道均值回歸、固定 ATR 停損，以及 12 根一分鐘 Kbar 的時間退出。這些策略只接受資料 manifest 同時證明 `OHLCV`、`KBAR_INTRADAY`、`KBAR_1M`、`SESSION_BOUNDARIES`；API 建立 Run 與 worker 執行前都會再次驗證。舊 manifest 不會被原地升級，若缺少能力欄位，需要重新封存資料集。
+
+日 K SMA20／SMA60 也已是兩個預設不勾選的 `EXPERIMENTAL` 策略：`sma_20_60_golden_cross_entry_v1` 在完整日 K 收盤確認 SMA20 上穿 SMA60 後，建立下一個有效日 K 開盤買入；`sma_20_60_death_cross_exit_v1` 對應下穿，於下一個有效日 K 開盤退出。兩者都要求 `OHLCV` 與 `KBAR_DAILY`，並將 `DAILY_NEXT_BAR` 存入決策、委託與成交結果；資料結束前沒有下一個有效日 K 時，委託會明確標示 `UNFILLED_END_OF_DATA`，不會以當日收盤價偷填。儀表板不會預設勾選它們；若使用者同時選擇 `end_of_day_exit_v1`，會顯示「每日日 K 收盤平倉」的非阻擋提醒，但不會替使用者改掉策略選擇。
+
+`KBAR_DAILY` 不會由「某天只有一根 Kbar」或圖表資料推論。Provider Kbar 在封存前會先正規化為 `Asia/Taipei` 的 `session_date`；G0 目前選定 `DERIVED_FINALIZED_SESSION_V1`：base dataset 的每個 `(symbol, session_date)` 還必須都有獨立的 source-completion evidence digest，才可 materialize 成 immutable daily child。child 保留完成收盤的 `timestamp` 作為訊號時間，並另外保留第一根來源 Kbar 的 `session_open_at` 作為下一日開盤成交的稽核時間。它一律記錄 `RAW`、`corporate_action_adjusted: false`、`REGULAR_SESSION`／`COMMON_LOT` volume contract 與 parent digest；可重現策略工程，但不可宣稱正式 alpha。現有 G0 fixture 只證明 2330 的單一歷史 session，不能拿來授權整個下載資料集。
+
+可在準備好完整 evidence bundle 後執行離線派生（不會連 Provider 或券商）：
+
+```bash
+python scripts/derive_backtest_daily_dataset.py \
+  --base-dataset-id dataset-已驗證的分鐘資料 \
+  --dataset-id dataset-derived-daily-v1 \
+  --completion-proofs /secure-data/daily-session-proofs.json
+```
+
+`daily-session-proofs.json` 必須使用 `daily-session-completion-proofs-v1`，包含 `session_contract`、`volume_contract` 以及 base 每一個 `(symbol, session_date)` 的唯一 `symbol`、`session_date`、`digest`。缺少、重複、額外或與 parent 不相符的 proof 都會 fail closed；相同 dataset ID 若契約不同也會拒絕覆寫。
+
+資料 cadence 依每個 `(symbol, session_date)` 的 timestamp 間距推導，不再用整個市場單日總筆數猜測。一分鐘資料仍可有缺 bar，但需要完整 09:00～09:14 的 ORB 當日才會產生有效 opening range；indicator 全程使用 `Decimal`，每個 session 重新 warm-up。舊的 `backtest-engine-v1` Run 仍可用原版本重試，新 Run 預設使用 v2。
 
 本機預設把資料集與歷史結果存於 `data/backtest/`（SQLite）；平台部署可設定 `BACKTEST_DATABASE_URL=postgresql://...` 並安裝 PostgreSQL extra：
 
@@ -105,9 +169,9 @@ PROVIDER=shioaji .venv/bin/python scripts/download_backtest_history.py \
   --resume dataset-download-請替換成實際ID
 ```
 
-Downloader 會把 Shioaji Kbar 查詢限制在每 10 秒最多 40 次，低於官方 50 次上限；每次查詢前也會讀取 `api.usage()`，至少保留 16 MiB 安全流量。若接近每日上限，或收到無法判定為真實無資料的空 Kbar，工作會標為 `PAUSED` 並以 exit code `75` 結束，不會把 0 根資料誤存成完成。Shioaji 流量於交易日上午 `08:00` 重置，重置後執行同一個 `--resume` 指令即可。
+Downloader 會把 Shioaji Kbar 查詢限制在每 10 秒最多 40 次，低於官方 50 次上限；每次查詢前也會讀取 `api.usage()`，至少保留 16 MiB 安全流量。每個 Kbar request 的 timeout 為 60 秒，逾時時最多重試 3 次（2 秒、5 秒退避）；仍失敗時，工作會保存目前股票代碼並標為 `PAUSED`，下次只重試該檔。若接近每日上限，或收到無法判定為真實無資料的空 Kbar，也會以 exit code `75` 安全暫停，不會把 0 根資料誤存成完成。逾時可稍後直接接續；Shioaji 流量不足則等交易日上午 `08:00` 重置後再執行同一個 `--resume` 指令。
 
-舊版 Downloader 已經寫入「資料來源未回傳 Kbar」的工作也可以直接使用新版 `--resume`。新版除了找第一個 0 根異常，也會辨識舊程式超速後常見的「多檔股票同時只剩最後一年」截斷模式，保留最早異常以前的成功資料並重抓後續尾段；不需要刪除資料庫，也不要建立新的 job。這會一併修復異常點之後看似非零、實際只有部分日期的分區。
+舊版 Downloader 已經寫入「資料來源未回傳 Kbar」的工作也可以直接使用新版 `--resume`。新版會保留第一個 0 根異常以前的成功資料，並重抓該異常與後續尾段；不需要刪除資料庫，也不要建立新的 job。不同商品可能因 Provider 可提供的歷史範圍而同時只回傳約一年資料，因此不會只憑共同起始日把非零分區判定為損壞。
 
 SQLite 預設寫入 `data/backtest/backtest.sqlite3`；若有設定 `BACKTEST_DATABASE_URL=postgresql://...`，partition 與工作進度會寫入 PostgreSQL。全部完成後，script 會以 streaming 方式封存 `bars.jsonl`／`manifest.json`、驗證 SHA-256，並在 `backtest_datasets` 登記為 `READY`；回到網頁按「重新整理」即可選取。
 
@@ -221,7 +285,15 @@ tw_intraday_trader/
 ├── app.py                  # Orchestration layer（主程式）
 ├── market_data/
 │   ├── models.py           # StockData
-│   └── provider.py         # Snapshot、Kbar 與 Shioaji Tick/BidAsk adapter
+│   └── provider.py         # Snapshot、Kbar、台指期盤前與 Shioaji Tick/BidAsk adapter
+├── premarket/
+│   ├── calendar.py         # TAIFEX trading-date、session 與 historical identity resolver
+│   ├── models.py           # Context／Reconciliation immutable contracts
+│   ├── artifacts.py        # Canonical SHA-256 與 durable content-addressed repository
+│   ├── qualification.py    # Shioaji Kbar／Tick fail-closed qualification
+│   ├── service.py          # Observation-only aggregation、READY 與 Dashboard projection
+│   ├── reconciliation.py   # 獨立 reconciliation artifact service
+│   └── taifex_reconciliation.py # TAIFEX 官方盤後日報 acquisition／parser
 ├── candidate/
 │   ├── models.py           # Candidate
 │   ├── rules.py            # GapUpRule, HighVolumeRule
@@ -235,7 +307,9 @@ tw_intraday_trader/
 │   ├── manager.py          # PositionManager
 │   └── exit_rules.py       # StopLossRule, TakeProfitRule
 ├── config/
-│   └── settings.py         # 所有 threshold 與設定
+│   ├── settings.py         # 既有 threshold 與設定
+│   ├── premarket.py        # 盤前 feature flags 與 completeness contract
+│   └── taifex_calendar_2026.json
 ├── simulation/
 │   └── service.py          # 本機紙上模擬委託與持倉投影
 ├── strategy_catalog/

@@ -40,3 +40,36 @@
 | Error | Resolution |
 |-------|------------|
 | `ps` denied by sandbox | Relied on durable job progress and did not attempt to stop user process. |
+
+## Session: 2026-08-19
+
+### Current Status
+- **Phase:** complete
+- **Started:** 2026-08-19
+
+### Actions Taken
+- Captured a real `ShioajiTimeoutError` after 00636 and confirmed an ordinary resume replayed 00633L through 00636.
+- Compared the clean paced refetch with the earlier database partitions and invalidated the shared-one-year truncation heuristic.
+- Scoped the correction to bounded request retry, exact current-symbol resume state, and preservation of the legitimate nonzero partitions before the first legacy empty checkpoint.
+- Added a 60-second Shioaji Kbar timeout, three bounded attempts, 2/5-second backoff, and a normalized temporary-unavailable error.
+- Persisted a current-symbol marker before each full-history fetch and a retry-symbol marker on pause/failure/interruption.
+- Replaced the shared-one-year detector with exact-symbol retry plus first-legacy-empty-tail repair.
+- Updated CLI guidance and README recovery semantics for timeout versus daily traffic exhaustion.
+- Verified the active job read-only: ordinary repaired resume starts at 1240; a simulated old-client timeout at 88/2738 retries 00696B exactly.
+
+### Test Results
+| Test | Expected | Actual | Status |
+|------|----------|--------|--------|
+| New timeout/resume tests before implementation | Missing contracts fail collection | Missing temporary error and retry helper caused 2 collection errors | Expected fail |
+| Focused provider/downloader regression | Timeout retry, exact resume, legitimate one-year coverage | 17 passed | Pass |
+| Provider + full/incremental download regression | Shared Provider behavior remains compatible | 29 passed | Pass |
+| Static checks | Compile and whitespace validation | Passed | Pass |
+| Full regression | Entire repository test suite | 326 passed, 1 skipped | Pass |
+| Live read-only resume calculation | No replay from 00633L | Resume boundary 1240; simulated old timeout target 00696B | Pass |
+
+### Errors
+| Error | Resolution |
+|-------|------------|
+| `api/v1/data/kbars` timed out after 30 seconds | In progress: add bounded provider retry and durable pause after retry exhaustion. |
+| Resume selected 00633L after it had just been saved successfully | In progress: remove the false-positive coverage heuristic and persist the exact interrupted symbol. |
+| Read-only live resume check imported `HistoricalInstrument` from `backtest.domain` | Corrected the diagnostic-only import to `backtest.dataset`; production code was unaffected. |

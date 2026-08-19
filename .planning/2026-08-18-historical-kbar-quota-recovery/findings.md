@@ -23,9 +23,14 @@
 - The current CLI documentation warns against concurrent web and CLI downloads but does not mention the daily byte cap, `api.usage()`, automatic pause, or suspect-tail replay.
 - The user stopped the old process successfully: the durable job is `PAUSED` at 542/2738 with no job-level error.
 - The initial zero-only check would have preserved 408 symbols and restarted at 1240, but the later coverage check superseded that boundary.
-- A later coverage check found an earlier, different legacy failure signature: starting at 00633L, many unrelated established symbols share the exact 2025-08-18 start date although the request began on 2023-08-19. This is consistent with the old unpaced client continuing through a temporary request suspension and only recovering for the final year.
-- The recovery boundary must therefore be earlier than the first zero. Detecting five consecutive partitions near the same one-year boundary after at least five full-coverage partitions distinguishes this systemic truncation from clusters of genuinely new listings.
-- Running the implemented detector against the live job selects 00633L at zero-based index 28. It preserves 28 partitions containing 1,417,229 bars and revalidates all later saved partitions in place.
+- An earlier coverage hypothesis treated the shared 2025-08-18 start date at 00633L as legacy truncation. A clean, paced live refetch reproduced the same approximate one-year coverage and nonzero counts for 00633L through 00636, so start-date coincidence alone is not evidence of corruption.
+- The shared-one-year detector is therefore a false positive and causes every resume to replay already successful symbols from 00633L.
+- The live run also exposed a separate recoverable failure: `ShioajiTimeoutError` from `api/v1/data/kbars` after 30 seconds currently aborts the entire job instead of retrying the individual request.
+- A reliable resume needs two independent signals: the first known legacy empty partition for repairing the old quota-damaged tail, and an explicit current-symbol marker for retrying an interrupted request without replaying unrelated valid partitions.
+- Local SDK inspection confirmed Shioaji 1.7.2 exposes `kbars(..., timeout=30000, ...)` and `shioaji.ShioajiTimeoutError`; the corrected Provider uses 60,000 ms plus three bounded attempts.
+- The active old process continued normally after the pasted timeout and reached 88/2738 during verification. It remains an old in-memory process, so the new retry behavior takes effect on its next restart.
+- A read-only live resume calculation now preserves 408 existing partitions and selects the first legacy empty symbol 1240, not 00633L.
+- Simulating an old-client timeout at the same 88/2738 checkpoint selects 00696B as the exact retry symbol, preserves 407 valid checkpoints, and then continues legacy-tail repair at 1240.
 
 ## Technical Decisions
 | Decision | Rationale |
@@ -34,14 +39,17 @@
 | Reserve a configurable safety margin before the daily byte cap | A single 30-day Kbar response can consume meaningful traffic; exact payload size is not known in advance. |
 | Pause rather than fail a durable job on quota/rate/ambiguous empty | The condition is recoverable after reset and existing checkpoints remain valid. |
 | Reprocess all partitions at and after the first transient-empty checkpoint | Later partitions may be partially populated even when their own error field is empty. |
-| Also detect the legacy shared one-year truncation boundary | Nonzero bar counts alone did not prove three-year coverage; several old products were checkpointed with exactly one year after request-rate suspension. |
+| Do not infer corruption from a shared one-year start date | The paced live refetch reproduced the same upstream coverage, invalidating the earlier inference. |
 | Do not delete database rows during repair | Upsert can atomically replace suspect rows after successful refetch. |
 | Exit the CLI with temporary-failure code 75 on an automatic pause | The process closes its Shioaji connection cleanly and can be resumed after the documented 08:00 reset without a traceback. |
+| Retry timeout failures per Kbar request, then pause at the exact symbol | This absorbs transient 30-second failures and keeps restart behavior deterministic when retries are exhausted. |
+| Use 60-second requests with three attempts and 2/5-second backoff | This is bounded, remains under the shared rolling request limiter, and avoids turning one transient SDK timeout into a failed full-market job. |
 
 ## Issues Encountered
 | Issue | Resolution |
 |-------|------------|
 | Exact account usage was not queried during diagnosis | Avoided opening another Shioaji session while the old downloader was still running; use the observed cutoff plus official behavior, and add usage checks to the fixed process. |
+| The original truncation detector was based on correlation rather than a provider contract | Live re-download falsified it; Phase 6 removes it and adds regression coverage for legitimate one-year availability. |
 
 ## Resources
 - https://sinotrade.github.io/zh/tutor/limit/

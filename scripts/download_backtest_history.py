@@ -79,7 +79,8 @@ def main() -> None:
         print(f"\n下載已安全暫停：{error}", file=sys.stderr, flush=True)
         if job_id:
             print(
-                "Shioaji 流量於交易日上午 08:00 重置；之後使用以下工作 ID 接續：\n"
+                "若是查詢逾時，可稍後直接接續；若是流量不足，請等交易日上午 "
+                "08:00 重置後接續：\n"
                 f"  PROVIDER=shioaji .venv/bin/python scripts/download_backtest_history.py "
                 f"--resume {job_id}",
                 file=sys.stderr,

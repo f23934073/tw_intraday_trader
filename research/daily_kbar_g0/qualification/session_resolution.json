@@ -1,0 +1,396 @@
+{
+  "captures": {
+    "chunk_boundary": {
+      "duplicate_resolved_sessions": [],
+      "issues": [],
+      "left": {
+        "capture_name": "chunk_left",
+        "coverage_complete": true,
+        "direct_daily_shape": false,
+        "first_bar": "2026-08-17T09:01:00+08:00",
+        "first_raw_timestamp": {
+          "python_type": "builtins.int",
+          "repr": "1786957260000000000",
+          "text": "1786957260000000000"
+        },
+        "is_complete": false,
+        "issues": [
+          "SOURCE_COMPLETION_UNPROVEN",
+          "SOURCE_FLOAT_LOSSY"
+        ],
+        "last_bar": "2026-08-17T13:30:00+08:00",
+        "last_raw_timestamp": {
+          "python_type": "builtins.int",
+          "repr": "1786973400000000000",
+          "text": "1786973400000000000"
+        },
+        "query": {
+          "api": "Shioaji.kbars",
+          "interval_parameter_observed": false,
+          "parameters_observed": [
+            "contract",
+            "start",
+            "end",
+            "timeout"
+          ],
+          "query_end": "2026-08-17",
+          "query_start": "2026-08-17"
+        },
+        "raw_numeric_representation": {
+          "Close": {
+            "builtins.float": 266
+          },
+          "High": {
+            "builtins.float": 266
+          },
+          "Low": {
+            "builtins.float": 266
+          },
+          "Open": {
+            "builtins.float": 266
+          },
+          "Volume": {
+            "builtins.int": 266
+          }
+        },
+        "raw_rows_digest": "cf320e416681d2902994a71648a338b62f4a0d4300faffd65b1cc0dd7dcdd5f8",
+        "raw_timestamp_representation": {
+          "builtins.int": 266
+        },
+        "resolved_sessions": [
+          {
+            "bar_count": 266,
+            "coverage_complete": true,
+            "expected_session": true,
+            "first_bar": "2026-08-17T09:01:00+08:00",
+            "is_complete": false,
+            "last_bar": "2026-08-17T13:30:00+08:00",
+            "resolved_session_date": "2026-08-17",
+            "source_completion_evidence": "UNAVAILABLE"
+          }
+        ],
+        "symbol": "2330",
+        "timestamp_semantics": "WALL_TIME_MAPPING_OBSERVED_NOT_PROVIDER_DOCUMENTED"
+      },
+      "right": {
+        "capture_name": "chunk_right",
+        "coverage_complete": true,
+        "direct_daily_shape": false,
+        "first_bar": "2026-08-18T09:01:00+08:00",
+        "first_raw_timestamp": {
+          "python_type": "builtins.int",
+          "repr": "1787043660000000000",
+          "text": "1787043660000000000"
+        },
+        "is_complete": false,
+        "issues": [
+          "SOURCE_COMPLETION_UNPROVEN",
+          "SOURCE_FLOAT_LOSSY"
+        ],
+        "last_bar": "2026-08-18T13:30:00+08:00",
+        "last_raw_timestamp": {
+          "python_type": "builtins.int",
+          "repr": "1787059800000000000",
+          "text": "1787059800000000000"
+        },
+        "query": {
+          "api": "Shioaji.kbars",
+          "interval_parameter_observed": false,
+          "parameters_observed": [
+            "contract",
+            "start",
+            "end",
+            "timeout"
+          ],
+          "query_end": "2026-08-18",
+          "query_start": "2026-08-18"
+        },
+        "raw_numeric_representation": {
+          "Close": {
+            "builtins.float": 266
+          },
+          "High": {
+            "builtins.float": 266
+          },
+          "Low": {
+            "builtins.float": 266
+          },
+          "Open": {
+            "builtins.float": 266
+          },
+          "Volume": {
+            "builtins.int": 266
+          }
+        },
+        "raw_rows_digest": "2854b6ab8c310aa2867b51b4b2d0d44efceabc27ea442bef6d82726130f23b63",
+        "raw_timestamp_representation": {
+          "builtins.int": 266
+        },
+        "resolved_sessions": [
+          {
+            "bar_count": 266,
+            "coverage_complete": true,
+            "expected_session": true,
+            "first_bar": "2026-08-18T09:01:00+08:00",
+            "is_complete": false,
+            "last_bar": "2026-08-18T13:30:00+08:00",
+            "resolved_session_date": "2026-08-18",
+            "source_completion_evidence": "UNAVAILABLE"
+          }
+        ],
+        "symbol": "2330",
+        "timestamp_semantics": "WALL_TIME_MAPPING_OBSERVED_NOT_PROVIDER_DOCUMENTED"
+      }
+    },
+    "daily": {
+      "capture_name": "shioaji_daily_sample",
+      "coverage_complete": true,
+      "direct_daily_shape": false,
+      "first_bar": "2026-08-18T09:01:00+08:00",
+      "first_raw_timestamp": {
+        "python_type": "builtins.int",
+        "repr": "1787043660000000000",
+        "text": "1787043660000000000"
+      },
+      "is_complete": false,
+      "issues": [
+        "SOURCE_COMPLETION_UNPROVEN",
+        "SOURCE_FLOAT_LOSSY"
+      ],
+      "last_bar": "2026-08-18T13:30:00+08:00",
+      "last_raw_timestamp": {
+        "python_type": "builtins.int",
+        "repr": "1787059800000000000",
+        "text": "1787059800000000000"
+      },
+      "query": {
+        "api": "Shioaji.kbars",
+        "interval_parameter_observed": false,
+        "parameters_observed": [
+          "contract",
+          "start",
+          "end",
+          "timeout"
+        ],
+        "query_end": "2026-08-18",
+        "query_start": "2026-08-18"
+      },
+      "raw_numeric_representation": {
+        "Close": {
+          "builtins.float": 266
+        },
+        "High": {
+          "builtins.float": 266
+        },
+        "Low": {
+          "builtins.float": 266
+        },
+        "Open": {
+          "builtins.float": 266
+        },
+        "Volume": {
+          "builtins.int": 266
+        }
+      },
+      "raw_rows_digest": "2854b6ab8c310aa2867b51b4b2d0d44efceabc27ea442bef6d82726130f23b63",
+      "raw_timestamp_representation": {
+        "builtins.int": 266
+      },
+      "resolved_sessions": [
+        {
+          "bar_count": 266,
+          "coverage_complete": true,
+          "expected_session": true,
+          "first_bar": "2026-08-18T09:01:00+08:00",
+          "is_complete": false,
+          "last_bar": "2026-08-18T13:30:00+08:00",
+          "resolved_session_date": "2026-08-18",
+          "source_completion_evidence": "UNAVAILABLE"
+        }
+      ],
+      "symbol": "2330",
+      "timestamp_semantics": "WALL_TIME_MAPPING_OBSERVED_NOT_PROVIDER_DOCUMENTED"
+    },
+    "full_session": {
+      "capture_name": "shioaji_intraday_full_session_sample",
+      "coverage_complete": true,
+      "direct_daily_shape": false,
+      "first_bar": "2026-08-18T09:01:00+08:00",
+      "first_raw_timestamp": {
+        "python_type": "builtins.int",
+        "repr": "1787043660000000000",
+        "text": "1787043660000000000"
+      },
+      "is_complete": false,
+      "issues": [
+        "SOURCE_COMPLETION_UNPROVEN",
+        "SOURCE_FLOAT_LOSSY"
+      ],
+      "last_bar": "2026-08-18T13:30:00+08:00",
+      "last_raw_timestamp": {
+        "python_type": "builtins.int",
+        "repr": "1787059800000000000",
+        "text": "1787059800000000000"
+      },
+      "query": {
+        "api": "Shioaji.kbars",
+        "interval_parameter_observed": false,
+        "parameters_observed": [
+          "contract",
+          "start",
+          "end",
+          "timeout"
+        ],
+        "query_end": "2026-08-18",
+        "query_start": "2026-08-18"
+      },
+      "raw_numeric_representation": {
+        "Close": {
+          "builtins.float": 266
+        },
+        "High": {
+          "builtins.float": 266
+        },
+        "Low": {
+          "builtins.float": 266
+        },
+        "Open": {
+          "builtins.float": 266
+        },
+        "Volume": {
+          "builtins.int": 266
+        }
+      },
+      "raw_rows_digest": "2854b6ab8c310aa2867b51b4b2d0d44efceabc27ea442bef6d82726130f23b63",
+      "raw_timestamp_representation": {
+        "builtins.int": 266
+      },
+      "resolved_sessions": [
+        {
+          "bar_count": 266,
+          "coverage_complete": true,
+          "expected_session": true,
+          "first_bar": "2026-08-18T09:01:00+08:00",
+          "is_complete": false,
+          "last_bar": "2026-08-18T13:30:00+08:00",
+          "resolved_session_date": "2026-08-18",
+          "source_completion_evidence": "UNAVAILABLE"
+        }
+      ],
+      "symbol": "2330",
+      "timestamp_semantics": "WALL_TIME_MAPPING_OBSERVED_NOT_PROVIDER_DOCUMENTED"
+    },
+    "partial_session": {
+      "capture_name": "shioaji_partial_session_sample",
+      "coverage_complete": false,
+      "direct_daily_shape": false,
+      "first_bar": "2026-08-19T09:01:00+08:00",
+      "first_raw_timestamp": {
+        "python_type": "builtins.int",
+        "repr": "1787130060000000000",
+        "text": "1787130060000000000"
+      },
+      "is_complete": false,
+      "issues": [
+        "INTRADAY_COVERAGE_INCOMPLETE:2026-08-19",
+        "SOURCE_COMPLETION_UNPROVEN",
+        "SOURCE_FLOAT_LOSSY",
+        "TIMESTAMP_AFTER_CAPTURE_TIME"
+      ],
+      "last_bar": "2026-08-19T12:17:00+08:00",
+      "last_raw_timestamp": {
+        "python_type": "builtins.int",
+        "repr": "1787141820000000000",
+        "text": "1787141820000000000"
+      },
+      "query": {
+        "api": "Shioaji.kbars",
+        "interval_parameter_observed": false,
+        "parameters_observed": [
+          "contract",
+          "start",
+          "end",
+          "timeout"
+        ],
+        "query_end": "2026-08-19",
+        "query_start": "2026-08-19"
+      },
+      "raw_numeric_representation": {
+        "Close": {
+          "builtins.float": 197
+        },
+        "High": {
+          "builtins.float": 197
+        },
+        "Low": {
+          "builtins.float": 197
+        },
+        "Open": {
+          "builtins.float": 197
+        },
+        "Volume": {
+          "builtins.int": 197
+        }
+      },
+      "raw_rows_digest": "f2b52427b49f0daf9014de6a3687f2ad07d43aba1c1acdaeb7fa95c1efa67000",
+      "raw_timestamp_representation": {
+        "builtins.int": 197
+      },
+      "resolved_sessions": [
+        {
+          "bar_count": 197,
+          "coverage_complete": false,
+          "expected_session": true,
+          "first_bar": "2026-08-19T09:01:00+08:00",
+          "is_complete": false,
+          "last_bar": "2026-08-19T12:17:00+08:00",
+          "resolved_session_date": "2026-08-19",
+          "source_completion_evidence": "UNAVAILABLE"
+        }
+      ],
+      "symbol": "2330",
+      "timestamp_semantics": "WALL_TIME_MAPPING_OBSERVED_NOT_PROVIDER_DOCUMENTED"
+    }
+  },
+  "schema_version": "daily_kbar_source_qualification_v1",
+  "session_contract": {
+    "authority": "TWSE",
+    "explicitly_non_trading_dates": [
+      "2026-01-01",
+      "2026-02-12",
+      "2026-02-13",
+      "2026-02-15",
+      "2026-02-16",
+      "2026-02-17",
+      "2026-02-18",
+      "2026-02-19",
+      "2026-02-20",
+      "2026-02-27",
+      "2026-02-28",
+      "2026-04-03",
+      "2026-04-04",
+      "2026-04-05",
+      "2026-04-06",
+      "2026-05-01",
+      "2026-06-19",
+      "2026-09-25",
+      "2026-09-28",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-25",
+      "2026-10-26",
+      "2026-12-25"
+    ],
+    "official_csv_sha256": "2127b6c20ea3dbdb47763b99115b445a49994faffe54de9d5cd9bfa70c2b4f0b",
+    "regular_session": {
+      "closing_interruption_latest_end": "13:33:00",
+      "end": "13:30:00",
+      "opening_interruption_latest_start": "09:02:00",
+      "start": "09:00:00"
+    },
+    "source_retrieved_at": "2026-08-19T12:16:20.178732+08:00",
+    "source_url": "https://www.twse.com.tw/holidaySchedule/holidaySchedule?response=csv",
+    "timezone": "Asia/Taipei",
+    "version": "twse_holiday_schedule_2026_v1"
+  }
+}

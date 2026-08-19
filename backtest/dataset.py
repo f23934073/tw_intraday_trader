@@ -6,8 +6,10 @@ import hashlib
 import json
 import os
 import shutil
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping
 from uuid import uuid4
@@ -22,6 +24,96 @@ _TAIPEI = ZoneInfo("Asia/Taipei")
 _MAX_PROVIDER_DAYS = 29
 ProgressCallback = Callable[[float, str], None]
 Cancelled = Callable[[], bool]
+
+
+def _canonical_daily_decimal(value: Decimal | int | float | str) -> Decimal:
+    """Freeze equivalent daily numeric values to one Decimal representation."""
+    parsed = decimal(value)
+    if not parsed.is_finite():
+        raise ValueError("daily dataset Decimal must be finite")
+    if parsed == 0:
+        return Decimal("0")
+    return Decimal(format(parsed.normalize(), "f"))
+
+
+class _CadenceEvidence:
+    """Coverage-weighted cadence evidence grouped by symbol and session."""
+
+    def __init__(self) -> None:
+        self._last_by_session: dict[tuple[str, date], datetime] = {}
+        self._observations: Counter[tuple[str, date]] = Counter()
+        self._gap_seconds: Counter[int] = Counter()
+        self._minute_aligned = True
+        self._taipei_timezone = True
+
+    def add(self, bar: HistoricalBar) -> None:
+        session = (bar.symbol, bar.timestamp.date())
+        previous = self._last_by_session.get(session)
+        if previous is not None:
+            seconds = int((bar.timestamp - previous).total_seconds())
+            if seconds > 0:
+                self._gap_seconds[seconds] += 1
+        self._last_by_session[session] = bar.timestamp
+        self._observations[session] += 1
+        self._minute_aligned = self._minute_aligned and (
+            bar.timestamp.second == 0 and bar.timestamp.microsecond == 0
+        )
+        self._taipei_timezone = self._taipei_timezone and (
+            bar.timestamp.utcoffset() == timedelta(hours=8)
+        )
+
+    def result(self) -> tuple[str, tuple[str, ...], dict[str, Any]]:
+        total_gaps = sum(self._gap_seconds.values())
+        dominant_seconds: int | None = None
+        dominant_count = 0
+        if self._gap_seconds:
+            dominant_seconds, dominant_count = self._gap_seconds.most_common(1)[0]
+        dominant_ratio = dominant_count / total_gaps if total_gaps else 0.0
+        intraday_sessions = sum(count > 1 for count in self._observations.values())
+        max_bars = max(self._observations.values(), default=0)
+        capabilities = ["OHLCV"]
+        if intraday_sessions and self._minute_aligned and self._taipei_timezone:
+            capabilities.extend(("KBAR_INTRADAY", "SESSION_BOUNDARIES"))
+        if (
+            intraday_sessions
+            and self._minute_aligned
+            and self._taipei_timezone
+            and dominant_seconds == 60
+            and dominant_ratio >= 0.80
+        ):
+            capabilities.append("KBAR_1M")
+        if "KBAR_1M" in capabilities:
+            profile = "KBAR_1M_V1"
+        elif "KBAR_INTRADAY" in capabilities:
+            profile = "KBAR_INTRADAY_V1"
+        else:
+            profile = "KBAR_DAILY_TEST_V1"
+        summary = {
+            "method": "SYMBOL_SESSION_GAP_V1",
+            "session_count": len(self._observations),
+            "intraday_session_count": intraday_sessions,
+            "max_bars_per_session": max_bars,
+            "observed_gap_count": total_gaps,
+            "dominant_interval_seconds": dominant_seconds,
+            "dominant_interval_ratio": dominant_ratio,
+            "minute_aligned": self._minute_aligned,
+            "taipei_timezone": self._taipei_timezone,
+        }
+        return profile, tuple(capabilities), summary
+
+
+def _taipei_timestamp(timestamp: datetime) -> datetime:
+    """Canonicalize a Provider Kbar event time to Taiwan market time."""
+
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        raise ValueError("Provider Kbar timestamp 必須包含 timezone")
+    return timestamp.astimezone(_TAIPEI)
+
+
+def _taipei_session_date(timestamp: datetime) -> date:
+    """Resolve the Taiwan market session date for a Provider Kbar."""
+
+    return _taipei_timestamp(timestamp).date()
 
 
 @dataclass(frozen=True)
@@ -63,6 +155,14 @@ class DatasetManifest:
     delta_bar_count: int = 0
     symbol_last_timestamps: tuple[tuple[str, str], ...] = ()
     universe_selection: str = "ALL_CURRENT"
+    cadence_summary: Mapping[str, Any] = field(default_factory=dict)
+    includes_cadence_summary: bool = field(default=True, repr=False, compare=False)
+    daily_bar_contract: str | None = None
+    derivation: Mapping[str, Any] | None = None
+    session_contract: Mapping[str, Any] | None = None
+    price_adjustment_policy: str | None = None
+    corporate_action_adjusted: bool | None = None
+    volume_contract: Mapping[str, Any] | None = None
 
     @property
     def manifest_digest(self) -> str:
@@ -94,6 +194,22 @@ class DatasetManifest:
             ],
             "universe_selection": self.universe_selection,
         }
+        if self.includes_cadence_summary:
+            value["cadence_summary"] = dict(self.cadence_summary)
+        # Keep legacy manifest bytes and historical result digests unchanged:
+        # new daily-contract fields are serialised only when explicitly set.
+        if self.daily_bar_contract is not None:
+            value["daily_bar_contract"] = self.daily_bar_contract
+        if self.derivation is not None:
+            value["derivation"] = dict(self.derivation)
+        if self.session_contract is not None:
+            value["session_contract"] = dict(self.session_contract)
+        if self.price_adjustment_policy is not None:
+            value["price_adjustment_policy"] = self.price_adjustment_policy
+        if self.corporate_action_adjusted is not None:
+            value["corporate_action_adjusted"] = self.corporate_action_adjusted
+        if self.volume_contract is not None:
+            value["volume_contract"] = dict(self.volume_contract)
         if include_digest:
             value["manifest_digest"] = self.manifest_digest
         return value
@@ -127,6 +243,34 @@ class DatasetManifest:
                 for item in value.get("symbol_last_timestamps", ())
             ),
             universe_selection=str(value.get("universe_selection", "ALL_CURRENT")),
+            cadence_summary=dict(value.get("cadence_summary") or {}),
+            includes_cadence_summary="cadence_summary" in value,
+            daily_bar_contract=(
+                str(value["daily_bar_contract"])
+                if value.get("daily_bar_contract") is not None
+                else None
+            ),
+            derivation=(dict(value["derivation"]) if value.get("derivation") is not None else None),
+            session_contract=(
+                dict(value["session_contract"])
+                if value.get("session_contract") is not None
+                else None
+            ),
+            price_adjustment_policy=(
+                str(value["price_adjustment_policy"])
+                if value.get("price_adjustment_policy") is not None
+                else None
+            ),
+            corporate_action_adjusted=(
+                bool(value["corporate_action_adjusted"])
+                if value.get("corporate_action_adjusted") is not None
+                else None
+            ),
+            volume_contract=(
+                dict(value["volume_contract"])
+                if value.get("volume_contract") is not None
+                else None
+            ),
         )
 
 
@@ -166,7 +310,7 @@ class HistoricalDatasetCatalog:
     def load_bars(self, dataset_id: str) -> list[HistoricalBar]:
         manifest = self.get_manifest(dataset_id)
         if manifest.storage_format == "JSONL_FULL_V1":
-            bars = self._load_payload(dataset_id, "bars.jsonl", manifest.bars_sha256)
+            bars = list(self.iter_bars(dataset_id))
         elif manifest.storage_format == "JSONL_DELTA_V1":
             if not manifest.parent_dataset_id:
                 raise ValueError(f"增量資料集 {dataset_id} 缺少 parent_dataset_id")
@@ -180,6 +324,41 @@ class HistoricalDatasetCatalog:
         if len(bars) != manifest.bar_count:
             raise ValueError(f"資料集 {dataset_id} bar count 不符，拒絕回測")
         return sorted(bars, key=lambda value: (value.timestamp, value.symbol))
+
+    def iter_bars(self, dataset_id: str) -> Iterator[HistoricalBar]:
+        """Yield verified full JSONL bars without creating a second full-size list.
+
+        The engine still orders events deterministically before replay.  This
+        method removes the catalog's otherwise redundant list allocation for
+        full snapshots while keeping checksum and bar-count checks fail-closed.
+        Delta datasets retain their existing merge-and-deduplicate semantics.
+        """
+
+        manifest = self.get_manifest(dataset_id)
+        if manifest.storage_format == "JSONL_FULL_V1":
+            return self._iter_full_dataset(
+                dataset_id,
+                manifest.bar_count,
+                manifest.bars_sha256,
+            )
+        if manifest.storage_format == "JSONL_DELTA_V1":
+            # A delta requires parent/child merge and conflict validation, so
+            # its canonical ordering is still materialized exactly once here.
+            return iter(self.load_bars(dataset_id))
+        raise ValueError(f"資料集 {dataset_id} storage format 不支援")
+
+    def _iter_full_dataset(
+        self,
+        dataset_id: str,
+        expected_bar_count: int,
+        expected_checksum: str,
+    ) -> Iterator[HistoricalBar]:
+        count = 0
+        for bar in self._iter_payload(dataset_id, "bars.jsonl", expected_checksum):
+            count += 1
+            yield bar
+        if count != expected_bar_count:
+            raise ValueError(f"資料集 {dataset_id} bar count 不符，拒絕回測")
 
     def symbol_last_timestamps(self, dataset_id: str) -> dict[str, datetime]:
         """Return compact per-symbol watermarks, scanning legacy datasets once."""
@@ -249,6 +428,210 @@ class HistoricalDatasetCatalog:
             issues=tuple(issues),
             universe_selection="EXPLICIT",
         )
+
+    def create_derived_daily_dataset(
+        self,
+        *,
+        dataset_id: str,
+        base_dataset_id: str,
+        completion_proofs: Mapping[tuple[str, date], str],
+        session_contract: Mapping[str, Any],
+        price_adjustment_policy: str,
+        corporate_action_adjusted: bool,
+        volume_contract: Mapping[str, Any],
+        issues: Iterable[str] = (),
+    ) -> DatasetManifest:
+        """Materialise a sealed daily series from verified intraday sessions.
+
+        The caller must provide an evidence digest for every parent
+        ``(symbol, session_date)`` being aggregated.  This prevents the G0
+        sample from being misused as blanket evidence for an arbitrary provider
+        dataset.  The parent stays immutable and the daily child gets a full
+        JSONL payload plus parent lineage in its manifest.
+        """
+        base = self.get_manifest(base_dataset_id)
+        if not {"OHLCV", "KBAR_INTRADAY"}.issubset(base.capabilities):
+            raise ValueError("daily derivation requires an intraday OHLCV parent dataset")
+        if price_adjustment_policy != "RAW":
+            raise ValueError("daily v1 only supports price_adjustment_policy=RAW")
+        if corporate_action_adjusted:
+            raise ValueError("daily v1 cannot claim corporate action adjustment")
+        if not str(session_contract.get("version") or "").strip():
+            raise ValueError("daily derivation requires a versioned session contract")
+        if str(volume_contract.get("scope") or "") != "REGULAR_SESSION":
+            raise ValueError("daily derivation requires REGULAR_SESSION volume scope")
+        if str(volume_contract.get("unit") or "") != "COMMON_LOT":
+            raise ValueError("daily derivation requires COMMON_LOT volume unit")
+
+        grouped: dict[tuple[str, date], list[HistoricalBar]] = {}
+        for bar in self.load_bars(base_dataset_id):
+            if bar.session_date is None:
+                raise ValueError(
+                    "daily derivation requires calendar-resolved session_date on every parent bar"
+                )
+            grouped.setdefault((bar.symbol, bar.session_date), []).append(bar)
+        if not grouped:
+            raise ValueError("daily derivation parent dataset has no bars")
+        missing_proofs = sorted(
+            f"{symbol}:{session.isoformat()}"
+            for symbol, session in grouped
+            if not str(completion_proofs.get((symbol, session), "")).strip()
+        )
+        if missing_proofs:
+            raise ValueError(
+                "daily derivation requires completion evidence for every session: "
+                + ", ".join(missing_proofs[:5])
+            )
+        unexpected_proofs = sorted(
+            f"{symbol}:{session.isoformat()}"
+            for symbol, session in completion_proofs
+            if (symbol, session) not in grouped
+        )
+        if unexpected_proofs:
+            raise ValueError(
+                "daily derivation completion evidence does not match the parent dataset: "
+                + ", ".join(unexpected_proofs[:5])
+            )
+        proof_digests = {
+            f"{symbol}:{session.isoformat()}": completion_proofs[(symbol, session)]
+            for symbol, session in sorted(grouped)
+        }
+        derivation = {
+            "version": "daily-ohclv-v1",
+            "parent_dataset_id": base.dataset_id,
+            "parent_dataset_digest": base.manifest_digest,
+            "completion_proof_digests": proof_digests,
+        }
+        all_issues = tuple(
+            dict.fromkeys(
+                (
+                    *base.issues,
+                    *issues,
+                    "RAW_PRICE_UNADJUSTED",
+                    "FORMAL_RESEARCH_INELIGIBLE",
+                )
+            )
+        )
+        final_dir = self._dataset_dir(dataset_id)
+        if final_dir.is_dir():
+            existing = self.get_manifest(dataset_id)
+            compatible = (
+                existing.source == "DERIVED_FINALIZED_SESSION_V1"
+                and existing.profile == "KBAR_DAILY_V1"
+                and existing.capabilities == ("OHLCV", "KBAR_DAILY")
+                and existing.derivation == derivation
+                and existing.session_contract == dict(session_contract)
+                and existing.price_adjustment_policy == price_adjustment_policy
+                and existing.corporate_action_adjusted is False
+                and existing.volume_contract == dict(volume_contract)
+                and existing.issues == all_issues
+            )
+            if not compatible:
+                raise ValueError(
+                    f"daily dataset {dataset_id} already exists with a different immutable contract"
+                )
+            return existing
+
+        daily_bars: list[HistoricalBar] = []
+        coverage: dict[str, dict[str, Any]] = {}
+        for (symbol, session), session_bars in sorted(grouped.items()):
+            ordered = sorted(session_bars, key=lambda item: item.timestamp)
+            if len({bar.timestamp for bar in ordered}) != len(ordered):
+                raise ValueError(f"daily derivation found duplicate timestamps: {symbol} {session}")
+            if any(bar.timestamp.date() != session for bar in ordered):
+                raise ValueError(
+                    "daily derivation source timestamp/session_date mismatch: "
+                    f"{symbol} {session.isoformat()}"
+                )
+            first, last = ordered[0], ordered[-1]
+            daily_bars.append(
+                HistoricalBar(
+                    symbol=symbol,
+                    name=first.name,
+                    market=first.market,
+                    timestamp=last.timestamp,
+                    open=_canonical_daily_decimal(first.open),
+                    high=_canonical_daily_decimal(max(bar.high for bar in ordered)),
+                    low=_canonical_daily_decimal(min(bar.low for bar in ordered)),
+                    close=_canonical_daily_decimal(last.close),
+                    volume=sum(bar.volume for bar in ordered),
+                    amount=_canonical_daily_decimal(
+                        sum(
+                            bar.amount if bar.amount is not None else bar.close * bar.volume
+                            for bar in ordered
+                        )
+                    ),
+                    session_date=session,
+                    session_open_at=first.timestamp,
+                )
+            )
+            item = coverage.setdefault(
+                symbol,
+                {"resolved_session_count": 0, "first_session_date": session.isoformat(), "last_session_date": session.isoformat()},
+            )
+            item["resolved_session_count"] += 1
+            item["first_session_date"] = min(item["first_session_date"], session.isoformat())
+            item["last_session_date"] = max(item["last_session_date"], session.isoformat())
+
+        temporary_dir = self._root / f".{dataset_id}.tmp"
+        if temporary_dir.exists():
+            shutil.rmtree(temporary_dir)
+        temporary_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            normalized = self._validate_and_sort(daily_bars)
+            payload = "".join(
+                canonical_json(bar.to_dict()) + "\n" for bar in normalized
+            ).encode("utf-8")
+            checksum = hashlib.sha256(payload).hexdigest()
+            (temporary_dir / "bars.jsonl").write_bytes(payload)
+            daily_watermarks = {
+                bar.symbol: bar.timestamp
+                for bar in sorted(normalized, key=lambda item: (item.symbol, item.timestamp))
+            }
+            session_dates = [bar.session_date for bar in normalized]
+            assert all(item is not None for item in session_dates)
+            resolved_dates = [item for item in session_dates if item is not None]
+            manifest = DatasetManifest(
+                dataset_id=dataset_id,
+                created_at=datetime.now(_TAIPEI),
+                source="DERIVED_FINALIZED_SESSION_V1",
+                profile="KBAR_DAILY_V1",
+                capabilities=("OHLCV", "KBAR_DAILY"),
+                start_date=min(resolved_dates).isoformat(),
+                end_date=max(resolved_dates).isoformat(),
+                requested_symbols=base.requested_symbols,
+                observed_symbols=tuple(sorted({bar.symbol for bar in normalized})),
+                bar_count=len(normalized),
+                bars_sha256=checksum,
+                universe_scope=base.universe_scope,
+                research_eligible=False,
+                issues=all_issues,
+                symbol_last_timestamps=tuple(
+                    (symbol, timestamp.isoformat())
+                    for symbol, timestamp in sorted(daily_watermarks.items())
+                ),
+                universe_selection=base.universe_selection,
+                cadence_summary={
+                    "method": "DERIVED_FINALIZED_SESSION_V1",
+                    "per_symbol": coverage,
+                    "completion_proof_count": len(completion_proofs),
+                },
+                daily_bar_contract="DERIVED_FINALIZED_SESSION_V1",
+                derivation=derivation,
+                session_contract=dict(session_contract),
+                price_adjustment_policy=price_adjustment_policy,
+                corporate_action_adjusted=False,
+                volume_contract=dict(volume_contract),
+            )
+            (temporary_dir / "manifest.json").write_text(
+                canonical_json(manifest.to_dict()) + "\n",
+                encoding="utf-8",
+            )
+            os.replace(temporary_dir, final_dir)
+            return manifest
+        except Exception:
+            shutil.rmtree(temporary_dir, ignore_errors=True)
+            raise
 
     def collect_from_provider(
         self,
@@ -365,13 +748,14 @@ class HistoricalDatasetCatalog:
                 symbol=instrument.symbol,
                 name=instrument.name,
                 market=instrument.market,
-                timestamp=row.timestamp,
+                timestamp=_taipei_timestamp(row.timestamp),
                 open=decimal(row.open),
                 high=decimal(row.high),
                 low=decimal(row.low),
                 close=decimal(row.close),
                 volume=row.volume,
                 amount=decimal(row.close) * row.volume,
+                session_date=_taipei_session_date(row.timestamp),
             )
             for row in rows
         )
@@ -401,9 +785,7 @@ class HistoricalDatasetCatalog:
             observed_symbols: set[str] = set()
             seen_partition_symbols: set[str] = set()
             symbol_last_timestamps: dict[str, datetime] = {}
-            current_session: tuple[str, date] | None = None
-            current_session_observations = 0
-            max_session_observations = 0
+            cadence = _CadenceEvidence()
             first_date: date | None = None
             last_date: date | None = None
             with (temporary_dir / "bars.jsonl").open("wb") as handle:
@@ -427,28 +809,18 @@ class HistoricalDatasetCatalog:
                         bar_count += 1
                         observed_symbols.add(bar.symbol)
                         symbol_last_timestamps[bar.symbol] = bar.timestamp
-                        session = (bar.symbol, bar.timestamp.date())
-                        if session == current_session:
-                            current_session_observations += 1
-                        else:
-                            max_session_observations = max(
-                                max_session_observations,
-                                current_session_observations,
-                            )
-                            current_session = session
-                            current_session_observations = 1
+                        cadence.add(bar)
                         first_date = bar.timestamp.date() if first_date is None else min(first_date, bar.timestamp.date())
                         last_date = bar.timestamp.date() if last_date is None else max(last_date, bar.timestamp.date())
             if bar_count == 0 or first_date is None or last_date is None:
                 raise ValueError("不可建立空的歷史資料集")
-            max_session_observations = max(max_session_observations, current_session_observations)
-            profile = "KBAR_1M_V1" if max_session_observations > 20 else "KBAR_DAILY_TEST_V1"
+            profile, capabilities, cadence_summary = cadence.result()
             manifest = DatasetManifest(
                 dataset_id=dataset_id,
                 created_at=datetime.now(_TAIPEI),
                 source=source,
                 profile=profile,
-                capabilities=("OHLCV",),
+                capabilities=capabilities,
                 start_date=first_date.isoformat(),
                 end_date=last_date.isoformat(),
                 requested_symbols=requested_symbols,
@@ -463,6 +835,7 @@ class HistoricalDatasetCatalog:
                     for symbol, timestamp in sorted(symbol_last_timestamps.items())
                 ),
                 universe_selection=universe_selection,
+                cadence_summary=cadence_summary,
             )
             (temporary_dir / "manifest.json").write_text(
                 canonical_json(manifest.to_dict()) + "\n",
@@ -498,6 +871,7 @@ class HistoricalDatasetCatalog:
         try:
             checksum = hashlib.sha256()
             delta_bar_count = 0
+            delta_bars: list[HistoricalBar] = []
             observed_symbols = set(base.observed_symbols)
             seen_partition_symbols: set[str] = set()
             latest_date = date.fromisoformat(base.end_date)
@@ -527,18 +901,25 @@ class HistoricalDatasetCatalog:
                         handle.write(payload)
                         checksum.update(payload)
                         delta_bar_count += 1
+                        delta_bars.append(bar)
                         observed_symbols.add(bar.symbol)
                         watermarks[bar.symbol] = bar.timestamp
                         latest_date = max(latest_date, bar.timestamp.date())
             if delta_bar_count == 0:
                 raise ValueError("不可建立空的增量歷史資料集")
+            cadence = _CadenceEvidence()
+            for bar in self.load_bars(base_dataset_id):
+                cadence.add(bar)
+            for bar in delta_bars:
+                cadence.add(bar)
+            profile, capabilities, cadence_summary = cadence.result()
             combined_issues = tuple(dict.fromkeys((*base.issues, *issues)))
             manifest = DatasetManifest(
                 dataset_id=dataset_id,
                 created_at=datetime.now(_TAIPEI),
                 source=source,
-                profile=base.profile,
-                capabilities=base.capabilities,
+                profile=profile,
+                capabilities=capabilities,
                 start_date=base.start_date,
                 end_date=latest_date.isoformat(),
                 requested_symbols=tuple(
@@ -558,6 +939,7 @@ class HistoricalDatasetCatalog:
                     for symbol, timestamp in sorted(watermarks.items())
                 ),
                 universe_selection=base.universe_selection,
+                cadence_summary=cadence_summary,
             )
             (temporary_dir / "manifest.json").write_text(
                 canonical_json(manifest.to_dict()) + "\n",
@@ -622,21 +1004,21 @@ class HistoricalDatasetCatalog:
             payload = "".join(canonical_json(bar.to_dict()) + "\n" for bar in bars).encode("utf-8")
             checksum = hashlib.sha256(payload).hexdigest()
             (temporary_dir / "bars.jsonl").write_bytes(payload)
-            observations_per_date: dict[date, int] = {}
+            cadence = _CadenceEvidence()
             symbol_last_timestamps: dict[str, datetime] = {}
             for bar in bars:
-                observations_per_date[bar.timestamp.date()] = observations_per_date.get(bar.timestamp.date(), 0) + 1
+                cadence.add(bar)
                 symbol_last_timestamps[bar.symbol] = max(
                     bar.timestamp,
                     symbol_last_timestamps.get(bar.symbol, bar.timestamp),
                 )
-            profile = "KBAR_1M_V1" if max(observations_per_date.values()) > 20 else "KBAR_DAILY_TEST_V1"
+            profile, capabilities, cadence_summary = cadence.result()
             manifest = DatasetManifest(
                 dataset_id=dataset_id,
                 created_at=datetime.now(_TAIPEI),
                 source=source,
                 profile=profile,
-                capabilities=("OHLCV",),
+                capabilities=capabilities,
                 start_date=bars[0].timestamp.date().isoformat(),
                 end_date=bars[-1].timestamp.date().isoformat(),
                 requested_symbols=requested_symbols,
@@ -651,6 +1033,7 @@ class HistoricalDatasetCatalog:
                     for symbol, timestamp in sorted(symbol_last_timestamps.items())
                 ),
                 universe_selection=universe_selection,
+                cadence_summary=cadence_summary,
             )
             (temporary_dir / "manifest.json").write_text(
                 canonical_json(manifest.to_dict()) + "\n",

@@ -184,6 +184,22 @@ def test_durable_service_persists_run_trade_and_comparison() -> None:
             service.close()
 
 
+def test_full_jsonl_iterator_preserves_checksum_and_bar_contract_without_catalog_list():
+    with TemporaryDirectory() as directory:
+        catalog = HistoricalDatasetCatalog(Path(directory) / "datasets")
+        manifest = catalog.create_imported_dataset(
+            bars=_bars(),
+            source="fixture",
+            universe_scope="DATE_EFFECTIVE",
+            research_eligible=True,
+        )
+
+        iterated = list(catalog.iter_bars(manifest.dataset_id))
+
+        assert iterated == catalog.load_bars(manifest.dataset_id)
+        assert len(iterated) == manifest.bar_count
+
+
 def _create_and_wait(
     service: BacktestApplicationService,
     dataset_id: str,

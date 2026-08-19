@@ -1,0 +1,45 @@
+{
+  "daily_capture": {
+    "direct_daily_shape": false,
+    "issues": [
+      "SOURCE_COMPLETION_UNPROVEN",
+      "SOURCE_FLOAT_LOSSY"
+    ],
+    "raw_numeric_representation": {
+      "Close": {
+        "builtins.float": 266
+      },
+      "High": {
+        "builtins.float": 266
+      },
+      "Low": {
+        "builtins.float": 266
+      },
+      "Open": {
+        "builtins.float": 266
+      },
+      "Volume": {
+        "builtins.int": 266
+      }
+    },
+    "raw_timestamp_representation": {
+      "builtins.int": 266
+    },
+    "timestamp_semantics": "WALL_TIME_MAPPING_OBSERVED_NOT_PROVIDER_DOCUMENTED"
+  },
+  "direct_daily_source_eligible": false,
+  "get_kbars_request": {
+    "api": "Shioaji.kbars",
+    "interval_parameter_observed": false,
+    "parameters_observed": [
+      "contract",
+      "start",
+      "end",
+      "timeout"
+    ],
+    "query_end": "2026-08-18",
+    "query_start": "2026-08-18"
+  },
+  "provider": "SHIOAJI",
+  "schema_version": "daily_kbar_source_qualification_v1"
+}

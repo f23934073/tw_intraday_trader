@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 
 
@@ -34,11 +35,11 @@ class SimulationOrder:
     name: str
     side: OrderSide
     lots: int
-    limit_price: float
+    limit_price: Decimal
     status: OrderStatus
     submitted_at: datetime
     updated_at: datetime
-    filled_price: float | None = None
+    filled_price: Decimal | None = None
     filled_quantity: int = 0
     reason: str | None = None
 
@@ -55,4 +56,4 @@ class SimulationPosition:
     symbol: str
     name: str
     quantity: int
-    average_price: float
+    average_price: Decimal

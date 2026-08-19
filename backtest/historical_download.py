@@ -13,12 +13,18 @@ from zoneinfo import ZoneInfo
 from backtest.dataset import DatasetCancelled, HistoricalDatasetCatalog, HistoricalInstrument
 from backtest.domain import HistoricalBar, canonical_json
 from backtest.repository import BacktestRepository
-from market_data.provider import MarketDataLimitReached, MarketDataProvider
+from market_data.provider import (
+    MarketDataLimitReached,
+    MarketDataProvider,
+    MarketDataTemporarilyUnavailable,
+)
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
 ProgressReporter = Callable[[str], None]
 _LEGACY_TRANSIENT_EMPTY = "資料來源未回傳 Kbar"
+_RETRY_SYMBOL_PREFIX = "[RETRY_SYMBOL="
+_CURRENT_SYMBOL_PREFIX = "[CURRENT_SYMBOL="
 
 
 class HistoricalDownloadPaused(RuntimeError):
@@ -104,11 +110,11 @@ class ResumableHistoricalDownloader:
         )
         start = date.fromisoformat(str(request["start_date"]))
         end = date.fromisoformat(str(request["end_date"]))
+        retry_symbol = _retry_symbol_from_job(job, instruments)
         completed, retry_from = _resume_state(
             instruments,
             self._repository.list_history_partitions(job_id),
-            requested_start=start,
-            requested_end=end,
+            retry_symbol=retry_symbol,
         )
         resume_message = f"從資料庫接續；已完成 {len(completed)}/{len(instruments)} 檔"
         if retry_from is not None:
@@ -121,10 +127,22 @@ class ResumableHistoricalDownloader:
             error_message=None,
         )
         self._report(resume_message)
+        current_symbol: str | None = None
         try:
             for instrument in instruments:
                 if instrument.symbol in completed:
                     continue
+                current_symbol = instrument.symbol
+                self._repository.update_job(
+                    job_id,
+                    status="RUNNING",
+                    progress=len(completed) / len(instruments),
+                    progress_message=(
+                        f"{_CURRENT_SYMBOL_PREFIX}{current_symbol}] "
+                        f"正在下載；已確認 {len(completed)}/{len(instruments)} 檔"
+                    ),
+                    error_message=None,
+                )
                 try:
                     bars = self._catalog.fetch_provider_bars(
                         self._provider,
@@ -159,8 +177,10 @@ class ResumableHistoricalDownloader:
                     status="RUNNING",
                     progress=len(completed) / len(instruments),
                     progress_message=message,
+                    error_message=None,
                 )
                 self._report(message)
+                current_symbol = None
 
             partitions = self._repository.list_history_partitions(job_id)
             bar_count = sum(int(item["bar_count"]) for item in partitions)
@@ -197,36 +217,43 @@ class ResumableHistoricalDownloader:
             )
             return manifest.to_dict()
         except KeyboardInterrupt:
+            pending_symbol = _pending_symbol(instruments, completed, current_symbol)
             self._repository.update_job(
                 job_id,
                 status="PAUSED",
                 progress=len(completed) / len(instruments),
                 progress_message=f"已暫停；資料庫已保存 {len(completed)}/{len(instruments)} 檔",
-                error_message=None,
+                error_message=_retry_error(pending_symbol, "使用者中斷"),
             )
             raise
-        except (HistoricalDownloadPaused, MarketDataLimitReached) as error:
+        except (
+            HistoricalDownloadPaused,
+            MarketDataLimitReached,
+            MarketDataTemporarilyUnavailable,
+        ) as error:
             message = str(error)
+            pending_symbol = _pending_symbol(instruments, completed, current_symbol)
             self._repository.update_job(
                 job_id,
                 status="PAUSED",
                 progress=len(completed) / len(instruments),
                 progress_message=(
-                    "已暫停：Provider 額度／空回應保護；"
+                    "已暫停：Provider 暫時不可用／額度／空回應保護；"
                     f"已確認 {len(completed)}/{len(instruments)} 檔"
                 ),
-                error_message=message,
+                error_message=_retry_error(pending_symbol, message),
             )
             if isinstance(error, HistoricalDownloadPaused):
                 raise
             raise HistoricalDownloadPaused(message) from error
         except Exception as error:
+            pending_symbol = _pending_symbol(instruments, completed, current_symbol)
             self._repository.update_job(
                 job_id,
                 status="FAILED",
                 progress=len(completed) / len(instruments),
                 progress_message=f"下載失敗；可用同一 job id 接續（已保存 {len(completed)} 檔）",
-                error_message=str(error),
+                error_message=_retry_error(pending_symbol, str(error)),
             )
             raise
 
@@ -463,14 +490,14 @@ class IncrementalHistoricalSync:
                 error_message=None,
             )
             raise
-        except MarketDataLimitReached as error:
+        except (MarketDataLimitReached, MarketDataTemporarilyUnavailable) as error:
             message = str(error)
             self._repository.update_job(
                 job_id,
                 status="PAUSED",
                 progress=len(completed) / len(instruments),
                 progress_message=(
-                    "Provider 額度不足，增量同步已暫停；"
+                    "Provider 暫時不可用或額度不足，增量同步已暫停；"
                     f"已保存 {len(completed)}/{len(instruments)} 檔"
                 ),
                 error_message=message,
@@ -522,10 +549,9 @@ def _resume_state(
     instruments: tuple[HistoricalInstrument, ...],
     partitions: Iterable[Mapping[str, object]],
     *,
-    requested_start: date,
-    requested_end: date,
+    retry_symbol: str | None = None,
 ) -> tuple[set[str], str | None]:
-    """Keep valid checkpoints but replay a legacy rate/quota-damaged tail."""
+    """Keep valid checkpoints, retry one interrupted symbol, and repair an empty tail."""
 
     by_symbol = {str(item["symbol"]): item for item in partitions}
     empty_index: int | None = None
@@ -539,53 +565,89 @@ def _resume_state(
             empty_index = index
             break
 
-    # Older code had no request limiter. A one-minute Shioaji suspension could
-    # make the first ~two years of several consecutive symbols empty, then
-    # recover for the latest year and checkpoint the incomplete partition as
-    # successful. Detect that distinctive shared one-year boundary, but do not
-    # reject genuinely new listings whose first dates differ.
-    truncation_index: int | None = None
-    one_year_boundary = requested_end - timedelta(days=365)
-    covered_before = 0
-    boundary_run_start: int | None = None
-    boundary_run_length = 0
-    scan_end = empty_index if empty_index is not None else len(instruments)
-    for index, instrument in enumerate(instruments[:scan_end]):
-        partition = by_symbol.get(instrument.symbol)
-        start_value = partition.get("start_date") if partition is not None else None
-        partition_start = date.fromisoformat(str(start_value)) if start_value else None
-        if partition_start is not None and partition_start <= requested_start + timedelta(days=60):
-            covered_before += 1
-        near_one_year_boundary = (
-            partition_start is not None
-            and abs((partition_start - one_year_boundary).days) <= 7
-        )
-        if near_one_year_boundary:
-            if boundary_run_start is None:
-                boundary_run_start = index
-            boundary_run_length += 1
-            if covered_before >= 5 and boundary_run_length >= 5:
-                truncation_index = boundary_run_start
-                break
-        else:
-            boundary_run_start = None
-            boundary_run_length = 0
-
-    candidates = [
-        index
-        for index in (truncation_index, empty_index)
-        if index is not None
-    ]
-    suspect_index = min(candidates) if candidates else None
-
-    if suspect_index is None:
-        return set(by_symbol), None
     completed = {
         instrument.symbol
-        for instrument in instruments[:suspect_index]
+        for instrument in instruments
         if instrument.symbol in by_symbol
     }
-    return completed, instruments[suspect_index].symbol
+    if empty_index is not None:
+        for instrument in instruments[empty_index:]:
+            completed.discard(instrument.symbol)
+    if retry_symbol is not None:
+        completed.discard(retry_symbol)
+
+    retry_from = next(
+        (
+            instrument.symbol
+            for instrument in instruments
+            if instrument.symbol not in completed
+        ),
+        None,
+    )
+    return completed, retry_from
+
+
+def _retry_symbol_from_job(
+    job: Mapping[str, object],
+    instruments: tuple[HistoricalInstrument, ...],
+) -> str | None:
+    """Read the durable retry marker, with a narrow fallback for old clients."""
+
+    known_symbols = {instrument.symbol for instrument in instruments}
+    for value, prefix in (
+        (job.get("error_message"), _RETRY_SYMBOL_PREFIX),
+        (job.get("progress_message"), _CURRENT_SYMBOL_PREFIX),
+    ):
+        text = str(value or "")
+        start = text.find(prefix)
+        if start < 0:
+            continue
+        symbol_start = start + len(prefix)
+        symbol_end = text.find("]", symbol_start)
+        symbol = text[symbol_start:symbol_end] if symbol_end >= 0 else ""
+        if symbol in known_symbols:
+            return symbol
+
+    # Jobs started by the previous downloader did not persist their current
+    # symbol. Their progress was a contiguous prefix, so the next index is the
+    # safest one-time recovery point after FAILED/PAUSED.
+    status = str(job.get("status") or "")
+    progress_message = str(job.get("progress_message") or "")
+    legacy_interruption = status == "FAILED" or (
+        status == "PAUSED"
+        and (
+            progress_message.startswith("已暫停；資料庫已保存")
+            or progress_message.startswith("已暫停：Provider 額度／空回應保護")
+        )
+    )
+    if legacy_interruption and instruments:
+        completed_count = round(float(job.get("progress") or 0.0) * len(instruments))
+        if 0 <= completed_count < len(instruments):
+            return instruments[completed_count].symbol
+    return None
+
+
+def _pending_symbol(
+    instruments: tuple[HistoricalInstrument, ...],
+    completed: set[str],
+    current_symbol: str | None,
+) -> str | None:
+    if current_symbol is not None:
+        return current_symbol
+    return next(
+        (
+            instrument.symbol
+            for instrument in instruments
+            if instrument.symbol not in completed
+        ),
+        None,
+    )
+
+
+def _retry_error(symbol: str | None, message: str) -> str | None:
+    if symbol is None:
+        return message or None
+    return f"{_RETRY_SYMBOL_PREFIX}{symbol}] {message}".strip()
 
 
 def _decode_partition(partition: Mapping[str, object]) -> tuple[HistoricalBar, ...]:

@@ -91,6 +91,35 @@ def test_non_marketable_order_stays_out_of_holdings_and_can_be_cancelled():
     assert repeated["status"] == "CANCELLED"
 
 
+def test_pending_buy_reservation_blocks_aggregate_overcommit_and_releases_on_cancel():
+    service = SimulationService(MockProvider(), starting_cash=150_000)
+    first, _ = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price=100.0,
+        idempotency_key="reserved-buy-1",
+    )
+    second, _ = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price=100.0,
+        idempotency_key="reserved-buy-2",
+    )
+
+    assert first["status"] == "SUBMITTED"
+    assert second["status"] == "REJECTED"
+    assert second["reason"] == "可用虛擬現金不足"
+    assert service.session()["reserved_cash"] == 100_000.0
+    assert service.session()["available_cash"] == 50_000.0
+
+    service.cancel_order(first["order_id"], "cancel-reserved-buy")
+
+    assert service.session()["reserved_cash"] == 0.0
+    assert service.session()["available_cash"] == 150_000.0
+
+
 def test_sell_cannot_exceed_holdings_and_realizes_pnl_after_fill():
     service = SimulationService(MockProvider(), starting_cash=300_000)
     service.submit_order(

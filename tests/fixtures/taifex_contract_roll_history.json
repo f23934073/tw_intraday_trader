@@ -1,0 +1,21 @@
+{
+  "schema_version": "taifex_contract_roll_fixture_v0",
+  "source": "TEST_FIXTURE_ONLY",
+  "as_of": "2026-08-19T00:00:00+08:00",
+  "mappings": [
+    {
+      "effective_from": "2026-07-16",
+      "effective_to": "2026-08-19",
+      "contract_code": "TXF202608",
+      "delivery_month": "202608",
+      "last_trading_date": "2026-08-19"
+    },
+    {
+      "effective_from": "2026-08-20",
+      "effective_to": "2026-09-16",
+      "contract_code": "TXF202609",
+      "delivery_month": "202609",
+      "last_trading_date": "2026-09-16"
+    }
+  ]
+}

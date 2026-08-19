@@ -1,0 +1,24 @@
+{
+  "blockers": [],
+  "candidate_path_if_completion_is_later_proven": "DERIVED_FINALIZED_SESSION_V1",
+  "evidence_observations": [
+    "INTRADAY_COVERAGE_INCOMPLETE:2026-08-19",
+    "TIMESTAMP_AFTER_CAPTURE_TIME"
+  ],
+  "formal_research_blockers": [
+    "RAW_CORPORATE_ACTION_UNADJUSTED"
+  ],
+  "formal_research_eligible": false,
+  "next_required_evidence": [
+    "A reviewed canonical adapter if source floats must support formal numeric evidence"
+  ],
+  "p1_issues": [
+    "SOURCE_FLOAT_LOSSY"
+  ],
+  "qualification_issues": [
+    "SOURCE_FLOAT_LOSSY"
+  ],
+  "schema_version": "daily_kbar_source_qualification_v1",
+  "selected_path": "DERIVED_FINALIZED_SESSION_V1",
+  "status": "QUALIFIED_FOR_DERIVED_FINALIZED_SESSION_V1"
+}

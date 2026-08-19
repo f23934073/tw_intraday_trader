@@ -31,3 +31,4 @@ shioaji.log
 
 # Local immutable historical backtest datasets, SQLite results and temporary seals
 data/backtest/
+data/premarket/

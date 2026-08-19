@@ -1,7 +1,13 @@
 """Tests for the read-only dashboard snapshot."""
 
+from datetime import datetime
+
+from config.premarket import PREMARKET_CONTEXT_V0
 from dashboard.service import DashboardService
 from market_data.provider import MockProvider
+from premarket.artifacts import InMemoryPremarketArtifactRepository
+from premarket.calendar import TaifexTradingCalendar
+from premarket.service import PremarketContextService
 
 
 def test_dashboard_snapshot_uses_existing_scan_decisions():
@@ -51,3 +57,63 @@ def test_dashboard_snapshot_is_cached_until_explicit_refresh():
     second = service.snapshot()
 
     assert first is second
+
+
+def test_realtime_candidate_snapshot_skips_premarket_projection() -> None:
+    class FailingPremarket:
+        def projection(self):  # type: ignore[no-untyped-def]
+            raise AssertionError("realtime candidate scan must not load premarket")
+
+    snapshot = DashboardService(
+        MockProvider(),
+        premarket_service=FailingPremarket(),  # type: ignore[arg-type]
+    ).realtime_candidate_snapshot()
+
+    assert {candidate["symbol"] for candidate in snapshot["candidates"]} >= {
+        "3231",
+        "2376",
+    }
+
+
+def _premarket_service(provider: MockProvider) -> PremarketContextService:
+    return PremarketContextService(
+        source=provider,
+        calendar=TaifexTradingCalendar.from_path(PREMARKET_CONTEXT_V0.calendar_path),
+        config=PREMARKET_CONTEXT_V0,
+        artifacts=InMemoryPremarketArtifactRepository(),
+        now=lambda: datetime.fromisoformat("2026-08-22T05:07:00+08:00"),
+    )
+
+
+def test_dashboard_adds_observation_only_premarket_projection() -> None:
+    provider = MockProvider()
+    service = DashboardService(
+        provider,
+        premarket_service=_premarket_service(provider),
+    )
+
+    snapshot = service.refresh()
+
+    assert snapshot["premarket_context"]["status"] == "READY"
+    assert snapshot["premarket_context"]["metrics"]["session_move_pct"] == 0.75
+    assert snapshot["premarket_context"]["reconciliation"]["status"] == "PENDING"
+    assert snapshot["market"]["loaded_symbols"] == 5
+    assert {candidate["symbol"] for candidate in snapshot["candidates"]} >= {"3231", "2376"}
+
+
+def test_premarket_failure_does_not_block_stock_snapshot() -> None:
+    class FailingPremarketMock(MockProvider):
+        def get_taifex_night_session(self, window, contract_alias):  # type: ignore[no-untyped-def]
+            raise RuntimeError("fixture failure")
+
+    provider = FailingPremarketMock()
+    service = DashboardService(
+        provider,
+        premarket_service=_premarket_service(provider),
+    )
+
+    snapshot = service.refresh()
+
+    assert snapshot["premarket_context"]["status"] == "UNAVAILABLE"
+    assert snapshot["premarket_context"]["health"]["reasons"] == ["SOURCE_QUERY_FAILED"]
+    assert snapshot["market"]["loaded_symbols"] == 5

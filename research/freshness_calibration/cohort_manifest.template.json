@@ -1,0 +1,49 @@
+{
+  "schema_version": "freshness_calibration_cohort_manifest_v1",
+  "template": true,
+  "artifact_eligibility": "NOT_EVIDENCE",
+  "capture_timezone": "Asia/Taipei",
+  "status": "DRAFT_REVIEWER_INPUT_REQUIRED",
+  "reviewer": "<required>",
+  "frozen_at": "<required ISO-8601 timestamp>",
+  "symbols": [
+    {
+      "symbol": "<required high-liquidity symbol>",
+      "liquidity_tier": "high",
+      "selection_evidence": "<required reviewed source, date, and rationale>"
+    },
+    {
+      "symbol": "<required mid-liquidity symbol>",
+      "liquidity_tier": "mid",
+      "selection_evidence": "<required reviewed source, date, and rationale>"
+    },
+    {
+      "symbol": "<required low-liquidity symbol>",
+      "liquidity_tier": "low",
+      "selection_evidence": "<required reviewed source, date, and rationale>"
+    }
+  ],
+  "session_windows": [
+    {
+      "label": "opening",
+      "start_local": "<required HH:MM>",
+      "end_local": "<required HH:MM>"
+    },
+    {
+      "label": "continuous",
+      "start_local": "<required HH:MM>",
+      "end_local": "<required HH:MM>"
+    },
+    {
+      "label": "close",
+      "start_local": "<required HH:MM>",
+      "end_local": "<required HH:MM>"
+    }
+  ],
+  "rules": [
+    "Reviewer freezes the symbol-to-tier and label-to-window mapping before any capture for that cohort.",
+    "The CLI symbols and session-window label must exactly match this approved manifest.",
+    "Do not relabel a cohort after seeing its callback rate, gap distribution, or clock-skew count.",
+    "This file selects observation cohorts only; it does not contain, imply, or approve a freshness threshold."
+  ]
+}

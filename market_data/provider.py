@@ -10,15 +10,28 @@ from __future__ import annotations
 
 import os
 import random
+import json
 from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from threading import RLock
 from time import monotonic, sleep
 from typing import TYPE_CHECKING, Callable
 from zoneinfo import ZoneInfo
 
 from market_data.models import KBar, RealtimeQuoteUpdate, StockData
+from premarket.artifacts import canonical_json, sha256_text_digest
+from premarket.models import (
+    CompletenessStatus,
+    ContractIdentity,
+    ContractIdentityStatus,
+    HistoricalTick,
+    NightBar,
+    QualificationCapture,
+    SessionWindow,
+    SourceObservation,
+)
 
 if TYPE_CHECKING:
     pass
@@ -36,6 +49,10 @@ class MarketDataUsage:
 
 class MarketDataLimitReached(RuntimeError):
     """Raised before a historical query would exceed a Provider safety limit."""
+
+
+class MarketDataTemporarilyUnavailable(RuntimeError):
+    """Raised after bounded retries for a transient Provider failure."""
 
 
 class _RollingRequestLimiter:
@@ -95,6 +112,27 @@ class MarketDataProvider:
     def market_data_usage(self) -> MarketDataUsage | None:
         """Return traffic usage when the Provider exposes it."""
         return None
+
+    def supports_premarket_context(self) -> bool:
+        """Whether this provider can query a TAIFEX night-session candidate."""
+        return False
+
+    def get_taifex_night_session(
+        self,
+        window: SessionWindow,
+        contract_alias: str,
+    ) -> SourceObservation | None:
+        raise NotImplementedError
+
+    def supports_premarket_qualification(self) -> bool:
+        return False
+
+    def capture_taifex_night_qualification(
+        self,
+        window: SessionWindow,
+        contract_alias: str,
+    ) -> QualificationCapture:
+        raise NotImplementedError
 
     def supports_streaming_quotes(self) -> bool:
         """是否能推送正規化後的 Tick／BidAsk 行情。"""
@@ -280,6 +318,115 @@ class MockProvider(MarketDataProvider):
                 )
         return bars
 
+    def supports_premarket_context(self) -> bool:
+        return True
+
+    def supports_premarket_qualification(self) -> bool:
+        return True
+
+    def capture_taifex_night_qualification(
+        self,
+        window: SessionWindow,
+        contract_alias: str,
+    ) -> QualificationCapture:
+        observation = self.get_taifex_night_session(window, contract_alias)
+        ticks = (
+            HistoricalTick(window.start, observation.bars[0].open, 5),
+            HistoricalTick(window.start + timedelta(minutes=1), observation.bars[1].high, 5),
+            HistoricalTick(window.end - timedelta(minutes=2), observation.bars[0].low, 10),
+            HistoricalTick(window.end - timedelta(minutes=1), observation.bars[-1].close, 10),
+        )
+        raw_source_json = canonical_json(
+            {
+                "source": "MOCK_KBAR_TICK_QUALIFICATION",
+                "trading_date": window.trading_date,
+                "contract_alias": contract_alias,
+                "context_raw_source_digest": observation.raw_source_digest,
+                "ticks": tuple(
+                    {
+                        "timestamp": tick.timestamp,
+                        "close": tick.close,
+                        "volume": tick.volume,
+                    }
+                    for tick in ticks
+                ),
+            }
+        )
+        return QualificationCapture(
+            trading_date=window.trading_date,
+            contract_identity=observation.contract_identity,
+            bars=observation.bars,
+            ticks=ticks,
+            captured_at=datetime.now(ZoneInfo("Asia/Taipei")),
+            source="MOCK_KBAR_TICK_QUALIFICATION",
+            raw_source_digest=sha256_text_digest(raw_source_json),
+            raw_source_json=raw_source_json,
+        )
+
+    def get_taifex_night_session(
+        self,
+        window: SessionWindow,
+        contract_alias: str,
+    ) -> SourceObservation:
+        """Return an explicitly qualified deterministic fixture for local UI/tests."""
+        now = datetime.now(ZoneInfo("Asia/Taipei"))
+        bars = (
+            NightBar(
+                timestamp=window.start,
+                open=Decimal("24000"),
+                high=Decimal("24100"),
+                low=Decimal("23910"),
+                close=Decimal("24050"),
+                volume=10,
+            ),
+            NightBar(
+                timestamp=window.end - timedelta(minutes=1),
+                open=Decimal("24050"),
+                high=Decimal("24220"),
+                low=Decimal("24020"),
+                close=Decimal("24180"),
+                volume=20,
+            ),
+        )
+        raw_source_json = canonical_json(
+            {
+                "source": "MOCK_FIXTURE",
+                "trading_date": window.trading_date,
+                "contract_alias": contract_alias,
+                "bars": tuple(
+                    {
+                        "timestamp": bar.timestamp,
+                        "open": bar.open,
+                        "high": bar.high,
+                        "low": bar.low,
+                        "close": bar.close,
+                        "volume": bar.volume,
+                    }
+                    for bar in bars
+                ),
+            }
+        )
+        return SourceObservation(
+            trading_date=window.trading_date,
+            contract_identity=ContractIdentity(
+                status=ContractIdentityStatus.RESOLVED_AS_OF_QUERY,
+                resolution_method="MOCK_QUERY_TIME_ALIAS",
+                resolved_contract_code=f"TXF{window.trading_date:%Y%m}",
+                delivery_month=f"{window.trading_date:%Y%m}",
+            ),
+            bars=bars,
+            queried_at=now,
+            received_at=now,
+            provider_reference_price=Decimal("24000"),
+            provider_reference_updated_at=window.start,
+            provider_reference_source="MOCK_CONTRACT_INFO",
+            completeness_status=CompletenessStatus.COMPLETE,
+            completeness_evidence=("MOCK_FIXTURE_SESSION_COMPLETE",),
+            source="MOCK_FIXTURE",
+            raw_source_digest=sha256_text_digest(raw_source_json),
+            raw_source_json=raw_source_json,
+        )
+
     @staticmethod
     def _mock_daily_kbar(data: dict, bar_date: date, end: date) -> KBar:
         """建立一根與目前 Mock 快照一致的模擬日 K。"""
@@ -363,6 +510,9 @@ class ShioajiProvider(MarketDataProvider):
     KBAR_MAX_CALLS_PER_10_SECONDS = 40
     KBAR_REQUEST_WINDOW_SECONDS = 10.0
     KBAR_MIN_REMAINING_BYTES = 16 * 1024 * 1024
+    KBAR_REQUEST_TIMEOUT_MS = 60_000
+    KBAR_TIMEOUT_ATTEMPTS = 3
+    KBAR_TIMEOUT_BACKOFF_SECONDS = (2.0, 5.0)
 
     def __init__(self) -> None:
         try:
@@ -405,6 +555,8 @@ class ShioajiProvider(MarketDataProvider):
             max_calls=self.KBAR_MAX_CALLS_PER_10_SECONDS,
             window_seconds=self.KBAR_REQUEST_WINDOW_SECONDS,
         )
+        self._kbar_timeout_error = sj.ShioajiTimeoutError
+        self._kbar_retry_sleep: Callable[[float], None] = sleep
 
         mode = "模擬盤" if simulation else "正式環境"
         print(f"  [ShioajiProvider] 登入成功（{mode}），帳號數：{len(accounts)}")
@@ -660,6 +812,219 @@ class ShioajiProvider(MarketDataProvider):
     def supports_kbars(self) -> bool:
         return True
 
+    def supports_premarket_context(self) -> bool:
+        return True
+
+    def supports_premarket_qualification(self) -> bool:
+        return True
+
+    def capture_taifex_night_qualification(
+        self,
+        window: SessionWindow,
+        contract_alias: str,
+    ) -> QualificationCapture:
+        observation = self.get_taifex_night_session(window, contract_alias)
+        if observation is None:
+            raise RuntimeError("TAIFEX qualification contract is unavailable")
+        contract, _ = self._futures_contract_and_info(contract_alias)
+        if contract is None:
+            raise RuntimeError("TAIFEX qualification contract is unavailable")
+        self._wait_for_kbar_slot()
+        self._guard_kbar_capacity()
+        raw_ticks = self._api.ticks(
+            contract=contract,
+            date=window.trading_date.isoformat(),
+            timeout=self.KBAR_REQUEST_TIMEOUT_MS,
+        )
+        ticks: list[HistoricalTick] = []
+        for timestamp, close, volume in zip(
+            self._kbar_values(raw_ticks, "ts"),
+            self._kbar_values(raw_ticks, "close"),
+            self._kbar_values(raw_ticks, "volume"),
+        ):
+            try:
+                tick = HistoricalTick(
+                    timestamp=self._kbar_timestamp(timestamp),
+                    close=Decimal(str(close)),
+                    volume=int(volume),
+                )
+            except (InvalidOperation, OverflowError, TypeError, ValueError):
+                continue
+            if window.start <= tick.timestamp < window.end:
+                ticks.append(tick)
+        ticks.sort(key=lambda item: item.timestamp)
+        raw_source_json = canonical_json(
+            {
+                "source": "SHIOAJI_KBAR_TICK_QUALIFICATION",
+                "trading_date": window.trading_date,
+                "contract_alias": contract_alias,
+                "contract_identity": {
+                    "status": observation.contract_identity.status,
+                    "resolution_method": observation.contract_identity.resolution_method,
+                    "resolved_contract_code": observation.contract_identity.resolved_contract_code,
+                    "delivery_month": observation.contract_identity.delivery_month,
+                    "last_trading_date": observation.contract_identity.last_trading_date,
+                },
+                "kbar_payload": (
+                    json.loads(observation.raw_source_json)
+                    if observation.raw_source_json is not None
+                    else None
+                ),
+                "tick_payload": {
+                    field: self._kbar_values(raw_ticks, field)
+                    for field in (
+                        "ts",
+                        "close",
+                        "volume",
+                        "bid_price",
+                        "bid_volume",
+                        "ask_price",
+                        "ask_volume",
+                        "tick_type",
+                    )
+                },
+            }
+        )
+        return QualificationCapture(
+            trading_date=window.trading_date,
+            contract_identity=observation.contract_identity,
+            bars=observation.bars,
+            ticks=tuple(ticks),
+            captured_at=datetime.now(ZoneInfo("Asia/Taipei")),
+            source="SHIOAJI_KBAR_TICK_QUALIFICATION",
+            raw_source_digest=sha256_text_digest(raw_source_json),
+            raw_source_json=raw_source_json,
+        )
+
+    def get_taifex_night_session(
+        self,
+        window: SessionWindow,
+        contract_alias: str,
+    ) -> SourceObservation | None:
+        """Query a source candidate without claiming Shioaji Kbars are finalized."""
+        contract, info = self._futures_contract_and_info(contract_alias)
+        if contract is None:
+            return None
+        raw_kbars = self._query_contract_kbars(
+            contract=contract,
+            label=contract_alias,
+            start=window.start.date(),
+            end=window.end.date(),
+        )
+        bars = tuple(
+            NightBar(
+                timestamp=bar.timestamp - timedelta(minutes=1),
+                open=Decimal(str(bar.open)),
+                high=Decimal(str(bar.high)),
+                low=Decimal(str(bar.low)),
+                close=Decimal(str(bar.close)),
+                volume=bar.volume,
+            )
+            for bar in self._map_kbars(raw_kbars)
+            if window.start < bar.timestamp <= window.end
+        )
+        now = datetime.now(ZoneInfo("Asia/Taipei"))
+        target_code = str(
+            getattr(contract, "target_code", "")
+            or getattr(info, "target_code", "")
+            or ""
+        ).strip()
+        identity = ContractIdentity(
+            status=(
+                ContractIdentityStatus.RESOLVED_AS_OF_QUERY
+                if target_code
+                else ContractIdentityStatus.UNRESOLVED
+            ),
+            resolution_method=(
+                "QUERY_TIME_ALIAS" if target_code else "QUERY_TIME_ALIAS_TARGET_MISSING"
+            ),
+            resolved_contract_code=target_code or None,
+            delivery_month=str(getattr(info, "delivery_month", "") or "") or None,
+            last_trading_date=self._contract_date(
+                getattr(info, "last_trading_date", None)
+            ),
+        )
+        reference = self._positive_decimal(getattr(info, "reference", None))
+        update_date = self._contract_date(getattr(info, "update_date", None))
+        updated_at = (
+            datetime.combine(update_date, time.min, tzinfo=ZoneInfo("Asia/Taipei"))
+            if update_date is not None
+            else None
+        )
+        raw_source_json = canonical_json(
+            {
+                "source": "SHIOAJI_KBAR",
+                "contract_alias": contract_alias,
+                "target_code": target_code or None,
+                "delivery_month": identity.delivery_month,
+                "last_trading_date": identity.last_trading_date,
+                "provider_reference": reference,
+                "provider_reference_update_date": update_date,
+                "query_start": window.start.date(),
+                "query_end": window.end.date(),
+                "kbars": {
+                    field: self._kbar_values(raw_kbars, field)
+                    for field in ("ts", "Open", "High", "Low", "Close", "Volume")
+                },
+            }
+        )
+        return SourceObservation(
+            trading_date=window.trading_date,
+            contract_identity=identity,
+            bars=bars,
+            queried_at=now,
+            received_at=now,
+            provider_reference_price=reference,
+            provider_reference_updated_at=updated_at,
+            provider_reference_source="SHIOAJI_CONTRACT_INFO" if reference is not None else None,
+            completeness_status=CompletenessStatus.UNKNOWN,
+            completeness_evidence=("SHIOAJI_KBAR_FINALIZATION_UNQUALIFIED",),
+            source="SHIOAJI_KBAR",
+            raw_source_digest=sha256_text_digest(raw_source_json),
+            raw_source_json=raw_source_json,
+        )
+
+    def _futures_contract_and_info(self, contract_alias: str) -> tuple[object | None, object | None]:
+        contracts_api = getattr(self._api, "contracts", None)
+        get_contract = getattr(contracts_api, "get", None)
+        if callable(get_contract):
+            contract = get_contract(contract_alias)
+            if contract is None:
+                return None, None
+            get_info = getattr(contracts_api, "info", None)
+            return contract, get_info(contract) if callable(get_info) else contract
+
+        futures = getattr(getattr(self._api, "Contracts", None), "Futures", None)
+        if futures is None:
+            return None, None
+        try:
+            contract = futures[contract_alias]
+        except (KeyError, TypeError):
+            contract = None
+        return contract, contract
+
+    @staticmethod
+    def _contract_date(value: object) -> date | None:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str) and value.strip():
+            normalized = value.strip().replace("/", "-")
+            try:
+                return date.fromisoformat(normalized)
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _positive_decimal(value: object) -> Decimal | None:
+        try:
+            number = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+        return number if number > 0 else None
+
     def market_data_usage(self) -> MarketDataUsage | None:
         """Normalize Shioaji's usage object without exposing SDK types."""
         raw = self._api.usage()
@@ -699,6 +1064,14 @@ class ShioajiProvider(MarketDataProvider):
                 "已保留安全緩衝並停止查詢"
             )
 
+    def _is_kbar_timeout(self, error: Exception) -> bool:
+        timeout_type = getattr(self, "_kbar_timeout_error", None)
+        if isinstance(timeout_type, type) and isinstance(error, timeout_type):
+            return True
+        # Object-created test providers do not run __init__. Keeping this
+        # narrow name fallback also avoids importing the optional SDK globally.
+        return type(error).__name__ == "ShioajiTimeoutError"
+
     def get_kbars(self, symbol: str, start: date, end: date) -> list[KBar]:
         """取得 Shioaji 的原始 Kbar，並維持 SDK 與系統模型的隔離。"""
         if end < start:
@@ -710,12 +1083,11 @@ class ShioajiProvider(MarketDataProvider):
         if contract is None:
             raise KeyError(f"Contract not found: {symbol}")
 
-        self._wait_for_kbar_slot()
-        self._guard_kbar_capacity()
-        raw_kbars = self._api.kbars(
+        raw_kbars = self._query_contract_kbars(
             contract=contract,
-            start=start.isoformat(),
-            end=end.isoformat(),
+            label=symbol,
+            start=start,
+            end=end,
         )
         bars = self._map_kbars(raw_kbars)
         if not bars:
@@ -724,6 +1096,41 @@ class ShioajiProvider(MarketDataProvider):
             # response as a successfully completed historical partition.
             self._guard_kbar_capacity()
         return bars
+
+    def _query_contract_kbars(
+        self,
+        *,
+        contract: object,
+        label: str,
+        start: date,
+        end: date,
+    ) -> object:
+        raw_kbars: object | None = None
+        for attempt in range(1, self.KBAR_TIMEOUT_ATTEMPTS + 1):
+            self._wait_for_kbar_slot()
+            self._guard_kbar_capacity()
+            try:
+                raw_kbars = self._api.kbars(
+                    contract=contract,
+                    start=start.isoformat(),
+                    end=end.isoformat(),
+                    timeout=self.KBAR_REQUEST_TIMEOUT_MS,
+                )
+                break
+            except Exception as error:
+                if not self._is_kbar_timeout(error):
+                    raise
+                if attempt >= self.KBAR_TIMEOUT_ATTEMPTS:
+                    raise MarketDataTemporarilyUnavailable(
+                        "Shioaji Kbar 查詢逾時："
+                        f"{label} {start.isoformat()} 至 {end.isoformat()} "
+                        f"已重試 {self.KBAR_TIMEOUT_ATTEMPTS} 次；工作可安全接續"
+                    ) from error
+                retry_sleep = getattr(self, "_kbar_retry_sleep", sleep)
+                retry_sleep(self.KBAR_TIMEOUT_BACKOFF_SECONDS[attempt - 1])
+
+        assert raw_kbars is not None
+        return raw_kbars
 
     @staticmethod
     def _kbar_values(kbars: object, field: str) -> list[object]:

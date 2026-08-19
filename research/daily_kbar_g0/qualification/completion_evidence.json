@@ -1,0 +1,112 @@
+{
+  "chunk_boundary": {
+    "duplicate_resolved_sessions": [],
+    "issues": []
+  },
+  "full_session": {
+    "coverage_complete": true,
+    "is_complete": false,
+    "issues": [
+      "SOURCE_COMPLETION_UNPROVEN",
+      "SOURCE_FLOAT_LOSSY"
+    ],
+    "source_completion_evidence": "UNAVAILABLE"
+  },
+  "official_daily_reconciliation": {
+    "comparison": {
+      "official_amount_matches_shioaji_regular_session_amount": false,
+      "official_daily_scope": "TWSE_STOCK_DAY_REPORTED_DAILY_TOTAL_V1",
+      "official_volume_matches_shioaji_equivalent_shares": false,
+      "ohlc_matches": {
+        "Close": true,
+        "High": true,
+        "Low": true,
+        "Open": true
+      },
+      "volume_scope_contract": "SHIOAJI_REGULAR_SESSION_COMMON_LOTS_V1"
+    },
+    "completion_evidence": "TWSE_OFFICIAL_DAILY_OHLC_RECONCILIATION_V1",
+    "input_digests": {
+      "reconciliation": "aebcf41af193f03397366c03a12438e956952f0aee1ab3c18adbb06edb1dc17c",
+      "shioaji_raw_rows": "1b873bca0c4c82ca8f2544d024b17b1508f90b1948ddb94e55e5cdc13993f20c",
+      "twse_raw_response": "4e325a156d1f628f802b48bd897e38798bfe7fe795fd83c123f9a897755dc000"
+    },
+    "issues": [
+      "TWSE_DAILY_VOLUME_SCOPE_DIFFERENT",
+      "TWSE_DAILY_AMOUNT_SCOPE_DIFFERENT"
+    ],
+    "schema_version": "daily_kbar_completion_reconciliation_v1",
+    "session_date": "2026-08-18",
+    "shioaji_regular_session": {
+      "amount": "41111325000.0",
+      "bar_count": 266,
+      "close": "2380.0",
+      "first_bar": "2026-08-18T09:01:00+08:00",
+      "high": "2415.0",
+      "last_bar": "2026-08-18T13:30:00+08:00",
+      "low": "2375.0",
+      "open": "2415.0",
+      "session_date": "2026-08-18",
+      "volume": {
+        "amount_lot_consistent_rows": 266,
+        "amount_lot_eligible_rows": 266,
+        "equivalent_shares": 17217000,
+        "raw_value": 17217,
+        "shares_per_lot": 1000,
+        "unit": "COMMON_LOT"
+      }
+    },
+    "status": "QUALIFIED_FOR_DERIVED_FINALIZED_SESSION_V1",
+    "twse_official_daily": {
+      "amount": "47742904360",
+      "close": "2380.00",
+      "high": "2415.00",
+      "low": "2375.00",
+      "note": "",
+      "open": "2415.00",
+      "raw_row": [
+        "115/08/18",
+        "19,997,213",
+        "47,742,904,360",
+        "2,415.00",
+        "2,415.00",
+        "2,375.00",
+        "2,380.00",
+        "-20.00",
+        "102,735",
+        ""
+      ],
+      "report_notes": [
+        "符號說明:+/-/X表示漲/跌/不比價",
+        "註記欄位有**者，表示該股票恢復買賣日價格因辦理變更面額因素與其最近一成交日價格有一定比例之轉換關係，或表示該ETF恢復買賣日價格因辦理分割或反分割作業因素與其最近一成交日價格有一定比例之轉換關係。",
+        "當日統計資訊含一般、零股、盤後定價、鉅額交易，不含拍賣、標購。",
+        "ETF證券代號第六碼為K、M、S、C者，表示該ETF以外幣交易。",
+        "權證證券代號可重複使用，權證顯示之名稱係目前存續權證之簡稱。"
+      ],
+      "session_date": "2026-08-18",
+      "transaction_count": 102735,
+      "volume_shares": 19997213
+    }
+  },
+  "partial_session": {
+    "coverage_complete": false,
+    "is_complete": false,
+    "issues": [
+      "INTRADAY_COVERAGE_INCOMPLETE:2026-08-19",
+      "SOURCE_COMPLETION_UNPROVEN",
+      "SOURCE_FLOAT_LOSSY",
+      "TIMESTAMP_AFTER_CAPTURE_TIME"
+    ],
+    "source_completion_evidence": "UNAVAILABLE"
+  },
+  "same_completed_session_requery": {
+    "all_identical": true,
+    "interpretation": "Repeated historical queries were byte-equivalent after raw encoding; this is replay evidence, not a provider finalization marker.",
+    "raw_rows_digests": {
+      "chunk_right": "2854b6ab8c310aa2867b51b4b2d0d44efceabc27ea442bef6d82726130f23b63",
+      "daily_candidate": "2854b6ab8c310aa2867b51b4b2d0d44efceabc27ea442bef6d82726130f23b63",
+      "full_session": "2854b6ab8c310aa2867b51b4b2d0d44efceabc27ea442bef6d82726130f23b63"
+    }
+  },
+  "schema_version": "daily_kbar_source_qualification_v1"
+}

@@ -1,30 +1,32 @@
-"""Check that the dashboard's inline JavaScript is syntactically valid."""
+"""Check the dashboard ES-module entrypoint and every static module."""
 
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
-import tempfile
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD_HTML = REPOSITORY_ROOT / "dashboard" / "static" / "index.html"
+DASHBOARD_STATIC = DASHBOARD_HTML.parent
 
 
-def extract_inline_script(html: str) -> str:
-    """Return the sole inline script from the dashboard HTML."""
+def module_entrypoint(html: str) -> Path:
+    """Resolve the sole same-origin module entrypoint from dashboard markup."""
 
-    start_tag = "<script>"
-    end_tag = "</script>"
-    start = html.find(start_tag)
-    end = html.find(end_tag, start + len(start_tag))
-    if start == -1 or end == -1:
-        raise ValueError("dashboard must contain one inline <script> block")
-    if html.find(start_tag, start + len(start_tag)) != -1:
-        raise ValueError("dashboard must contain exactly one inline <script> block")
-    return html[start + len(start_tag) : end]
+    entries = re.findall(r'<script\s+type="module"\s+src="([^"]+)"\s*></script>', html)
+    if len(entries) != 1:
+        raise ValueError("dashboard must contain exactly one module entrypoint")
+    entry = entries[0]
+    if not entry.startswith("/static/"):
+        raise ValueError("dashboard module entrypoint must be served from /static/")
+    path = (DASHBOARD_STATIC / entry.removeprefix("/static/")).resolve()
+    if DASHBOARD_STATIC.resolve() not in path.parents or not path.is_file():
+        raise ValueError("dashboard module entrypoint is missing")
+    return path
 
 
 def main() -> int:
@@ -34,16 +36,19 @@ def main() -> int:
         return 1
 
     try:
-        javascript = extract_inline_script(DASHBOARD_HTML.read_text(encoding="utf-8"))
+        entrypoint = module_entrypoint(DASHBOARD_HTML.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         print(f"Unable to read dashboard JavaScript: {exc}", file=sys.stderr)
         return 1
 
-    with tempfile.TemporaryDirectory() as directory:
-        script_path = Path(directory) / "dashboard-inline.js"
-        script_path.write_text(javascript, encoding="utf-8")
-        result = subprocess.run([node, "--check", str(script_path)], check=False)
-    return result.returncode
+    modules = sorted(entrypoint.parent.rglob("*.js"))
+    if entrypoint not in modules:
+        modules.append(entrypoint)
+    for module in modules:
+        result = subprocess.run([node, "--check", str(module)], check=False)
+        if result.returncode:
+            return result.returncode
+    return 0
 
 
 if __name__ == "__main__":

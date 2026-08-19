@@ -9,7 +9,7 @@ from typing import Any, Mapping
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from backtest.dataset import DatasetCancelled, HistoricalDatasetCatalog
+from backtest.dataset import DatasetCancelled, DatasetManifest, HistoricalDatasetCatalog
 from backtest.domain import (
     AggregationPolicy,
     BacktestRunConfig,
@@ -154,6 +154,46 @@ class BacktestApplicationService:
 
     def list_datasets(self) -> list[dict[str, Any]]:
         return self._repository.list_datasets()
+
+    def create_derived_daily_dataset(
+        self,
+        *,
+        dataset_id: str,
+        base_dataset_id: str,
+        completion_proofs: Mapping[tuple[str, date], str],
+        session_contract: Mapping[str, Any],
+        price_adjustment_policy: str = "RAW",
+        corporate_action_adjusted: bool = False,
+        volume_contract: Mapping[str, Any],
+        issues: tuple[str, ...] = (),
+    ) -> DatasetManifest:
+        """Seal and register a verified daily child dataset for research runs.
+
+        This does not contact a Provider or broker.  The catalog refuses the
+        derivation unless each source symbol/session has an explicit completion
+        evidence digest, then this service makes the immutable child available
+        to the normal capability-gated backtest workflow.
+        """
+
+        self._require_enabled()
+        base = self._repository.get_dataset(base_dataset_id)
+        if base["status"] != "READY":
+            raise ValueError("來源 intraday 資料集尚未 READY，不能派生日 K 資料集")
+        catalog_base = self._catalog.get_manifest(base_dataset_id)
+        if str(base["manifest_digest"]) != catalog_base.manifest_digest:
+            raise ValueError("來源 intraday 資料集 manifest digest 已變更，拒絕派生日 K 資料集")
+        manifest = self._catalog.create_derived_daily_dataset(
+            dataset_id=dataset_id,
+            base_dataset_id=base_dataset_id,
+            completion_proofs=completion_proofs,
+            session_contract=session_contract,
+            price_adjustment_policy=price_adjustment_policy,
+            corporate_action_adjusted=corporate_action_adjusted,
+            volume_contract=volume_contract,
+            issues=issues,
+        )
+        self._repository.upsert_dataset(manifest.to_dict(), "READY")
+        return manifest
 
     def start_incremental_sync(
         self,
@@ -338,6 +378,7 @@ class BacktestApplicationService:
         target_win_rate: str = "0.50",
         minimum_oos_trades: int = 30,
         max_drawdown_guardrail: str = "0.20",
+        engine_version: str = "backtest-engine-v2",
         idempotency_key: str,
         experiment_id: str | None = None,
         baseline_run_id: str | None = None,
@@ -357,7 +398,7 @@ class BacktestApplicationService:
             exit_min_trigger_count=exit_min_trigger_count,
             priority_order=tuple(priority_order or ()),
         )
-        self._validate_strategy_selection(strategy_set)
+        self._validate_strategy_selection(strategy_set, dataset)
         config = BacktestRunConfig(
             dataset_id=dataset_id,
             dataset_digest=str(dataset["manifest_digest"]),
@@ -370,6 +411,7 @@ class BacktestApplicationService:
             target_win_rate=target_win_rate,
             minimum_oos_trades=minimum_oos_trades,
             max_drawdown_guardrail=max_drawdown_guardrail,
+            engine_version=engine_version,
             experiment_id=experiment_id,
             baseline_run_id=baseline_run_id,
             parent_run_id=parent_run_id,
@@ -584,7 +626,12 @@ class BacktestApplicationService:
             run = self._repository.get_run(run_id)
             config = BacktestRunConfig.from_dict(run["config"])
             dataset = self._repository.get_dataset(config.dataset_id)
-            bars = self._catalog.load_bars(config.dataset_id)
+            if dataset["status"] != "READY":
+                raise ValueError("歷史資料集已不是 READY，拒絕執行回測")
+            if str(dataset["manifest_digest"]) != config.dataset_digest:
+                raise ValueError("歷史資料集 manifest digest 已變更，拒絕執行回測")
+            self._validate_strategy_selection(config.strategy_set, dataset)
+            bars = self._catalog.iter_bars(config.dataset_id)
             self._raise_if_run_cancelling(run_id)
             self._repository.update_run(run_id, status=RunStatus.RUNNING.value, progress_message="正在執行 deterministic Kbar 回測")
             engine_result = self._engine.run(
@@ -634,6 +681,7 @@ class BacktestApplicationService:
             target_win_rate=str(config.get("target_win_rate", "0.50")),
             minimum_oos_trades=int(config.get("minimum_oos_trades", 30)),
             max_drawdown_guardrail=str(config.get("max_drawdown_guardrail", "0.20")),
+            engine_version=str(config.get("engine_version", "backtest-engine-v1")),
             idempotency_key=idempotency_key,
             experiment_id=config.get("experiment_id"),
             baseline_run_id=config.get("baseline_run_id"),
@@ -641,13 +689,34 @@ class BacktestApplicationService:
             change_note=change_note,
         )
 
-    def _validate_strategy_selection(self, strategy_set: StrategySetSnapshot) -> None:
+    def _validate_strategy_selection(
+        self,
+        strategy_set: StrategySetSnapshot,
+        dataset: Mapping[str, Any] | None = None,
+    ) -> None:
+        definitions = []
         for strategy_id in strategy_set.entry_strategy_ids:
-            if self._registry.definition(strategy_id).side.value != "ENTRY":
+            definition = self._registry.definition(strategy_id)
+            if definition.side.value != "ENTRY":
                 raise ValueError(f"{strategy_id} 不是買入策略")
+            definitions.append(definition)
         for strategy_id in strategy_set.exit_strategy_ids:
-            if self._registry.definition(strategy_id).side.value != "EXIT":
+            definition = self._registry.definition(strategy_id)
+            if definition.side.value != "EXIT":
                 raise ValueError(f"{strategy_id} 不是賣出策略")
+            definitions.append(definition)
+        if dataset is None:
+            return
+        available = {
+            str(capability).strip().upper()
+            for capability in dataset.get("capabilities", ())
+        }
+        for definition in definitions:
+            missing = sorted(set(definition.required_capabilities) - available)
+            if missing:
+                raise ValueError(
+                    f"資料集缺少 {definition.strategy_id} 所需能力：{'、'.join(missing)}"
+                )
 
     @staticmethod
     def _validate_idempotency_key(value: str) -> str:

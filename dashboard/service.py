@@ -10,6 +10,7 @@ from app import ScanResult, run_scan
 from config import settings
 from market_data.models import KBar, StockData
 from market_data.provider import MarketDataProvider
+from premarket.service import PremarketContextService
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -31,8 +32,14 @@ _HISTORY_PERIODS = {
 class DashboardService:
     """保存最近一次掃描快照；只有明確 refresh 才會再次查詢 Provider。"""
 
-    def __init__(self, provider: MarketDataProvider) -> None:
+    def __init__(
+        self,
+        provider: MarketDataProvider,
+        *,
+        premarket_service: PremarketContextService | None = None,
+    ) -> None:
         self._provider = provider
+        self._premarket_service = premarket_service
         self._latest_snapshot: dict[str, Any] | None = None
         self._history_cache: dict[tuple[str, str], dict[str, Any]] = {}
 
@@ -45,8 +52,16 @@ class DashboardService:
     def refresh(self) -> dict[str, Any]:
         """明確執行一次掃描並更新快照，不含任何交易操作。"""
         self._latest_snapshot = build_dashboard_snapshot(run_scan(self._provider))
+        if self._premarket_service is not None:
+            self._latest_snapshot["premarket_context"] = (
+                self._premarket_service.projection()
+            )
         self._history_cache.clear()
         return self._latest_snapshot
+
+    def realtime_candidate_snapshot(self) -> dict[str, Any]:
+        """取得即時策略候選池，不變更主畫面快照或盤前 artifact。"""
+        return {"candidates": build_dashboard_snapshot(run_scan(self._provider))["candidates"]}
 
     def candidate_history(self, symbol: str, period: str) -> dict[str, Any]:
         """按需取得目前 Candidate 的來源 Kbar，不在全市場掃描時預先查詢。"""

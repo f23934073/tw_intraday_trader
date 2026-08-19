@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 from contextlib import asynccontextmanager
 from io import StringIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,10 +26,21 @@ from app import build_provider
 from backtest.application import BacktestApplicationService
 from backtest.scheduler import AfterCloseIncrementalScheduler
 from config import backtest as backtest_settings
-from dashboard.momentum import MomentumDashboardService
+from config.momentum_stream import MOMENTUM_STREAM_CONFIG
+from dashboard.momentum import (
+    RealtimeMomentumDashboardService,
+    UnavailableMomentumDashboardService,
+    create_realtime_momentum_dashboard_service,
+)
+from dashboard.momentum_stream import (
+    RESUME_PATH,
+    SCHEMA_VERSION,
+    MomentumStreamHub,
+)
 from dashboard.service import DashboardService
 from market_data.provider import MarketDataProvider
 from runtime.composition import RuntimeComposition
+from simulation.application import LocalPaperCommandService
 from simulation.service import (
     SimulationService,
     SimulationStateError,
@@ -33,7 +53,10 @@ _provider: MarketDataProvider | None = None
 _service: DashboardService | None = None
 _simulation_service: SimulationService | None = None
 _composition: RuntimeComposition | None = None
-_momentum_service: MomentumDashboardService | None = None
+_momentum_service: (
+    RealtimeMomentumDashboardService | UnavailableMomentumDashboardService | None
+) = None
+_momentum_stream_hub: MomentumStreamHub | None = None
 _backtest_service: BacktestApplicationService | None = None
 _incremental_scheduler: AfterCloseIncrementalScheduler | None = None
 
@@ -52,6 +75,10 @@ async def lifespan(_: FastAPI):
             scheduler.stop()
         if _backtest_service is not None:
             _backtest_service.close()
+        if _momentum_stream_hub is not None:
+            _momentum_stream_hub.close()
+        if _momentum_service is not None:
+            _momentum_service.close()
         if _composition is not None:
             _composition.close()
         elif _provider is not None:
@@ -180,12 +207,42 @@ def get_simulation_service() -> SimulationService:
     return service
 
 
-def get_momentum_dashboard_service() -> MomentumDashboardService:
-    """建立一次 Replay projection；不經 runtime composition 或 Provider。"""
+def get_local_paper_command_service() -> LocalPaperCommandService:
+    """Return the Journal-first facade; it remains local-paper only."""
+    return get_runtime_composition().local_paper_commands
+
+
+def get_momentum_dashboard_service(
+) -> RealtimeMomentumDashboardService | UnavailableMomentumDashboardService:
+    """建立一次即時 Shadow projection；無法連線時明確回報不可用。"""
     global _momentum_service
     if _momentum_service is None:
-        _momentum_service = MomentumDashboardService()
+        try:
+            _momentum_service = create_realtime_momentum_dashboard_service(
+                candidate_snapshot_loader=(
+                    get_dashboard_service().realtime_candidate_snapshot
+                ),
+            )
+        except Exception as error:
+            _momentum_service = UnavailableMomentumDashboardService(str(error))
     return _momentum_service
+
+
+def get_momentum_stream_hub() -> MomentumStreamHub:
+    """Keep one bounded stream hub for the process-local Momentum service."""
+    global _momentum_stream_hub
+    service = get_momentum_dashboard_service()
+    if (
+        _momentum_stream_hub is None
+        or _momentum_stream_hub.service is not service
+    ):
+        if _momentum_stream_hub is not None:
+            _momentum_stream_hub.close()
+        _momentum_stream_hub = MomentumStreamHub(
+            service,
+            config=MOMENTUM_STREAM_CONFIG,
+        )
+    return _momentum_stream_hub
 
 
 def get_backtest_service() -> BacktestApplicationService:
@@ -260,32 +317,179 @@ def candidate_history(symbol: str, period: str = "1d") -> dict[str, Any]:
 
 @app.get("/api/dashboard/momentum")
 def momentum_dashboard_snapshot() -> dict[str, Any]:
-    """讀取本機 Replay Momentum projection，不呼叫行情 Provider。"""
-    return get_momentum_dashboard_service().snapshot()
+    """讀取所有目前候選的 Tick／BidAsk Momentum projection。"""
+    if MOMENTUM_STREAM_CONFIG.enabled:
+        return get_momentum_stream_hub().bootstrap()
+    return _momentum_stream_disabled_snapshot(
+        get_momentum_dashboard_service().snapshot()
+    )
 
 
 @app.post("/api/dashboard/momentum/alerts/{alert_id}/acknowledge")
 def acknowledge_momentum_alert(alert_id: str) -> dict[str, Any]:
-    """確認本機 Momentum 告警；不產生外部訊息或交易動作。"""
+    """確認本機 Momentum Shadow 告警；不產生外部訊息或交易動作。"""
     try:
-        return get_momentum_dashboard_service().acknowledge(alert_id)
+        snapshot = get_momentum_dashboard_service().acknowledge(alert_id)
+        if not MOMENTUM_STREAM_CONFIG.enabled:
+            return _momentum_stream_disabled_snapshot(snapshot)
+        hub = get_momentum_stream_hub()
+        hub.capture_now(snapshot)
+        return hub.bootstrap()
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
+@app.websocket(RESUME_PATH)
+async def momentum_dashboard_stream(
+    websocket: WebSocket,
+    stream_id: str,
+    since_revision: int,
+) -> None:
+    """Replay projection revisions, then push future coalesced deltas."""
+    if not MOMENTUM_STREAM_CONFIG.enabled:
+        await websocket.close(code=1008)
+        return
+    if not _websocket_origin_allowed(websocket):
+        await websocket.close(code=1008)
+        return
+
+    hub = get_momentum_stream_hub()
+    hub.bootstrap()
+    if not hub.try_register_client():
+        await websocket.close(code=1013)
+        return
+
+    accepted = False
+    try:
+        await websocket.accept()
+        accepted = True
+        replay = hub.events_after(stream_id, since_revision)
+        if replay.reason is not None:
+            await _send_momentum_message(
+                websocket,
+                hub.resync_message(replay.reason),
+            )
+            await websocket.close(code=1012)
+            return
+
+        await _send_momentum_message(websocket, hub.ready_message())
+        cursor = since_revision
+        while True:
+            if replay.events:
+                for event in replay.events:
+                    await _send_momentum_message(websocket, event)
+                    cursor = event["revision"]
+            else:
+                await _send_momentum_message(
+                    websocket,
+                    hub.heartbeat_message(),
+                )
+            replay = await asyncio.to_thread(
+                hub.wait_for_events,
+                stream_id,
+                cursor,
+                timeout=hub.config.heartbeat_seconds,
+            )
+            if replay.reason is not None:
+                await _send_momentum_message(
+                    websocket,
+                    hub.resync_message(replay.reason),
+                )
+                await websocket.close(code=1012)
+                return
+    except WebSocketDisconnect:
+        return
+    except TimeoutError:
+        if accepted:
+            await _close_websocket(websocket, code=1013)
+    finally:
+        hub.unregister_client()
+
+
 @app.get("/api/dashboard/momentum/{symbol}")
 def momentum_symbol_projection(symbol: str) -> dict[str, Any]:
-    """讀取單一 symbol 的本機 Momentum projection。"""
+    """讀取單一候選的即時 Momentum projection。"""
     try:
         return get_momentum_dashboard_service().symbol(symbol)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
+def _momentum_stream_disabled_snapshot(
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        **snapshot,
+        "stream": {
+            "schema_version": SCHEMA_VERSION,
+            "enabled": False,
+            "stream_id": None,
+            "revision": None,
+            "generated_at": None,
+            "resume_path": RESUME_PATH,
+            "heartbeat_seconds": MOMENTUM_STREAM_CONFIG.heartbeat_seconds,
+            "last_error": None,
+        },
+    }
+
+
+def _websocket_origin_allowed(websocket: WebSocket) -> bool:
+    origin = websocket.headers.get("origin")
+    if origin is None:
+        return True
+    parsed = urlsplit(origin)
+    host = websocket.headers.get("host", "").lower()
+    return parsed.scheme in {"http", "https"} and parsed.netloc.lower() == host
+
+
+async def _send_momentum_message(
+    websocket: WebSocket,
+    payload: dict[str, Any],
+) -> None:
+    await asyncio.wait_for(
+        websocket.send_json(payload),
+        timeout=MOMENTUM_STREAM_CONFIG.send_timeout_seconds,
+    )
+
+
+async def _close_websocket(websocket: WebSocket, *, code: int) -> None:
+    try:
+        await websocket.close(code=code)
+    except Exception:
+        return
+
+
 @app.get("/api/simulation/session")
 def simulation_session() -> dict[str, Any]:
     """讀取本機紙上模擬 session，不會呼叫券商或資料來源。"""
     return get_simulation_service().session()
+
+
+@app.get("/healthz")
+def healthz() -> dict[str, Any]:
+    """Liveness without provider, broker account, or order API calls."""
+    session = get_simulation_service().session()
+    return {
+        "status": "ok",
+        "mode": session["mode"],
+        "stream_health": session["stream_health"],
+    }
+
+
+@app.get("/readyz")
+def readyz(response: Response) -> dict[str, Any]:
+    """Fail closed only when the simulation quote ingress has overflowed."""
+    session = get_simulation_service().session()
+    ready = session["stream_health"] == "HEALTHY"
+    if not ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {
+        "status": "ready" if ready else "blocked",
+        "mode": session["mode"],
+        "stream_health": session["stream_health"],
+        "quote_queue_depth": session["quote_queue_depth"],
+        "quote_queue_capacity": session["quote_queue_capacity"],
+    }
 
 
 @app.get("/api/simulation/projection")
@@ -313,7 +517,7 @@ def submit_simulation_order(
 ) -> dict[str, Any]:
     """送出本機紙上模擬委託；絕不呼叫 Shioaji 下單 API。"""
     try:
-        order, idempotent = get_simulation_service().submit_order(
+        order, idempotent = get_local_paper_command_service().submit_order(
             symbol=request.symbol,
             side=request.side,
             lots=request.lots,
@@ -322,6 +526,8 @@ def submit_simulation_order(
         )
     except SimulationValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except SimulationStateError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
     if idempotent:
         response.status_code = status.HTTP_200_OK
@@ -336,7 +542,7 @@ def cancel_simulation_order(
 ) -> dict[str, Any]:
     """取消仍在等待的本機紙上模擬委託。"""
     try:
-        order, idempotent = get_simulation_service().cancel_order(
+        order, idempotent = get_local_paper_command_service().cancel_order(
             order_id,
             request.idempotency_key,
         )

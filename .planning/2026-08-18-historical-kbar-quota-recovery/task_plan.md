@@ -38,6 +38,14 @@ Complete
 - [x] Inspect the live database read-only to show what the fixed resume will retry.
 - **Status:** complete
 
+### Phase 6: Live-run timeout and resume correction
+- [x] Capture the real Shioaji 30-second Kbar timeout and repeated-resume behavior.
+- [x] Add bounded timeout retry with backoff and a normalized recoverable provider error.
+- [x] Persist the exact in-progress symbol so resume retries it without replaying valid partitions.
+- [x] Remove the invalid shared-one-year truncation heuristic while retaining legacy empty-tail repair.
+- [x] Add regression tests, update recovery documentation, and verify the live resume boundary read-only.
+- **Status:** complete
+
 ## Decisions Made
 | Decision | Rationale |
 |----------|-----------|
@@ -46,6 +54,8 @@ Complete
 | Rewind from the first transient-empty partition | This also repairs later partial partitions such as 1336, which had no error flag but was downloaded after the first quota failure. |
 | Keep quota/rate policy at the provider/downloader boundary | Browser code and strategy code must not know Shioaji SDK details. |
 | Use injected clock/sleep in tests | Rate-limit behavior must be deterministic and fast. |
+| Treat a shared one-year start as valid provider coverage unless another failure marker exists | A clean paced live refetch reproduced the same coverage, disproving the earlier truncation inference. |
+| Persist a retry-symbol marker at recoverable interruption | Existing partitions may predate the current attempt, so job progress alone cannot always identify the symbol that failed. |
 
 ## Errors Encountered
 | Error | Resolution |
@@ -55,3 +65,5 @@ Complete
 | New regression tests initially failed during import because the planned pause/limit types did not exist | Expected red phase; implement the narrow provider and downloader contracts next. |
 | Incremental quota test used a different Provider subclass than the seed dataset | Kept production identity enforcement intact; changed the fixture to toggle quota exhaustion on one Provider instance. |
 | Incremental quota test omitted its new `pytest` import | Added the missing test-only import. |
+| Live download raised `ShioajiTimeoutError` after 30 seconds and aborted the whole job | Phase 6 adds bounded per-request retry and converts exhaustion into a durable resumable pause. |
+| Resume repeatedly restarted at 00633L after successfully saving it | Remove the invalid shared-one-year detector and use explicit current-symbol retry state instead. |

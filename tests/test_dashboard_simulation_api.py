@@ -13,6 +13,13 @@ def test_dashboard_snapshot_contains_session_local_simulation_projection(monkeyp
 
     snapshot = server.dashboard_snapshot()
 
+    assert snapshot["premarket_context"]["status"] in {
+        "READY",
+        "PENDING",
+        "NOT_APPLICABLE",
+        "DEGRADED",
+        "UNAVAILABLE",
+    }
     assert snapshot["simulation"]["session"]["mode"] == "LOCAL_PAPER_SIMULATION"
     assert snapshot["simulation"]["orders"] == []
     assert snapshot["simulation"]["positions"] == []
@@ -50,3 +57,23 @@ def test_simulation_projection_route_returns_one_local_read_model(monkeypatch):
     assert projection["session"]["quote_mode"] == "SNAPSHOT"
     assert projection["orders"] == []
     assert projection["positions"] == []
+
+
+def test_health_routes_report_local_simulation_without_account_access(monkeypatch):
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", MockProvider())
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+    response = Response()
+
+    liveness = server.healthz()
+    readiness = server.readyz(response)
+
+    assert liveness == {
+        "status": "ok",
+        "mode": "LOCAL_PAPER_SIMULATION",
+        "stream_health": "HEALTHY",
+    }
+    assert response.status_code == 200
+    assert readiness["status"] == "ready"
+    assert readiness["quote_queue_capacity"] == 1_024

@@ -5,6 +5,7 @@ import pytest
 import dashboard.server as server
 from app import build_provider
 from market_data.provider import MockProvider
+from premarket.artifacts import InMemoryPremarketArtifactRepository
 from runtime.composition import RuntimeComposition
 from runtime.in_memory import InMemoryJournalRepository, InMemoryProjectionRepository
 from trading.journal import JournalRecord, JournalSession
@@ -12,11 +13,14 @@ from trading.journal import JournalRecord, JournalSession
 
 def test_composition_reuses_one_provider_without_provider_io() -> None:
     provider = MockProvider()
+    artifacts = InMemoryPremarketArtifactRepository()
 
-    composition = RuntimeComposition.create(provider)
+    composition = RuntimeComposition.create(provider, premarket_artifacts=artifacts)
 
     assert composition.provider is provider
     assert composition.dashboard_service._provider is provider
+    assert composition.dashboard_service._premarket_service is composition.premarket_service
+    assert composition.premarket_artifacts is artifacts
     assert composition.clock.now().tzinfo is not None
 
 

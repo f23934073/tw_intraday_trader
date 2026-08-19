@@ -21,7 +21,7 @@ class LocalPaperSimulationCommandAdapter:
             symbol=command.symbol,
             side=command.side.value,
             lots=command.quantity_shares // 1_000,
-            limit_price=float(command.limit_price),
+        limit_price=command.limit_price,
             idempotency_key=command.idempotency_key,
             origin=command.origin.value,
         )

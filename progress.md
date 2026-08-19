@@ -1,5 +1,47 @@
 # Progress Log
 
+## Session: 2026-08-19 — Basic strategy expansion implementation
+
+### Phase 10: Implement basic strategy expansion
+
+- **Status:** in_progress
+- Actions taken:
+  - Received explicit authorization to implement the approved basic-strategy expansion plan.
+  - Activated `planning-with-files` and `karpathy-guidelines`; success criteria are the Phase 10 checklist plus the approved plan Gates.
+  - Restored session context and confirmed substantial unrelated worktree changes already exist in historical-download/provider/planning files.
+  - Scoped edits to the strategy/backtest/catalog/dashboard surfaces and will preserve unrelated modifications, especially existing README and download/provider work.
+- Verification target:
+  - Focused new tests pass, full existing suite passes, JavaScript/static/whitespace checks pass, and no Shioaji order or CA path exists in the changes.
+
+## Session: 2026-08-19 — Basic strategy expansion plan
+
+### Phase 9: Basic strategy expansion implementation plan
+
+- **Status:** complete
+- Actions taken:
+  - Confirmed the request is implementation-plan only; no strategy runtime changes are authorized.
+  - Read and activated the `planning-with-files` workflow.
+  - Restored the repository's prior planning context and session catch-up output.
+  - Reconfirmed the inherited safety boundary: historical research and local paper simulation only; no broker orders or real-money execution.
+  - Inventoried the current strategy catalog, executable registry, historical bar contract, deterministic next-bar engine, and focused strategy/backtest tests.
+  - Identified the minimum architectural gap: rolling/session/position feature state must be added before the five proposed strategies can be deterministic and reusable.
+  - Recorded unrelated existing worktree modifications and limited this task to non-overlapping planning Markdown.
+  - Reviewed the existing realtime feature engine and rejected direct reuse for historical Kbars because its input, freshness, and provenance contracts are Tick-specific.
+  - Confirmed the existing strategy catalog/API/UI can expose additional fixed-version strategies without a new route or strategy-specific parameter form.
+  - Found a blocking capability gap: intraday strategies can currently be selected without a trustworthy per-symbol bar cadence or `required_capabilities` preflight.
+  - Scoped the fix to explicit manifest/capability validation plus bounded rolling state; a full streaming backtest rewrite remains outside this plan.
+  - Rechecked primary/authoritative sources for ORB, moving-average/trading-range rules, EMA/BBANDS/RSI/ATR definitions, and current TWSE session/cost context.
+  - Chose dependency-free Decimal indicator contracts with explicit warm-up semantics rather than adding TA-Lib as a runtime dependency.
+  - Authored `architecture/basic_strategy_expansion_implementation_plan.md` with fixed strategy contracts, P0 data gates, engine/context design, phased delivery, migrations, tests, rollout, rollback, and Definition of Done.
+  - Kept all five new strategies `EXPERIMENTAL`, preserved legacy default selections, and explicitly excluded broker/real-money execution.
+  - Structural validation passed; the first whitespace check found one extra blank line at EOF, which was removed before final verification.
+  - Final checks passed: all five strategy IDs and required sections are present, code fences are balanced, and Markdown whitespace checks are clean.
+  - Verified this task changed planning Markdown only; no strategy, engine, API, UI, provider, or test implementation was performed.
+- Planned output:
+  - `architecture/basic_strategy_expansion_implementation_plan.md`
+- Files modified so far:
+  - `task_plan.md`, `progress.md`, `findings.md` (planning records only)
+
 ## Session: 2026-08-18
 
 ### Phase 1: Requirements and proposal intake
@@ -117,6 +159,65 @@
 - Errors encountered:
   - Attempted a non-existent `check-session.sh` helper before reading the installed skill; switched to the documented `session-catchup.py` helper.
 
+### Phase 13: Freshness Calibration Evidence
+
+- **Status:** in_progress
+- **Started:** 2026-08-19
+- Actions taken:
+  - Restored the completed repository planning context and opened a calibration-only phase.
+  - Confirmed the user-approved baseline: P0-1 through P0-14 and Fee/Rounding remain frozen; only FreshnessPolicyV1 may change after evidence review.
+  - Activated data-quality review for eight independent thresholds and separated quote/executable data from broker/account evidence.
+  - Preserved the existing market-data-only boundary: no Portfolio Phase 1, broker order, CA, trade callback, or real-money path is authorized by this task.
+  - Located reusable quote evidence seams: normalized `RealtimeQuoteUpdate`, the data-only Shioaji quote capture, digest-validated artifacts, and parity qualification utilities.
+  - Identified the initial collection gap: no implemented broker/account read capture path exists in the current market-data-only runtime, so those four thresholds cannot be derived from quote data.
+  - Inspected the two existing 20-second parity artifacts: one has no callbacks and the other has clock-skew observations but lacks store, connection, liquidity, and session evidence. Neither can support a threshold.
+  - Completed safe-seam tracing: calibration will subscribe Tick/BidAsk only, record an explicit in-memory evidence-store boundary, and retain source clock skew rather than attempting a product-side change.
+  - Added an immutable `freshness_calibration_quote_v1` artifact path, offline
+    analysis, and a bounded Tick/BidAsk-only CLI. It never imports Portfolio,
+    order, or account APIs and its analysis explicitly has no threshold output.
+  - Revalidated old captures: `8039` has zero observations; `2330` has 116
+    observations with 96 negative source-latency values. The report therefore
+    retains `BLOCKING_EVIDENCE` for all eight thresholds.
+  - Rendered and validated the technical initial evidence report with the two
+    collection gaps as a partial snapshot.
+  - Verification passed: 16 focused calibration/parity/artifact tests, CLI
+    help, compilation, artifact inspection smoke test, and whitespace check.
+- Files created/modified:
+  - `task_plan.md` (Phase 13 added)
+  - `findings.md` (calibration requirements and initial decisions added)
+  - `progress.md` (this entry added)
+  - `market_data/freshness_calibration.py` (data-only capture and analysis)
+  - `scripts/capture_quote_freshness.py` (bounded capture CLI)
+  - `tests/test_freshness_calibration.py` (focused contract tests)
+  - `research/freshness_calibration/README.md` (capture and review runbook)
+
+### Phase 13a: Calibration collection preparation
+
+- **Status:** in_progress
+- **Started:** 2026-08-19
+- Actions taken:
+  - User authorized the non-Phase-1 preparation slice only: cohort/session protocol, non-sensitive capture preflight, data-quality checklist, and a read-only broker/account intake checklist.
+  - Restored the active plan and reconfirmed the dirty worktree has broad unrelated strategy/dashboard changes; this slice will remain isolated to calibration artifacts and tests.
+  - Ran a non-sensitive local preflight: Shioaji SDK and both credential
+    categories are present, and the host offset matches `Asia/Taipei`; no secret
+    values or network/broker calls were made.
+  - Revalidated the current stream cap and data-only login path. Found a
+    reusable SDK lifecycle callback seam that must be captured as evidence.
+  - Confirmed the lifecycle model has explicit disconnect/reconnect and
+    subscription acknowledgement/failure states; capture work will add those
+    provenance records before the next live run.
+  - Confirmed the tested SDK lifecycle callback codes needed for a conservative
+    calibration lifecycle record.
+  - Added lifecycle provenance to the data-only quote capture. A configured
+    symbol remains `PENDING` until both Tick (`TIC`) and BidAsk (`QUO`) SDK
+    acknowledgements arrive; disconnect/reconnect and raw lifecycle inputs are
+    persisted for later review.
+  - Published reviewer-facing cohort/session manifest, preflight/review
+    checklist, and broker/account read-only intake. They establish collection
+    readiness only; no liquidity tier, threshold, or broker adapter was added.
+  - Verification passed: JSON template validation, 25 focused tests, CLI help,
+    compilation, and whitespace check.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -159,3 +260,74 @@
 | What's the goal? | Use Shioaji Tick/BidAsk to update the local paper simulator without enabling broker orders |
 | What have I learned? | See `findings.md` |
 | What have I done? | Implemented, documented, and live-verified dynamic Tick/BidAsk subscriptions, local bid/ask fills, UI projection updates, and graceful shutdown |
+
+### Phase 10: Basic strategy expansion implementation
+
+- **Status:** complete
+- **Started:** 2026-08-19
+- Actions taken:
+  - Re-read the approved implementation plan and recorded the current dirty worktree so unrelated download/provider/planning changes remain untouched.
+  - Confirmed the pre-change baseline: focused backtest tests `29 passed`; full suite `326 passed, 1 skipped`.
+  - Located all dataset-manifest creation paths and confirmed cadence capabilities are currently inferred inconsistently and only emit `OHLCV`.
+  - Confirmed the dashboard currently auto-selects the first entry strategy and every exit strategy; this must change before adding experimental strategies.
+  - Added cadence evidence/capability derivation, immutable Decimal feature state, five experimental strategy definitions, engine-v2 context, run/worker capability preflight, and safe dashboard defaults.
+  - First focused test command referenced test filenames that do not exist in this checkout; no tests ran and no state changed.
+  - Corrected registry ordering so existing API consumers still receive the legacy ACTIVE entry first; focused compatibility tests now pass (`28 passed`).
+  - Added six cadence/indicator/strategy/engine/preflight contract tests; all six pass.
+  - Python compilation passed. Direct `node --check dashboard/static/index.html` is unsupported because Node does not accept `.html`; an extracted-script check remains pending.
+  - Full regression passed after the first implementation slice (`332 passed, 1 skipped`); extracted Dashboard inline JavaScript compiled successfully.
+  - Added UI safety assertions, legacy v1/v2 parity, old-manifest digest compatibility, and engine-level ATR entry-snapshot propagation coverage; focused expansion tests now pass (`8 passed`).
+  - Updated the historical-backtest README section without altering the user's concurrent downloader documentation changes.
+  - Removed obsolete whole-day row-count state, added Taiwan-timezone cadence validation, and made feature input digests depend on computed state rather than only the latest bar.
+  - Preserved legacy manifest digests by omitting the new optional cadence field when it was absent from the original JSON.
+  - Added explicit catalog metadata assertions for all five experimental one-minute strategies.
+  - Completed the final end-to-end worker test for an approved v2 ORB/time-stop run.
+  - Final verification passed: full suite `337 passed, 1 skipped`; Python compilation, extracted Dashboard JavaScript compilation, and `git diff --check` all passed.
+  - Audited the implementation scope: no CA activation, Shioaji trade subscription, broker order callback, or broker `place_order` path was added.
+  - Preserved unrelated downloader/provider/night-session worktree changes and did not create a commit.
+
+### Phase 11: Previous-day premarket watchlist implementation plan
+
+- **Status:** complete
+- **Started:** 2026-08-19
+- Actions taken:
+  - Restored the completed strategy-expansion context and confirmed the current dirty worktree before planning.
+  - Scoped the plan to prior-session historical data only; no pre-open indicative feed, broker API, or product implementation is authorized.
+  - Identified three candidate plan contracts from the discussion: previous-day momentum/liquidity, NR7 contraction, and previous-day RSI/Bollinger oversold.
+  - Traced the current Candidate snapshot engine, dashboard snapshot/history service, strategy catalog premarket draft, and existing CandidatePool discovery seams.
+  - Confirmed the existing Candidate model lacks the historical identity/evidence needed for a reproducible premarket watchlist artifact.
+  - Inspected CandidateDiscovery/CandidatePool and selected that discovery contract as the downstream integration seam, with a separate immutable watchlist artifact as source of truth.
+  - Confirmed strategy catalog PRE_MARKET/CANDIDATE metadata can represent the new family without mutating `premarket_gap_watchlist_v1`.
+  - Detected an apparent checkout inconsistency: premarket tests exist, while the referenced `premarket/` package is not present at the expected filesystem path; investigation remains plan-only.
+  - Confirmed no usable TAIFEX premarket package exists in this checkout, so the stock watchlist plan will not depend on it.
+  - Identified required foundations absent from the current scheduler/dataset path: exchange trading calendar, complete daily-bar capability, bounded recent-session reads, and explicit operational-versus-research universe semantics.
+  - Audited runtime composition, immutable artifact patterns, instrument references, backtest jobs, and the main Dashboard scan path.
+  - Noted concurrent untracked TAIFEX premarket files appearing during this planning task; preserved them and excluded them as a hard dependency.
+  - Split the intended design into two outputs: a durable evidence-rich watchlist artifact and a lightweight CandidateDiscovery adapter for CandidatePool admission.
+  - Rejected extending legacy float/current-snapshot CandidateRule for the new strategies; selected a separate Decimal daily-feature engine with version-owned contracts.
+  - Mapped the minimal UI/API/persistence seams and the required offline test layers.
+  - Authored `architecture/previous_day_premarket_watchlist_implementation_plan.md` with exact Momentum, NR7, and RSI/Bollinger formulas, deterministic ranks, time/data contracts, persistence, API/UI, scheduler, test, rollout, rollback, and Definition of Done.
+  - Sequenced the first implementation slice through Momentum artifact generation before CandidatePool/UI integration or the remaining two strategies.
+  - Verified all required strategy IDs and safety contracts are present; planning Markdown has no trailing whitespace and the tracked planning diffs pass `git diff --check`.
+  - Confirmed no product implementation was performed by this phase. Concurrent product, TAIFEX, and separate planning changes remain present and untouched in the dirty worktree.
+- Planned output:
+  - `architecture/previous_day_premarket_watchlist_implementation_plan.md`
+
+### Phase 12: Rewrite previous-day watchlist Phase 0-3
+
+- **Status:** complete
+- **Started:** 2026-08-19
+- Actions taken:
+  - Received the strategy/data-contract review and explicit authorization to rewrite Phase 0-3 of the existing implementation plan.
+  - Re-activated `planning-with-files`, restored unsynced context, and re-read the root planning records.
+  - Confirmed this remains a plan-only task; concurrent product, market-data qualification, TAIFEX, dashboard, and other planning changes will remain untouched.
+  - Recorded corporate-action normalization, price-limit/one-price classification, Momentum evidence variants, direction-neutral NR7 semantics, Oversold confirmation, and net-of-cost validation as required plan changes.
+  - Rewrote Phase 0 as a P0 contract/Formal Gate freeze, Phase 1 as point-in-time reference-data foundations, Phase 2 as corporate-action-aware raw/adjusted derivation, and Phase 3 as the Momentum-only artifact vertical slice.
+  - Added four Momentum OOS memberships, market-state rank cohorts, one-price handling, normalized NR7 naming/semantics, confirmation-only Oversold, and gross-to-net cost attribution.
+  - Separated immutable raw daily bars from `adjustment_as_of=P` views so future corporate actions cannot rewrite historical candidate artifacts.
+  - Reconciled strategy catalog IDs, artifact schema, persistence tables, application workflow, Phase 5/6 semantics, tests, Definition of Done, and the first-reviewable-slice summary with the rewritten Phase 0-3.
+  - Final structural checks passed: Phase 0-6 headings remain ordered, 36 code-fence delimiters are balanced, required strategy/gate identifiers are present, no trailing whitespace was found, and tracked planning diffs pass `git diff --check`.
+  - Confirmed this task edited only the implementation plan and root planning Markdown; no product code, runtime configuration, migrations, tests, or concurrent worktree files were changed.
+  - The first completion patch used an outdated Phase 12 label and failed without changing files; re-read the live block and applied the corrected scoped patch.
+- Planned output:
+  - Revised `architecture/previous_day_premarket_watchlist_implementation_plan.md` with rewritten Phase 0-3 and consistent cross-references.

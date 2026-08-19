@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, ROUND_DOWN
 from enum import StrEnum
 from typing import Any, Mapping
@@ -45,6 +45,14 @@ class EvaluationStatus(StrEnum):
     BLOCKED = "BLOCKED"
 
 
+class ExecutionHorizon(StrEnum):
+    """Code-owned fill semantics; not a browser/configurable free-form value."""
+
+    INTRADAY_NEXT_BAR = "INTRADAY_NEXT_BAR"
+    DAILY_NEXT_BAR = "DAILY_NEXT_BAR"
+    SESSION_CLOSE = "SESSION_CLOSE"
+
+
 class RunStatus(StrEnum):
     QUEUED = "QUEUED"
     PREFLIGHT = "PREFLIGHT"
@@ -69,12 +77,30 @@ class HistoricalBar:
     name: str = ""
     market: str = ""
     amount: Decimal | None = None
+    # Legacy datasets omit this value entirely. New derived-daily datasets must
+    # persist a calendar-resolved trading date instead of deriving it from the
+    # timestamp in the engine.
+    session_date: date | None = None
+    # A derived daily bar is timestamped at the completed session close so its
+    # signal cannot look ahead. Preserve the first source-bar time separately
+    # for truthful next-session-open fill audit records.
+    session_open_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.symbol.strip():
             raise ValueError("symbol 不可為空")
         if self.timestamp.tzinfo is None:
             raise ValueError("歷史 Kbar timestamp 必須包含 timezone")
+        if self.session_open_at is not None:
+            if self.session_open_at.tzinfo is None:
+                raise ValueError("歷史 Kbar session_open_at 必須包含 timezone")
+            if self.session_open_at > self.timestamp:
+                raise ValueError("歷史 Kbar session_open_at 不可晚於 timestamp")
+            if (
+                self.session_date is not None
+                and self.session_open_at.date() != self.session_date
+            ):
+                raise ValueError("歷史 Kbar session_open_at 與 session_date 不符")
         if min(self.open, self.high, self.low, self.close) <= 0:
             raise ValueError("OHLC 必須大於 0")
         if self.low > min(self.open, self.close) or self.high < max(self.open, self.close):
@@ -83,7 +109,7 @@ class HistoricalBar:
             raise ValueError("volume 不可小於 0")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             "symbol": self.symbol,
             "name": self.name,
             "market": self.market,
@@ -95,6 +121,11 @@ class HistoricalBar:
             "volume": self.volume,
             "amount": str(self.amount) if self.amount is not None else None,
         }
+        if self.session_date is not None:
+            value["session_date"] = self.session_date.isoformat()
+        if self.session_open_at is not None:
+            value["session_open_at"] = self.session_open_at.isoformat()
+        return value
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "HistoricalBar":
@@ -110,6 +141,16 @@ class HistoricalBar:
             close=decimal(value["close"]),
             volume=int(value["volume"]),
             amount=(decimal(value["amount"]) if value.get("amount") is not None else None),
+            session_date=(
+                date.fromisoformat(str(value["session_date"]))
+                if value.get("session_date") is not None
+                else None
+            ),
+            session_open_at=(
+                datetime.fromisoformat(str(value["session_open_at"]))
+                if value.get("session_open_at") is not None
+                else None
+            ),
         )
 
 
@@ -213,7 +254,7 @@ class BacktestRunConfig:
     target_win_rate: Decimal = Decimal("0.50")
     minimum_oos_trades: int = 30
     max_drawdown_guardrail: Decimal = Decimal("0.20")
-    engine_version: str = "backtest-engine-v1"
+    engine_version: str = "backtest-engine-v2"
     experiment_id: str | None = None
     baseline_run_id: str | None = None
     parent_run_id: str | None = None
@@ -297,9 +338,10 @@ class StrategyEvaluation:
     reason: str
     observed: Mapping[str, Any] = field(default_factory=dict)
     threshold: Mapping[str, Any] = field(default_factory=dict)
+    execution_horizon: ExecutionHorizon | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             "strategy_id": self.strategy_id,
             "strategy_name": self.strategy_name,
             "strategy_version": self.strategy_version,
@@ -311,6 +353,9 @@ class StrategyEvaluation:
             "observed": dict(self.observed),
             "threshold": dict(self.threshold),
         }
+        if self.execution_horizon is not None:
+            value["execution_horizon"] = self.execution_horizon.value
+        return value
 
 
 @dataclass(frozen=True)
@@ -323,9 +368,10 @@ class TradeDecision:
     triggered_strategy_ids: tuple[str, ...]
     primary_strategy_id: str
     evaluations: tuple[StrategyEvaluation, ...]
+    execution_horizon: ExecutionHorizon | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             "decision_id": self.decision_id,
             "symbol": self.symbol,
             "side": self.side.value,
@@ -335,6 +381,9 @@ class TradeDecision:
             "primary_strategy_id": self.primary_strategy_id,
             "evaluations": [evaluation.to_dict() for evaluation in self.evaluations],
         }
+        if self.execution_horizon is not None:
+            value["execution_horizon"] = self.execution_horizon.value
+        return value
 
 
 @dataclass(frozen=True)

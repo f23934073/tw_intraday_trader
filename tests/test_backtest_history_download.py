@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -13,12 +14,22 @@ from backtest.dataset import HistoricalDatasetCatalog
 from backtest.historical_download import ResumableHistoricalDownloader
 from backtest.historical_download import (
     HistoricalDownloadPaused,
+    _LEGACY_TRANSIENT_EMPTY,
     _encode_partition,
+    _retry_symbol_from_job,
     _resume_state,
 )
 from backtest.dataset import HistoricalInstrument
 from backtest.sqlite_repository import SQLiteBacktestRepository
-from market_data.provider import MarketDataLimitReached, MockProvider
+from market_data.models import KBar
+from market_data.provider import (
+    MarketDataLimitReached,
+    MarketDataTemporarilyUnavailable,
+    MockProvider,
+)
+
+
+TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 class _FailOnceMockProvider(MockProvider):
@@ -47,6 +58,58 @@ class _QuotaMockProvider(_FailOnceMockProvider):
 class _EmptyMockProvider(MockProvider):
     def get_kbars(self, symbol: str, start: date, end: date):  # type: ignore[no-untyped-def]
         return []
+
+
+class _TemporaryOnceMockProvider(_FailOnceMockProvider):
+    def get_kbars(self, symbol: str, start: date, end: date):  # type: ignore[no-untyped-def]
+        self.calls[symbol] += 1
+        if symbol == self.fail_symbol and not self.failed:
+            self.failed = True
+            raise MarketDataTemporarilyUnavailable("fixture Kbar timeout")
+        return MockProvider.get_kbars(self, symbol, start, end)
+
+
+class _UtcKbarProvider(MockProvider):
+    def get_kbars(self, symbol: str, start: date, end: date):  # type: ignore[no-untyped-def]
+        return [
+            KBar(
+                timestamp=datetime(2026, 1, 1, 1, minute, tzinfo=timezone.utc),
+                open=100.0,
+                high=101.0,
+                low=99.0,
+                close=100.0,
+                volume=1,
+            )
+            for minute in (0, 1)
+        ]
+
+
+def test_provider_bars_receive_taipei_session_dates_before_daily_derivation() -> None:
+    with TemporaryDirectory() as directory:
+        catalog = HistoricalDatasetCatalog(Path(directory) / "datasets")
+        bars = catalog.fetch_provider_bars(
+            _UtcKbarProvider(),
+            instrument=HistoricalInstrument(symbol="2330", name="台積電", market="TWSE"),
+            start=date(2026, 1, 1),
+            end=date(2026, 1, 1),
+        )
+        parent = catalog.create_imported_dataset(bars=bars, source="utc-fixture")
+
+        assert {bar.session_date for bar in bars} == {date(2026, 1, 1)}
+        child = catalog.create_derived_daily_dataset(
+            dataset_id="dataset-derived-provider-session-date",
+            base_dataset_id=parent.dataset_id,
+            completion_proofs={("2330", date(2026, 1, 1)): "proof"},
+            session_contract={"version": "fixture-calendar-v1"},
+            price_adjustment_policy="RAW",
+            corporate_action_adjusted=False,
+            volume_contract={"scope": "REGULAR_SESSION", "unit": "COMMON_LOT"},
+        )
+
+        daily_bar = catalog.load_bars(child.dataset_id)[0]
+        assert daily_bar.session_date == date(2026, 1, 1)
+        assert bars[0].timestamp == datetime(2026, 1, 1, 9, 0, tzinfo=TAIPEI)
+        assert daily_bar.session_open_at == bars[0].timestamp
 
 
 def test_downloader_checkpoints_symbols_and_registers_ready_dataset() -> None:
@@ -256,7 +319,7 @@ def test_resume_replays_every_partition_after_legacy_empty_checkpoint() -> None:
             repository.close()
 
 
-def test_resume_detects_legacy_consecutive_one_year_truncation() -> None:
+def test_resume_accepts_legitimate_shared_one_year_provider_coverage() -> None:
     instruments = tuple(
         HistoricalInstrument(symbol=f"TEST{index}", name="Test", market="TWSE")
         for index in range(10)
@@ -274,9 +337,105 @@ def test_resume_detects_legacy_consecutive_one_year_truncation() -> None:
     completed, retry_from = _resume_state(
         instruments,
         partitions,
-        requested_start=date(2023, 8, 19),
-        requested_end=date(2026, 8, 18),
     )
 
-    assert completed == {f"TEST{index}" for index in range(5)}
-    assert retry_from == "TEST5"
+    assert completed == {f"TEST{index}" for index in range(10)}
+    assert retry_from is None
+
+
+def test_resume_retries_exact_symbol_and_still_repairs_legacy_empty_tail() -> None:
+    instruments = tuple(
+        HistoricalInstrument(symbol=f"TEST{index}", name="Test", market="TWSE")
+        for index in range(4)
+    )
+    partitions = [
+        {
+            "symbol": instrument.symbol,
+            "bar_count": 0 if index == 3 else 100,
+            "error_message": _LEGACY_TRANSIENT_EMPTY if index == 3 else None,
+            "start_date": None if index == 3 else "2025-08-18",
+        }
+        for index, instrument in enumerate(instruments)
+    ]
+
+    completed, retry_from = _resume_state(
+        instruments,
+        partitions,
+        retry_symbol="TEST1",
+    )
+
+    assert completed == {"TEST0", "TEST2"}
+    assert retry_from == "TEST1"
+
+
+def test_legacy_timeout_job_recovers_next_symbol_from_saved_progress() -> None:
+    instruments = tuple(
+        HistoricalInstrument(symbol=f"TEST{index}", name="Test", market="TWSE")
+        for index in range(10)
+    )
+
+    retry_symbol = _retry_symbol_from_job(
+        {
+            "status": "FAILED",
+            "progress": 0.4,
+            "progress_message": "下載失敗；可用同一 job id 接續（已保存 4 檔）",
+            "error_message": "Timeout Topic: api/v1/data/kbars",
+        },
+        instruments,
+    )
+
+    assert retry_symbol == "TEST4"
+
+
+def test_temporary_provider_error_pauses_and_retries_stale_partition() -> None:
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = SQLiteBacktestRepository(root / "backtest.sqlite3")
+        catalog = HistoricalDatasetCatalog(root / "datasets")
+        provider = _TemporaryOnceMockProvider("2330")
+        downloader = ResumableHistoricalDownloader(
+            provider=provider,
+            repository=repository,
+            catalog=catalog,
+        )
+        try:
+            job = downloader.create_job(
+                years=1,
+                symbols=("2317", "2330"),
+                end_date=date(2026, 1, 5),
+            )
+            job_id = str(job["job_id"])
+
+            with pytest.raises(HistoricalDownloadPaused, match="fixture Kbar timeout"):
+                downloader.run(job_id)
+
+            paused_job = repository.get_job(job_id)
+            assert paused_job["status"] == "PAUSED"
+            assert "[RETRY_SYMBOL=2330]" in str(paused_job["error_message"])
+
+            instrument = HistoricalInstrument(symbol="2330", name="台積電", market="TWSE")
+            stale = catalog.fetch_provider_bars(
+                MockProvider(),
+                instrument=instrument,
+                start=date(2026, 1, 5),
+                end=date(2026, 1, 5),
+            )
+            repository.upsert_history_partition(
+                _encode_partition(
+                    job_id=job_id,
+                    instrument=instrument,
+                    bars=stale,
+                    error_message=None,
+                )
+            )
+            completed_symbol_calls = provider.calls["2317"]
+            failed_symbol_calls = provider.calls["2330"]
+
+            manifest = downloader.run(job_id)
+
+            assert provider.calls["2317"] == completed_symbol_calls
+            assert provider.calls["2330"] > failed_symbol_calls
+            assert repository.get_job(job_id)["status"] == "COMPLETED"
+            assert set(manifest["observed_symbols"]) == {"2317", "2330"}
+        finally:
+            repository.close()

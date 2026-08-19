@@ -8,17 +8,20 @@ from decimal import Decimal
 from typing import Callable, Iterable
 
 from backtest.decision_aggregator import DecisionAggregator
+from backtest.daily_features import DailySmaFeatureState
 from backtest.domain import (
     BacktestRunConfig,
     ClosedTrade,
     HistoricalBar,
     HistoricalFill,
+    ExecutionHorizon,
     StrategyEvaluation,
     StrategySide,
     TradeDecision,
     digest,
     lot_floor,
 )
+from backtest.features import BarFeatureState, PositionStrategyContext
 from backtest.strategies import StrategyContext, StrategyRegistry
 
 
@@ -56,6 +59,9 @@ class _PendingOrder:
     side: StrategySide
     shares: int | None
     created_at: datetime
+    entry_signal_atr: Decimal | None = None
+    execution_horizon: ExecutionHorizon | None = None
+    created_session_date: date | None = None
     status: str = "SUBMITTED"
 
 
@@ -68,6 +74,7 @@ class _Position:
     entry_decision: TradeDecision
     entry_event_at: datetime
     entry_event_index: int
+    entry_signal_atr: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -132,15 +139,35 @@ class HistoricalBacktestEngine:
             raise ValueError("回測資料集沒有任何 Kbar")
         self._validate_strategy_set(config)
         by_session: dict[date, list[HistoricalBar]] = {}
+        selected_strategy_ids = set(config.strategy_set.entry_strategy_ids) | set(
+            config.strategy_set.exit_strategy_ids
+        )
+        uses_daily_features = any(
+            "KBAR_DAILY" in self._registry.definition(strategy_id).required_capabilities
+            for strategy_id in selected_strategy_ids
+        )
         for bar in ordered:
-            by_session.setdefault(bar.timestamp.date(), []).append(bar)
+            if uses_daily_features and (
+                bar.session_date is None or bar.session_open_at is None
+            ):
+                raise ValueError(
+                    "daily SMA strategy requires resolved session_date and "
+                    "session_open_at on every Kbar"
+                )
+            session_date = bar.session_date or bar.timestamp.date()
+            by_session.setdefault(session_date, []).append(bar)
 
         result = BacktestEngineResult()
         cash = config.starting_cash
         positions: dict[str, _Position] = {}
         pending: dict[str, _PendingOrder] = {}
+        daily_feature_states: dict[str, DailySmaFeatureState] = {}
         previous_close: dict[str, Decimal] = {}
         last_prices: dict[str, Decimal] = {}
+        terminal_timestamp_by_symbol = {
+            symbol: max(item.timestamp for item in ordered if item.symbol == symbol)
+            for symbol in {item.symbol for item in ordered}
+        }
         sessions = sorted(by_session)
         all_events = len(ordered)
         processed_events = 0
@@ -153,6 +180,7 @@ class HistoricalBacktestEngine:
                 for symbol in {item.symbol for item in session_bars}
             }
             day_states: dict[str, _DayState] = {}
+            feature_states: dict[str, BarFeatureState] = {}
             symbol_event_indexes: dict[str, int] = {}
             for global_index, bar in enumerate(session_bars):
                 processed_events += 1
@@ -180,6 +208,39 @@ class HistoricalBacktestEngine:
                     day_states[bar.symbol] = state
                 session_high_before = state.session_high
                 vwap = state.update(bar)
+                feature_state = feature_states.get(bar.symbol)
+                if feature_state is None:
+                    feature_state = BarFeatureState(bar.symbol, session_date)
+                    feature_states[bar.symbol] = feature_state
+                previous_features = feature_state.current
+                features = feature_state.apply(bar)
+                previous_daily_features = None
+                daily_features = None
+                if uses_daily_features:
+                    daily_state = daily_feature_states.get(bar.symbol)
+                    if daily_state is None:
+                        daily_state = DailySmaFeatureState(bar.symbol)
+                        daily_feature_states[bar.symbol] = daily_state
+                    previous_daily_features = daily_state.current
+                    daily_features = daily_state.apply(bar)
+                position = positions.get(bar.symbol)
+                position_context = None
+                if position is not None:
+                    fixed_atr_stop = (
+                        position.entry_fill.price - Decimal("1.5") * position.entry_signal_atr
+                        if position.entry_signal_atr is not None
+                        else None
+                    )
+                    position_context = PositionStrategyContext(
+                        entry_fill_price=position.entry_fill.price,
+                        entry_fill_at=position.entry_fill.filled_at,
+                        entry_event_index=position.entry_event_index,
+                        bars_held_completed=(
+                            symbol_event_indexes[bar.symbol] - position.entry_event_index + 1
+                        ),
+                        entry_signal_atr=position.entry_signal_atr,
+                        fixed_atr_stop_price=fixed_atr_stop,
+                    )
                 context = StrategyContext(
                     symbol=bar.symbol,
                     bar=bar,
@@ -190,9 +251,17 @@ class HistoricalBacktestEngine:
                     cumulative_volume=state.cumulative_volume,
                     bars_seen=state.bars_seen,
                     is_last_bar=bar.timestamp == last_timestamp_by_symbol[bar.symbol],
-                    entry_price=(positions[bar.symbol].entry_fill.price if bar.symbol in positions else None),
+                    entry_price=(position.entry_fill.price if position is not None else None),
+                    features=features,
+                    previous_features=previous_features,
+                    position=position_context,
+                    daily_features=daily_features,
+                    previous_daily_features=previous_daily_features,
+                    resolved_session_date=bar.session_date,
+                    is_terminal_dataset_bar=(
+                        bar.timestamp == terminal_timestamp_by_symbol[bar.symbol]
+                    ),
                 )
-                position = positions.get(bar.symbol)
                 if position is not None:
                     cash = self._evaluate_exit(
                         context=context,
@@ -214,11 +283,22 @@ class HistoricalBacktestEngine:
                     if decision is not None:
                         result.decisions.append(decision)
                         pending[bar.symbol] = _PendingOrder(
-                            order_id=self._order_id(decision, StrategySide.ENTRY, "NEXT_BAR_OPEN"),
+                        order_id=self._order_id(
+                            decision,
+                            StrategySide.ENTRY,
+                            (
+                                "DAILY_NEXT_BAR_OPEN"
+                                if decision.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR
+                                else "NEXT_BAR_OPEN"
+                            ),
+                        ),
                             decision=decision,
                             side=StrategySide.ENTRY,
                             shares=None,
                             created_at=bar.timestamp,
+                            entry_signal_atr=features.atr,
+                            execution_horizon=decision.execution_horizon,
+                            created_session_date=bar.session_date,
                         )
                         result.orders.append(
                             self._order_payload(pending[bar.symbol], status="SUBMITTED")
@@ -238,6 +318,14 @@ class HistoricalBacktestEngine:
             if progress is not None:
                 progress(session_index / len(sessions), f"已完成 {session_date.isoformat()}")
 
+        for order in tuple(pending.values()):
+            if order.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR:
+                self._replace_order_status(
+                    result,
+                    order.order_id,
+                    "UNFILLED_END_OF_DATA",
+                    "資料結束前沒有下一個有效日 Kbar 可成交",
+                )
         for position in positions.values():
             result.unresolved_positions.append(
                 {
@@ -250,6 +338,22 @@ class HistoricalBacktestEngine:
         return result
 
     def _validate_strategy_set(self, config: BacktestRunConfig) -> None:
+        if config.engine_version not in {"backtest-engine-v1", "backtest-engine-v2"}:
+            raise ValueError(f"不支援的回測引擎版本：{config.engine_version}")
+        experimental_strategy_ids = {
+            "opening_range_breakout_entry_v1",
+            "ema_crossover_entry_v1",
+            "rsi_bollinger_reversion_entry_v0",
+            "atr_stop_exit_v1",
+            "time_stop_exit_v1",
+            "sma_20_60_golden_cross_entry_v1",
+            "sma_20_60_death_cross_exit_v1",
+        }
+        selected = set(config.strategy_set.entry_strategy_ids) | set(
+            config.strategy_set.exit_strategy_ids
+        )
+        if config.engine_version == "backtest-engine-v1" and selected & experimental_strategy_ids:
+            raise ValueError("backtest-engine-v1 不支援新的歷史 feature 策略")
         for strategy_id in config.strategy_set.entry_strategy_ids:
             if self._registry.definition(strategy_id).side is not StrategySide.ENTRY:
                 raise ValueError(f"{strategy_id} 不是買入策略")
@@ -317,7 +421,15 @@ class HistoricalBacktestEngine:
         result: BacktestEngineResult,
         event_index: int,
     ) -> Decimal:
-        if context.symbol in pending or event_index <= position.entry_event_index:
+        # A daily signal is evaluated at a completed session close, while its
+        # corresponding entry filled at that same session's open.  It is
+        # therefore valid to evaluate an exit after a DAILY_NEXT_BAR_OPEN fill
+        # even when this session only contains a single daily bar.  Preserve
+        # the legacy first-bar guard for intraday next-bar fills.
+        if context.symbol in pending or (
+            event_index <= position.entry_event_index
+            and position.entry_fill.source != "DAILY_NEXT_BAR_OPEN"
+        ):
             return cash
         decision = self._evaluate_decision(
             context=context,
@@ -328,7 +440,10 @@ class HistoricalBacktestEngine:
         if decision is None:
             return cash
         result.decisions.append(decision)
-        if context.is_last_bar:
+        if (
+            decision.execution_horizon is ExecutionHorizon.SESSION_CLOSE
+            or (decision.execution_horizon is None and context.is_last_bar)
+        ):
             fill = self._make_fill(
                 decision=decision,
                 bar=context.bar,
@@ -358,6 +473,8 @@ class HistoricalBacktestEngine:
             side=StrategySide.EXIT,
             shares=position.shares,
             created_at=context.bar.timestamp,
+            execution_horizon=decision.execution_horizon,
+            created_session_date=context.resolved_session_date,
         )
         result.orders.append(self._order_payload(pending[context.symbol], status="SUBMITTED"))
         return cash
@@ -377,6 +494,13 @@ class HistoricalBacktestEngine:
         order = pending.get(bar.symbol)
         if order is None or bar.timestamp <= order.created_at:
             return cash
+        if order.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR:
+            if (
+                bar.session_date is None
+                or order.created_session_date is None
+                or bar.session_date <= order.created_session_date
+            ):
+                return cash
         if order.side is StrategySide.ENTRY:
             equity = cash + sum(
                 position.shares * last_prices.get(position.symbol, position.entry_fill.price)
@@ -392,7 +516,12 @@ class HistoricalBacktestEngine:
                 shares=candidate_shares,
                 side=StrategySide.ENTRY,
                 config=config,
-                source="NEXT_BAR_OPEN",
+                source=(
+                    "DAILY_NEXT_BAR_OPEN"
+                    if order.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR
+                    else "NEXT_BAR_OPEN"
+                ),
+                filled_at=self._fill_time(bar, order.execution_horizon),
             )
             total = fill.price * fill.shares + fill.total_cost
             if fill.shares <= 0 or total > cash:
@@ -406,8 +535,9 @@ class HistoricalBacktestEngine:
                 shares=fill.shares,
                 entry_fill=fill,
                 entry_decision=order.decision,
-                entry_event_at=bar.timestamp,
+                entry_event_at=fill.filled_at,
                 entry_event_index=symbol_event_index,
+                entry_signal_atr=order.entry_signal_atr,
             )
             result.fills.append(fill)
             pending.pop(bar.symbol, None)
@@ -425,7 +555,12 @@ class HistoricalBacktestEngine:
             shares=position.shares,
             side=StrategySide.EXIT,
             config=config,
-            source="NEXT_BAR_OPEN",
+            source=(
+                "DAILY_NEXT_BAR_OPEN"
+                if order.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR
+                else "NEXT_BAR_OPEN"
+            ),
+            filled_at=self._fill_time(bar, order.execution_horizon),
         )
         result.fills.append(fill)
         pending.pop(bar.symbol, None)
@@ -452,7 +587,7 @@ class HistoricalBacktestEngine:
 
     @staticmethod
     def _order_payload(order: _PendingOrder, *, status: str) -> dict[str, object]:
-        return {
+        value: dict[str, object] = {
             "order_id": order.order_id,
             "decision_id": order.decision.decision_id,
             "symbol": order.decision.symbol,
@@ -463,6 +598,20 @@ class HistoricalBacktestEngine:
             "primary_strategy_id": order.decision.primary_strategy_id,
             "triggered_strategy_ids": list(order.decision.triggered_strategy_ids),
         }
+        if order.execution_horizon is not None:
+            value["execution_horizon"] = order.execution_horizon.value
+        return value
+
+    @staticmethod
+    def _fill_time(
+        bar: HistoricalBar,
+        execution_horizon: ExecutionHorizon | None,
+    ) -> datetime:
+        if execution_horizon is not ExecutionHorizon.DAILY_NEXT_BAR:
+            return bar.timestamp
+        if bar.session_open_at is None:
+            raise ValueError("daily next-bar fill requires session_open_at")
+        return bar.session_open_at
 
     @staticmethod
     def _make_fill(
@@ -473,7 +622,9 @@ class HistoricalBacktestEngine:
         side: StrategySide,
         config: BacktestRunConfig,
         source: str,
+        filled_at: datetime | None = None,
     ) -> HistoricalFill:
+        fill_time = filled_at or bar.timestamp
         slippage = config.slippage_bps / Decimal("10000")
         raw_price = bar.close if source == "EOD_CLOSE" else bar.open
         price = raw_price * (Decimal("1") + slippage if side is StrategySide.ENTRY else Decimal("1") - slippage)
@@ -484,7 +635,7 @@ class HistoricalBacktestEngine:
             "decision_id": decision.decision_id,
             "symbol": bar.symbol,
             "side": side.value,
-            "filled_at": bar.timestamp.isoformat(),
+            "filled_at": fill_time.isoformat(),
             "shares": shares,
             "source": source,
         }
@@ -493,7 +644,7 @@ class HistoricalBacktestEngine:
             decision_id=decision.decision_id,
             symbol=bar.symbol,
             side=side,
-            filled_at=bar.timestamp,
+            filled_at=fill_time,
             price=price,
             shares=shares,
             commission=commission,

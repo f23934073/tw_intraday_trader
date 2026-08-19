@@ -40,9 +40,28 @@ def test_catalog_bootstraps_all_strategy_families_and_filters_by_phase() -> None
 
         assert len(all_strategies) >= 14
         assert any(item["strategy_id"] == "premarket_gap_watchlist_v1" for item in premarket)
+        gap_watchlist = next(item for item in premarket if item["strategy_id"] == "premarket_gap_watchlist_v1")
+        taifex_context = next(item for item in premarket if item["strategy_id"] == "taifex_overnight_context_v0")
+        assert gap_watchlist["status"] == "DRAFT"
+        assert taifex_context["status"] == "EXPERIMENTAL"
+        assert taifex_context["role"] == "SIGNAL"
+        assert taifex_context["parameters"]["observation_only"] is True
+        assert taifex_context["parameters"]["affects_decisions"] is False
+        assert "direction" not in taifex_context["parameters"]
         assert {item["side"] for item in entries} == {"ENTRY"}
         assert {item["side"] for item in executable} == {"ENTRY", "EXIT"}
         assert all(item["backtest_executable"] for item in executable)
+        golden_cross = next(
+            item for item in executable
+            if item["strategy_id"] == "sma_20_60_golden_cross_entry_v1"
+        )
+        death_cross = next(
+            item for item in executable
+            if item["strategy_id"] == "sma_20_60_death_cross_exit_v1"
+        )
+        assert golden_cross["status"] == death_cross["status"] == "EXPERIMENTAL"
+        assert golden_cross["required_capabilities"] == ["OHLCV", "KBAR_DAILY"]
+        assert death_cross["parameters"]["execution_horizon"] == "DAILY_NEXT_BAR"
         hypothesis = next(item for item in entries if item["strategy_id"] == "momentum_entry_hypothesis_v0")
         assert hypothesis["backtest_executable"] is False
         assert "尚未部署" in hypothesis["backtest_unavailable_reason"]

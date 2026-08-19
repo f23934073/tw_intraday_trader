@@ -149,6 +149,16 @@ class MomentumShadowSnapshot:
     adapter_callback_errors: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class MomentumShadowReadView:
+    """One process-lock capture for dashboard serialization."""
+
+    snapshot: MomentumShadowSnapshot
+    projections: tuple[tuple[str, MomentumProjection | None], ...]
+    miss_reason_by_symbol: tuple[tuple[str, MissReason], ...]
+    pending_alerts: tuple[MomentumAlert, ...]
+
+
 class MomentumShadowRuntime:
     """Compose discovery, subscriptions, ingestion, features, and alerts.
 
@@ -250,6 +260,20 @@ class MomentumShadowRuntime:
         with self._process_lock:
             return self._projections.pending_alerts()
 
+    def acknowledge_alert(
+        self,
+        alert_id: str,
+        *,
+        acknowledged_at: datetime,
+    ) -> None:
+        """Acknowledge a local Shadow alert without emitting an external action."""
+        self._require_aware(acknowledged_at)
+        with self._process_lock:
+            self._projections.acknowledge(
+                alert_id,
+                acknowledged_at=acknowledged_at,
+            )
+
     def start(self) -> None:
         with self._state_lock:
             if self._closed:
@@ -330,8 +354,7 @@ class MomentumShadowRuntime:
         if not covered:
             return False
         snapshot = self._health.snapshot()
-        if evaluated_at < snapshot.as_of:
-            raise ValueError("staleness evaluation cannot move backward")
+        evaluated_at = max(evaluated_at, snapshot.as_of)
         stream_health = {
             (item.symbol, item.stream_kind): item for item in snapshot.streams
         }
@@ -392,6 +415,38 @@ class MomentumShadowRuntime:
     def snapshot(self) -> MomentumShadowSnapshot:
         with self._process_lock:
             return self._build_snapshot()
+
+    def read_view(
+        self,
+        expected_symbols: tuple[str, ...] | list[str],
+    ) -> MomentumShadowReadView:
+        """Capture runtime metadata, rows, misses, and alerts atomically."""
+        normalized = tuple(
+            dict.fromkeys(
+                str(symbol).strip().upper()
+                for symbol in expected_symbols
+                if str(symbol).strip()
+            )
+        )
+        with self._process_lock:
+            projections = tuple(
+                (symbol, self._projections.get(symbol))
+                for symbol in normalized
+            )
+            misses = tuple(
+                (symbol, reason)
+                for symbol, projection in projections
+                if projection is None
+                and (
+                    reason := self._classify_expected_symbol(symbol)
+                ) is not None
+            )
+            return MomentumShadowReadView(
+                snapshot=self._build_snapshot(),
+                projections=projections,
+                miss_reason_by_symbol=misses,
+                pending_alerts=self._projections.pending_alerts(),
+            )
 
     def _build_snapshot(self) -> MomentumShadowSnapshot:
         with self._state_lock:

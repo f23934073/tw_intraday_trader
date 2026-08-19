@@ -49,6 +49,7 @@ class DecisionAggregator:
             triggered_strategy_ids=tuple(item.strategy_id for item in triggered),
             primary_strategy_id=primary.strategy_id,
             evaluations=items,
+            execution_horizon=primary.execution_horizon,
         )
 
     @staticmethod
