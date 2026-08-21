@@ -1,0 +1,69 @@
+{
+  "artifact_type": "TradeManagementPartialSessionDiagnostic",
+  "artifact_version": "trade-management-partial-diagnostic-v1",
+  "generated_at": "2026-08-21T09:23:12+08:00",
+  "market_date": "2026-08-21",
+  "session_classification": "PARTIAL_SESSION_DIAGNOSTIC",
+  "qualifying_real_session": false,
+  "production_shadow_gate": "NOT_PASSED",
+  "execution_enabled": false,
+  "provider": {
+    "environment_identity": "shioaji:1.7.2:simulation=true",
+    "login_succeeded": true,
+    "logout_succeeded": true,
+    "subscribe_trade": false
+  },
+  "postgres": {
+    "connected": true,
+    "transaction_read_only": true,
+    "server_major": 17,
+    "migration_versions": ["001_journal.sql"],
+    "evidence_row_counts": {
+      "journal_sessions": 0,
+      "journal_records": 0,
+      "projection_checkpoints": 0
+    }
+  },
+  "premarket_contract": {
+    "status": "BLOCKED",
+    "blockers": ["SESSION_WINDOW_NOT_FUTURE", "REHEARSAL_FAILED"],
+    "artifact": "research/trade_management_shadow/partial_diagnostic_20260821_0911.json",
+    "artifact_sha256": "7b22c5bded6fa15bbcfcb07f84143e4b36d152105240f8d8370138384a54874e",
+    "report_digest": "04e561e9c0c4f6165c74e0a6124c592ffcd23e95e3bc8be41ec016b5f48ee273"
+  },
+  "live_market_capture": {
+    "session_id": "tm-partial-20260821-2330-0918",
+    "symbol": "2330",
+    "status": "INCOMPLETE",
+    "session_path": "records/market_events/2026-08-21/tm-partial-20260821-2330-0918",
+    "manifest_sha256": "74e87fd8f118e6d01e36b1d7092b5c6214395224fc2a8f81f657d95f5ed01cab",
+    "records_sha256": "e2c40bbd066ef845be71ca25c28e4a65a8212061fdfaf4521d5468f39bb23863",
+    "record_count": 1855,
+    "event_count": 928,
+    "stream_counts": {"BIDASK": 843, "TICK": 85},
+    "accepted": 919,
+    "rejected": 8,
+    "incidents": 0,
+    "exact_replay": "FAILED",
+    "failure": "RuntimeError:QUEUE_DRAIN_TIMEOUT",
+    "first_divergence": {
+      "reason": "DataHealth time cannot move backward",
+      "previous_stream": "BIDASK",
+      "current_stream": "TICK",
+      "shared_event_time": "2026-08-21T09:18:58.592259+08:00",
+      "received_at_delta_milliseconds": "-19.361"
+    }
+  },
+  "shadow_contract_rehearsal": {
+    "passed": 26,
+    "deselected": 1,
+    "excluded_failure": "test fixture event_time/session_date mismatch",
+    "source_class": "TEST_FIXTURE_AND_HISTORICAL_REPLAY",
+    "qualifying_real_session": false
+  },
+  "activation": {
+    "authoritative_local_paper_buy_fill_observed": false,
+    "shadow_decision_session_started": false,
+    "reason": "No persisted authoritative local-paper BUY fill was available; the runtime is observation-only and must not create one."
+  }
+}

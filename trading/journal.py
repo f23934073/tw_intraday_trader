@@ -5,11 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
+
+from trading.canonical_values import canonical_decimal_string
 
 
 JOURNAL_SCHEMA_VERSION = "journal-v1"
@@ -30,10 +33,12 @@ def _require_aware(value: datetime, field_name: str) -> None:
 
 
 def _json_default(value: object) -> object:
+    if isinstance(value, Mapping):
+        return dict(value)
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, Decimal):
-        return str(value)
+        return canonical_decimal_string(value)
     if isinstance(value, Enum):
         return value.value
     raise TypeError(f"unsupported Journal payload value: {type(value).__name__}")
@@ -47,6 +52,16 @@ def _canonical_json(value: Mapping[str, Any]) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
+
+
+def _freeze_json(value: object) -> object:
+    if isinstance(value, dict):
+        return MappingProxyType(
+            {str(key): _freeze_json(item) for key, item in value.items()}
+        )
+    if isinstance(value, list):
+        return tuple(_freeze_json(item) for item in value)
+    return value
 
 
 @dataclass(frozen=True)
@@ -83,6 +98,7 @@ class JournalRecord:
     idempotency_scope: str | None = None
     idempotency_key: str | None = None
     schema_version: str = JOURNAL_SCHEMA_VERSION
+    _payload_bytes: bytes = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         for value, field_name in (
@@ -100,11 +116,20 @@ class JournalRecord:
         if self.idempotency_scope is not None:
             _require_non_empty(self.idempotency_scope, "idempotency_scope")
             _require_non_empty(self.idempotency_key or "", "idempotency_key")
-        _canonical_json(self.payload)
+        payload_json = _canonical_json(self.payload)
+        payload_snapshot = json.loads(payload_json)
+        object.__setattr__(self, "payload", _freeze_json(payload_snapshot))
+        object.__setattr__(self, "_payload_bytes", payload_json.encode("utf-8"))
+
+    @property
+    def payload_bytes(self) -> bytes:
+        """The authoritative immutable canonical payload artifact."""
+
+        return self._payload_bytes
 
     @property
     def payload_json(self) -> str:
-        return _canonical_json(self.payload)
+        return self.payload_bytes.decode("utf-8")
 
     @property
     def fingerprint(self) -> str:
@@ -152,6 +177,9 @@ class JournalRepository(Protocol):
     def start_session(self, session: JournalSession) -> None:
         """Register immutable session metadata."""
 
+    def session(self, session_id: str) -> JournalSession | None:
+        """Return immutable session metadata for retry-stable recovery."""
+
     def append(self, record: JournalRecord) -> JournalAppendResult:
         """Append a record or return the result of the matching retry."""
 
@@ -193,6 +221,9 @@ class InMemoryJournalRepository:
             return
         if existing != session:
             raise JournalConflictError("session metadata conflicts with existing session")
+
+    def session(self, session_id: str) -> JournalSession | None:
+        return self._sessions.get(session_id)
 
     def append(self, record: JournalRecord) -> JournalAppendResult:
         if record.session_id not in self._sessions:

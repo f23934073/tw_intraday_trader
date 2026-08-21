@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import datetime
+from decimal import Decimal
 
 import pytest
 
@@ -48,6 +49,16 @@ def test_append_is_ordered_and_matching_retries_return_original_sequence() -> No
     assert journal.records(SESSION.session_id) == (first,)
 
 
+def test_session_lookup_returns_registered_metadata_or_none() -> None:
+    journal = InMemoryJournalRepository()
+
+    assert journal.session(SESSION.session_id) is None
+
+    journal.start_session(SESSION)
+
+    assert journal.session(SESSION.session_id) == SESSION
+
+
 def test_conflicting_record_or_idempotency_key_fails_closed() -> None:
     journal = InMemoryJournalRepository()
     journal.start_session(SESSION)
@@ -55,6 +66,43 @@ def test_conflicting_record_or_idempotency_key_fails_closed() -> None:
 
     with pytest.raises(JournalConflictError, match="conflicts"):
         journal.append(replace(record(), payload={"symbol": "2317", "side": "BUY"}))
+
+
+def test_record_owns_immutable_canonical_payload_bytes_snapshot() -> None:
+    source = {
+        "amount": Decimal("100.00"),
+        "nested": {"items": ["first", "second"]},
+    }
+    immutable = record(payload=source)
+    original_bytes = immutable.payload_bytes
+    original_fingerprint = immutable.fingerprint
+
+    source["amount"] = Decimal("999")
+    source["nested"]["items"].append("third")
+
+    assert immutable.payload_bytes == b'{"amount":"100","nested":{"items":["first","second"]}}'
+    assert immutable.payload_json == immutable.payload_bytes.decode("utf-8")
+    assert immutable.payload["amount"] == "100"
+    assert immutable.payload["nested"]["items"] == ("first", "second")
+    assert immutable.payload_bytes == original_bytes
+    assert immutable.fingerprint == original_fingerprint
+    with pytest.raises(TypeError):
+        immutable.payload["amount"] = "200"
+    with pytest.raises(TypeError):
+        immutable.payload["nested"]["other"] = "blocked"
+
+
+def test_repository_history_cannot_be_mutated_after_append() -> None:
+    journal = InMemoryJournalRepository()
+    journal.start_session(SESSION)
+    appended = journal.append(record(payload={"nested": {"value": "original"}}))
+
+    with pytest.raises(TypeError):
+        appended.record.payload["nested"]["value"] = "changed"
+
+    stored = journal.records(SESSION.session_id)[0].record
+    assert stored.payload["nested"]["value"] == "original"
+    assert stored.payload_bytes == appended.record.payload_bytes
 
 
 def test_checkpoints_only_advance_and_can_be_resumed_from_sequence() -> None:
@@ -101,4 +149,7 @@ def test_session_must_exist_and_journal_timestamps_must_be_aware() -> None:
 
 
 def test_forward_migration_is_discoverable_from_the_installed_package() -> None:
-    assert [path.name for path in migration_files()] == ["001_journal.sql"]
+    assert [path.name for path in migration_files()] == [
+        "001_journal.sql",
+        "002_trading_schema.sql",
+    ]

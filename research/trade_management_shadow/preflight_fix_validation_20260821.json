@@ -1,0 +1,67 @@
+{
+  "artifact_type": "TradeManagementPreflightFixValidation",
+  "artifact_version": "trade-management-preflight-fix-validation-v1",
+  "generated_at": "2026-08-21T09:37:05+08:00",
+  "market_date": "2026-08-21",
+  "code_identity": "git:6f7a8424270a1688b3dcd3fbd12116107ee415a6+dirty",
+  "execution_enabled": false,
+  "production_shadow_gate": "NOT_PASSED",
+  "fixes": {
+    "callback_ingress_serialization": {
+      "status": "VERIFIED",
+      "tick_bidask_shared_boundary": true,
+      "received_at_normalized": false,
+      "replay_order_authority": "canonical_ingress_sequence"
+    },
+    "rehearsal_fixture_session_date": {
+      "status": "VERIFIED",
+      "production_contract_relaxed": false
+    }
+  },
+  "tests": {
+    "stream_targeted": {"passed": 11},
+    "stream_composition_operation": {"passed": 24},
+    "combined_ordering_replay_shadow": {"passed": 87},
+    "concurrency_repeat": {"passed": 20},
+    "full_regression": {"passed": 949, "skipped": 2}
+  },
+  "postfix_preflight": {
+    "status": "BLOCKED",
+    "blockers": ["SESSION_WINDOW_NOT_FUTURE"],
+    "rehearsal_failed": false,
+    "report_digest": "aaebca1e2d59b5475ccc61db876a75aba36badb0cf0fdb499e87b58fc8d91702",
+    "artifact": "research/trade_management_shadow/partial_postfix_preflight_20260821.json",
+    "artifact_sha256": "4a5abd1d7122254955f6851a12658b1b2dd8751ad72fe11e14f2048a46cba23b"
+  },
+  "real_market_postfix_capture": {
+    "status": "PASS",
+    "classification": "CASE_A",
+    "session_id": "tm-postfix-20260821-2330",
+    "symbol": "2330",
+    "duration_seconds": 60,
+    "events": 102,
+    "records": 204,
+    "stream_counts": {"BIDASK": 94, "TICK": 8},
+    "accepted": 102,
+    "rejected": 0,
+    "incidents": 0,
+    "queue_drained": true,
+    "journal_status": "FINALIZED",
+    "journal_sha256": "6569dd35947d021b65834ff465ad252225ffa973bc8aa88c70b4e3c606be9f0a",
+    "manifest_sha256": "9589e637e5808c00888827507f72e19b2e9ce48c376b5843d2a708096486c34b",
+    "qualification_report_sha256": "27d5d420e2ce2452671fb793cec4e24986f3f0f4ec4e861c7e99b57a0920df57",
+    "exact_replay": {
+      "status": "MATCHED",
+      "repeat_count": 10,
+      "disposition": "MATCH",
+      "bar": "MATCH",
+      "book": "MATCH",
+      "health": "MATCH"
+    },
+    "session_path": "records/market_events/2026-08-21/tm-postfix-20260821-2330"
+  },
+  "qualification_boundary": {
+    "qualifying_full_shadow_session": false,
+    "reason": "The postfix capture is a 60-second market-data qualification run, not a complete Trade Management Shadow session with authoritative fill activation and durable Shadow decisions."
+  }
+}

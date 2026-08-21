@@ -42,6 +42,10 @@ def command(
         limit_price=Decimal(price),
         idempotency_key="browser-1",
         requested_at=AT,
+        strategy_id=("strategy-1" if origin is CommandOrigin.STRATEGY_AUTOMATED else None),
+        strategy_version=(
+            "strategy-1-v1" if origin is CommandOrigin.STRATEGY_AUTOMATED else None
+        ),
     )
 
 
@@ -82,6 +86,47 @@ def test_unhealthy_data_and_strategy_origin_are_blocked() -> None:
         RiskReason.STRATEGY_ORIGIN_DISABLED,
     )
 
+
+def test_entry_only_guards_do_not_block_risk_reducing_sell() -> None:
+    decision = RiskGate(POLICY).evaluate(
+        command(
+            origin=CommandOrigin.STRATEGY_AUTOMATED,
+            side=CommandSide.SELL,
+            quantity=3000,
+            price="100",
+        ),
+        snapshot(
+            current_position_shares=3000,
+            daily_realized_pnl=Decimal("-50000"),
+        ),
+        evaluated_at=AT,
+    )
+
+    assert decision.status is RiskDecisionStatus.APPROVED
+    assert decision.approved_quantity_shares == 3000
+    assert decision.reasons == ()
+
+
+def test_entry_only_guards_still_block_or_reject_buy() -> None:
+    decision = RiskGate(POLICY).evaluate(
+        command(
+            origin=CommandOrigin.STRATEGY_AUTOMATED,
+            side=CommandSide.BUY,
+            quantity=3000,
+            price="100",
+        ),
+        snapshot(
+            available_cash=Decimal("500000"),
+            daily_realized_pnl=Decimal("-50000"),
+        ),
+        evaluated_at=AT,
+    )
+
+    assert decision.status is RiskDecisionStatus.BLOCKED
+    assert decision.reasons == (
+        RiskReason.DAILY_LOSS_LIMIT,
+        RiskReason.STRATEGY_ORIGIN_DISABLED,
+    )
 
 def test_cash_position_and_pending_constraints_reject_manual_buy() -> None:
     decision = RiskGate(POLICY).evaluate(
