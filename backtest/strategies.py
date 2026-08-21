@@ -700,8 +700,8 @@ class Sma2060DeathCrossExitStrategy:
 class StrategyRegistry:
     """Only registered, server-side strategy implementations are executable."""
 
-    def __init__(self) -> None:
-        strategies: tuple[BacktestStrategy, ...] = (
+    def __init__(self, additional_strategies: tuple[BacktestStrategy, ...] = ()) -> None:
+        builtin_strategies: tuple[BacktestStrategy, ...] = (
             GapVwapEntryStrategy(),
             MomentumBreakoutEntryStrategy(),
             OpeningRangeBreakoutEntryStrategy(),
@@ -715,7 +715,13 @@ class StrategyRegistry:
             Sma2060GoldenCrossEntryStrategy(),
             Sma2060DeathCrossExitStrategy(),
         )
-        self._strategies = {strategy.definition.strategy_id: strategy for strategy in strategies}
+        strategies = builtin_strategies + tuple(additional_strategies)
+        self._strategies = {
+            str(getattr(strategy, "selection_id", strategy.definition.strategy_id)): strategy
+            for strategy in strategies
+        }
+        if len(self._strategies) != len(strategies):
+            raise ValueError("回測策略 selection identity 不可重複")
 
     def definitions(self) -> tuple[StrategyDefinition, ...]:
         return tuple(

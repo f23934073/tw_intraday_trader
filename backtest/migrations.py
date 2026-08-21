@@ -21,22 +21,37 @@ def apply_migrations(connection: Any) -> tuple[str, ...]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS backtest_schema_migrations (
+                CREATE SCHEMA IF NOT EXISTS backtest
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS backtest.backtest_schema_migrations (
                     version TEXT PRIMARY KEY,
                     applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
+            cursor.execute("SELECT to_regclass('public.backtest_schema_migrations')")
+            if cursor.fetchone()[0] is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO backtest.backtest_schema_migrations (version, applied_at)
+                    SELECT version, applied_at
+                    FROM public.backtest_schema_migrations
+                    ON CONFLICT (version) DO NOTHING
+                    """
+                )
             for path in migration_files():
                 cursor.execute(
-                    "SELECT 1 FROM backtest_schema_migrations WHERE version = %s",
+                    "SELECT 1 FROM backtest.backtest_schema_migrations WHERE version = %s",
                     (path.name,),
                 )
                 if cursor.fetchone() is not None:
                     continue
                 cursor.execute(path.read_text(encoding="utf-8"))
                 cursor.execute(
-                    "INSERT INTO backtest_schema_migrations (version) VALUES (%s)",
+                    "INSERT INTO backtest.backtest_schema_migrations (version) VALUES (%s)",
                     (path.name,),
                 )
                 applied.append(path.name)

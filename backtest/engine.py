@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Iterator, Mapping
 
 from backtest.decision_aggregator import DecisionAggregator
 from backtest.daily_features import DailySmaFeatureState
@@ -133,12 +133,30 @@ class HistoricalBacktestEngine:
         bars: Iterable[HistoricalBar],
         progress: ProgressCallback | None = None,
         cancelled: Cancelled | None = None,
+        bars_are_ordered: bool = False,
+        total_bars: int | None = None,
+        terminal_timestamp_by_symbol: Mapping[str, datetime] | None = None,
     ) -> BacktestEngineResult:
-        ordered = sorted(bars, key=lambda item: (item.timestamp, item.symbol))
-        if not ordered:
-            raise ValueError("回測資料集沒有任何 Kbar")
+        if bars_are_ordered:
+            if total_bars is None or total_bars <= 0:
+                raise ValueError("ordered Kbar replay requires a positive total_bars")
+            if not terminal_timestamp_by_symbol:
+                raise ValueError(
+                    "ordered Kbar replay requires terminal timestamps by symbol"
+                )
+            ordered_bars = iter(bars)
+            all_events = total_bars
+            terminal_timestamps = dict(terminal_timestamp_by_symbol)
+        else:
+            ordered = sorted(bars, key=lambda item: (item.timestamp, item.symbol))
+            if not ordered:
+                raise ValueError("回測資料集沒有任何 Kbar")
+            ordered_bars = iter(ordered)
+            all_events = len(ordered)
+            terminal_timestamps: dict[str, datetime] = {}
+            for bar in ordered:
+                terminal_timestamps[bar.symbol] = bar.timestamp
         self._validate_strategy_set(config)
-        by_session: dict[date, list[HistoricalBar]] = {}
         selected_strategy_ids = set(config.strategy_set.entry_strategy_ids) | set(
             config.strategy_set.exit_strategy_ids
         )
@@ -146,16 +164,6 @@ class HistoricalBacktestEngine:
             "KBAR_DAILY" in self._registry.definition(strategy_id).required_capabilities
             for strategy_id in selected_strategy_ids
         )
-        for bar in ordered:
-            if uses_daily_features and (
-                bar.session_date is None or bar.session_open_at is None
-            ):
-                raise ValueError(
-                    "daily SMA strategy requires resolved session_date and "
-                    "session_open_at on every Kbar"
-                )
-            session_date = bar.session_date or bar.timestamp.date()
-            by_session.setdefault(session_date, []).append(bar)
 
         result = BacktestEngineResult()
         cash = config.starting_cash
@@ -164,26 +172,26 @@ class HistoricalBacktestEngine:
         daily_feature_states: dict[str, DailySmaFeatureState] = {}
         previous_close: dict[str, Decimal] = {}
         last_prices: dict[str, Decimal] = {}
-        terminal_timestamp_by_symbol = {
-            symbol: max(item.timestamp for item in ordered if item.symbol == symbol)
-            for symbol in {item.symbol for item in ordered}
-        }
-        sessions = sorted(by_session)
-        all_events = len(ordered)
         processed_events = 0
 
-        for session_index, session_date in enumerate(sessions, start=1):
+        sessions = self._iter_sessions(
+            ordered_bars,
+            uses_daily_features=uses_daily_features,
+            reject_duplicate_events=bars_are_ordered,
+        )
+        for session_date, session_bars in sessions:
             self._raise_if_cancelled(cancelled)
-            session_bars = by_session[session_date]
-            last_timestamp_by_symbol = {
-                symbol: max(item.timestamp for item in session_bars if item.symbol == symbol)
-                for symbol in {item.symbol for item in session_bars}
-            }
+            last_timestamp_by_symbol: dict[str, datetime] = {}
+            for bar in session_bars:
+                last_timestamp_by_symbol[bar.symbol] = bar.timestamp
             day_states: dict[str, _DayState] = {}
             feature_states: dict[str, BarFeatureState] = {}
             symbol_event_indexes: dict[str, int] = {}
-            for global_index, bar in enumerate(session_bars):
+            session_closes: dict[str, Decimal] = {}
+            for bar in session_bars:
                 processed_events += 1
+                if processed_events > all_events:
+                    raise ValueError("回測資料集 bar count 不符，拒絕回測")
                 if processed_events % 128 == 0:
                     self._raise_if_cancelled(cancelled)
                     if progress is not None:
@@ -191,6 +199,7 @@ class HistoricalBacktestEngine:
 
                 symbol_event_indexes[bar.symbol] = symbol_event_indexes.get(bar.symbol, 0) + 1
                 last_prices[bar.symbol] = bar.close
+                session_closes[bar.symbol] = bar.close
                 cash = self._fill_pending_if_due(
                     pending=pending,
                     positions=positions,
@@ -259,7 +268,11 @@ class HistoricalBacktestEngine:
                     previous_daily_features=previous_daily_features,
                     resolved_session_date=bar.session_date,
                     is_terminal_dataset_bar=(
-                        bar.timestamp == terminal_timestamp_by_symbol[bar.symbol]
+                        bar.timestamp
+                        == self._terminal_timestamp(
+                            terminal_timestamps,
+                            bar.symbol,
+                        )
                     ),
                 )
                 if position is not None:
@@ -305,8 +318,7 @@ class HistoricalBacktestEngine:
                         )
                         state.entered_today = True
 
-            for bar in session_bars:
-                previous_close[bar.symbol] = bar.close
+            previous_close.update(session_closes)
             market_value = sum(
                 position.shares * last_prices[position.symbol]
                 for position in positions.values()
@@ -316,7 +328,12 @@ class HistoricalBacktestEngine:
                 DailyEquityPoint(session_date, cash + market_value, cash, market_value)
             )
             if progress is not None:
-                progress(session_index / len(sessions), f"已完成 {session_date.isoformat()}")
+                progress(processed_events / all_events, f"已完成 {session_date.isoformat()}")
+
+        if processed_events == 0:
+            raise ValueError("回測資料集沒有任何 Kbar")
+        if processed_events != all_events:
+            raise ValueError("回測資料集 bar count 不符，拒絕回測")
 
         for order in tuple(pending.values()):
             if order.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR:
@@ -336,6 +353,53 @@ class HistoricalBacktestEngine:
                 }
             )
         return result
+
+    @staticmethod
+    def _iter_sessions(
+        bars: Iterator[HistoricalBar],
+        *,
+        uses_daily_features: bool,
+        reject_duplicate_events: bool,
+    ) -> Iterator[tuple[date, list[HistoricalBar]]]:
+        current_session: date | None = None
+        session_bars: list[HistoricalBar] = []
+        previous_key: tuple[datetime, str] | None = None
+        for bar in bars:
+            key = (bar.timestamp, bar.symbol)
+            if previous_key is not None and (
+                key < previous_key or (reject_duplicate_events and key == previous_key)
+            ):
+                raise ValueError("回測 Kbar 順序或唯一性錯誤")
+            previous_key = key
+            if uses_daily_features and (
+                bar.session_date is None or bar.session_open_at is None
+            ):
+                raise ValueError(
+                    "daily SMA strategy requires resolved session_date and "
+                    "session_open_at on every Kbar"
+                )
+            session_date = bar.session_date or bar.timestamp.date()
+            if current_session is None:
+                current_session = session_date
+            elif session_date < current_session:
+                raise ValueError("回測 Kbar session 順序錯誤")
+            elif session_date != current_session:
+                yield current_session, session_bars
+                current_session = session_date
+                session_bars = []
+            session_bars.append(bar)
+        if current_session is not None:
+            yield current_session, session_bars
+
+    @staticmethod
+    def _terminal_timestamp(
+        terminal_timestamps: Mapping[str, datetime],
+        symbol: str,
+    ) -> datetime:
+        try:
+            return terminal_timestamps[symbol]
+        except KeyError as error:
+            raise ValueError(f"回測資料集缺少 {symbol} terminal timestamp") from error
 
     def _validate_strategy_set(self, config: BacktestRunConfig) -> None:
         if config.engine_version not in {"backtest-engine-v1", "backtest-engine-v2"}:
@@ -398,7 +462,7 @@ class HistoricalBacktestEngine:
     ) -> None:
         for evaluation in evaluations:
             counters = result.strategy_counts.setdefault(
-                evaluation.strategy_id,
+                evaluation.member_id,
                 {"evaluated": 0, "triggered": 0, "blocked": 0, "insufficient_data": 0},
             )
             counters["evaluated"] += 1

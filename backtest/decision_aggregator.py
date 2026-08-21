@@ -30,7 +30,7 @@ class DecisionAggregator:
         strategy_set_digest: str,
     ) -> TradeDecision | None:
         items = tuple(evaluations)
-        by_id = {item.strategy_id: item for item in items}
+        by_id = {item.member_id: item for item in items}
         selected = tuple(by_id[item] for item in selected_strategy_ids if item in by_id)
         triggered = tuple(item for item in selected if item.status is EvaluationStatus.TRIGGERED)
         if not self._matches(policy, minimum_trigger_count, selected, triggered):
@@ -46,8 +46,8 @@ class DecisionAggregator:
             side=side,
             event_at=event_at,
             policy=policy,
-            triggered_strategy_ids=tuple(item.strategy_id for item in triggered),
-            primary_strategy_id=primary.strategy_id,
+            triggered_strategy_ids=tuple(item.member_id for item in triggered),
+            primary_strategy_id=primary.member_id,
             evaluations=items,
             execution_horizon=primary.execution_horizon,
         )
@@ -75,5 +75,5 @@ class DecisionAggregator:
         priority = {strategy_id: index for index, strategy_id in enumerate(priority_order)}
         return sorted(
             triggered,
-            key=lambda value: (priority.get(value.strategy_id, len(priority)), value.strategy_id),
+            key=lambda value: (priority.get(value.member_id, len(priority)), value.member_id),
         )[0]

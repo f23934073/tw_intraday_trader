@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
 import json
 import os
 import shutil
 from collections import Counter
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Callable, Iterable, Iterator, Mapping
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -22,6 +25,10 @@ from market_data.provider import MarketDataProvider
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
 _MAX_PROVIDER_DAYS = 29
+_TIMESTAMP_SYMBOL_ORDER = "TIMESTAMP_SYMBOL"
+_SYMBOL_TIMESTAMP_ORDER = "SYMBOL_TIMESTAMP"
+_ORDER_CHUNK_SIZE = 50_000
+_ORDER_MERGE_FAN_IN = 32
 ProgressCallback = Callable[[float, str], None]
 Cancelled = Callable[[], bool]
 
@@ -151,6 +158,7 @@ class DatasetManifest:
     research_eligible: bool
     issues: tuple[str, ...] = ()
     storage_format: str = "JSONL_FULL_V1"
+    payload_order: str | None = None
     parent_dataset_id: str | None = None
     delta_bar_count: int = 0
     symbol_last_timestamps: tuple[tuple[str, str], ...] = ()
@@ -197,7 +205,9 @@ class DatasetManifest:
         if self.includes_cadence_summary:
             value["cadence_summary"] = dict(self.cadence_summary)
         # Keep legacy manifest bytes and historical result digests unchanged:
-        # new daily-contract fields are serialised only when explicitly set.
+        # new fields are serialised only when explicitly set.
+        if self.payload_order is not None:
+            value["payload_order"] = self.payload_order
         if self.daily_bar_contract is not None:
             value["daily_bar_contract"] = self.daily_bar_contract
         if self.derivation is not None:
@@ -232,6 +242,11 @@ class DatasetManifest:
             research_eligible=bool(value.get("research_eligible", False)),
             issues=tuple(str(item) for item in value.get("issues", ())),
             storage_format=str(value.get("storage_format", "JSONL_FULL_V1")),
+            payload_order=(
+                str(value["payload_order"])
+                if value.get("payload_order") is not None
+                else None
+            ),
             parent_dataset_id=(
                 str(value["parent_dataset_id"])
                 if value.get("parent_dataset_id")
@@ -347,6 +362,73 @@ class HistoricalDatasetCatalog:
             return iter(self.load_bars(dataset_id))
         raise ValueError(f"資料集 {dataset_id} storage format 不支援")
 
+    def iter_bars_ordered(
+        self,
+        dataset_id: str,
+        *,
+        chunk_size: int = _ORDER_CHUNK_SIZE,
+        merge_fan_in: int = _ORDER_MERGE_FAN_IN,
+    ) -> Iterator[HistoricalBar]:
+        """Yield verified bars in deterministic event order with bounded RAM.
+
+        Timestamp-major payloads are validated while streaming.  Legacy and
+        symbol-partition payloads are sorted through bounded temporary files;
+        merge fan-in is capped so full-market datasets do not exhaust file
+        descriptors.  Delta datasets merge their ordered parent and child
+        streams without calling ``load_bars()``.
+        """
+
+        if chunk_size < 1:
+            raise ValueError("ordered Kbar chunk_size 必須大於 0")
+        if merge_fan_in < 2:
+            raise ValueError("ordered Kbar merge_fan_in 必須至少為 2")
+        manifest = self.get_manifest(dataset_id)
+        if manifest.storage_format == "JSONL_FULL_V1":
+            source = self._iter_full_dataset(
+                dataset_id,
+                manifest.bar_count,
+                manifest.bars_sha256,
+            )
+            ordered = self._order_payload(
+                source,
+                payload_order=manifest.payload_order,
+                chunk_size=chunk_size,
+                merge_fan_in=merge_fan_in,
+            )
+            return self._validate_ordered_bars(
+                dataset_id,
+                ordered,
+                expected_bar_count=manifest.bar_count,
+            )
+        if manifest.storage_format == "JSONL_DELTA_V1":
+            if not manifest.parent_dataset_id:
+                raise ValueError(f"增量資料集 {dataset_id} 缺少 parent_dataset_id")
+            parent = self.iter_bars_ordered(
+                manifest.parent_dataset_id,
+                chunk_size=chunk_size,
+                merge_fan_in=merge_fan_in,
+            )
+            delta_source = self._iter_counted_payload(
+                dataset_id,
+                "bars.delta.jsonl",
+                manifest.bars_sha256,
+                manifest.delta_bar_count,
+            )
+            delta = self._order_payload(
+                delta_source,
+                payload_order=manifest.payload_order,
+                chunk_size=chunk_size,
+                merge_fan_in=merge_fan_in,
+            )
+            merged = heapq.merge(parent, delta, key=self._event_key)
+            return self._validate_ordered_bars(
+                dataset_id,
+                merged,
+                expected_bar_count=manifest.bar_count,
+                allow_identical_duplicates=True,
+            )
+        raise ValueError(f"資料集 {dataset_id} storage format 不支援")
+
     def _iter_full_dataset(
         self,
         dataset_id: str,
@@ -359,6 +441,146 @@ class HistoricalDatasetCatalog:
             yield bar
         if count != expected_bar_count:
             raise ValueError(f"資料集 {dataset_id} bar count 不符，拒絕回測")
+
+    def _iter_counted_payload(
+        self,
+        dataset_id: str,
+        filename: str,
+        expected_checksum: str,
+        expected_bar_count: int,
+    ) -> Iterator[HistoricalBar]:
+        count = 0
+        for bar in self._iter_payload(dataset_id, filename, expected_checksum):
+            count += 1
+            yield bar
+        if count != expected_bar_count:
+            raise ValueError(f"資料集 {dataset_id} delta bar count 不符，拒絕回測")
+
+    def _order_payload(
+        self,
+        bars: Iterable[HistoricalBar],
+        *,
+        payload_order: str | None,
+        chunk_size: int,
+        merge_fan_in: int,
+    ) -> Iterator[HistoricalBar]:
+        if payload_order == _TIMESTAMP_SYMBOL_ORDER:
+            return iter(bars)
+        return self._iter_external_ordered(
+            bars,
+            chunk_size=chunk_size,
+            merge_fan_in=merge_fan_in,
+        )
+
+    def _iter_external_ordered(
+        self,
+        bars: Iterable[HistoricalBar],
+        *,
+        chunk_size: int,
+        merge_fan_in: int,
+    ) -> Iterator[HistoricalBar]:
+        with TemporaryDirectory(prefix=".ordered-kbars-", dir=self._root) as directory:
+            temporary_root = Path(directory)
+            paths: list[Path] = []
+            chunk: list[HistoricalBar] = []
+            for bar in bars:
+                chunk.append(bar)
+                if len(chunk) >= chunk_size:
+                    paths.append(
+                        self._write_ordered_chunk(
+                            temporary_root,
+                            chunk,
+                            len(paths),
+                        )
+                    )
+                    chunk = []
+            if chunk:
+                paths.append(
+                    self._write_ordered_chunk(
+                        temporary_root,
+                        chunk,
+                        len(paths),
+                    )
+                )
+            pass_index = 0
+            while len(paths) > 1:
+                next_paths: list[Path] = []
+                for group_index, start in enumerate(range(0, len(paths), merge_fan_in)):
+                    group = paths[start : start + merge_fan_in]
+                    output = temporary_root / f"merge-{pass_index}-{group_index}.jsonl"
+                    self._merge_ordered_files(group, output)
+                    next_paths.append(output)
+                for path in paths:
+                    path.unlink()
+                paths = next_paths
+                pass_index += 1
+            if paths:
+                yield from self._iter_temporary_bars(paths[0])
+
+    def _write_ordered_chunk(
+        self,
+        directory: Path,
+        bars: list[HistoricalBar],
+        index: int,
+    ) -> Path:
+        bars.sort(key=self._event_key)
+        path = directory / f"chunk-{index}.jsonl"
+        with path.open("w", encoding="utf-8") as handle:
+            for bar in bars:
+                handle.write(canonical_json(bar.to_dict()) + "\n")
+        return path
+
+    def _merge_ordered_files(self, paths: list[Path], output: Path) -> None:
+        with ExitStack() as stack:
+            handles = [stack.enter_context(path.open("r", encoding="utf-8")) for path in paths]
+            streams = [self._iter_bar_lines(handle) for handle in handles]
+            with output.open("w", encoding="utf-8") as target:
+                for bar in heapq.merge(*streams, key=self._event_key):
+                    target.write(canonical_json(bar.to_dict()) + "\n")
+
+    @staticmethod
+    def _iter_bar_lines(lines: Iterable[str]) -> Iterator[HistoricalBar]:
+        for line in lines:
+            if line.strip():
+                yield HistoricalBar.from_dict(json.loads(line))
+
+    @staticmethod
+    def _iter_temporary_bars(path: Path) -> Iterator[HistoricalBar]:
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if line.strip():
+                    yield HistoricalBar.from_dict(json.loads(line))
+
+    @classmethod
+    def _validate_ordered_bars(
+        cls,
+        dataset_id: str,
+        bars: Iterable[HistoricalBar],
+        *,
+        expected_bar_count: int,
+        allow_identical_duplicates: bool = False,
+    ) -> Iterator[HistoricalBar]:
+        previous_key: tuple[datetime, str] | None = None
+        previous_bar: HistoricalBar | None = None
+        count = 0
+        for bar in bars:
+            key = cls._event_key(bar)
+            if previous_key is not None and key < previous_key:
+                raise ValueError(f"資料集 {dataset_id} Kbar 順序或唯一性錯誤")
+            if key == previous_key:
+                if allow_identical_duplicates and bar == previous_bar:
+                    continue
+                raise ValueError(f"資料集 {dataset_id} Kbar 順序或唯一性錯誤")
+            previous_key = key
+            previous_bar = bar
+            count += 1
+            yield bar
+        if count != expected_bar_count:
+            raise ValueError(f"資料集 {dataset_id} bar count 不符，拒絕回測")
+
+    @staticmethod
+    def _event_key(bar: HistoricalBar) -> tuple[datetime, str]:
+        return bar.timestamp, bar.symbol
 
     def symbol_last_timestamps(self, dataset_id: str) -> dict[str, datetime]:
         """Return compact per-symbol watermarks, scanning legacy datasets once."""
@@ -606,6 +828,7 @@ class HistoricalDatasetCatalog:
                 universe_scope=base.universe_scope,
                 research_eligible=False,
                 issues=all_issues,
+                payload_order=_TIMESTAMP_SYMBOL_ORDER,
                 symbol_last_timestamps=tuple(
                     (symbol, timestamp.isoformat())
                     for symbol, timestamp in sorted(daily_watermarks.items())
@@ -830,6 +1053,7 @@ class HistoricalDatasetCatalog:
                 universe_scope="CURRENT_SNAPSHOT",
                 research_eligible=False,
                 issues=issues,
+                payload_order=_SYMBOL_TIMESTAMP_ORDER,
                 symbol_last_timestamps=tuple(
                     (symbol, timestamp.isoformat())
                     for symbol, timestamp in sorted(symbol_last_timestamps.items())
@@ -932,6 +1156,7 @@ class HistoricalDatasetCatalog:
                 research_eligible=base.research_eligible,
                 issues=combined_issues,
                 storage_format="JSONL_DELTA_V1",
+                payload_order=_SYMBOL_TIMESTAMP_ORDER,
                 parent_dataset_id=base_dataset_id,
                 delta_bar_count=delta_bar_count,
                 symbol_last_timestamps=tuple(
@@ -1028,6 +1253,7 @@ class HistoricalDatasetCatalog:
                 universe_scope=universe_scope,
                 research_eligible=research_eligible,
                 issues=issues,
+                payload_order=_TIMESTAMP_SYMBOL_ORDER,
                 symbol_last_timestamps=tuple(
                     (symbol, timestamp.isoformat())
                     for symbol, timestamp in sorted(symbol_last_timestamps.items())

@@ -11,4 +11,17 @@ from backtest.repository import _JsonBacktestRepository
 class PostgresBacktestRepository(_JsonBacktestRepository):
     def __init__(self, connection: Any) -> None:
         apply_migrations(connection)
-        super().__init__(connection, placeholder="%s", json_type="JSONB", blob_type="BYTEA")
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO backtest, public")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        super().__init__(
+            connection,
+            placeholder="%s",
+            json_type="JSONB",
+            blob_type="BYTEA",
+            apply_schema=False,
+        )

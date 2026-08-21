@@ -1,0 +1,1 @@
+"""Atomic entry strategy implementations."""

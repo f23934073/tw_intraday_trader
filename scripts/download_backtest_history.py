@@ -27,6 +27,16 @@ def _date(value: str) -> date:
         raise argparse.ArgumentTypeError("日期必須是 YYYY-MM-DD") from error
 
 
+def _resume_command(job_id: str, *, coverage_scan_mode: bool) -> str:
+    command = (
+        "PROVIDER=shioaji .venv/bin/python scripts/download_backtest_history.py "
+        f"--resume {job_id}"
+    )
+    if coverage_scan_mode:
+        command += " --continue-on-empty-for-coverage-audit"
+    return command
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="下載歷史 Kbar；每檔股票完成後壓縮寫入回測資料庫，可中斷續傳",
@@ -41,6 +51,14 @@ def main() -> None:
         help="覆寫 .env 的 PROVIDER；正式歷史資料請使用 shioaji",
     )
     parser.add_argument("--resume", metavar="JOB_ID", help="接續先前 dataset-download-* 工作")
+    parser.add_argument(
+        "--continue-on-empty-for-coverage-audit",
+        action="store_true",
+        help=(
+            "將 Provider 空回應記為 PRICE_DATA_UNAVAILABLE observation 後繼續；"
+            "不代表資料成功或正式研究排除"
+        ),
+    )
     args = parser.parse_args()
     if args.years <= 0:
         parser.error("--years 必須大於 0")
@@ -60,6 +78,9 @@ def main() -> None:
             repository=repository,
             catalog=catalog,
             report=lambda message: print(message, flush=True),
+            coverage_scan_mode=(
+                args.continue_on_empty_for_coverage_audit
+            ),
         )
         if args.resume:
             print(f"接續下載工作：{job_id}", flush=True)
@@ -81,8 +102,7 @@ def main() -> None:
             print(
                 "若是查詢逾時，可稍後直接接續；若是流量不足，請等交易日上午 "
                 "08:00 重置後接續：\n"
-                f"  PROVIDER=shioaji .venv/bin/python scripts/download_backtest_history.py "
-                f"--resume {job_id}",
+                f"  {_resume_command(job_id, coverage_scan_mode=args.continue_on_empty_for_coverage_audit)}",
                 file=sys.stderr,
                 flush=True,
             )

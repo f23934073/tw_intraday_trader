@@ -22,6 +22,8 @@ class StrategySide(StrEnum):
 
 
 class StrategyRole(StrEnum):
+    FILTER = "FILTER"
+    CONTEXT = "CONTEXT"
     CANDIDATE = "CANDIDATE"
     SCORE = "SCORE"
     SIGNAL = "SIGNAL"
@@ -34,6 +36,7 @@ class SessionPhase(StrEnum):
     OPENING = "OPENING"
     INTRADAY = "INTRADAY"
     END_OF_DAY = "END_OF_DAY"
+    POST_MARKET = "POST_MARKET"
     POSITION_LIFECYCLE = "POSITION_LIFECYCLE"
     ALL_SESSION = "ALL_SESSION"
 

@@ -99,13 +99,15 @@ class _JsonBacktestRepository:
         placeholder: str,
         json_type: str,
         blob_type: str,
+        apply_schema: bool = True,
     ) -> None:
         self._connection = connection
         self._placeholder = placeholder
         self._json_type = json_type
         self._blob_type = blob_type
         self._lock = RLock()
-        self._apply_schema()
+        if apply_schema:
+            self._apply_schema()
 
     def close(self) -> None:
         self._connection.close()

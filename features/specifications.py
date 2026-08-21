@@ -1,0 +1,111 @@
+"""Runtime-neutral feature specifications shared by strategy adapters."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Mapping
+
+from strategy_catalog.parameter_schema import canonical_digest
+
+
+@dataclass(frozen=True)
+class FeatureRequestSpec:
+    feature_id: str
+    parameters: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.feature_id.strip():
+            raise ValueError("feature_id 不可為空")
+        object.__setattr__(self, "parameters", dict(self.parameters))
+
+    @property
+    def parameter_digest(self) -> str:
+        return canonical_digest(dict(self.parameters))
+
+    @property
+    def request_digest(self) -> str:
+        return canonical_digest(
+            {
+                "feature_id": self.feature_id,
+                "parameters": dict(self.parameters),
+                "parameter_digest": self.parameter_digest,
+            }
+        )
+
+
+@dataclass(frozen=True)
+class FeatureSpecification:
+    feature_id: str
+    unit: str
+    cadence: str
+    completed_data_only: bool
+    session_reset: bool
+    warmup_bars: int
+    missing_semantics: str
+    implementation_digest: str
+
+    @property
+    def specification_digest(self) -> str:
+        return canonical_digest(
+            {
+                "feature_id": self.feature_id,
+                "unit": self.unit,
+                "cadence": self.cadence,
+                "completed_data_only": self.completed_data_only,
+                "session_reset": self.session_reset,
+                "warmup_bars": self.warmup_bars,
+                "missing_semantics": self.missing_semantics,
+                "implementation_digest": self.implementation_digest,
+            }
+        )
+
+
+@dataclass(frozen=True)
+class NormalizedFeatureSnapshot:
+    symbol: str
+    session: str
+    as_of: datetime
+    adapter_identity: str
+    values: Mapping[str, Any]
+    input_digest: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "values", dict(self.values))
+
+
+class FeatureSpecificationRegistry:
+    def __init__(self) -> None:
+        specifications = (
+            FeatureSpecification(
+                feature_id="vwap_session_v1",
+                unit="TWD_PER_SHARE",
+                cadence="COMPLETED_KBAR_1M",
+                completed_data_only=True,
+                session_reset=True,
+                warmup_bars=1,
+                missing_semantics="INSUFFICIENT_DATA",
+                implementation_digest="session-vwap-spec-v1",
+            ),
+            FeatureSpecification(
+                feature_id="previous_intraday_high_v1",
+                unit="TWD_PER_SHARE",
+                cadence="COMPLETED_KBAR_1M",
+                completed_data_only=True,
+                session_reset=True,
+                warmup_bars=2,
+                missing_semantics="INSUFFICIENT_DATA",
+                implementation_digest="previous-intraday-high-spec-v1",
+            ),
+        )
+        self._specifications = {item.feature_id: item for item in specifications}
+
+    def get(self, feature_id: str) -> FeatureSpecification:
+        try:
+            return self._specifications[feature_id]
+        except KeyError as error:
+            raise ValueError(f"未知 Feature Specification：{feature_id}") from error
+
+    def validate_requests(self, requests: tuple[FeatureRequestSpec, ...]) -> None:
+        for request in requests:
+            self.get(request.feature_id)

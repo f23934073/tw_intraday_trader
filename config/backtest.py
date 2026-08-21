@@ -23,7 +23,32 @@ def _time(value: str) -> time:
 
 BACKTEST_ENABLED = os.environ.get("BACKTEST_ENABLED", "true").lower() == "true"
 BACKTEST_DATA_DIR = Path(os.environ.get("BACKTEST_DATA_DIR", "data/backtest"))
-BACKTEST_DATABASE_URL = os.environ.get("BACKTEST_DATABASE_URL", "").strip()
+
+
+def _database_settings() -> tuple[str, str]:
+    explicit_url = os.environ.get("BACKTEST_DATABASE_URL", "").strip()
+    explicit_backend = os.environ.get("BACKTEST_DATABASE_BACKEND", "").strip().lower()
+    backend = explicit_backend or "postgresql"
+    if backend not in {"sqlite", "postgresql"}:
+        raise ValueError("BACKTEST_DATABASE_BACKEND 必須是 sqlite 或 postgresql")
+    if backend == "sqlite":
+        return backend, ""
+
+    database_url = explicit_url
+    if not database_url:
+        for name in ("DATABASE_URL", "POSTGRESQL_DSN", "PostgreSQL_DSN"):
+            database_url = os.environ.get(name, "").strip()
+            if database_url:
+                break
+    if not database_url.startswith(("postgres://", "postgresql://")):
+        raise ValueError(
+            "BACKTEST_DATABASE_BACKEND=postgresql 時必須設定 BACKTEST_DATABASE_URL "
+            "或共用 PostgreSQL DSN"
+        )
+    return backend, database_url
+
+
+BACKTEST_DATABASE_BACKEND, BACKTEST_DATABASE_URL = _database_settings()
 BACKTEST_WORKERS = max(1, int(os.environ.get("BACKTEST_WORKERS", "1")))
 BACKTEST_INCREMENTAL_SYNC_ENABLED = (
     os.environ.get("BACKTEST_INCREMENTAL_SYNC_ENABLED", "true").lower() == "true"

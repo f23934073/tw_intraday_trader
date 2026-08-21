@@ -70,7 +70,7 @@ class BacktestApplicationService:
     @staticmethod
     def _build_repository() -> BacktestRepository:
         database_url = backtest_settings.BACKTEST_DATABASE_URL
-        if database_url.startswith(("postgres://", "postgresql://")):
+        if backtest_settings.BACKTEST_DATABASE_BACKEND == "postgresql":
             try:
                 import psycopg  # type: ignore[import-not-found]
             except ImportError as error:
@@ -122,7 +122,11 @@ class BacktestApplicationService:
             "enabled": backtest_settings.BACKTEST_ENABLED,
             "provider": type(self._provider).__name__,
             "provider_supports_kbars": self._provider.supports_kbars(),
-            "database": "PostgreSQL" if backtest_settings.BACKTEST_DATABASE_URL.startswith(("postgres://", "postgresql://")) else "SQLite（本機開發）",
+            "database": (
+                "PostgreSQL"
+                if backtest_settings.BACKTEST_DATABASE_BACKEND == "postgresql"
+                else "SQLite（本機開發）"
+            ),
             "modes": ["SIGNAL_STUDY", "PORTFOLIO_SIMULATION"],
             "incremental_sync": {
                 "enabled": backtest_settings.BACKTEST_INCREMENTAL_SYNC_ENABLED,
@@ -631,7 +635,13 @@ class BacktestApplicationService:
             if str(dataset["manifest_digest"]) != config.dataset_digest:
                 raise ValueError("歷史資料集 manifest digest 已變更，拒絕執行回測")
             self._validate_strategy_selection(config.strategy_set, dataset)
-            bars = self._catalog.iter_bars(config.dataset_id)
+            manifest = self._catalog.get_manifest(config.dataset_id)
+            if manifest.manifest_digest != config.dataset_digest:
+                raise ValueError("本機歷史資料集 manifest digest 已變更，拒絕執行回測")
+            bars = self._catalog.iter_bars_ordered(config.dataset_id)
+            terminal_timestamps = self._catalog.symbol_last_timestamps(
+                config.dataset_id
+            )
             self._raise_if_run_cancelling(run_id)
             self._repository.update_run(run_id, status=RunStatus.RUNNING.value, progress_message="正在執行 deterministic Kbar 回測")
             engine_result = self._engine.run(
@@ -639,6 +649,9 @@ class BacktestApplicationService:
                 bars=bars,
                 progress=lambda value, message: self._repository.update_run(run_id, progress=value, progress_message=message),
                 cancelled=lambda: self._repository.get_run(run_id)["status"] == RunStatus.CANCELLING.value,
+                bars_are_ordered=True,
+                total_bars=manifest.bar_count,
+                terminal_timestamp_by_symbol=terminal_timestamps,
             )
             raw_result = engine_result.to_dict()
             summary = summarize_run(

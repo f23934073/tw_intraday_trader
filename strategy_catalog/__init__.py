@@ -8,6 +8,7 @@ from strategy_catalog.domain import (
     StrategySource,
     StrategyStatus,
 )
+from strategy_catalog.drafts import StrategyDraft, StrategyTemplate, StrategyVersion
 
 __all__ = [
     "SessionPhase",
@@ -16,4 +17,7 @@ __all__ = [
     "StrategySide",
     "StrategySource",
     "StrategyStatus",
+    "StrategyDraft",
+    "StrategyTemplate",
+    "StrategyVersion",
 ]

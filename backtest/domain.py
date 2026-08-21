@@ -259,6 +259,7 @@ class BacktestRunConfig:
     baseline_run_id: str | None = None
     parent_run_id: str | None = None
     change_note: str = ""
+    atomic_strategy_run_snapshot: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -277,13 +278,19 @@ class BacktestRunConfig:
             raise ValueError("position_fraction 必須介於 0 與 1")
         if self.min_lot_shares <= 0:
             raise ValueError("min_lot_shares 必須大於 0")
+        if self.atomic_strategy_run_snapshot is not None:
+            object.__setattr__(
+                self,
+                "atomic_strategy_run_snapshot",
+                dict(self.atomic_strategy_run_snapshot),
+            )
 
     @property
     def config_digest(self) -> str:
         return digest(self.to_dict())
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             "dataset_id": self.dataset_id,
             "dataset_digest": self.dataset_digest,
             "strategy_set": self.strategy_set.to_dict(),
@@ -302,6 +309,9 @@ class BacktestRunConfig:
             "parent_run_id": self.parent_run_id,
             "change_note": self.change_note,
         }
+        if self.atomic_strategy_run_snapshot is not None:
+            value["atomic_strategy_run_snapshot"] = dict(self.atomic_strategy_run_snapshot)
+        return value
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "BacktestRunConfig":
@@ -323,6 +333,11 @@ class BacktestRunConfig:
             baseline_run_id=value.get("baseline_run_id"),
             parent_run_id=value.get("parent_run_id"),
             change_note=str(value.get("change_note", "")),
+            atomic_strategy_run_snapshot=(
+                dict(value["atomic_strategy_run_snapshot"])
+                if value.get("atomic_strategy_run_snapshot") is not None
+                else None
+            ),
         )
 
 
@@ -339,6 +354,11 @@ class StrategyEvaluation:
     observed: Mapping[str, Any] = field(default_factory=dict)
     threshold: Mapping[str, Any] = field(default_factory=dict)
     execution_horizon: ExecutionHorizon | None = None
+    strategy_version_id: str | None = None
+
+    @property
+    def member_id(self) -> str:
+        return self.strategy_version_id or self.strategy_id
 
     def to_dict(self) -> dict[str, Any]:
         value = {
@@ -355,6 +375,8 @@ class StrategyEvaluation:
         }
         if self.execution_horizon is not None:
             value["execution_horizon"] = self.execution_horizon.value
+        if self.strategy_version_id is not None:
+            value["strategy_version_id"] = self.strategy_version_id
         return value
 
 

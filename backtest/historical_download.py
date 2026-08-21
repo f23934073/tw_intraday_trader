@@ -23,6 +23,10 @@ from market_data.provider import (
 _TAIPEI = ZoneInfo("Asia/Taipei")
 ProgressReporter = Callable[[str], None]
 _LEGACY_TRANSIENT_EMPTY = "資料來源未回傳 Kbar"
+_PRICE_DATA_UNAVAILABLE = "[PRICE_DATA_UNAVAILABLE] PROVIDER_EMPTY_KBAR"
+_SYMBOL_MAPPING_ERROR = "[SYMBOL_MAPPING_ERROR]"
+_TEMPORARY_FETCH_FAILURE = "[TEMPORARY_FETCH_FAILURE]"
+_RATE_LIMITED = "[RATE_LIMITED]"
 _RETRY_SYMBOL_PREFIX = "[RETRY_SYMBOL="
 _CURRENT_SYMBOL_PREFIX = "[CURRENT_SYMBOL="
 
@@ -43,11 +47,13 @@ class ResumableHistoricalDownloader:
         repository: BacktestRepository,
         catalog: HistoricalDatasetCatalog,
         report: ProgressReporter | None = None,
+        coverage_scan_mode: bool = False,
     ) -> None:
         self._provider = provider
         self._repository = repository
         self._catalog = catalog
         self._report = report or (lambda _message: None)
+        self._coverage_scan_mode = coverage_scan_mode
 
     def create_job(
         self,
@@ -151,14 +157,22 @@ class ResumableHistoricalDownloader:
                         end=end,
                     )
                     if not bars:
-                        raise HistoricalDownloadPaused(
-                            f"{instrument.symbol} 收到空 Kbar 回應；"
-                            "為避免把 Provider 額度或暫停狀態誤存成完成，未保存此分區"
-                        )
-                    error_message = None
+                        if not self._coverage_scan_mode:
+                            raise HistoricalDownloadPaused(
+                                f"{instrument.symbol} 收到空 Kbar 回應；"
+                                "為避免把 Provider 額度或暫停狀態誤存成完成，未保存此分區"
+                            )
+                        error_message = _PRICE_DATA_UNAVAILABLE
+                    else:
+                        error_message = None
+                except MarketDataTemporarilyUnavailable as error:
+                    if not self._coverage_scan_mode:
+                        raise
+                    bars = []
+                    error_message = f"{_TEMPORARY_FETCH_FAILURE} {error}"
                 except KeyError as error:
                     bars = []
-                    error_message = str(error)
+                    error_message = f"{_SYMBOL_MAPPING_ERROR} {error}"
                 self._repository.upsert_history_partition(
                     _encode_partition(
                         job_id=job_id,
@@ -226,11 +240,21 @@ class ResumableHistoricalDownloader:
                 error_message=_retry_error(pending_symbol, "使用者中斷"),
             )
             raise
-        except (
-            HistoricalDownloadPaused,
-            MarketDataLimitReached,
-            MarketDataTemporarilyUnavailable,
-        ) as error:
+        except MarketDataLimitReached as error:
+            message = f"{_RATE_LIMITED} {error}"
+            pending_symbol = _pending_symbol(instruments, completed, current_symbol)
+            self._repository.update_job(
+                job_id,
+                status="PAUSED",
+                progress=len(completed) / len(instruments),
+                progress_message=(
+                    "已暫停：Provider rate limit；"
+                    f"已確認 {len(completed)}/{len(instruments)} 檔"
+                ),
+                error_message=_retry_error(pending_symbol, message),
+            )
+            raise HistoricalDownloadPaused(message) from error
+        except (HistoricalDownloadPaused, MarketDataTemporarilyUnavailable) as error:
             message = str(error)
             pending_symbol = _pending_symbol(instruments, completed, current_symbol)
             self._repository.update_job(

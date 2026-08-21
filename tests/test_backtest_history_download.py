@@ -60,6 +60,17 @@ class _EmptyMockProvider(MockProvider):
         return []
 
 
+class _EmptyForSymbolMockProvider(MockProvider):
+    def __init__(self, empty_symbol: str) -> None:
+        super().__init__()
+        self.empty_symbol = empty_symbol
+
+    def get_kbars(self, symbol: str, start: date, end: date):  # type: ignore[no-untyped-def]
+        if symbol == self.empty_symbol:
+            return []
+        return super().get_kbars(symbol, start, end)
+
+
 class _TemporaryOnceMockProvider(_FailOnceMockProvider):
     def get_kbars(self, symbol: str, start: date, end: date):  # type: ignore[no-untyped-def]
         self.calls[symbol] += 1
@@ -67,6 +78,17 @@ class _TemporaryOnceMockProvider(_FailOnceMockProvider):
             self.failed = True
             raise MarketDataTemporarilyUnavailable("fixture Kbar timeout")
         return MockProvider.get_kbars(self, symbol, start, end)
+
+
+class _MappingErrorMockProvider(MockProvider):
+    def __init__(self, missing_symbol: str) -> None:
+        super().__init__()
+        self.missing_symbol = missing_symbol
+
+    def get_kbars(self, symbol: str, start: date, end: date):  # type: ignore[no-untyped-def]
+        if symbol == self.missing_symbol:
+            raise KeyError("fixture symbol mapping missing")
+        return super().get_kbars(symbol, start, end)
 
 
 class _UtcKbarProvider(MockProvider):
@@ -200,7 +222,8 @@ def test_quota_limit_pauses_job_without_checkpointing_partial_symbol() -> None:
 
             stored_job = repository.get_job(job_id)
             assert stored_job["status"] == "PAUSED"
-            assert "額度" in stored_job["progress_message"]
+            assert "rate limit" in stored_job["progress_message"]
+            assert "[RATE_LIMITED]" in str(stored_job["error_message"])
             assert [
                 item["symbol"]
                 for item in repository.list_history_partitions(job_id)
@@ -232,6 +255,117 @@ def test_empty_full_history_pauses_without_saving_zero_partition() -> None:
 
             assert repository.get_job(job_id)["status"] == "PAUSED"
             assert repository.list_history_partitions(job_id) == []
+        finally:
+            repository.close()
+
+
+def test_explicit_coverage_scan_records_empty_observation_and_continues() -> None:
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = SQLiteBacktestRepository(root / "backtest.sqlite3")
+        catalog = HistoricalDatasetCatalog(root / "datasets")
+        downloader = ResumableHistoricalDownloader(
+            provider=_EmptyForSymbolMockProvider("2317"),
+            repository=repository,
+            catalog=catalog,
+            coverage_scan_mode=True,
+        )
+        try:
+            job = downloader.create_job(
+                years=1,
+                symbols=("2317", "2330"),
+                end_date=date(2026, 1, 5),
+            )
+            job_id = str(job["job_id"])
+
+            manifest = downloader.run(job_id)
+            partitions = {
+                item["symbol"]: item
+                for item in repository.list_history_partitions(job_id)
+            }
+
+            assert repository.get_job(job_id)["status"] == "COMPLETED"
+            assert partitions["2317"]["bar_count"] == 0
+            assert partitions["2317"]["error_message"] == (
+                "[PRICE_DATA_UNAVAILABLE] PROVIDER_EMPTY_KBAR"
+            )
+            assert partitions["2330"]["bar_count"] > 0
+            assert manifest["requested_symbols"] == ["2317", "2330"]
+            assert manifest["observed_symbols"] == ["2330"]
+            assert manifest["universe_scope"] == "CURRENT_SNAPSHOT"
+            assert manifest["research_eligible"] is False
+            assert "2317: [PRICE_DATA_UNAVAILABLE] PROVIDER_EMPTY_KBAR" in manifest[
+                "issues"
+            ]
+        finally:
+            repository.close()
+
+
+def test_coverage_scan_records_temporary_failure_and_continues() -> None:
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = SQLiteBacktestRepository(root / "backtest.sqlite3")
+        catalog = HistoricalDatasetCatalog(root / "datasets")
+        downloader = ResumableHistoricalDownloader(
+            provider=_TemporaryOnceMockProvider("2317"),
+            repository=repository,
+            catalog=catalog,
+            coverage_scan_mode=True,
+        )
+        try:
+            job = downloader.create_job(
+                years=1,
+                symbols=("2317", "2330"),
+                end_date=date(2026, 1, 5),
+            )
+            job_id = str(job["job_id"])
+
+            manifest = downloader.run(job_id)
+            partitions = {
+                item["symbol"]: item
+                for item in repository.list_history_partitions(job_id)
+            }
+
+            assert partitions["2317"]["bar_count"] == 0
+            assert partitions["2317"]["error_message"] == (
+                "[TEMPORARY_FETCH_FAILURE] fixture Kbar timeout"
+            )
+            assert partitions["2330"]["bar_count"] > 0
+            assert manifest["research_eligible"] is False
+        finally:
+            repository.close()
+
+
+def test_coverage_scan_records_mapping_failure_and_continues() -> None:
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = SQLiteBacktestRepository(root / "backtest.sqlite3")
+        catalog = HistoricalDatasetCatalog(root / "datasets")
+        downloader = ResumableHistoricalDownloader(
+            provider=_MappingErrorMockProvider("2317"),
+            repository=repository,
+            catalog=catalog,
+            coverage_scan_mode=True,
+        )
+        try:
+            job = downloader.create_job(
+                years=1,
+                symbols=("2317", "2330"),
+                end_date=date(2026, 1, 5),
+            )
+            job_id = str(job["job_id"])
+
+            downloader.run(job_id)
+            partitions = {
+                item["symbol"]: item
+                for item in repository.list_history_partitions(job_id)
+            }
+
+            assert partitions["2317"]["bar_count"] == 0
+            assert partitions["2317"]["error_message"] == (
+                "[SYMBOL_MAPPING_ERROR] 'fixture symbol mapping missing'"
+            )
+            assert partitions["2330"]["bar_count"] > 0
         finally:
             repository.close()
 
