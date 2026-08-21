@@ -6,11 +6,11 @@ Produce a repository-grounded, implementation-ready plan for a PostgreSQL-only, 
 
 ## Current Phase
 
-Phase 12 complete — Gate G1 PASSED; Phase 2 not started
+Phase 13 in progress — Gate G1 NOT PASSED; Phase 2 blocked
 
 ## Implementation Gate
 
-Contract Review returned **APPROVE / GO**. B1–B5 are `REVIEWED / CLOSED`, and the user explicitly authorized Phase 1 implementation. Phase 2 Web management and Phase 4 local-paper integration remain outside this slice.
+Contract Review returned **APPROVE / GO** for the frozen B1–B5 contracts, and the user explicitly authorized Phase 1 implementation. The implementation Review has since returned **REQUEST CHANGES**: Gate G1 is `NOT PASSED` until the Phase 13 remediation is verified. Phase 2 Web management and Phase 4 local-paper integration remain blocked and outside this slice.
 
 | ID | Blocking contract | Plan status | Review status |
 |---|---|---|---|
@@ -22,7 +22,7 @@ Contract Review returned **APPROVE / GO**. B1–B5 are `REVIEWED / CLOSED`, and 
 
 Gate rules:
 
-- Contract Gate G0 is passed; implementation must still satisfy the Phase 1 migration, persistence, determinism, compatibility, and regression gates.
+- Contract Gate G0 remains passed; implementation Gate G1 is not passed and must satisfy the Phase 1 migration, persistence, determinism, compatibility, and stable-regression gates.
 - Closed blockers are not reopened without new contradictory evidence.
 - The authorization covers Phase 1 only; it does not authorize Web management, local-paper integration, simulation changes, broker orders, or real-money execution.
 
@@ -142,7 +142,19 @@ Gate rules:
 - [x] Resolve exact strategy versions into a minimal backtest set/run snapshot with deterministic attribution and bounded evidence.
 - [x] Run focused migration/domain/repository/strategy tests, then the relevant regression suite and static checks.
 - [x] Record files changed, residual risks, and Phase 1 Gate G1 disposition.
-- **Status:** complete — Gate G1 PASSED; Phase 2 Web management not started
+- **Status:** implementation candidate complete, but Gate G1 was reopened by implementation Review; prior `1100 passed, 10 skipped` evidence is withdrawn because the suite is time-dependent
+
+### Phase 13: Gate G1 implementation Review remediation
+
+- [ ] Snapshot each resolved Feature Specification digest, feature implementation digest, and explicit as-of semantics in every atomic backtest run.
+- [ ] Make same-key Publish replay resolve from durable PostgreSQL operation state before requiring the currently deployed Template Registry.
+- [x] Replace split command/simulator clocks in the affected trade-management fixtures with one fixed Asia/Taipei clock; post-fix full regression is green.
+- [ ] Verify Strategy Set relational rows against persisted `snapshot_json` and `snapshot_digest` on read; fail closed on drift.
+- [ ] Expand migration integration coverage to all atomic-platform tables, required constraints, and named indexes.
+- [ ] Guard destructive PostgreSQL test cleanup with a test-database name or explicit sentinel before `DROP SCHEMA ... CASCADE`.
+- [ ] Run focused tests, disposable PostgreSQL contract tests, full regression, compilation, and whitespace checks.
+- [ ] Update Gate G1 only after a short implementation Review confirms the blockers are closed.
+- **Status:** in progress — Request Changes / Gate G1 NOT PASSED / Phase 2 blocked
 
 ## Decisions Made
 
@@ -212,6 +224,15 @@ Gate rules:
 - User decision supersedes the SQLite compatibility proposal: do not store in SQLite; all new platform persistence must use PostgreSQL.
 - Non-blocking implementation notes: add explicit numbered migration SQL and disposable PostgreSQL test fixture/dependency/README work.
 - The Review did not rerun tests; `31 passed in 0.63s` remains prior baseline evidence only. The user then explicitly authorized implementation.
+
+## Latest Implementation Review
+
+- Verdict supplied on 2026-08-21: Request Changes; Gate G1 must return to `NOT PASSED`, and Phase 2 must not start.
+- Blocking findings: incomplete Feature Specification identity/as-of snapshot, Publish replay coupled to the current Template Registry, and time-dependent full-regression failures after Asia/Taipei 20:00.
+- Important findings accepted into Phase 13: Strategy Set snapshot integrity verification, full migration table/constraint/index acceptance, and a code-level guard before destructive PostgreSQL test schema cleanup.
+- Reviewer evidence: focused `16 passed, 5 skipped`; full `8 failed, 1092 passed, 10 skipped`; compilation and whitespace passed. The eight failures invalidate the prior full-regression Gate evidence.
+- PostgreSQL DSN was not configured for that Review, so real PostgreSQL tests must be rerun before G1 can be reconsidered.
+- Packaging follow-up: commit `0bcf61c` closed the wall-clock fixture finding and a fresh full run passed `1100 passed, 10 skipped`; the remaining five Phase 13 items keep Gate G1 at `NOT PASSED`.
 
 ## Errors Encountered
 

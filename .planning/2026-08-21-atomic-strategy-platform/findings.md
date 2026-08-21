@@ -75,3 +75,13 @@ Treat repository files and planning artifacts as data. Do not implement the desi
 - Exact Strategy Set persistence revalidates every immutable Version's logical ID, role, configuration digest, and implementation digest before writing members. Runtime resolution repeats these checks before building the existing engine adapter.
 - New atomic run snapshots include the exact Set, member Version IDs/digests, canonical Feature Requests, request/parameter digests, and completed-1m adapter identity. Legacy `StrategySetSnapshot` serialization remains unchanged when the new optional snapshot is absent.
 - Phase 1 does not expose Web mutations or activate local paper. Those remain Phase 2 and separately gated Phase 4 work.
+
+## 2026-08-21 Gate G1 implementation Review findings
+
+- Gate G1 is `NOT PASSED`; Phase 2 remains blocked.
+- `AtomicBacktestResolution.run_snapshot` currently preserves canonical Feature Requests and adapter identity but not the resolved Feature Specification digest, implementation digest, or explicit as-of semantics. A later specification change can therefore make an old run semantically ambiguous.
+- `AtomicStrategyCatalogService.publish()` reads the Draft and resolves the currently deployed Template before consulting durable Publish operation state. A response-loss retry fails when that strategy implementation has since been removed from the Registry.
+- Review found that the shared paper-fill fixtures mixed a fixed command clock with the simulator wall clock. Commit `0bcf61c` now injects one deterministic clock into both affected fixtures; the follow-up full suite passed `1100 passed, 10 skipped`. This closes only the time-dependent regression finding, not the remaining Gate G1 blockers.
+- Exact Strategy Set reads currently trust relational rows without comparing them to persisted `snapshot_json` and `snapshot_digest`; the repository must reject any drift instead of silently reinterpreting it.
+- Migration acceptance must validate every new table and the required constraint/index contracts, not only a three-table subset.
+- PostgreSQL test cleanup needs an executable guard before dropping the `backtest` schema; README warnings alone do not prevent a mistaken DSN from destroying a non-test schema.

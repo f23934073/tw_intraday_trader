@@ -1,5 +1,14 @@
 # Progress: Atomic Strategy Platform
 
+## 2026-08-21 — Gate G1 implementation Review remediation
+
+- **Status:** in progress; Gate G1 NOT PASSED; Phase 2 blocked.
+- Withdrew the prior `1100 passed, 10 skipped` result as stable Gate evidence after Review reproduced eight time-dependent failures.
+- Activated planning-with-files for the remediation log, code-review-excellence for finding-by-finding verification, architecture-patterns for the durable replay port/adapter boundary, and karpathy-guidelines to keep changes limited to the six reviewed findings.
+- Added Phase 13 covering Feature Specification snapshot identity, registry-independent durable Publish replay, fixed market-time fixtures, Strategy Set integrity validation, complete migration acceptance, and destructive PostgreSQL test guards.
+- No Phase 2 Web management, Phase 4 local-paper integration, simulation trading, Shioaji order, or broker code is authorized in this remediation.
+- Cross-worktree packaging follow-up fixed both split-clock paper-fill fixtures in `0bcf61c`; the post-fix repository run passed `1100 passed, 10 skipped`. Gate G1 remains `NOT PASSED` because the other five Review findings are not remediated here.
+
 ## 2026-08-21 — Phase 1 implementation authorized
 
 - **Status:** in progress

@@ -6,7 +6,7 @@
 
 ### 1.1 實作前 Review Gate
 
-**目前決策：APPROVE / GO（契約層級）。** Review 已確認 B1–B5 全部 `REVIEWED / CLOSED`；使用者已明確授權開始產品實作。實作依 Phase Gate 分批進行，本輪從 Phase 1 最小 Backtest Vertical Slice 開始：
+**目前決策：契約層級 APPROVE / GO；實作 Gate G1 為 REQUEST CHANGES / NOT PASSED。** B1–B5 契約維持 `REVIEWED / CLOSED`，但 Phase 1 實作仍有可重現性、durable replay 與 regression blocker。Phase 2 不得開始，直到 Phase 1 remediation 通過短 Review：
 
 | ID | Blocking contract | 本文件的處理方向 | Gate 狀態 |
 |---|---|---|---|
@@ -21,6 +21,8 @@
 - Phase 1 只修改最小 backtest vertical slice、PostgreSQL schema/repository 與對應測試；Phase 2 前不新增 Web mutation UI/API。
 - Phase 4 另行 Gate 前不啟動 local-paper 整合，更不新增任何券商委託能力。
 - 每一 Phase 仍須通過自己的 migration、determinism、compatibility 與 regression 驗收。
+- 先前 `1100 passed, 10 skipped` 不是有效的穩定 G1 證據：Review 在 Asia/Taipei 晚間重現 `8 failed, 1092 passed, 10 skipped`，根因為 wall-clock-dependent fixture 跨日。
+- 後續 `0bcf61c` 已讓兩個 affected fixtures 共用 deterministic clock；修正後全套為 `1100 passed, 10 skipped`。這只關閉 regression finding，其他五項 G1 blocker 仍未關閉。
 
 核心原則：
 
@@ -787,7 +789,7 @@ Audit 至少保存：
 
 Gate G0：**PASSED / GO**。使用者已明確授權開始 Phase 1 實作。
 
-### Phase 1 — 最小 Backtest Vertical Slice（已完成）
+### Phase 1 — 最小 Backtest Vertical Slice（Remediation 中）
 
 只實作足以驗證架構的垂直切片：
 
@@ -798,7 +800,7 @@ Gate G0：**PASSED / GO**。使用者已明確授權開始 Phase 1 實作。
 - backtest resolve、Run Snapshot、聚合 attribution 與 bounded evidence retention。
 - legacy completed-run compatibility adapter。
 
-Gate G1：**PASSED**。兩個策略已可單獨／組合回測；exact-version attribution 與完整 run snapshot 可重現；未觸發只累計 counters；舊 raw-ID run/digest 相容測試通過；本 Phase 沒有 Web activation 或 local-paper 改動。驗收證據包含 disposable PostgreSQL migration/row-lock/concurrency tests 與全套 `1100 passed, 10 skipped` regression。
+Gate G1：**NOT PASSED / REQUEST CHANGES**。兩個策略的單獨／組合回測與 exact-version attribution 已建立，但 run snapshot 尚須加入 resolved Feature Specification digest、feature implementation digest 與明確 as-of semantics；Publish retry 必須先走不依賴目前 Registry 的 durable PostgreSQL replay。Wall-clock-dependent fixture 已由 `0bcf61c` 修正，後續全套為 `1100 passed, 10 skipped`；但仍須完成 Strategy Set snapshot integrity read validation、全 migration table/constraint/index acceptance，以及 destructive PostgreSQL test cleanup guard。Phase 2 不得開始。
 
 ### Phase 2 — Backtest Web Management
 
