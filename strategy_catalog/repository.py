@@ -37,6 +37,11 @@ class AtomicStrategyRepository(Protocol):
 
     def get_version(self, strategy_version_id: str) -> StrategyVersion: ...
 
+    def replay_publish(
+        self,
+        request: PublishStrategyRequest,
+    ) -> PublishStrategyResult | None: ...
+
     def publish_draft(
         self,
         request: PublishStrategyRequest,

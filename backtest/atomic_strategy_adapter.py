@@ -99,7 +99,7 @@ class AtomicBacktestResolution:
     @property
     def run_snapshot(self) -> dict[str, object]:
         value: dict[str, object] = {
-            "contract_version": "atomic-backtest-run-snapshot-v1",
+            "contract_version": "atomic-backtest-run-snapshot-v2",
             "strategy_set": self.exact_snapshot.to_dict(),
             "feature_adapter_identity": CompletedOneMinuteKbarFeatureAdapter.identity,
             "feature_requests": list(self.feature_requests),
@@ -133,18 +133,24 @@ def resolve_atomic_entry_set(
         implementation = atomic_registry.strategy(version.strategy_id)
         requests = resolve_feature_requests(implementation.template)
         feature_registry.validate_requests(requests)
+        resolved_requests = []
+        for request in requests:
+            specification = feature_registry.get(request.feature_id)
+            resolved_requests.append(
+                {
+                    "feature_id": request.feature_id,
+                    "parameters": dict(request.parameters),
+                    "parameter_digest": request.parameter_digest,
+                    "request_digest": request.request_digest,
+                    "specification_digest": specification.specification_digest,
+                    "feature_implementation_digest": specification.implementation_digest,
+                    "as_of_semantics": specification.as_of_semantics,
+                }
+            )
         feature_request_documents.append(
             {
                 "strategy_version_id": version.strategy_version_id,
-                "requests": [
-                    {
-                        "feature_id": request.feature_id,
-                        "parameters": dict(request.parameters),
-                        "parameter_digest": request.parameter_digest,
-                        "request_digest": request.request_digest,
-                    }
-                    for request in requests
-                ],
+                "requests": resolved_requests,
             }
         )
         adapters.append(AtomicBacktestStrategyAdapter(implementation, version))

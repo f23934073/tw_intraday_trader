@@ -183,4 +183,13 @@ def test_two_exact_atomic_entries_run_combined_with_version_attribution() -> Non
     assert atomic_snapshot["feature_adapter_identity"] == (
         "backtest.completed-kbar-1m-feature-adapter-v1"
     )
+    assert atomic_snapshot["contract_version"] == "atomic-backtest-run-snapshot-v2"
+    for strategy_requests in atomic_snapshot["feature_requests"]:
+        for request in strategy_requests["requests"]:
+            assert len(request["specification_digest"]) == 64
+            assert len(request["feature_implementation_digest"]) == 64
+            assert request["as_of_semantics"] in {
+                "CURRENT_COMPLETED_BAR_CLOSE_INCLUSIVE",
+                "STRICTLY_BEFORE_CURRENT_COMPLETED_BAR",
+            }
     assert first.to_dict() == second.to_dict()

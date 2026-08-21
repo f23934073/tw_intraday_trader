@@ -200,6 +200,36 @@ class PostgresAtomicStrategyRepository:
                 published_at=row["published_at"],
             )
 
+    def replay_publish(
+        self,
+        request: PublishStrategyRequest,
+    ) -> PublishStrategyResult | None:
+        """Replay a committed Publish without consulting the deployed Registry."""
+
+        with self._transaction() as cursor:
+            cursor.execute(
+                """
+                SELECT draft_id
+                FROM backtest.strategy_version_drafts
+                WHERE draft_id = %s
+                FOR UPDATE
+                """,
+                (request.draft_id,),
+            )
+            if cursor.fetchone() is None:
+                raise StrategyCatalogConflict(
+                    "DRAFT_NOT_FOUND",
+                    f"找不到 Draft：{request.draft_id}",
+                )
+            replay = self._publish_operation(
+                cursor,
+                request.draft_id,
+                request.idempotency_key,
+            )
+            if replay is None:
+                return None
+            return self._replayed_publish_result(request, replay)
+
     def publish_draft(
         self,
         request: PublishStrategyRequest,
@@ -225,21 +255,7 @@ class PostgresAtomicStrategyRepository:
 
             replay = self._publish_operation(cursor, request.draft_id, request.idempotency_key)
             if replay is not None:
-                if replay["request_digest"] != request.request_digest:
-                    raise StrategyCatalogConflict(
-                        "IDEMPOTENCY_CONFLICT",
-                        "相同 idempotency key 的 Publish 內容不同",
-                    )
-                return PublishStrategyResult(
-                    publish_operation_id=str(replay["publish_operation_id"]),
-                    draft_id=request.draft_id,
-                    strategy_version_id=str(replay["strategy_version_id"]),
-                    published_event_id=str(replay["published_event_id"]),
-                    version_number=int(replay["version_number"]),
-                    configuration_digest=str(replay["configuration_digest"]),
-                    result_digest=str(replay["result_digest"]),
-                    replayed=True,
-                )
+                return self._replayed_publish_result(request, replay)
 
             if draft["published_strategy_version_id"] is not None:
                 raise StrategyCatalogConflict(
@@ -662,16 +678,35 @@ class PostgresAtomicStrategyRepository:
                 )
                 for row in (_row(cursor, raw) for raw in cursor.fetchall())
             )
-            return ExactStrategySetSnapshot(
-                strategy_set_version_id=str(set_row["strategy_set_version_id"]),
-                strategy_set_id=str(set_row["strategy_set_id"]),
-                version_number=int(set_row["version_number"]),
-                display_name_zh_tw=str(set_row["display_name_zh_tw"]),
-                stage=StrategyRole(str(set_row["stage"])),
-                policy=CompositionPolicy(str(set_row["aggregation_policy"])),
-                members=members,
-                minimum_trigger_count=int(set_row["minimum_trigger_count"]),
-            )
+            stored_snapshot = _decode_json(set_row["snapshot_json"])
+            stored_digest = str(set_row["snapshot_digest"])
+            if canonical_digest(stored_snapshot) != stored_digest:
+                raise StrategyCatalogConflict(
+                    "STRATEGY_SET_INTEGRITY_ERROR",
+                    "Strategy Set snapshot_json 與 snapshot_digest 不一致",
+                )
+            try:
+                snapshot = ExactStrategySetSnapshot(
+                    strategy_set_version_id=str(set_row["strategy_set_version_id"]),
+                    strategy_set_id=str(set_row["strategy_set_id"]),
+                    version_number=int(set_row["version_number"]),
+                    display_name_zh_tw=str(set_row["display_name_zh_tw"]),
+                    stage=StrategyRole(str(set_row["stage"])),
+                    policy=CompositionPolicy(str(set_row["aggregation_policy"])),
+                    members=members,
+                    minimum_trigger_count=int(set_row["minimum_trigger_count"]),
+                )
+            except (TypeError, ValueError) as error:
+                raise StrategyCatalogConflict(
+                    "STRATEGY_SET_INTEGRITY_ERROR",
+                    "Strategy Set relational projection 無法重建",
+                ) from error
+            if snapshot.to_dict() != stored_snapshot or snapshot.snapshot_digest != stored_digest:
+                raise StrategyCatalogConflict(
+                    "STRATEGY_SET_INTEGRITY_ERROR",
+                    "Strategy Set relational projection 與 immutable snapshot 不一致",
+                )
+            return snapshot
 
     @staticmethod
     def _publish_operation(cursor: Any, draft_id: str, key: str) -> dict[str, Any] | None:
@@ -687,6 +722,27 @@ class PostgresAtomicStrategyRepository:
         )
         raw = cursor.fetchone()
         return _row(cursor, raw) if raw is not None else None
+
+    @staticmethod
+    def _replayed_publish_result(
+        request: PublishStrategyRequest,
+        replay: Mapping[str, Any],
+    ) -> PublishStrategyResult:
+        if str(replay["request_digest"]) != request.request_digest:
+            raise StrategyCatalogConflict(
+                "IDEMPOTENCY_CONFLICT",
+                "相同 idempotency key 的 Publish 內容不同",
+            )
+        return PublishStrategyResult(
+            publish_operation_id=str(replay["publish_operation_id"]),
+            draft_id=request.draft_id,
+            strategy_version_id=str(replay["strategy_version_id"]),
+            published_event_id=str(replay["published_event_id"]),
+            version_number=int(replay["version_number"]),
+            configuration_digest=str(replay["configuration_digest"]),
+            result_digest=str(replay["result_digest"]),
+            replayed=True,
+        )
 
     @staticmethod
     def _draft(row: Mapping[str, Any]) -> StrategyDraft:

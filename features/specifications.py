@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Mapping
@@ -43,6 +44,7 @@ class FeatureSpecification:
     session_reset: bool
     warmup_bars: int
     missing_semantics: str
+    as_of_semantics: str
     implementation_digest: str
 
     @property
@@ -56,6 +58,7 @@ class FeatureSpecification:
                 "session_reset": self.session_reset,
                 "warmup_bars": self.warmup_bars,
                 "missing_semantics": self.missing_semantics,
+                "as_of_semantics": self.as_of_semantics,
                 "implementation_digest": self.implementation_digest,
             }
         )
@@ -85,7 +88,10 @@ class FeatureSpecificationRegistry:
                 session_reset=True,
                 warmup_bars=1,
                 missing_semantics="INSUFFICIENT_DATA",
-                implementation_digest="session-vwap-spec-v1",
+                as_of_semantics="CURRENT_COMPLETED_BAR_CLOSE_INCLUSIVE",
+                implementation_digest=hashlib.sha256(
+                    b"session-vwap-feature-implementation-v1"
+                ).hexdigest(),
             ),
             FeatureSpecification(
                 feature_id="previous_intraday_high_v1",
@@ -95,7 +101,10 @@ class FeatureSpecificationRegistry:
                 session_reset=True,
                 warmup_bars=2,
                 missing_semantics="INSUFFICIENT_DATA",
-                implementation_digest="previous-intraday-high-spec-v1",
+                as_of_semantics="STRICTLY_BEFORE_CURRENT_COMPLETED_BAR",
+                implementation_digest=hashlib.sha256(
+                    b"previous-intraday-high-feature-implementation-v1"
+                ).hexdigest(),
             ),
         )
         self._specifications = {item.feature_id: item for item in specifications}

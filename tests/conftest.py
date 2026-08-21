@@ -12,6 +12,10 @@ os.environ["BACKTEST_DATABASE_BACKEND"] = "sqlite"
 os.environ.pop("BACKTEST_DATABASE_URL", None)
 
 
+def postgres_test_database_is_safe(database_name: str, explicit_reset: bool) -> bool:
+    return "test" in database_name.strip().lower() or explicit_reset
+
+
 @pytest.fixture(autouse=True)
 def isolate_trading_journal_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unit/API tests never inherit a developer's durable Journal selection."""
@@ -36,6 +40,16 @@ def postgres_test_connection(postgres_test_dsn: str) -> Iterator[Any]:
 
     psycopg = pytest.importorskip("psycopg")
     connection = psycopg.connect(postgres_test_dsn)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT current_database()")
+        database_name = str(cursor.fetchone()[0])
+    explicit_reset = os.getenv("ALLOW_POSTGRES_TEST_SCHEMA_RESET", "").strip() == "1"
+    if not postgres_test_database_is_safe(database_name, explicit_reset):
+        connection.close()
+        pytest.fail(
+            "refusing destructive PostgreSQL fixture cleanup: database name must "
+            "contain 'test' or ALLOW_POSTGRES_TEST_SCHEMA_RESET=1 must be explicit"
+        )
     lock_id = 1_984_073_521
     legacy_tables = (
         "backtest_history_partitions",

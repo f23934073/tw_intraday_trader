@@ -48,6 +48,9 @@ class AtomicStrategyCatalogService:
         )
 
     def publish(self, request: PublishStrategyRequest) -> PublishStrategyResult:
+        replay = self._repository.replay_publish(request)
+        if replay is not None:
+            return replay
         draft = self._repository.get_draft(request.draft_id)
         return self._repository.publish_draft(request, self._template(draft.strategy_id))
 

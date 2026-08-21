@@ -235,7 +235,7 @@ BACKTEST_DATABASE_URL='postgresql://user:password@host:5432/tw_backtest' python3
 
 原子策略平台的 Template、Draft、immutable Version、Publish event/state/outbox、Publish operation 與 exact-version Strategy Set 固定使用 PostgreSQL；這些新 mutation 不支援 SQLite，也不會在 PostgreSQL unavailable 時 fallback。Phase 1 尚未開放 Web mutation UI/API。
 
-PostgreSQL migration、row lock 與 concurrent Publish 測試必須使用明確的專用測試資料庫。測試 fixture 會刪除該資料庫中的 `backtest` schema，請勿填入開發或正式環境 DSN：
+PostgreSQL migration、row lock 與 concurrent Publish 測試必須使用明確的專用測試資料庫。測試 fixture 會刪除該資料庫中的 `backtest` schema，並在執行前要求 database 名稱包含 `test`；不符合時會直接拒絕 cleanup。只有受控的 disposable database 才可明確設定 `ALLOW_POSTGRES_TEST_SCHEMA_RESET=1` 覆寫名稱檢查，請勿填入開發或正式環境 DSN：
 
 ```bash
 python3 -m pip install -e ".[dev,postgres]"
