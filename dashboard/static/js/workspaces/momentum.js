@@ -246,6 +246,18 @@ export function createMomentumWorkspace(context) {
         requestAnimationFrame(() => document.querySelector(`.candidate-button[data-symbol="${CSS.escape(symbol)}"]`)?.focus());
       }
 
+      function openOrderTicketFromMomentum() {
+        const item = state.momentumDialogLastItem;
+        if (!item) return;
+        const intradayPrice = item.intraday?.price;
+        const candidatePrice = momentumSnapshotCandidate(item.symbol)?.stock?.price;
+        const price = intradayPrice?.status === "VALID"
+          ? intradayPrice.value
+          : candidatePrice;
+        closeMomentumDialog({ restoreFocus: false });
+        services.openOrderTicket(item.symbol, price);
+      }
+
       function renderMomentum(momentum) {
         const focusedMomentumSymbol = document.activeElement
           ?.closest?.("[data-momentum-symbol]")
@@ -553,5 +565,5 @@ export function createMomentumWorkspace(context) {
         loadMomentumProjection({ connect: false });
       }
 
-  return { renderMomentum, syncMomentumDialog, openMomentumDialog, closeMomentumDialog, bootstrapMomentumStream, checkMomentumHeartbeat, pollMomentumProjection, acceptMomentumSnapshot };
+  return { renderMomentum, syncMomentumDialog, openMomentumDialog, closeMomentumDialog, openOrderTicketFromMomentum, bootstrapMomentumStream, checkMomentumHeartbeat, pollMomentumProjection, acceptMomentumSnapshot };
 }

@@ -149,6 +149,7 @@ def test_live_service_evaluates_all_dashboard_candidates_and_exposes_values():
     assert first["summary"]["evaluated_candidate_count"] == 1
     assert evaluated["symbol"] == "8039"
     assert evaluated["signal"]["evidence_score"] == 100
+    assert evaluated["signal"]["momentum_acceleration_confirmed"] is True
     assert evaluated["signal"]["details"][0]["observed_value"] is not None
     assert evaluated["intraday"]["price"] == {
         "value": "278",

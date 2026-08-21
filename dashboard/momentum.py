@@ -381,6 +381,9 @@ class RealtimeMomentumDashboardService:
                 "family_label": _FAMILY_LABELS[signal.signal_family.value],
                 "signal": signal.signal.value,
                 "evaluation_status": signal.evaluation_status.value,
+                "momentum_acceleration_confirmed": (
+                    signal.momentum_acceleration_confirmed
+                ),
                 "evidence_score": signal.evidence_score,
                 "evidence_max_score": signal.evidence_max_score,
                 "passed_rule_count": signal.passed_rule_count,

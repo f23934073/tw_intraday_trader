@@ -4,7 +4,7 @@ from datetime import datetime
 
 from config.premarket import PREMARKET_CONTEXT_V0
 from dashboard.service import DashboardService
-from market_data.provider import MockProvider
+from market_data.provider import MarketDataUsage, MockProvider
 from premarket.artifacts import InMemoryPremarketArtifactRepository
 from premarket.calendar import TaifexTradingCalendar
 from premarket.service import PremarketContextService
@@ -57,6 +57,41 @@ def test_dashboard_snapshot_is_cached_until_explicit_refresh():
     second = service.snapshot()
 
     assert first is second
+
+
+def test_dashboard_provider_usage_marks_exhausted_shioaji_allowance() -> None:
+    class ExhaustedUsageProvider(MockProvider):
+        def market_data_usage(self) -> MarketDataUsage:
+            return MarketDataUsage(
+                connections=2,
+                bytes_used=529_961_576,
+                limit_bytes=524_288_000,
+                remaining_bytes=-5_673_576,
+            )
+
+    usage = DashboardService(ExhaustedUsageProvider()).provider_usage()
+
+    assert usage == {
+        "provider": "ExhaustedUsageProvider",
+        "supported": True,
+        "exhausted": True,
+        "connections": 2,
+        "bytes_used": 529_961_576,
+        "limit_bytes": 524_288_000,
+        "remaining_bytes": -5_673_576,
+    }
+
+
+def test_dashboard_provider_usage_is_unsupported_for_mock_provider() -> None:
+    assert DashboardService(MockProvider()).provider_usage() == {
+        "provider": "MockProvider",
+        "supported": False,
+        "exhausted": False,
+        "connections": None,
+        "bytes_used": None,
+        "limit_bytes": None,
+        "remaining_bytes": None,
+    }
 
 
 def test_realtime_candidate_snapshot_skips_premarket_projection() -> None:

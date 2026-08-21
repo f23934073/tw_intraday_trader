@@ -1,5 +1,5 @@
 import { createCandidateWorkspace } from "./workspaces/candidates.js";
-import { createSimulationWorkspace } from "./workspaces/simulation.js";
+import { createSimulationWorkspace } from "./workspaces/simulation.js?v=20260821-continuous-paper-v1";
 import { createMomentumWorkspace } from "./workspaces/momentum.js";
 import { createBacktestWorkspace } from "./workspaces/backtest.js";
 
@@ -12,6 +12,10 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js";
         historyByKey: {},
         historyLoadingKey: null,
         simulationProjectionLoading: false,
+        simulationSocket: null,
+        simulationSocketState: "idle",
+        simulationReconnectAttempt: 0,
+        simulationReconnectTimer: null,
         momentum: null,
         momentumLoading: false,
         momentumRenderKey: null,
@@ -91,8 +95,10 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js";
       const momentumDetailTitleMeta = document.getElementById("momentum-detail-title-meta");
       const momentumDetailStatus = document.getElementById("momentum-detail-status");
       const momentumDetailBody = document.getElementById("momentum-detail-body");
+      const momentumDetailOrder = document.getElementById("momentum-detail-order");
       const momentumDetailClose = document.getElementById("momentum-detail-close");
       const simulationStatus = document.getElementById("simulation-status");
+      const shioajiUsageStatus = document.getElementById("shioaji-usage-status");
       const premarketContextHealth = document.getElementById("premarket-context-health");
       const premarketContent = document.getElementById("premarket-content");
       const ordersToggle = document.getElementById("orders-toggle");
@@ -282,8 +288,8 @@ const momentum = createMomentumWorkspace({ state, services, escapeHtml, formatNu
 const backtest = createBacktestWorkspace({ state, escapeHtml, formatNumber, newIdempotencyKey, setWorkspace });
 Object.assign(services, candidates, simulation, momentum, backtest);
 const { getVisibleCandidates, renderCandidates, selectCandidate, renderCandidateDetail, loadSelectedHistory } = candidates;
-const { renderSimulation, renderPositions, renderOrders, renderDataHealth, openOrderTicket, setOrdersDrawer, setPositionsDrawer, loadSimulationProjection, pollSimulationProjection, submitSimulationOrder, cancelSimulationOrder } = simulation;
-const { renderMomentum, syncMomentumDialog, openMomentumDialog, closeMomentumDialog, bootstrapMomentumStream, checkMomentumHeartbeat, pollMomentumProjection } = momentum;
+const { renderSimulation, renderPositions, renderOrders, renderDataHealth, openOrderTicket, setOrdersDrawer, setPositionsDrawer, loadSimulationProjection, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, cancelSimulationOrder } = simulation;
+const { renderMomentum, syncMomentumDialog, openMomentumDialog, closeMomentumDialog, openOrderTicketFromMomentum, bootstrapMomentumStream, checkMomentumHeartbeat, pollMomentumProjection } = momentum;
 const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, refreshBacktestWorkspace, startBacktestDatasetSync, submitBacktestRun, cloneBacktestRun, compareBacktestRuns, pollBacktestWorkspace } = backtest;
 
       function renderPremarketContext(context) {
@@ -362,6 +368,31 @@ const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, ref
         statusElement.innerHTML = `<span class="status-dot" aria-hidden="true"></span>單次快照 · ${escapeHtml(snapshot.provider.name)} · ${timestamp}`;
       }
 
+      function formatMiB(bytes) {
+        return `${(Number(bytes) / 1024 / 1024).toFixed(1)} MiB`;
+      }
+
+      function renderProviderUsage(usage) {
+        const exhausted = Boolean(usage?.supported && usage?.exhausted);
+        shioajiUsageStatus.hidden = !exhausted;
+        if (!exhausted) return;
+
+        const used = formatMiB(usage.bytes_used);
+        const limit = formatMiB(usage.limit_bytes);
+        shioajiUsageStatus.innerHTML = `<span class="status-dot" aria-hidden="true"></span>Shioaji 流量已超過 · ${escapeHtml(used)} / ${escapeHtml(limit)}`;
+      }
+
+      async function loadProviderUsage() {
+        const response = await fetch("/api/dashboard/provider-usage", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        renderProviderUsage(await response.json());
+      }
+
+      function pollProviderUsage() {
+        if (document.visibilityState !== "visible") return;
+        loadProviderUsage().catch(() => {});
+      }
+
       async function loadSnapshot(refresh) {
         refreshButton.disabled = true;
         refreshButton.textContent = refresh ? "掃描中…" : "載入中…";
@@ -405,11 +436,12 @@ const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, ref
       window.addEventListener("resize", syncSidebarToggle);
       syncSidebarToggle();
       backtestTabs.forEach((tab) => tab.addEventListener("click", () => setBacktestTab(tab.dataset.backtestTab)));
-      refreshButton.addEventListener("click", () => loadSnapshot(true));
+      refreshButton.addEventListener("click", () => loadSnapshot(true).finally(pollProviderUsage));
       momentumContent.addEventListener("click", (event) => {
         const row = event.target.closest("[data-momentum-symbol]");
         if (row) openMomentumDialog(row.dataset.momentumSymbol);
       });
+      momentumDetailOrder.addEventListener("click", openOrderTicketFromMomentum);
       momentumDetailClose.addEventListener("click", () => closeMomentumDialog());
       momentumDetailDialog.addEventListener("cancel", (event) => {
         event.preventDefault();
@@ -476,15 +508,20 @@ const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, ref
         }
       });
       document.addEventListener("visibilitychange", () => {
+        pollProviderUsage();
         pollSimulationProjection();
         checkMomentumHeartbeat();
         pollMomentumProjection();
         pollBacktestWorkspace();
       });
       window.setInterval(pollSimulationProjection, 2000);
+      window.setInterval(pollAutomatedStrategyStatus, 2000);
       window.setInterval(pollMomentumProjection, 2000);
       window.setInterval(checkMomentumHeartbeat, 5000);
       window.setInterval(pollBacktestWorkspace, 3000);
+      window.setInterval(pollProviderUsage, 60000);
       refreshStrategyCatalog();
       bootstrapMomentumStream();
-      loadSnapshot(false);
+      loadAutomatedStrategyStatus().catch(() => {});
+      pollProviderUsage();
+      loadSnapshot(false).finally(bootstrapSimulationStream);

@@ -62,6 +62,7 @@
             <p class="topbar-description" id="workspace-description">市場摘要、資料健康與盤前情境</p>
           </div>
           <div class="topbar-actions">
+            <span class="status shioaji-usage-status" id="shioaji-usage-status" role="status" aria-live="polite" hidden><span class="status-dot" aria-hidden="true"></span>Shioaji 流量狀態</span>
             <span class="status" id="status"><span class="status-dot" aria-hidden="true"></span>正在建立掃描快照</span>
             <span class="status simulation-status" id="simulation-status"><span class="status-dot" aria-hidden="true"></span>正在建立本機模擬</span>
           </div>
@@ -77,7 +78,7 @@
 
           <section class="overview-summary" aria-label="市場總覽摘要">
             <article class="summary-card"><div class="summary-card-label">可觀察候選</div><div class="summary-card-value" id="overview-candidate-count">—</div><div class="summary-card-note">分數大於 0 的標的</div></article>
-            <article class="summary-card"><div class="summary-card-label">待處理委託</div><div class="summary-card-value" id="overview-order-count">—</div><div class="summary-card-note">本機模擬 SUBMITTED</div></article>
+            <article class="summary-card"><div class="summary-card-label">待處理委託</div><div class="summary-card-value" id="overview-order-count">—</div><div class="summary-card-note">待撮合或部分成交</div></article>
             <article class="summary-card"><div class="summary-card-label">已成交持倉</div><div class="summary-card-value" id="overview-position-count">—</div><div class="summary-card-note">由本機成交推導</div></article>
             <article class="summary-card data-status-card"><div class="summary-card-label">資料狀態</div><div class="summary-card-value waiting" id="overview-data-status">讀取中</div><div class="summary-card-note" id="overview-data-note">等待最新掃描</div><button class="refresh-button" id="refresh-button" type="button">重新掃描</button></article>
           </section>
@@ -158,7 +159,10 @@
             <h2 id="momentum-detail-heading">正在讀取標的資料</h2>
             <div class="momentum-detail-title-meta" id="momentum-detail-title-meta"></div>
           </div>
-          <button class="momentum-detail-close" id="momentum-detail-close" type="button" aria-label="關閉盤中動能明細">×</button>
+          <div class="momentum-detail-actions">
+            <button class="momentum-detail-order" id="momentum-detail-order" type="button">模擬下單</button>
+            <button class="momentum-detail-close" id="momentum-detail-close" type="button" aria-label="關閉盤中動能明細">×</button>
+          </div>
         </div>
         <div class="momentum-detail-status" id="momentum-detail-status" role="status"></div>
         <div class="momentum-detail-body" id="momentum-detail-body">
@@ -193,6 +197,29 @@
           </div>
           <button class="drawer-close" id="orders-close" type="button" aria-label="關閉模擬下單面板">×</button>
         </div>
+        <section class="automated-strategy-card" aria-labelledby="automated-strategy-heading">
+          <div class="automated-strategy-heading">
+            <div>
+              <div class="kicker">Momentum · 固定一張 · 最多一個持倉</div>
+              <h3 id="automated-strategy-heading">自動模擬策略</h3>
+            </div>
+            <span class="automated-strategy-badge stopped" id="automated-strategy-badge">未啟動</span>
+          </div>
+          <p class="automated-strategy-status" id="automated-strategy-status" role="status">讀取自動策略狀態中…</p>
+          <form class="automated-strategy-form" id="automated-strategy-form">
+            <div class="order-fields automated-strategy-fields">
+              <div class="order-field"><label for="automated-stop-loss">停損（%）</label><input id="automated-stop-loss" name="stop_loss_pct" min="0.1" max="99.9" step="0.1" type="number" placeholder="必填" required></div>
+              <div class="order-field"><label for="automated-take-profit">停利（%）</label><input id="automated-take-profit" name="take_profit_pct" min="0.1" step="0.1" type="number" placeholder="必填" required></div>
+              <div class="order-field"><label for="automated-max-daily-loss">每日最大虧損（元）</label><input id="automated-max-daily-loss" name="max_daily_loss" min="1" step="1" type="number" placeholder="必填" required></div>
+            </div>
+            <p class="order-note">只在 TWSE 交易日 09:00–13:20 進場，13:25 起強制出場；重啟後需重新手動啟動。僅限 Shioaji Tick／BidAsk 驅動的本機模擬。</p>
+            <p class="error" id="automated-strategy-error" role="alert"></p>
+            <div class="automated-strategy-actions">
+              <button class="order-submit" id="automated-strategy-start" type="submit">啟動自動模擬</button>
+              <button class="automated-strategy-stop" id="automated-strategy-stop" type="button" disabled>停止</button>
+            </div>
+          </form>
+        </section>
         <form class="order-form" id="order-form">
           <div class="order-fields">
             <div class="order-field"><label for="order-symbol">股票代碼</label><input id="order-symbol" name="symbol" inputmode="numeric" required></div>
@@ -321,6 +348,6 @@
       </aside>
     </div>
 
-    <script type="module" src="/static/js/app.js"></script>
+    <script type="module" src="/static/js/app.js?v=20260821-shioaji-quota-v1"></script>
   </body>
 </html>

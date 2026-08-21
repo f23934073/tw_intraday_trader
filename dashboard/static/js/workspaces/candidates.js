@@ -77,9 +77,9 @@ export function createCandidateWorkspace(context) {
         simulationStatus.classList.toggle("waiting", !session.stream_error && session.stream_health === "HEALTHY" && !session.last_quote_received_at);
         simulationStatus.innerHTML = `<span class="status-dot" aria-hidden="true"></span>${escapeHtml(label)} · ${escapeHtml(stateLabel)}`;
         document.getElementById("position-count").textContent = String((simulation.positions || []).length);
-        document.getElementById("order-count").textContent = String((simulation.orders || []).filter((order) => order.status === "SUBMITTED").length);
+        document.getElementById("order-count").textContent = String((simulation.orders || []).filter((order) => ["SUBMITTED", "PENDING", "PARTIALLY_FILLED"].includes(order.status)).length);
         document.getElementById("overview-position-count").textContent = String((simulation.positions || []).length);
-        document.getElementById("overview-order-count").textContent = String((simulation.orders || []).filter((order) => order.status === "SUBMITTED").length);
+        document.getElementById("overview-order-count").textContent = String((simulation.orders || []).filter((order) => ["SUBMITTED", "PENDING", "PARTIALLY_FILLED"].includes(order.status)).length);
         document.getElementById("order-preview").textContent = session.available_cash === null || session.available_cash === undefined
           ? "買進以賣一、賣出以買一判斷模擬成交；未達限價則保留在委託清單。"
           : `可用虛擬現金：${formatNumber(session.available_cash, 0)} 元${Number(session.reserved_cash || 0) > 0 ? `（已保留 ${formatNumber(session.reserved_cash, 0)} 元掛單額度）` : ""}。買進以賣一、賣出以買一判斷模擬成交。`;

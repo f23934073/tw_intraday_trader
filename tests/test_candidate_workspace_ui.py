@@ -32,3 +32,28 @@ def test_simulation_ui_exposes_reserved_cash_and_fail_closed_quote_health() -> N
     assert 'session.stream_health === "BLOCKED"' in SIMULATION
     assert "行情保護已阻擋下單" in SIMULATION
     assert "已保留 ${formatNumber(session.reserved_cash, 0)} 元掛單額度" in SIMULATION
+
+
+def test_simulation_positions_use_websocket_with_http_fallback() -> None:
+    assert 'new WebSocket(simulationWebSocketUrl())' in SIMULATION
+    assert 'message.type === "simulation_projection"' in SIMULATION
+    assert 'state.simulationSocketState = "fallback"' in SIMULATION
+    assert "if (simulationSocketIsOpen()) return;" in SIMULATION
+    assert "loadSnapshot(false).finally(bootstrapSimulationStream)" in APP
+    assert "/static/js/app.js?v=20260821-shioaji-quota-v1" in HTML
+
+
+def test_pending_simulation_orders_explain_live_quote_state() -> None:
+    assert "WAITING_FOR_FIRST_BIDASK" in SIMULATION
+    assert "等待首次 Shioaji 五檔" in SIMULATION
+    assert "LIMIT_NOT_REACHED" in SIMULATION
+    assert "買一／賣一" in SIMULATION
+
+
+def test_recoverable_orders_expose_retry_and_high_visibility_alerts() -> None:
+    assert '["SUBMITTED", "PENDING", "PARTIALLY_FILLED"]' in SIMULATION
+    assert 'data-retry-order=' in SIMULATION
+    assert '/retry`' in SIMULATION
+    assert "重試未成交餘量" in SIMULATION
+    assert "simulation.alerts || []" in SIMULATION
+    assert "委託警示：${latestAlert.message" in SIMULATION

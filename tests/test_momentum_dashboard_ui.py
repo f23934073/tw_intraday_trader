@@ -5,6 +5,7 @@ STATIC = Path(__file__).resolve().parents[1] / "dashboard" / "static"
 HTML = (STATIC / "index.html").read_text(encoding="utf-8")
 CSS = (STATIC / "css" / "dashboard.css").read_text(encoding="utf-8")
 MOMENTUM = (STATIC / "js" / "workspaces" / "momentum.js").read_text(encoding="utf-8")
+APP = (STATIC / "js" / "app.js").read_text(encoding="utf-8")
 
 
 def test_momentum_dashboard_has_truthful_labels_and_accessible_region():
@@ -46,7 +47,7 @@ def test_momentum_dashboard_has_narrow_layout_rules():
     assert ".momentum-candidate-table" in CSS
 
 
-def test_momentum_rows_open_an_accessible_read_only_detail_dialog():
+def test_momentum_rows_open_an_accessible_detail_dialog():
     assert 'id="momentum-detail-dialog"' in HTML
     assert 'aria-labelledby="momentum-detail-heading"' in HTML
     assert 'id="momentum-detail-close"' in HTML
@@ -56,7 +57,15 @@ def test_momentum_rows_open_an_accessible_read_only_detail_dialog():
     assert "function closeMomentumDialog" in MOMENTUM
     assert "momentumDetailDialog.showModal()" in MOMENTUM
     assert "state.momentumDialogSymbol" in MOMENTUM
-    assert "momentum-detail-order" not in MOMENTUM
+
+
+def test_momentum_detail_opens_existing_local_paper_order_ticket():
+    assert 'id="momentum-detail-order"' in HTML
+    assert "function openOrderTicketFromMomentum()" in MOMENTUM
+    assert 'intradayPrice?.status === "VALID"' in MOMENTUM
+    assert "services.openOrderTicket(item.symbol, price)" in MOMENTUM
+    assert 'momentumDetailOrder.addEventListener("click", openOrderTicketFromMomentum)' in APP
+    assert ".momentum-detail-order" in CSS
 
 
 def test_momentum_dialog_uses_server_projection_and_survives_polling():

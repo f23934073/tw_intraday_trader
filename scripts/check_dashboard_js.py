@@ -23,7 +23,8 @@ def module_entrypoint(html: str) -> Path:
     entry = entries[0]
     if not entry.startswith("/static/"):
         raise ValueError("dashboard module entrypoint must be served from /static/")
-    path = (DASHBOARD_STATIC / entry.removeprefix("/static/")).resolve()
+    entry_path = entry.partition("?")[0]
+    path = (DASHBOARD_STATIC / entry_path.removeprefix("/static/")).resolve()
     if DASHBOARD_STATIC.resolve() not in path.parents or not path.is_file():
         raise ValueError("dashboard module entrypoint is missing")
     return path

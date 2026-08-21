@@ -63,6 +63,34 @@ class DashboardService:
         """取得即時策略候選池，不變更主畫面快照或盤前 artifact。"""
         return {"candidates": build_dashboard_snapshot(run_scan(self._provider))["candidates"]}
 
+    def provider_usage(self) -> dict[str, Any]:
+        """回傳目前 Provider 的行情流量狀態，不額外查詢行情。"""
+        usage = self._provider.market_data_usage()
+        provider = type(self._provider).__name__
+        if usage is None:
+            return {
+                "provider": provider,
+                "supported": False,
+                "exhausted": False,
+                "connections": None,
+                "bytes_used": None,
+                "limit_bytes": None,
+                "remaining_bytes": None,
+            }
+
+        exhausted = usage.limit_bytes > 0 and (
+            usage.remaining_bytes <= 0 or usage.bytes_used >= usage.limit_bytes
+        )
+        return {
+            "provider": provider,
+            "supported": True,
+            "exhausted": exhausted,
+            "connections": usage.connections,
+            "bytes_used": usage.bytes_used,
+            "limit_bytes": usage.limit_bytes,
+            "remaining_bytes": usage.remaining_bytes,
+        }
+
     def candidate_history(self, symbol: str, period: str) -> dict[str, Any]:
         """按需取得目前 Candidate 的來源 Kbar，不在全市場掃描時預先查詢。"""
         if period not in _HISTORY_PERIODS:

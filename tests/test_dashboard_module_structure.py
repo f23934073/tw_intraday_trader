@@ -11,7 +11,10 @@ WORKSPACES = STATIC / "js" / "workspaces"
 
 def test_dashboard_layout_loads_external_css_and_one_module_entrypoint() -> None:
     assert '<link rel="stylesheet" href="/static/css/dashboard.css">' in HTML
-    assert '<script type="module" src="/static/js/app.js"></script>' in HTML
+    assert (
+        '<script type="module" '
+        'src="/static/js/app.js?v=20260821-shioaji-quota-v1"></script>'
+    ) in HTML
     assert "<style>" not in HTML
     assert "<script>" not in HTML
 
@@ -42,3 +45,38 @@ def test_workspace_factories_declare_cross_workspace_dependencies() -> None:
     assert "formatSource" in APP
     assert "ruleLabels" in APP
     assert "setWorkspace" in APP
+
+
+def test_simulation_workspace_exposes_explicit_automated_strategy_controls() -> None:
+    simulation = (WORKSPACES / "simulation.js").read_text(encoding="utf-8")
+
+    for element_id in (
+        "automated-strategy-form",
+        "automated-stop-loss",
+        "automated-take-profit",
+        "automated-max-daily-loss",
+        "automated-strategy-start",
+        "automated-strategy-stop",
+        "automated-strategy-status",
+    ):
+        assert f'id="{element_id}"' in HTML
+    assert "/api/simulation/automated-strategy/start" in simulation
+    assert "/api/simulation/automated-strategy/stop" in simulation
+    assert "loadAutomatedStrategyStatus" in simulation
+    assert "submitAutomatedStrategy" in simulation
+    assert "stopAutomatedStrategy" in simulation
+    assert "pollAutomatedStrategyStatus" in APP
+    assert (
+        './workspaces/simulation.js?v=20260821-continuous-paper-v1'
+        in APP
+    )
+
+
+def test_topbar_exposes_exhausted_shioaji_usage_status() -> None:
+    assert 'id="shioaji-usage-status"' in HTML
+    assert "/api/dashboard/provider-usage" in APP
+    assert "renderProviderUsage" in APP
+    assert "loadProviderUsage" in APP
+    assert "pollProviderUsage" in APP
+    assert "Shioaji 流量已超過" in APP
+    assert "window.setInterval(pollProviderUsage, 60000)" in APP

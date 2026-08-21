@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import csv
 from contextlib import asynccontextmanager
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
+from threading import RLock
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -26,6 +28,7 @@ from app import build_provider
 from backtest.application import BacktestApplicationService
 from backtest.scheduler import AfterCloseIncrementalScheduler
 from config import backtest as backtest_settings
+from config import twse_calendar_2026
 from config.momentum_stream import MOMENTUM_STREAM_CONFIG
 from dashboard.momentum import (
     RealtimeMomentumDashboardService,
@@ -38,16 +41,28 @@ from dashboard.momentum_stream import (
     MomentumStreamHub,
 )
 from dashboard.service import DashboardService
+from market_data.equity_calendar import ReviewedEquityCalendar
 from market_data.provider import MarketDataProvider
 from runtime.composition import RuntimeComposition
 from simulation.application import LocalPaperCommandService
+from simulation.continuous_strategy import (
+    AutomatedStrategyConfig,
+    AutomatedStrategyStateError,
+    ContinuousPaperStrategyController,
+)
 from simulation.service import (
     SimulationService,
     SimulationStateError,
     SimulationValidationError,
 )
+from simulation.strategy_flow import StrategyPaperFlowService, StrategyPaperIntent
 
 STATIC_DIR = Path(__file__).parent / "static"
+SIMULATION_STREAM_PATH = "/ws/simulation/projection"
+SIMULATION_STREAM_SCHEMA_VERSION = "simulation_projection_stream_v1"
+SIMULATION_STREAM_SAMPLE_SECONDS = 0.25
+SIMULATION_STREAM_HEARTBEAT_SECONDS = 10.0
+SIMULATION_STREAM_SEND_TIMEOUT_SECONDS = 2.0
 
 _provider: MarketDataProvider | None = None
 _service: DashboardService | None = None
@@ -59,6 +74,8 @@ _momentum_service: (
 _momentum_stream_hub: MomentumStreamHub | None = None
 _backtest_service: BacktestApplicationService | None = None
 _incremental_scheduler: AfterCloseIncrementalScheduler | None = None
+_automated_strategy_controller: ContinuousPaperStrategyController | None = None
+_runtime_composition_lock = RLock()
 
 
 @asynccontextmanager
@@ -73,6 +90,8 @@ async def lifespan(_: FastAPI):
     finally:
         if scheduler is not None:
             scheduler.stop()
+        if _automated_strategy_controller is not None:
+            _automated_strategy_controller.close()
         if _backtest_service is not None:
             _backtest_service.close()
         if _momentum_stream_hub is not None:
@@ -99,6 +118,28 @@ class SimulationOrderRequest(BaseModel):
 
 class SimulationCancelRequest(BaseModel):
     idempotency_key: str
+
+
+class SimulationRetryRequest(BaseModel):
+    idempotency_key: str
+    limit_price: float | None = None
+
+
+class SimulationStrategyIntentRequest(BaseModel):
+    intent_id: str
+    strategy_id: str
+    strategy_version: str
+    symbol: str
+    side: str
+    lots: int
+    limit_price: str
+    signaled_at: datetime
+
+
+class AutomatedStrategyStartRequest(BaseModel):
+    stop_loss_pct: str
+    take_profit_pct: str
+    max_daily_loss: str
 
 
 class DatasetSyncRequest(BaseModel):
@@ -164,30 +205,31 @@ def get_runtime_composition() -> RuntimeComposition:
     """建立一次本機 composition；保留舊 globals 供測試注入相容。"""
     global _composition, _provider, _service, _simulation_service
 
-    current = _composition
-    if (
-        current is not None
-        and _provider is current.provider
-        and (_service is None or _service is current.dashboard_service)
-        and (
-            _simulation_service is None
-            or _simulation_service is current.simulation_service
-        )
-    ):
-        _service = current.dashboard_service
-        _simulation_service = current.simulation_service
-        return current
+    with _runtime_composition_lock:
+        current = _composition
+        if (
+            current is not None
+            and _provider is current.provider
+            and (_service is None or _service is current.dashboard_service)
+            and (
+                _simulation_service is None
+                or _simulation_service is current.simulation_service
+            )
+        ):
+            _service = current.dashboard_service
+            _simulation_service = current.simulation_service
+            return current
 
-    provider = _provider or build_provider()
-    _composition = RuntimeComposition.create(
-        provider,
-        dashboard_service=_service,
-        simulation_service=_simulation_service,
-    )
-    _provider = _composition.provider
-    _service = _composition.dashboard_service
-    _simulation_service = _composition.simulation_service
-    return _composition
+        provider = _provider or build_provider()
+        _composition = RuntimeComposition.create(
+            provider,
+            dashboard_service=_service,
+            simulation_service=_simulation_service,
+        )
+        _provider = _composition.provider
+        _service = _composition.dashboard_service
+        _simulation_service = _composition.simulation_service
+        return _composition
 
 
 def get_market_provider() -> MarketDataProvider:
@@ -210,6 +252,27 @@ def get_simulation_service() -> SimulationService:
 def get_local_paper_command_service() -> LocalPaperCommandService:
     """Return the Journal-first facade; it remains local-paper only."""
     return get_runtime_composition().local_paper_commands
+
+
+def get_strategy_paper_flow_service() -> StrategyPaperFlowService:
+    """Return the explicit strategy-intent facade for local paper only."""
+    return get_runtime_composition().strategy_paper_flow
+
+
+def get_automated_strategy_controller() -> ContinuousPaperStrategyController:
+    """Build one explicitly started local-paper controller for this process."""
+    global _automated_strategy_controller
+    with _runtime_composition_lock:
+        if _automated_strategy_controller is None:
+            composition = get_runtime_composition()
+            _automated_strategy_controller = ContinuousPaperStrategyController(
+                flow=composition.strategy_paper_flow,
+                projection_reader=get_simulation_service().projection,
+                signal_reader=get_momentum_dashboard_service().snapshot,
+                calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+                clock=composition.clock,
+            )
+        return _automated_strategy_controller
 
 
 def get_momentum_dashboard_service(
@@ -248,12 +311,13 @@ def get_momentum_stream_hub() -> MomentumStreamHub:
 def get_backtest_service() -> BacktestApplicationService:
     """Create a separate historical-backtest composition without local orders."""
     global _backtest_service, _provider
-    if _backtest_service is None:
-        # RuntimeComposition creates SimulationService, which can register quote
-        # callbacks. Historical backtest must not activate that path.
-        _provider = _provider or build_provider()
-        _backtest_service = BacktestApplicationService(_provider)
-    return _backtest_service
+    with _runtime_composition_lock:
+        if _backtest_service is None:
+            # RuntimeComposition creates SimulationService, which can register quote
+            # callbacks. Historical backtest must not activate that path.
+            _provider = _provider or build_provider()
+            _backtest_service = BacktestApplicationService(_provider)
+        return _backtest_service
 
 
 def get_incremental_scheduler() -> AfterCloseIncrementalScheduler:
@@ -295,6 +359,11 @@ def dashboard_page() -> FileResponse:
 @app.get("/api/dashboard/snapshot")
 def dashboard_snapshot() -> dict[str, Any]:
     return _dashboard_payload(get_dashboard_service().snapshot())
+
+
+@app.get("/api/dashboard/provider-usage")
+def provider_usage_status() -> dict[str, Any]:
+    return get_dashboard_service().provider_usage()
 
 
 @app.post("/api/dashboard/refresh")
@@ -498,6 +567,73 @@ def simulation_projection() -> dict[str, Any]:
     return get_simulation_service().projection()
 
 
+@app.websocket(SIMULATION_STREAM_PATH)
+async def simulation_projection_stream(websocket: WebSocket) -> None:
+    """Push changed local-paper projections; never call a broker API."""
+    if not _websocket_origin_allowed(websocket):
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    loop = asyncio.get_running_loop()
+    revision = 0
+    last_projection: dict[str, Any] | None = None
+    last_sent_at = 0.0
+    try:
+        while True:
+            projection = get_simulation_service().projection()
+            sampled_at = loop.time()
+            if projection != last_projection:
+                revision += 1
+                await _send_simulation_message(
+                    websocket,
+                    {
+                        "schema_version": SIMULATION_STREAM_SCHEMA_VERSION,
+                        "type": "simulation_projection",
+                        "revision": revision,
+                        "emitted_at": datetime.now().astimezone().isoformat(),
+                        "projection": projection,
+                    },
+                )
+                last_projection = projection
+                last_sent_at = sampled_at
+            elif sampled_at - last_sent_at >= SIMULATION_STREAM_HEARTBEAT_SECONDS:
+                await _send_simulation_message(
+                    websocket,
+                    {
+                        "schema_version": SIMULATION_STREAM_SCHEMA_VERSION,
+                        "type": "heartbeat",
+                        "current_revision": revision,
+                        "emitted_at": datetime.now().astimezone().isoformat(),
+                    },
+                )
+                last_sent_at = sampled_at
+
+            try:
+                event = await asyncio.wait_for(
+                    websocket.receive(),
+                    timeout=SIMULATION_STREAM_SAMPLE_SECONDS,
+                )
+            except TimeoutError:
+                continue
+            if event["type"] == "websocket.disconnect":
+                return
+    except WebSocketDisconnect:
+        return
+    except TimeoutError:
+        await _close_websocket(websocket, code=1013)
+
+
+async def _send_simulation_message(
+    websocket: WebSocket,
+    payload: dict[str, Any],
+) -> None:
+    await asyncio.wait_for(
+        websocket.send_json(payload),
+        timeout=SIMULATION_STREAM_SEND_TIMEOUT_SECONDS,
+    )
+
+
 @app.get("/api/simulation/orders")
 def simulation_orders() -> dict[str, Any]:
     """讀取本機委託投影，不會呼叫券商或資料來源。"""
@@ -554,6 +690,86 @@ def cancel_simulation_order(
     if idempotent:
         response.status_code = status.HTTP_200_OK
     return {"order": order, "idempotent": idempotent}
+
+
+@app.post(
+    "/api/simulation/orders/{order_id}/retry",
+    status_code=status.HTTP_201_CREATED,
+)
+def retry_simulation_order(
+    order_id: str,
+    request: SimulationRetryRequest,
+    response: Response,
+) -> dict[str, Any]:
+    """Retry the unfilled remainder as one bounded successor paper order."""
+    try:
+        order, idempotent = get_local_paper_command_service().retry_order(
+            order_id,
+            request.idempotency_key,
+            limit_price=request.limit_price,
+        )
+    except SimulationValidationError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except SimulationStateError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+    if idempotent:
+        response.status_code = status.HTTP_200_OK
+    return {"order": order, "idempotent": idempotent}
+
+
+@app.post("/api/simulation/strategy-intents", status_code=status.HTTP_201_CREATED)
+def submit_simulation_strategy_intent(
+    request: SimulationStrategyIntentRequest,
+    response: Response,
+) -> dict[str, Any]:
+    """Apply one strategy intent to local paper; never call a broker order API."""
+    try:
+        intent = StrategyPaperIntent.create(**request.model_dump())
+        result = get_strategy_paper_flow_service().submit(intent)
+    except SimulationValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except SimulationStateError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+    if result["intent_idempotent"] and result["order_idempotent"]:
+        response.status_code = status.HTTP_200_OK
+    return result
+
+
+@app.get("/api/simulation/automated-strategy")
+def automated_strategy_status() -> dict[str, Any]:
+    """Read the process-local automated paper-strategy state."""
+    return get_automated_strategy_controller().status()
+
+
+@app.post(
+    "/api/simulation/automated-strategy/start",
+    status_code=status.HTTP_201_CREATED,
+)
+def start_automated_strategy(
+    request: AutomatedStrategyStartRequest,
+    response: Response,
+) -> dict[str, Any]:
+    """Explicitly start one bounded Momentum local-paper session."""
+    try:
+        config = AutomatedStrategyConfig.create(**request.model_dump())
+        result = get_automated_strategy_controller().start(config)
+        response.status_code = status.HTTP_201_CREATED
+        return result
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except AutomatedStrategyStateError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@app.post("/api/simulation/automated-strategy/stop")
+def stop_automated_strategy() -> dict[str, Any]:
+    """Stop producing new intents; existing local-paper positions are retained."""
+    try:
+        return get_automated_strategy_controller().stop()
+    except AutomatedStrategyStateError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 # ---------------------------------------------------------------------------
