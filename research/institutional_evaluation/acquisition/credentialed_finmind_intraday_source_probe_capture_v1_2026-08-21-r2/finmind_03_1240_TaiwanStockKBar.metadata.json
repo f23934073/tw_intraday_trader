@@ -1,0 +1,31 @@
+{
+  "body_file": "finmind_03_1240_TaiwanStockKBar.response.bin",
+  "data_array_present": true,
+  "dataset": "TaiwanStockKBar",
+  "http_status": 200,
+  "json_message": "success",
+  "json_status": 200,
+  "market": "TPEX",
+  "raw_response_bytes": 1110,
+  "raw_response_sha256": "86c68ab64ae2c21c7396a62302c9e84d21860c1a7d91674e1d3d3c62eca60ea7",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "data_id": "1240",
+      "dataset": "TaiwanStockKBar",
+      "start_date": "2026-08-18"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-origin": "*",
+    "connection": "close",
+    "content-length": "1110",
+    "content-type": "application/json",
+    "date": "Fri, 21 Aug 2026 01:13:06 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-21T09:13:06.959545+08:00",
+  "role": "SAME_JOB_CONTROL",
+  "source_version": "FINMIND_API_V4",
+  "symbol": "1240"
+}

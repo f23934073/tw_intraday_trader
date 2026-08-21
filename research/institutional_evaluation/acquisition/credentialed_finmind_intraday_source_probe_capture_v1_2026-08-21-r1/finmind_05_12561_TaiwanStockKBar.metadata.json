@@ -1,0 +1,30 @@
+{
+  "body_file": "finmind_05_12561_TaiwanStockKBar.response.bin",
+  "data_array_present": false,
+  "dataset": "TaiwanStockKBar",
+  "http_status": 400,
+  "json_message": "Your level is register. Please update your user level. Detail information:https://finmindtrade.com/analysis/#/Sponsor/sponsor",
+  "json_status": 400,
+  "market": "TPEX",
+  "raw_response_bytes": 175,
+  "raw_response_sha256": "4bf1d086212a3e448c020b35ff1cfb0f0ce0bb790506d82323cc924ccbf52618",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "data_id": "12561",
+      "dataset": "TaiwanStockKBar",
+      "start_date": "2026-08-18"
+    }
+  },
+  "response_headers_without_secrets": {
+    "connection": "close",
+    "content-length": "175",
+    "content-type": "application/json",
+    "date": "Fri, 21 Aug 2026 00:59:23 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-21T08:59:22.963300+08:00",
+  "role": "SAME_JOB_CONTROL",
+  "source_version": "FINMIND_API_V4",
+  "symbol": "12561"
+}

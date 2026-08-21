@@ -1,0 +1,56 @@
+{
+  "artifact_id": "price-coverage-scan-segment-v1-2026-08-21-r0",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "configuration_binding": {
+    "binding_kind": "PRE_COVERAGE_TRUSTED_CHECKPOINT_PROVENANCE",
+    "price_acquisition_resolution": {
+      "artifact_id": "price-acquisition-resolution-v1-2026-08-20-r1",
+      "canonical_sha256": "6eb6cb4719d999ba49eec46c814383fbfb00b9cf1533f88b8837e9da1c41b5b9"
+    },
+    "scan_configuration": null
+  },
+  "execution_lock": {
+    "formal_coverage_audit_allowed": false,
+    "holdout_allowed": false,
+    "outcome_generation_allowed": false,
+    "population_freeze_allowed": false
+  },
+  "job": {
+    "job_id": "dataset-download-f914feaddea04e37b3cbdcfce2b0179b",
+    "request_sha256": "db64dc6741df8a228c8a6550823cb280de18caabdf5525bd9c704dc333e2a9b9",
+    "target_count": 2738,
+    "universe_selection": "ALL_CURRENT"
+  },
+  "metadata_snapshot": {
+    "canonical_projection_fields": [
+      "target_index",
+      "symbol",
+      "market",
+      "bar_count",
+      "observation_status",
+      "error_message",
+      "observed_at"
+    ],
+    "checkpoint_metadata_sha256": "e9aefda42fe92d6537b99ad10a92167ceb47b037e78fa0b76692a95dafe121b6",
+    "first_observed_at": "2026-08-18T15:59:35.448295+08:00",
+    "last_observed_at": "2026-08-19T10:34:30.840074+08:00",
+    "market_status_counts": {
+      "TPEX": {"NON_EMPTY_SUCCESS": 126},
+      "TWSE": {"NON_EMPTY_SUCCESS": 285}
+    },
+    "observation_count": 411,
+    "observation_status_counts": {"NON_EMPTY_SUCCESS": 411},
+    "payloads_or_price_values_read": false
+  },
+  "registered_at": "2026-08-21T10:51:00+08:00",
+  "schema_version": "price_coverage_scan_segment_manifest_v1",
+  "segment": {
+    "ordinal": 0,
+    "segment_id": "pre-coverage-trusted-checkpoints-r0",
+    "target_index_inclusive_end": 410,
+    "target_index_inclusive_start": 0,
+    "target_index_semantics": "ORIGINAL_JOB_REQUEST_ORDER",
+    "target_count": 411
+  },
+  "status": "SEALED_PRE_COVERAGE_TRUSTED_CHECKPOINT_SEGMENT"
+}

@@ -1,0 +1,375 @@
+{
+  "capture_name": "credentialed_intraday_probe_reference_1240",
+  "captured_fields": [
+    "ts",
+    "Open",
+    "High",
+    "Low",
+    "Close",
+    "Volume",
+    "Amount"
+  ],
+  "field_counts": {
+    "Amount": 9,
+    "Close": 9,
+    "High": 9,
+    "Low": 9,
+    "Open": 9,
+    "Volume": 9,
+    "ts": 9
+  },
+  "provider": "SHIOAJI",
+  "queried_at": "2026-08-20T17:48:22.408792+08:00",
+  "raw_response_type": "builtins.KBars",
+  "raw_rows": [
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "170400.0",
+        "text": "170400.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "56.8",
+        "text": "56.8"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "56.8",
+        "text": "56.8"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "56.8",
+        "text": "56.8"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "56.8",
+        "text": "56.8"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "3",
+        "text": "3"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787044500000000000",
+        "text": "1787044500000000000"
+      }
+    },
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "170700.0",
+        "text": "170700.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "3",
+        "text": "3"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787046720000000000",
+        "text": "1787046720000000000"
+      }
+    },
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "56900.0",
+        "text": "56900.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "1",
+        "text": "1"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787048280000000000",
+        "text": "1787048280000000000"
+      }
+    },
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "227600.0",
+        "text": "227600.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "4",
+        "text": "4"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787051040000000000",
+        "text": "1787051040000000000"
+      }
+    },
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "56900.0",
+        "text": "56900.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "1",
+        "text": "1"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787055000000000000",
+        "text": "1787055000000000000"
+      }
+    },
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "342000.0",
+        "text": "342000.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "6",
+        "text": "6"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787056500000000000",
+        "text": "1787056500000000000"
+      }
+    },
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "57000.0",
+        "text": "57000.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "1",
+        "text": "1"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787058360000000000",
+        "text": "1787058360000000000"
+      }
+    },
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "228000.0",
+        "text": "228000.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "57.0",
+        "text": "57.0"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "4",
+        "text": "4"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787059020000000000",
+        "text": "1787059020000000000"
+      }
+    },
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "56900.0",
+        "text": "56900.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "56.9",
+        "text": "56.9"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "1",
+        "text": "1"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787059800000000000",
+        "text": "1787059800000000000"
+      }
+    }
+  ],
+  "raw_rows_digest": "eaa39caa23ebbb4356a85286e8a00ae28f6acda8d6a4dcc22055cf9955075b05",
+  "request": {
+    "api": "Shioaji.kbars",
+    "interval_parameter_observed": false,
+    "parameters_observed": [
+      "contract",
+      "start",
+      "end",
+      "timeout"
+    ],
+    "query_end": "2026-08-18",
+    "query_start": "2026-08-18"
+  },
+  "schema_version": "shioaji_equity_kbar_capture_v1",
+  "sdk_version": "1.7.2",
+  "symbol": "1240"
+}

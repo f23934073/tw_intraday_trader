@@ -1,0 +1,23 @@
+{
+  "schema_version": "pit_equity_universe_manifest_v1",
+  "snapshot_id": "pit-universe-reviewed-fixture-v1",
+  "evidence_mode": "DATE_EFFECTIVE",
+  "source_id": "reviewed-pit-universe-fixture",
+  "source_license": "TEST_FIXTURE_ONLY",
+  "source_revision": 1,
+  "parent_snapshot_id": null,
+  "correction_policy_note": "Historical changes append a new immutable revision.",
+  "immutable_revision_policy": "Never overwrite a snapshot referenced by digest.",
+  "retrieved_at": "2026-08-20T10:00:00+08:00",
+  "available_from_session": "2026-08-20",
+  "coverage_start": "2021-01-01",
+  "coverage_end": "2025-12-31",
+  "covered_markets": [
+    "TWSE",
+    "TPEX"
+  ],
+  "record_count": 6,
+  "source_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "content_digest": "c21e82dbd550f1f4e7e05102f538342039b95a09996fec780a173efce0dee7b1",
+  "status": "VALIDATED"
+}

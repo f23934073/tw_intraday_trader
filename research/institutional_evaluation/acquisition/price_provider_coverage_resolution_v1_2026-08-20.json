@@ -1,0 +1,189 @@
+{
+  "artifact_id": "price-provider-coverage-resolution-v1-2026-08-20-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "contract": {
+    "candidate_strategy_id": "legacy_gap_volume_vwap_entry_v1",
+    "evaluation_end_date": "2026-08-18",
+    "evaluation_start_date": "2023-08-19",
+    "market_scope": [
+      "TWSE",
+      "TPEX"
+    ],
+    "required_cadence": "ONE_MINUTE",
+    "required_price_policy": "RAW_INTRADAY_WITH_SEPARATE_CORPORATE_ACTION_POLICY",
+    "required_session": "REGULAR_SESSION_ASIA_TAIPEI",
+    "required_strategy_inputs": [
+      "OPEN",
+      "HIGH",
+      "LOW",
+      "CLOSE",
+      "VOLUME",
+      "CUMULATIVE_INTRADAY_VWAP"
+    ],
+    "volume_normalization_unit": "SHARES"
+  },
+  "decision": {
+    "alternative_source_selected": null,
+    "controlled_retry_allowed": false,
+    "provider_policy_finding": "CONTRACT_SHAPE_DOCUMENTED_WITHOUT_PER_SYMBOL_COMPLETENESS_GUARANTEE",
+    "research_exclusion_candidate": false,
+    "status": "BLOCKED_PENDING_SOURCE_QUALIFICATION"
+  },
+  "evidence_scope": {
+    "inspection_only": true,
+    "outcome_fields_read": false,
+    "price_payloads_read": false,
+    "provider_requests_executed": false,
+    "reviewed_at": "2026-08-20T18:10:00+08:00"
+  },
+  "issues": [
+    {
+      "code": "SHIOAJI_PER_SYMBOL_COMPLETENESS_NOT_DOCUMENTED",
+      "severity": "BLOCKING",
+      "summary": "Official documentation defines stock and OTC Kbar request support and a stock history period, but no per-symbol or per-session completeness guarantee was identified."
+    },
+    {
+      "code": "ALTERNATIVE_SOURCE_NOT_QUALIFIED",
+      "severity": "BLOCKING",
+      "summary": "No alternative source has been tested for symbol 1259, dual-market PIT coverage, session completeness, units, or VWAP equivalence."
+    },
+    {
+      "code": "RESEARCH_OWNER_SOURCE_APPROVAL_MISSING",
+      "severity": "BLOCKING",
+      "summary": "No immutable research-owner approval selects a replacement source, mixing policy, or documented exclusion."
+    }
+  ],
+  "permissions": {
+    "alternative_source_acquisition_allowed": false,
+    "dataset_population_freeze_allowed": false,
+    "holdout_execution_allowed": false,
+    "outcome_generation_allowed": false,
+    "price_dataset_artifact_allowed": false,
+    "provider_mismatch_exclusion_allowed": false,
+    "unchanged_shioaji_resume_allowed": false
+  },
+  "policy": {
+    "approved_exclusion_evidence": [
+      "OFFICIAL_PIT_LISTING_HISTORY_PROVES_NOT_LISTED",
+      "OFFICIAL_SECURITY_TYPE_PROVES_OUT_OF_FROZEN_SCOPE",
+      "OFFICIAL_TRADING_STATUS_PROVES_NO_EXPECTED_SESSION"
+    ],
+    "forbidden_exclusion_evidence": [
+      "EMPTY_PROVIDER_RESPONSE",
+      "MISSING_PROVIDER_ENTITLEMENT",
+      "UNDOCUMENTED_VENDOR_COVERAGE_GAP",
+      "FAILED_OR_RATE_LIMITED_REQUEST"
+    ],
+    "provider_mismatch_disposition": "BLOCK_UNTIL_SOURCE_QUALIFIED_OR_OWNER_APPROVED",
+    "source_mixing_policy": "NO_SILENT_MIXING; PRESERVE_SOURCE_IDENTITY_PER_PARTITION_AND_FREEZE_PRECEDENCE",
+    "structural_exclusion_authority": "IMMUTABLE_RESEARCH_OWNER_APPROVAL_REQUIRED"
+  },
+  "provider_review": {
+    "alternatives": [
+      {
+        "candidate_rank": 1,
+        "documented_fit": {
+          "cumulative_intraday_average": true,
+          "historical_start_compatible": true,
+          "one_minute_cadence": true,
+          "tpex_and_twse": true,
+          "volume_unit_documented": true
+        },
+        "gaps": [
+          "NO_LOCAL_ENTITLEMENT_OR_API_KEY_EVIDENCE",
+          "SYMBOL_1259_NOT_PROBED",
+          "DUAL_MARKET_PIT_COMPLETENESS_NOT_VERIFIED",
+          "SESSION_GAP_AND_CORPORATE_ACTION_POLICY_NOT_VERIFIED"
+        ],
+        "name": "FUGLE_HISTORICAL_CANDLES",
+        "status": "QUALIFICATION_CANDIDATE",
+        "urls": [
+          "https://developer.fugle.tw/docs/data/http-api/historical/candles/"
+        ]
+      },
+      {
+        "candidate_rank": 2,
+        "documented_fit": {
+          "historical_start_compatible": true,
+          "one_minute_cadence": true,
+          "tpex_and_twse": true,
+          "volume_unit_documented": true
+        },
+        "gaps": [
+          "SPONSOR_OR_SPONSOR_PRO_ENTITLEMENT_REQUIRED",
+          "KBAR_HAS_NO_DOCUMENTED_CUMULATIVE_AVERAGE_OR_AMOUNT",
+          "VWAP_REQUIRES_SEPARATE_TICK_ROUTE_AND_EQUIVALENCE_PROOF",
+          "SYMBOL_1259_AND_PIT_COMPLETENESS_NOT_VERIFIED"
+        ],
+        "name": "FINMIND_TAIWAN_STOCK_KBAR_OR_TICK",
+        "status": "SECONDARY_QUALIFICATION_CANDIDATE",
+        "urls": [
+          "https://github.com/FinMind/FinMind-MCP/blob/master/knowledge/datasets.md"
+        ]
+      },
+      {
+        "candidate_rank": 3,
+        "documented_fit": {
+          "exchange_origin": true,
+          "historical_trade_and_quote_products": true
+        },
+        "gaps": [
+          "PUBLIC_PRODUCT_PAGE_DOES_NOT_PROVE_ONE_MINUTE_DUAL_MARKET_CONTRACT",
+          "TPEX_PROCUREMENT_AND_LICENSE_SCOPE_NOT_ESTABLISHED",
+          "DELIVERY_FORMAT_AND_VWAP_INPUTS_NOT_QUALIFIED"
+        ],
+        "name": "OFFICIAL_EXCHANGE_DATA_PRODUCTS",
+        "status": "PROCUREMENT_DISCOVERY_ONLY",
+        "urls": [
+          "https://www.twse.com.tw/en/products/information/information.html"
+        ]
+      }
+    ],
+    "current_provider": {
+      "documented_history_period": "STOCK_2020-03-02_TO_TODAY",
+      "documented_request_scope": "STK_WITH_TSE_OR_OTC_EXCHANGE",
+      "documented_response_fields": [
+        "TIMESTAMP",
+        "OPEN",
+        "HIGH",
+        "LOW",
+        "CLOSE",
+        "VOLUME",
+        "AMOUNT"
+      ],
+      "empty_response_warning": "CHECK_TRAFFIC_USAGE_AND_MEANING_BEFORE_RETRY",
+      "installed_sdk_version": "1.7.2",
+      "name": "SHIOAJI",
+      "per_symbol_completeness_guarantee_found": false,
+      "status": "UNRESOLVED_FOR_SYMBOL_1259",
+      "urls": [
+        "https://sinotrade.github.io/zh/tutor/market_data/historical/",
+        "https://sinotrade.github.io/tutor/limit/"
+      ]
+    }
+  },
+  "qualification_gate": {
+    "acceptance_criteria": [
+      "ENTITLEMENT_AND_RESEARCH_USE_LICENSE_RECORDED",
+      "SYMBOL_1259_NONEMPTY_FOR_OFFICIAL_CONTROL_SESSION",
+      "TWSE_AND_TPEX_CONTROL_SYMBOLS_RECONCILED",
+      "PIT_ELIGIBLE_AND_DELISTED_SYMBOL_POLICY_VERIFIED",
+      "ONE_MINUTE_ASIA_TAIPEI_SESSION_ALIGNMENT_VERIFIED",
+      "OHLC_AND_VOLUME_SEMANTICS_RECONCILED",
+      "CUMULATIVE_INTRADAY_VWAP_EQUIVALENCE_VERIFIED",
+      "VOLUME_NORMALIZED_TO_SHARES",
+      "SESSION_COMPLETENESS_AND_MISSING_BAR_CODES_PRODUCED",
+      "RAW_PRICE_AND_CORPORATE_ACTION_POLICY_SEPARATED",
+      "RAW_AND_NORMALIZED_PAYLOAD_DIGESTS_PRODUCED",
+      "SOURCE_PRECEDENCE_AND_NO_SILENT_MIXING_POLICY_FROZEN"
+    ],
+    "next_gate": "INTRADAY_SOURCE_QUALIFICATION_V1",
+    "required_owner_decision": "SELECT_SOURCE_OR_KEEP_ACQUISITION_BLOCKED"
+  },
+  "schema_version": "price_provider_coverage_resolution_v1",
+  "status": "BLOCKED",
+  "symbol_resolution_reference": {
+    "artifact_id": "price-symbol-resolution-1259-v1-2026-08-20-r1",
+    "canonical_sha256": "3726f6b74ba7ca986f5c3537204336488e7c4fefa3c88b098a0f79f69a112293"
+  }
+}

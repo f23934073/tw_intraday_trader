@@ -1,0 +1,103 @@
+{
+  "amendment": {
+    "artifact_id": "institutional-formal-evaluation-coverage-amendment-v1-2026-08-21",
+    "canonical_sha256": "6a5a943e720dc3bf0e9bc952805539a4c0a460d3f8137462f714773fbaba96ab"
+  },
+  "artifact_id": "institutional-data-coverage-audit-v1-2026-08-21-repository-snapshot",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "coverage_measurements": {
+    "aggregate_session_coverage_rate": null,
+    "covered_symbol_count": null,
+    "excluded_symbol_count": null,
+    "expected_symbol_session_row_count": null,
+    "pit_eligible_symbol_count": null,
+    "qualified_symbol_session_row_count": null,
+    "symbol_coverage_rate": null
+  },
+  "exclusions": {
+    "materialized": false,
+    "named_symbol_overrides": [],
+    "records": []
+  },
+  "gate": {
+    "coverage_policy_preregistered": true,
+    "dataset_population_freeze_allowed": false,
+    "holdout_allowed": false,
+    "missingness_concentration_owner_approved": false,
+    "outcome_generation_allowed": false,
+    "status": "BLOCKED"
+  },
+  "inspected_at": "2026-08-21T09:35:48+08:00",
+  "inspection_scope": {
+    "allowed_fields": [
+      "SESSION_DATE",
+      "SYMBOL",
+      "MARKET",
+      "SECURITY_TYPE",
+      "PIT_ELIGIBILITY",
+      "SOURCE_AVAILABILITY",
+      "ROW_COUNT",
+      "ISSUE_CODE",
+      "MARKET_CAP_COHORT",
+      "ADV20_LIQUIDITY_COHORT",
+      "INDUSTRY_CODE",
+      "LISTING_STATUS"
+    ],
+    "outcome_fields_read": false
+  },
+  "issues": [
+    {
+      "code": "PIT_UNIVERSE_MISSING",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "FORMAL_PRICE_DATASET_MISSING",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "INSTITUTIONAL_COMMON_RANGE_INCOMPLETE",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "CORPORATE_ACTION_REFERENCE_CALENDAR_INCOMPLETE",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "SYMBOL_COVERAGE_UNRESOLVED",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "SESSION_COVERAGE_UNRESOLVED",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "MISSINGNESS_CONCENTRATION_UNRESOLVED",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "COVERAGE_CONCENTRATION_OWNER_APPROVAL_MISSING",
+      "severity": "BLOCKING"
+    }
+  ],
+  "missingness_concentration": {
+    "automatic_pass_thresholds": null,
+    "dimensions": {
+      "ADV20_LIQUIDITY_COHORT": null,
+      "INDUSTRY_CODE": null,
+      "LISTING_STATUS_ACTIVE_VS_LATER_DELISTED": null,
+      "MARKET": null,
+      "MARKET_CAP_COHORT": null
+    },
+    "owner_review_status": "PENDING"
+  },
+  "protocol": {
+    "artifact_id": "institutional-formal-evaluation-gate-v1",
+    "canonical_sha256": "b769cf1b672e15d599cf610d22bda49d37981ddc36ae999b120b52702b197dc4"
+  },
+  "schema_version": "institutional_data_coverage_audit_v1",
+  "thresholds": {
+    "minimum_aggregate_session_coverage_rate": "0.99",
+    "minimum_per_symbol_session_coverage_rate": "0.99",
+    "minimum_symbol_coverage_rate": "0.95"
+  }
+}

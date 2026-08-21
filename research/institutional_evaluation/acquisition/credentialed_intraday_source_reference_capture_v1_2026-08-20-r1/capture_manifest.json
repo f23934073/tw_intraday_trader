@@ -1,0 +1,77 @@
+{
+  "artifact_id": "credentialed-intraday-source-reference-capture-v1-2026-08-20-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "environment_identity": "shioaji:1.7.2:simulation=true",
+  "protocol_reference": {
+    "artifact_id": "credentialed-intraday-source-probe-protocol-v1-2026-08-20-r1",
+    "canonical_sha256": "f6b396072d858356bcd98965ddafc749f2b8b63cfe3555f9f60f58a9c16d10f7"
+  },
+  "records": [
+    {
+      "capture_file": "shioaji_1240.capture.json",
+      "capture_sha256": "b5a31708a5fc4b4cbde19a8662b7e36f4eaf156b8d95d069000c0b6c31fcd4ff",
+      "field_counts": {
+        "Amount": 9,
+        "Close": 9,
+        "High": 9,
+        "Low": 9,
+        "Open": 9,
+        "Volume": 9,
+        "ts": 9
+      },
+      "queried_at": "2026-08-20T17:48:22.408792+08:00",
+      "raw_rows_digest": "eaa39caa23ebbb4356a85286e8a00ae28f6acda8d6a4dcc22055cf9955075b05",
+      "symbol": "1240"
+    },
+    {
+      "capture_file": "shioaji_12561.capture.json",
+      "capture_sha256": "39af872930a38d95aa9104b337f9bbd9c320946b35f6319796e28a9b6deae825",
+      "field_counts": {
+        "Amount": 2,
+        "Close": 2,
+        "High": 2,
+        "Low": 2,
+        "Open": 2,
+        "Volume": 2,
+        "ts": 2
+      },
+      "queried_at": "2026-08-20T17:48:22.426310+08:00",
+      "raw_rows_digest": "1058c3c5437d3add206e46633fbd23837f3ae818a611666a3bad442d1203676d",
+      "symbol": "12561"
+    },
+    {
+      "capture_file": "shioaji_2330.capture.json",
+      "capture_sha256": "337f1d57c5567869e745c41767e5f9f2a9d64297aca1ccf1d5d137b71265d7f6",
+      "field_counts": {
+        "Amount": 266,
+        "Close": 266,
+        "High": 266,
+        "Low": 266,
+        "Open": 266,
+        "Volume": 266,
+        "ts": 266
+      },
+      "queried_at": "2026-08-20T17:48:22.439980+08:00",
+      "raw_rows_digest": "1b873bca0c4c82ca8f2544d024b17b1508f90b1948ddb94e55e5cdc13993f20c",
+      "symbol": "2330"
+    },
+    {
+      "capture_file": "shioaji_2317.capture.json",
+      "capture_sha256": "0f34e4b013a2d5eda37d391907bf96c306c390bcdb1040fd08f0f729c2b32469",
+      "field_counts": {
+        "Amount": 266,
+        "Close": 266,
+        "High": 266,
+        "Low": 266,
+        "Open": 266,
+        "Volume": 266,
+        "ts": 266
+      },
+      "queried_at": "2026-08-20T17:48:22.462165+08:00",
+      "raw_rows_digest": "a65ab9dcfe858bb759cb576e786d2a7e23de46368291345c92e9c75586d83b14",
+      "symbol": "2317"
+    }
+  ],
+  "schema_version": "credentialed_intraday_source_reference_capture_v1",
+  "trade_subscription_enabled": false
+}

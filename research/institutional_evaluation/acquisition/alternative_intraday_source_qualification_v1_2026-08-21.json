@@ -1,0 +1,256 @@
+{
+  "artifact_id": "alternative-intraday-source-qualification-v1-2026-08-21-r1",
+  "candidate": {
+    "authentication": "BEARER_TOKEN",
+    "credential_environment_name": "FINMIND_API_TOKEN",
+    "kbar_dataset": "TaiwanStockKBar",
+    "name": "FINMIND_KBAR_PLUS_TICK",
+    "selected_for_dataset_acquisition": false,
+    "status": "DOCUMENTED_CANDIDATE_NOT_PROBED",
+    "tick_dataset": "TaiwanStockPriceTick"
+  },
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "contract": {
+    "adjustment_policy": "RAW_INTRADAY_WITH_SEPARATE_CORPORATE_ACTION_ARTIFACT",
+    "candidate_strategy_id": "legacy_gap_volume_vwap_entry_v1",
+    "evaluation_end_date": "2026-08-18",
+    "evaluation_start_date": "2023-08-19",
+    "market_scope": [
+      "TWSE",
+      "TPEX"
+    ],
+    "required_cadence": "ONE_MINUTE",
+    "required_session": "REGULAR_SESSION_ASIA_TAIPEI",
+    "required_vwap_semantics": "CUMULATIVE_FROM_REGULAR_SESSION_OPEN",
+    "volume_normalization_unit": "SHARES"
+  },
+  "dataset_revision_policy": {
+    "in_place_partition_substitution_allowed": false,
+    "mixed_dataset_identity_must_differ": true,
+    "new_source_composition_requires_new_dataset_revision": true,
+    "primary_source_missing_cannot_be_silently_replaced": true,
+    "source_identity_required_per_partition": true,
+    "source_precedence_must_be_frozen_before_acquisition": true,
+    "upstream_policy": "NO_SILENT_MIXING; PRESERVE_SOURCE_IDENTITY_PER_PARTITION_AND_FREEZE_PRECEDENCE"
+  },
+  "evidence_scope": {
+    "credential_names_found": [],
+    "credential_values_read": false,
+    "documentation_reviewed": true,
+    "outcome_fields_read": false,
+    "price_payloads_read": false,
+    "provider_requests_executed": false,
+    "reviewed_at": "2026-08-21T08:46:54+08:00"
+  },
+  "issues": [
+    {
+      "code": "FINMIND_ENTITLEMENT_NOT_RECORDED",
+      "severity": "BLOCKING",
+      "summary": "No local FinMind token or research-use plan identity proves access to both required paid datasets."
+    },
+    {
+      "code": "FINMIND_1259_NOT_PROBED",
+      "severity": "BLOCKING",
+      "summary": "Neither TaiwanStockKBar nor TaiwanStockPriceTick has been observed for 1259 on the fixed control session."
+    },
+    {
+      "code": "TICK_VWAP_RECONSTRUCTION_NOT_VERIFIED",
+      "severity": "BLOCKING",
+      "summary": "The KBar schema has no cumulative average or amount; exact cumulative VWAP requires a credentialed tick reconstruction and reconciliation."
+    },
+    {
+      "code": "FINMIND_VOLUME_UNIT_AND_SCOPE_NOT_RECONCILED",
+      "severity": "BLOCKING",
+      "summary": "The reviewed catalog lists volume fields but does not establish the exact unit and trade-scope equivalence required by liquidity and VWAP inputs."
+    },
+    {
+      "code": "FINMIND_PIT_COMPLETENESS_NOT_VERIFIED",
+      "severity": "BLOCKING",
+      "summary": "Dual-market PIT and delisted-security completeness has not been measured."
+    }
+  ],
+  "permissions": {
+    "alternative_source_acquisition_allowed": false,
+    "candidate_source_selected": false,
+    "dataset_population_freeze_allowed": false,
+    "finmind_probe_allowed": false,
+    "holdout_execution_allowed": false,
+    "outcome_generation_allowed": false,
+    "price_dataset_artifact_allowed": false,
+    "provider_mismatch_exclusion_allowed": false,
+    "source_mixing_allowed": false
+  },
+  "planned_probe": {
+    "credential_requirement": {
+      "kbar_entitlement": "SPONSOR_OR_HIGHER",
+      "tick_entitlement": "BACKER_OR_HIGHER",
+      "token_required_for_qualified_probe": true
+    },
+    "fixed_control_session": "2026-08-18",
+    "fixed_symbols": [
+      {
+        "market": "TPEX",
+        "role": "MISMATCH_TARGET",
+        "symbol": "1259"
+      },
+      {
+        "market": "TPEX",
+        "role": "SAME_JOB_CONTROL",
+        "symbol": "1240"
+      },
+      {
+        "market": "TPEX",
+        "role": "SAME_JOB_CONTROL",
+        "symbol": "12561"
+      },
+      {
+        "market": "TWSE",
+        "role": "MARKET_CONTROL",
+        "symbol": "2330"
+      },
+      {
+        "market": "TWSE",
+        "role": "MARKET_CONTROL",
+        "symbol": "2317"
+      }
+    ],
+    "kbar_request": {
+      "data_id": "SYMBOL",
+      "dataset": "TaiwanStockKBar",
+      "endpoint": "https://api.finmindtrade.com/api/v4/data",
+      "start_date": "2026-08-18"
+    },
+    "no_payload_before_protocol_freeze": true,
+    "response_preservation": [
+      "HTTP_STATUS",
+      "RESPONSE_HEADERS_WITHOUT_SECRETS",
+      "RAW_RESPONSE_BYTES",
+      "RAW_RESPONSE_SHA256",
+      "RETRIEVED_AT",
+      "SOURCE_VERSION"
+    ],
+    "semantic_protocol_reference": {
+      "artifact_id": "credentialed-intraday-source-probe-protocol-v1-2026-08-20-r1",
+      "canonical_sha256": "f6b396072d858356bcd98965ddafc749f2b8b63cfe3555f9f60f58a9c16d10f7"
+    },
+    "tick_request": {
+      "data_id": "SYMBOL",
+      "dataset": "TaiwanStockPriceTick",
+      "endpoint": "https://api.finmindtrade.com/api/v4/data",
+      "start_date": "2026-08-18"
+    },
+    "vwap_reconstruction": {
+      "formula": "sum(deal_price * normalized_volume_shares) / sum(normalized_volume_shares)",
+      "required_filter": "REGULAR_SESSION_ASIA_TAIPEI",
+      "tolerance_reference": "REUSE_FROZEN_VWAP_TOLERANCE_WITHOUT_CHANGE",
+      "volume_unit_must_be_proven_before_calculation": true
+    }
+  },
+  "qualification_checks": [
+    {
+      "check_id": "ENTITLEMENT_AND_RESEARCH_USE_LICENSE_RECORDED",
+      "evidence_level": "LOCAL_ENVIRONMENT_AND_OFFICIAL_PLAN_CONTRACT",
+      "status": "FAIL"
+    },
+    {
+      "check_id": "SYMBOL_1259_KBAR_NONEMPTY_FOR_OFFICIAL_CONTROL_SESSION",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "SYMBOL_1259_TICK_NONEMPTY_FOR_OFFICIAL_CONTROL_SESSION",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "TWSE_AND_TPEX_CONTROL_SYMBOLS_RECONCILED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "ONE_MINUTE_ASIA_TAIPEI_SESSION_ALIGNMENT_VERIFIED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "TICK_TO_KBAR_OHLCV_RECONSTRUCTION_VERIFIED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "CUMULATIVE_INTRADAY_VWAP_EQUIVALENCE_VERIFIED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "VOLUME_UNIT_AND_TRADE_SCOPE_RECONCILED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "PIT_ELIGIBLE_AND_DELISTED_SYMBOL_POLICY_VERIFIED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "RAW_AND_NORMALIZED_PAYLOAD_DIGESTS_PRODUCED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "SOURCE_PRECEDENCE_AND_NEW_DATASET_REVISION_POLICY_FROZEN",
+      "evidence_level": "FROZEN_UPSTREAM_AND_CURRENT_POLICY",
+      "status": "PASS"
+    }
+  ],
+  "result": {
+    "fail_count": 1,
+    "insufficient_evidence_count": 2,
+    "not_executed_count": 7,
+    "pass_count": 1,
+    "qualified": false,
+    "verdict": "INSUFFICIENT_EVIDENCE"
+  },
+  "schema_version": "alternative_intraday_source_qualification_v1",
+  "source_documentation": {
+    "dataset_catalog_url": "https://github.com/FinMind/FinMind-MCP/blob/master/knowledge/datasets.md",
+    "official_openapi_url": "https://github.com/FinMind/FinMind.github.io/blob/master/openapi.yaml",
+    "official_sdk_url": "https://github.com/FinMind/FinMind/blob/master/FinMind/data/data_loader.py",
+    "observed_contract": {
+      "kbar_fields": [
+        "DATE",
+        "MINUTE",
+        "STOCK_ID",
+        "OPEN",
+        "HIGH",
+        "LOW",
+        "CLOSE",
+        "VOLUME"
+      ],
+      "kbar_granularity": "ONE_MINUTE_SINGLE_DAY",
+      "kbar_tier": "SPONSOR",
+      "tick_fields": [
+        "DATE",
+        "STOCK_ID",
+        "DEAL_PRICE",
+        "VOLUME",
+        "TIME",
+        "TICK_TYPE"
+      ],
+      "tick_granularity": "TRADE_TICK_SINGLE_DAY",
+      "tick_tier": "BACKER",
+      "transport_without_token_documented": true
+    }
+  },
+  "status": "BLOCKED",
+  "upstream_references": [
+    {
+      "artifact_id": "price-provider-coverage-resolution-v1-2026-08-20-r1",
+      "canonical_sha256": "9beda1f6131a6fd7b384cfe77083f6f5c027eaec72c4e0d1155ac59f091a8418"
+    },
+    {
+      "artifact_id": "credentialed-intraday-source-probe-result-v1-2026-08-20-r1",
+      "canonical_sha256": "b55d29b913bdee1f69b6a7e8a8982ca2e5bd66ebcb1584c8b9d4c32e59576710"
+    }
+  ]
+}

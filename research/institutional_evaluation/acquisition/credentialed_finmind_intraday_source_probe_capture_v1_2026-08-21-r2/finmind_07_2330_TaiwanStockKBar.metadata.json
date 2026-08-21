@@ -1,0 +1,31 @@
+{
+  "body_file": "finmind_07_2330_TaiwanStockKBar.response.bin",
+  "data_array_present": true,
+  "dataset": "TaiwanStockKBar",
+  "http_status": 200,
+  "json_message": "success",
+  "json_status": 200,
+  "market": "TWSE",
+  "raw_response_bytes": 34088,
+  "raw_response_sha256": "7af871bb1ef17d55d6dfc92dbedaf5faae5e7cd2f88459e23de02af921e3a855",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "data_id": "2330",
+      "dataset": "TaiwanStockKBar",
+      "start_date": "2026-08-18"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-origin": "*",
+    "connection": "close",
+    "content-length": "34088",
+    "content-type": "application/json",
+    "date": "Fri, 21 Aug 2026 01:13:08 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-21T09:13:09.780969+08:00",
+  "role": "MARKET_CONTROL",
+  "source_version": "FINMIND_API_V4",
+  "symbol": "2330"
+}

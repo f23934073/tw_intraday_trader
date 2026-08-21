@@ -1,0 +1,107 @@
+{
+  "artifact_id": "price-acquisition-resolution-v1-2026-08-20-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "classification": {
+    "checkpointed_unresolved_tail_count": 131,
+    "expected_symbol_count": 2738,
+    "not_checkpointed_count": 2196,
+    "resolved_success_prefix": {
+      "bar_count": 9335314,
+      "count": 411,
+      "market_counts": {
+        "TPEX": 126,
+        "TWSE": 285
+      },
+      "status": "SUCCESS_NONEMPTY"
+    },
+    "structural_exclusion_count": 0,
+    "tail_classes": {
+      "legacy_empty_retry_required": 130,
+      "nonempty_untrusted_after_retry_anchor": 1
+    },
+    "unresolved_count": 2327
+  },
+  "completion_gate_reference": {
+    "artifact_id": "institutional-dataset-acquisition-completion-v1-2026-08-20-r1",
+    "canonical_sha256": "4226f096233a2637647b1d6373a4307ed05390f63a1b7636b7e1dae7ce4ac514"
+  },
+  "coverage": {
+    "observed_resolved_end": "2026-08-18",
+    "observed_resolved_start": "2023-08-21",
+    "requested_end": "2026-08-18",
+    "requested_start": "2023-08-19",
+    "resolved_distinct_end_dates": 7,
+    "resolved_distinct_start_dates": 53,
+    "session_count": null,
+    "session_coverage_verified": false
+  },
+  "evaluated_at": "2026-08-20T16:54:48.692202+08:00",
+  "expected_universe": {
+    "covered_markets": ["TWSE", "TPEX"],
+    "expected_identity_sha256": "2ad3e4880f6537390952f120032d8a3892435fc8d1586671cda63de6ef64708f",
+    "expected_symbol_count": 2738,
+    "identity_fields": ["market", "symbol"],
+    "research_eligible": false,
+    "survivorship_free": false,
+    "universe_selection": "ALL_CURRENT"
+  },
+  "exit_criteria": {
+    "all_empty_error_reasons_resolved": false,
+    "all_expected_symbols_resolved": false,
+    "immutable_price_manifest_generated": false,
+    "intraday_cadence_and_volume_semantics_verified": false,
+    "partition_payload_integrity_verified": false,
+    "price_adjustment_policy_frozen": false,
+    "session_coverage_verified": false,
+    "trusted_checkpoint_tail_complete": false
+  },
+  "gate": {
+    "acquisition_manifest_revision_allowed": false,
+    "all_price_exit_criteria_passed": false,
+    "holdout_allowed": false,
+    "outcome_generation_allowed": false,
+    "population_freeze_allowed": false,
+    "price_dataset_manifest_allowed": false,
+    "status": "BLOCKED"
+  },
+  "inspection_scope": {
+    "outcome_fields_read": false,
+    "partition_payloads_read": false,
+    "price_values_read": false,
+    "staging_metadata_only": true
+  },
+  "integrity": {
+    "partition_digest_format_invalid_count": 0,
+    "partition_payload_integrity_verified": false,
+    "recorded_partition_count": 542,
+    "staged_bar_count": 9335704,
+    "staging_metadata_sha256": "54f43181f9c5f71a1c9a9c6b8d4bddf040f808112a50d4f78e3b7a23cb4a5ac2"
+  },
+  "issues": [
+    {"code": "PRICE_ACQUISITION_INCOMPLETE", "severity": "BLOCKING"},
+    {"code": "AMBIGUOUS_EMPTY_RESPONSE", "severity": "BLOCKING"},
+    {"code": "UNTRUSTED_CHECKPOINT_TAIL", "severity": "BLOCKING"},
+    {"code": "SESSION_COVERAGE_UNVERIFIED", "severity": "BLOCKING"},
+    {"code": "PARTITION_PAYLOAD_INTEGRITY_NOT_VERIFIED", "severity": "BLOCKING"},
+    {"code": "CURRENT_UNIVERSE_SURVIVORSHIP_LIMITED", "severity": "BLOCKING"},
+    {"code": "PRICE_ADJUSTMENT_POLICY_UNFROZEN", "severity": "BLOCKING"},
+    {"code": "IMMUTABLE_PRICE_MANIFEST_MISSING", "severity": "BLOCKING"}
+  ],
+  "job": {
+    "job_id": "dataset-download-f914feaddea04e37b3cbdcfce2b0179b",
+    "job_kind": "DATASET_DOWNLOAD",
+    "job_status": "PAUSED",
+    "provider": "ShioajiProvider",
+    "request_sha256": "db64dc6741df8a228c8a6550823cb280de18caabdf5525bd9c704dc333e2a9b9",
+    "target_dataset_id": "dataset-f914feaddea04e37b3cbdcfce2b0179b"
+  },
+  "last_resume_attempt": {
+    "attempted_at": "2026-08-20T16:54:48.692202+08:00",
+    "exit_code": 75,
+    "partition_written": false,
+    "response_class": "AMBIGUOUS_EMPTY_KBAR",
+    "retry_symbol": "1259",
+    "status": "SAFELY_PAUSED"
+  },
+  "schema_version": "price_acquisition_resolution_v1"
+}

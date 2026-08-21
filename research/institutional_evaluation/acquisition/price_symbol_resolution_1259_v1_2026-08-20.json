@@ -1,0 +1,125 @@
+{
+  "artifact_id": "price-symbol-resolution-1259-v1-2026-08-20-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "classification": {
+    "confidence": "HIGH",
+    "decision": "SYMBOL_SPECIFIC_PROVIDER_COVERAGE_MISMATCH",
+    "root_cause": "UNKNOWN_WITHIN_PROVIDER_PATH",
+    "security_data_disposition": "NOT_STRUCTURAL_NO_DATA"
+  },
+  "evidence": {
+    "bounded_provider_probe": {
+      "bar_count": 0,
+      "canonical_sha256": "a26fd7b8b24721f75f9d5fea4ae556782fd3a56cef42560ba3f5a02a451ac64b",
+      "end_date": "2026-08-18",
+      "first_timestamp": null,
+      "last_timestamp": null,
+      "persisted": false,
+      "start_date": "2026-08-01"
+    },
+    "job_partition": {
+      "bar_count": 0,
+      "bars_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_message": "資料來源未回傳 Kbar",
+      "request_index": 411
+    },
+    "official_daily_report": {
+      "report_date": "2026-08-18",
+      "requested_date_honored": true,
+      "response_sha256": "4037715879ae9afa2441a2ddae6ff1cab444e09e945ccb3b5ab0c6e59cefadde",
+      "source": "TPEx 上櫃股票每日收盤行情(不含定價)",
+      "symbol_row_count": 1,
+      "url": "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?d=115%2F08%2F18&l=zh-tw&o=json&se=EW"
+    },
+    "official_listing": {
+      "listing_date": "2011-12-15",
+      "response_sha256": "1532842a4da62f99ff91ff68a35f50c29241274edc356593f2a8a553b93a02c7",
+      "source": "Taipei Exchange announcement 1000101804",
+      "symbol": "1259",
+      "url": "https://www.tpex.org.tw/storage/eb_data/10012/1000101804.htm"
+    },
+    "provider_contract": {
+      "canonical_sha256": "9749d8dbb2aa5ed3df856131fd1a84b102232589d520f6ddf2d90ea1b6e77b7e",
+      "category": "16",
+      "code": "1259",
+      "day_trade": "DayTrade.Yes",
+      "exchange": "OTC",
+      "name": "安心",
+      "security_type": "STK",
+      "unit": "1000.0",
+      "update_date": "2026-08-20"
+    },
+    "same_job_tpex_controls": {
+      "canonical_sha256": "76008f64972a72559ba7dbd379b683186cd661af39ebb9aafa32cad8cb0b1654",
+      "partitions": [
+        {
+          "bar_count": 9,
+          "end_date": "2026-08-18",
+          "error_message": null,
+          "market": "TPEX",
+          "request_index": 408,
+          "start_date": "2026-08-18",
+          "symbol": "1240"
+        },
+        {
+          "bar_count": 2,
+          "end_date": "2026-08-18",
+          "error_message": null,
+          "market": "TPEX",
+          "request_index": 410,
+          "start_date": "2026-08-18",
+          "symbol": "12561"
+        }
+      ]
+    }
+  },
+  "identity": {
+    "job_id": "dataset-download-f914feaddea04e37b3cbdcfce2b0179b",
+    "market": "TPEX",
+    "name": "安心",
+    "provider": "ShioajiProvider",
+    "requested_end_date": "2026-08-18",
+    "requested_start_date": "2023-08-19",
+    "symbol": "1259"
+  },
+  "issues": [
+    {
+      "code": "PROVIDER_SYMBOL_COVERAGE_MISMATCH",
+      "severity": "BLOCKING",
+      "summary": "The official end-date report contains symbol 1259, but the configured provider returned zero Kbars for both the full job and a bounded in-range probe."
+    },
+    {
+      "code": "PROVIDER_ROOT_CAUSE_UNKNOWN",
+      "severity": "BLOCKING",
+      "summary": "The evidence does not distinguish provider entitlement, historical coverage policy, contract routing, or another provider-side cause."
+    }
+  ],
+  "observed_at": "2026-08-20T17:09:30+08:00",
+  "permissions": {
+    "controlled_retry_allowed": false,
+    "dataset_population_freeze_allowed": false,
+    "holdout_execution_allowed": false,
+    "outcome_generation_allowed": false,
+    "price_dataset_artifact_allowed": false,
+    "structural_exclusion_approved": false
+  },
+  "recommended_resolution": {
+    "allowed_actions": [
+      "Obtain provider documentation or support evidence for 1259 historical Kbar coverage.",
+      "Validate an alternative intraday source against the official TPEx session record.",
+      "Create a new immutable classification revision after the source path changes."
+    ],
+    "forbidden_actions": [
+      "Repeat the unchanged full resume request.",
+      "Convert 1259 into a structural exclusion.",
+      "Seal the current price staging bytes as a Price Dataset Artifact."
+    ],
+    "next_gate": "PROVIDER_ROUTE_OR_ALTERNATIVE_INTRADAY_SOURCE_RESOLUTION"
+  },
+  "resolution_reference": {
+    "artifact_id": "price-acquisition-resolution-v1-2026-08-20-r1",
+    "canonical_sha256": "6eb6cb4719d999ba49eec46c814383fbfb00b9cf1533f88b8837e9da1c41b5b9"
+  },
+  "schema_version": "price_symbol_resolution_classification_v1",
+  "status": "BLOCKED"
+}

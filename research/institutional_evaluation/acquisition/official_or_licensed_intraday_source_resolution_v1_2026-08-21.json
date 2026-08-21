@@ -1,0 +1,330 @@
+{
+  "artifact_id": "official-or-licensed-intraday-source-resolution-v1-2026-08-21-r1",
+  "candidate_assessments": [
+    {
+      "candidate_id": "TWSE_TPEX_DIRECT_HISTORICAL_TRANSACTION_FILES",
+      "contract_fit": {
+        "corporate_actions_in_same_product": false,
+        "dual_market_procurement_route_documented": true,
+        "one_minute_ohlcv_reconstructable": true,
+        "ordinary_equity_only_scope_documented": false,
+        "pit_and_delisted_scope_documented": false,
+        "regular_trade_filter_documented": true,
+        "trade_level_price_time_volume": true,
+        "volume_unit": "SHARES",
+        "vwap_reconstructable": true
+      },
+      "gaps": [
+        "TWSE_RECENT_ONE_YEAR_UNAVAILABLE",
+        "TPEX_RECENT_HISTORY_ORDERING_RULE_AMBIGUOUS",
+        "EXACT_COMMON_EVALUATION_RANGE_NOT_CONTRACTED",
+        "ORDINARY_EQUITY_AND_DELISTED_SCOPE_NOT_CONTRACTED",
+        "DERIVED_BAR_RETENTION_AND_REPRODUCTION_RIGHTS_NOT_CONTRACTED",
+        "CORRECTION_REDELIVERY_AND_REVISION_POLICY_NOT_CONTRACTED",
+        "CORPORATE_ACTION_PRODUCT_NOT_ACQUIRED",
+        "NO_PURCHASED_SAMPLE_OR_PAYLOAD_DIGEST"
+      ],
+      "market_products": {
+        "TPEX": {
+          "historical_start": "2022-11-01",
+          "product": "MTH_TRANSACTION_FILE",
+          "recent_availability_evidence": "PAGE_STATES_PREVIOUS_MONTH_HISTORY_AND_SEPARATELY_OLDER_THAN_ONE_YEAR_CUSTOM_ORDER",
+          "status": "OFFICIAL_PARTIAL_CONTRACT"
+        },
+        "TWSE": {
+          "historical_start": "2006-01-01",
+          "product": "MTH_TRANSACTION_FILE",
+          "recent_availability_evidence": "MOST_RECENT_ONE_YEAR_EXPLICITLY_UNAVAILABLE",
+          "scope_evidence": "ALL_STOCKS",
+          "status": "OFFICIAL_PARTIAL_CONTRACT"
+        }
+      },
+      "selected": false,
+      "status": "PROCUREMENT_CANDIDATE_BLOCKED"
+    },
+    {
+      "candidate_id": "TWSE_CONTRACTED_INFORMATION_VENDOR_RFP",
+      "contract_fit": {
+        "exchange_contracted_vendor_channel_exists": true,
+        "specific_dual_market_historical_product_identified": false,
+        "specific_vendor_selected": false
+      },
+      "gaps": [
+        "PRODUCT_LEVEL_COVERAGE_CONTRACT_MISSING",
+        "PIT_AND_DELISTED_COVERAGE_MISSING",
+        "HISTORICAL_MINUTE_SEMANTICS_MISSING",
+        "LICENSE_RETENTION_AND_DERIVED_USE_TERMS_MISSING",
+        "PRICE_QUOTE_AND_DELIVERY_SLA_MISSING"
+      ],
+      "selected": false,
+      "status": "RFP_REQUIRED"
+    },
+    {
+      "candidate_id": "TEJ_TQUANT_SUPPORTING_REFERENCE_DATA",
+      "contract_fit": {
+        "corporate_action_adjustment_fields_documented": true,
+        "delisted_security_coverage_documented": true,
+        "ordinary_equity_attribute_filter_documented": true,
+        "twse_and_tpex_documented": true
+      },
+      "gaps": [
+        "REVIEWED_PRICE_PRODUCT_IS_DAILY_NOT_ONE_MINUTE",
+        "NO_PUBLIC_INTRADAY_PRODUCT_CONTRACT_IDENTIFIED",
+        "NO_LOCAL_ENTITLEMENT_OR_ACQUIRED_ARTIFACT"
+      ],
+      "selected": false,
+      "status": "SUPPORTING_DATA_CANDIDATE_ONLY"
+    }
+  ],
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "contract": {
+    "adjustment_policy": "RAW_INTRADAY_WITH_SEPARATE_CORPORATE_ACTION_ARTIFACT",
+    "candidate_strategy_id": "legacy_gap_volume_vwap_entry_v1",
+    "evaluation_end_date": "2026-08-18",
+    "evaluation_start_date": "2023-08-19",
+    "market_scope": [
+      "TWSE",
+      "TPEX"
+    ],
+    "required_cadence": "ONE_MINUTE",
+    "required_security_scope": "PIT_ELIGIBLE_ORDINARY_EQUITIES_INCLUDING_LATER_DELISTED",
+    "required_session": "REGULAR_SESSION_ASIA_TAIPEI",
+    "required_strategy_inputs": [
+      "OPEN",
+      "HIGH",
+      "LOW",
+      "CLOSE",
+      "VOLUME_SHARES",
+      "CUMULATIVE_INTRADAY_VWAP"
+    ]
+  },
+  "decision": {
+    "direct_exchange_candidate_qualified": false,
+    "licensed_vendor_selected": null,
+    "next_gate": "PROCUREMENT_RFI_AND_CONTRACT_EVIDENCE_V1",
+    "qualified_price_dataset_source": null,
+    "result": "NO_SOURCE_SELECTED",
+    "verdict": "INSUFFICIENT_EVIDENCE"
+  },
+  "evidence_scope": {
+    "documentation_reviewed": true,
+    "new_price_payloads_read": false,
+    "outcome_fields_read": false,
+    "procurement_executed": false,
+    "provider_requests_executed": false,
+    "reviewed_at": "2026-08-21T09:28:13+08:00",
+    "temporary_twse_format_inspection": {
+      "persisted_in_repository": false,
+      "sha256": "9791efc840f301a41148803cfd401bad99862eadeca464f631a39496a208282c"
+    }
+  },
+  "issues": [
+    {
+      "code": "OFFICIAL_DIRECT_COMMON_DATE_RANGE_NOT_AVAILABLE",
+      "severity": "BLOCKING",
+      "summary": "TWSE excludes the most recent year and TPEx recent-history ordering terms are not sufficiently unambiguous to contract the full frozen range."
+    },
+    {
+      "code": "PIT_AND_DELISTED_INTRADAY_SCOPE_NOT_CONTRACTED",
+      "severity": "BLOCKING",
+      "summary": "No reviewed intraday product contract guarantees every PIT-eligible ordinary equity including later-delisted securities."
+    },
+    {
+      "code": "LICENSE_AND_RETENTION_RIGHTS_NOT_CONTRACTED",
+      "severity": "BLOCKING",
+      "summary": "Internal research retention, immutable raw custody, derived one-minute bars, and reproducible reruns require written product terms or vendor confirmation."
+    },
+    {
+      "code": "CORRECTION_AND_REDELIVERY_POLICY_NOT_CONTRACTED",
+      "severity": "BLOCKING",
+      "summary": "Delivered transaction files reflect post-close adjustments, but revision identifiers, correction notices, and redelivery policy are not established."
+    },
+    {
+      "code": "NO_ACQUIRED_OFFICIAL_OR_LICENSED_SAMPLE",
+      "severity": "BLOCKING",
+      "summary": "No purchased sample or immutable payload exists for fixed-symbol semantic and coverage qualification."
+    }
+  ],
+  "permissions": {
+    "alternative_source_acquisition_allowed": false,
+    "candidate_source_selected": false,
+    "dataset_population_freeze_allowed": false,
+    "holdout_execution_allowed": false,
+    "outcome_generation_allowed": false,
+    "price_dataset_artifact_allowed": false,
+    "procurement_allowed_by_this_artifact": false,
+    "provider_mismatch_exclusion_allowed": false,
+    "source_mixing_allowed": false
+  },
+  "procurement_rfi": {
+    "required_written_answers": [
+      "EXACT_TWSE_AND_TPEX_DATE_COVERAGE_FOR_2023_08_19_THROUGH_2026_08_18",
+      "ORDINARY_EQUITY_AND_LATER_DELISTED_SECURITY_COVERAGE",
+      "EXPLICIT_MISSING_SYMBOL_AND_MISSING_SESSION_POLICY",
+      "TRADE_TIME_TIMEZONE_PRECISION_AND_REGULAR_SESSION_FILTER",
+      "PRICE_AND_VOLUME_UNITS_AND_CORRECTION_SEMANTICS",
+      "RAW_DATA_RETENTION_AND_IMMUTABLE_INTERNAL_RESEARCH_RIGHTS",
+      "DERIVED_ONE_MINUTE_BAR_AND_VWAP_REPRODUCTION_RIGHTS",
+      "CORRECTION_NOTICE_REVISION_ID_AND_REDELIVERY_POLICY",
+      "CORPORATE_ACTION_AND_SYMBOL_IDENTITY_COMPANION_PRODUCTS",
+      "DELIVERY_FORMAT_SLA_PRICE_AND_SAMPLE_AVAILABILITY"
+    ],
+    "sample_exit_gate": {
+      "fixed_session": "2026-08-18",
+      "fixed_symbols": [
+        "1259",
+        "1240",
+        "12561",
+        "2330",
+        "2317"
+      ],
+      "must_produce": [
+        "RAW_PAYLOAD_DIGEST",
+        "SOURCE_AND_LICENSE_IDENTITY",
+        "TICK_OR_BAR_COVERAGE_CLASSIFICATION",
+        "ONE_MINUTE_OHLCV_RECONCILIATION",
+        "VOLUME_TO_SHARES_RECONCILIATION",
+        "CUMULATIVE_VWAP_RECONCILIATION",
+        "MISSING_DATA_ISSUE_CODES"
+      ]
+    }
+  },
+  "public_api_resolution": {
+    "candidates_exhausted_for_fallback_use_case": true,
+    "dispositions": [
+      {
+        "name": "SHIOAJI",
+        "status": "SYMBOL_SPECIFIC_PROVIDER_COVERAGE_MISMATCH"
+      },
+      {
+        "name": "FUGLE",
+        "status": "REJECTED_FOR_MISMATCH_RESOLUTION"
+      },
+      {
+        "name": "FINMIND_SPONSOR",
+        "status": "REJECTED_FOR_MISMATCH_RESOLUTION"
+      }
+    ]
+  },
+  "qualification_checks": [
+    {
+      "check_id": "OFFICIAL_DUAL_MARKET_PROCUREMENT_ROUTE_DOCUMENTED",
+      "evidence_level": "PRIMARY_DOCUMENTATION",
+      "status": "PASS"
+    },
+    {
+      "check_id": "TRADE_FIELDS_SUPPORT_ONE_MINUTE_OHLCV_AND_VWAP",
+      "evidence_level": "OFFICIAL_FORMAT_SPECIFICATIONS",
+      "status": "PASS"
+    },
+    {
+      "check_id": "VOLUME_UNIT_IS_SHARES",
+      "evidence_level": "OFFICIAL_FORMAT_SPECIFICATIONS",
+      "status": "PASS"
+    },
+    {
+      "check_id": "REGULAR_BLOCK_AND_ODD_LOT_FILTER_AVAILABLE",
+      "evidence_level": "OFFICIAL_FORMAT_SPECIFICATIONS",
+      "status": "PASS"
+    },
+    {
+      "check_id": "DELIVERED_RECORDS_REFLECT_POST_CLOSE_ADJUSTMENTS",
+      "evidence_level": "OFFICIAL_FORMAT_SPECIFICATIONS",
+      "status": "PASS"
+    },
+    {
+      "check_id": "EXACT_FROZEN_DATE_RANGE_AVAILABLE",
+      "evidence_level": "PRIMARY_PRODUCT_PAGES",
+      "status": "FAIL"
+    },
+    {
+      "check_id": "ORDINARY_EQUITY_SCOPE_CONTRACTED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "PIT_AND_LATER_DELISTED_COVERAGE_CONTRACTED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "CORPORATE_ACTION_COMPANION_ARTIFACT_ACQUIRED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "RETENTION_AND_DERIVED_USE_RIGHTS_CONTRACTED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "CORRECTION_REVISION_AND_REDELIVERY_POLICY_CONTRACTED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "FIXED_1259_AND_CROSS_MARKET_SAMPLE_VALIDATED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "RAW_AND_NORMALIZED_SAMPLE_DIGESTS_PRODUCED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    }
+  ],
+  "result": {
+    "fail_count": 1,
+    "insufficient_evidence_count": 4,
+    "not_executed_count": 3,
+    "pass_count": 5,
+    "qualified": false,
+    "verdict": "INSUFFICIENT_EVIDENCE"
+  },
+  "schema_version": "official_or_licensed_intraday_source_resolution_v1",
+  "source_documentation": [
+    {
+      "name": "TWSE_TRANSACTION_FILE_PRODUCT",
+      "url": "https://eshop.twse.com.tw/zh/product/detail/0000000063ce6ab00163d860b694000a"
+    },
+    {
+      "name": "TWSE_TRANSACTION_FILE_FORMAT_2025_04_01",
+      "url": "https://eshop.twse.com.tw/uploadFile/upload/8a82e9e69c3aecea019da8f6cf7a0157.docx"
+    },
+    {
+      "name": "TPEX_TRANSACTION_FILE_PRODUCT",
+      "url": "https://eshop.tpex.org.tw/zh/product/detail/2c92e0139984eab70199892c78bf0004"
+    },
+    {
+      "name": "TPEX_TRANSACTION_FILE_FORMAT",
+      "url": "https://eshop.tpex.org.tw/uploadFile/upload/product/2c92e0139984eab70199892f7fcf0005.pdf"
+    },
+    {
+      "name": "TWSE_CONTRACTED_INFORMATION_VENDOR_DIRECTORY",
+      "url": "https://www.twse.com.tw/zh/products/information/list.html"
+    },
+    {
+      "name": "TEJ_TQUANT_DATASET_CATALOG",
+      "url": "https://tquant.tejwin.com/%E8%B3%87%E6%96%99%E9%9B%86/"
+    }
+  ],
+  "status": "BLOCKED",
+  "upstream_references": [
+    {
+      "artifact_id": "price-provider-coverage-resolution-v1-2026-08-20-r1",
+      "canonical_sha256": "9beda1f6131a6fd7b384cfe77083f6f5c027eaec72c4e0d1155ac59f091a8418"
+    },
+    {
+      "artifact_id": "price-symbol-resolution-1259-v1-2026-08-20-r1",
+      "canonical_sha256": "3726f6b74ba7ca986f5c3537204336488e7c4fefa3c88b098a0f79f69a112293"
+    },
+    {
+      "artifact_id": "credentialed-intraday-source-probe-result-v1-2026-08-20-r1",
+      "canonical_sha256": "b55d29b913bdee1f69b6a7e8a8982ca2e5bd66ebcb1584c8b9d4c32e59576710"
+    },
+    {
+      "artifact_id": "credentialed-finmind-intraday-source-probe-result-v1-2026-08-21-r2",
+      "canonical_sha256": "4a259a737643b60c80193ea40076456d1deebc3aacd3be7bc310850d3d57f189"
+    }
+  ]
+}

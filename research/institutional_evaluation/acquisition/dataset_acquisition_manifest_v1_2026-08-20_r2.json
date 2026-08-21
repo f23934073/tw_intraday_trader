@@ -1,0 +1,127 @@
+{
+  "artifact_id": "institutional-dataset-acquisition-manifest-v1-2026-08-20-r2-first-institutional-partition-set",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "coverage_reference": {
+    "artifact_id": "institutional-population-coverage-v1-2026-08-20-repository-snapshot",
+    "canonical_sha256": "4a4fee1101a425f4a04f2bee0204b26b2163cc022c302162b76b6a09195d76a2"
+  },
+  "datasets": {
+    "corporate_actions": {
+      "acquired_markets": [],
+      "artifact_count": 0,
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "coverage_end": null,
+      "coverage_start": null,
+      "planned_sources": [],
+      "required_markets": ["TWSE", "TPEX"],
+      "row_count": null,
+      "status": "MISSING"
+    },
+    "institutional": {
+      "acquired_markets": ["TWSE", "TPEX"],
+      "artifact_count": 1,
+      "artifact_id": "institutional-partition-set-v1-2026-08-19-pilot",
+      "canonical_sha256": "1e6e78317d6b3e46ca4011fc948ad42878121f06fbfff8ee3161e23062f551dd",
+      "coverage_end": "2026-08-19",
+      "coverage_start": "2026-08-19",
+      "planned_sources": [
+        {
+          "endpoint": "https://www.twse.com.tw/rwd/zh/fund/T86",
+          "market": "TWSE",
+          "parser_version": "twse_t86_json_v1",
+          "source_product": "TWSE_T86_FINAL"
+        },
+        {
+          "endpoint": "https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade",
+          "market": "TPEX",
+          "parser_version": "tpex_insti_daily_trade_v1",
+          "source_product": "TPEX_INSTI_DAILY_EW"
+        }
+      ],
+      "required_markets": ["TWSE", "TPEX"],
+      "row_count": 2228,
+      "status": "PARTIAL"
+    },
+    "pit_universe": {
+      "acquired_markets": [],
+      "artifact_count": 0,
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "coverage_end": null,
+      "coverage_start": null,
+      "planned_sources": [],
+      "required_markets": ["TWSE", "TPEX"],
+      "row_count": null,
+      "status": "MISSING"
+    },
+    "price": {
+      "acquired_markets": [],
+      "artifact_count": 0,
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "coverage_end": null,
+      "coverage_start": null,
+      "planned_sources": [],
+      "required_markets": ["TWSE", "TPEX"],
+      "row_count": 0,
+      "status": "MISSING"
+    },
+    "reference_data": {
+      "acquired_markets": [],
+      "artifact_count": 0,
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "coverage_end": null,
+      "coverage_start": null,
+      "planned_sources": [],
+      "required_markets": ["TWSE", "TPEX"],
+      "row_count": null,
+      "status": "MISSING"
+    },
+    "trading_calendar": {
+      "acquired_markets": ["TWSE"],
+      "artifact_count": 1,
+      "artifact_id": "twse_calendar_2026_v1",
+      "canonical_sha256": "ccceb7157ba38dee013eb76a34ad7346180c996739ad1377d9475c747ed6f44c",
+      "coverage_end": "2026-12-31",
+      "coverage_start": "2026-01-01",
+      "planned_sources": [
+        {
+          "artifact_path": "config/twse_calendar_2026.json",
+          "market": "TWSE"
+        }
+      ],
+      "required_markets": ["TWSE", "TPEX"],
+      "row_count": null,
+      "status": "PARTIAL"
+    }
+  },
+  "gate": {
+    "composite_manifest_allowed": false,
+    "coverage_revision_allowed": false,
+    "holdout_allowed": false,
+    "outcome_generation_allowed": false,
+    "population_freeze_allowed": false,
+    "status": "BLOCKED"
+  },
+  "inspection_scope": {
+    "inventory_method": "REPOSITORY_IMMUTABLE_ARTIFACT_SCAN",
+    "outcome_fields_read": false,
+    "test_fixtures_count_as_acquired": false
+  },
+  "inventoried_at": "2026-08-20T16:36:51+08:00",
+  "issues": [
+    {"code": "PRICE_DATASET_MISSING", "severity": "BLOCKING"},
+    {"code": "INSTITUTIONAL_HISTORY_INCOMPLETE", "severity": "BLOCKING"},
+    {"code": "PIT_UNIVERSE_MISSING", "severity": "BLOCKING"},
+    {"code": "CORPORATE_ACTIONS_MISSING", "severity": "BLOCKING"},
+    {"code": "REFERENCE_DATA_MISSING", "severity": "BLOCKING"},
+    {"code": "TPEX_CALENDAR_COVERAGE_UNPROVEN", "severity": "BLOCKING"}
+  ],
+  "protocol_reference": {
+    "artifact_id": "institutional-formal-evaluation-gate-v1",
+    "canonical_sha256": "b769cf1b672e15d599cf610d22bda49d37981ddc36ae999b120b52702b197dc4"
+  },
+  "schema_version": "institutional_dataset_acquisition_manifest_v1"
+}

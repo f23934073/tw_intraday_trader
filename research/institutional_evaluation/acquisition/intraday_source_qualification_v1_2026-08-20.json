@@ -1,0 +1,216 @@
+{
+  "artifact_id": "intraday-source-qualification-v1-2026-08-20-r1",
+  "candidate": {
+    "authentication": "X_API_KEY",
+    "name": "FUGLE_HISTORICAL_CANDLES",
+    "selected_for_dataset_acquisition": false,
+    "status": "DOCUMENTED_CANDIDATE_NOT_PROBED"
+  },
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "contract": {
+    "adjustment_policy": "RAW_INTRADAY_WITH_SEPARATE_CORPORATE_ACTION_ARTIFACT",
+    "candidate_strategy_id": "legacy_gap_volume_vwap_entry_v1",
+    "evaluation_end_date": "2026-08-18",
+    "evaluation_start_date": "2023-08-19",
+    "market_scope": [
+      "TWSE",
+      "TPEX"
+    ],
+    "required_cadence": "ONE_MINUTE",
+    "required_session": "REGULAR_SESSION_ASIA_TAIPEI",
+    "required_vwap_semantics": "CUMULATIVE_FROM_REGULAR_SESSION_OPEN",
+    "volume_normalization": "COMMON_LOT_MULTIPLIED_BY_1000_TO_SHARES"
+  },
+  "evidence_scope": {
+    "credential_names_found": [],
+    "credential_values_read": false,
+    "documentation_reviewed": true,
+    "outcome_fields_read": false,
+    "price_payloads_read": false,
+    "provider_requests_executed": false,
+    "reviewed_at": "2026-08-20T19:00:00+08:00"
+  },
+  "issues": [
+    {
+      "code": "SOURCE_ENTITLEMENT_MISSING",
+      "severity": "BLOCKING",
+      "summary": "The candidate requires an API key, but no local Fugle entitlement identity is available for a controlled probe."
+    },
+    {
+      "code": "CONTROL_SYMBOL_PAYLOADS_NOT_OBSERVED",
+      "severity": "BLOCKING",
+      "summary": "No candidate-source payload has been observed for 1259 or the fixed TWSE/TPEx controls."
+    },
+    {
+      "code": "SESSION_COVERAGE_NOT_MEASURED",
+      "severity": "BLOCKING",
+      "summary": "Minute cadence, missing-bar behavior, regular-session alignment, and common-session coverage have not been measured."
+    },
+    {
+      "code": "VWAP_EQUIVALENCE_NOT_MEASURED",
+      "severity": "BLOCKING",
+      "summary": "The documented cumulative average has not been reconciled against the frozen cumulative intraday VWAP definition."
+    },
+    {
+      "code": "PIT_AND_DELISTED_COVERAGE_NOT_MEASURED",
+      "severity": "BLOCKING",
+      "summary": "The candidate has not been checked against the formal PIT universe or delisted-security reference history."
+    }
+  ],
+  "permissions": {
+    "alternative_source_acquisition_allowed": false,
+    "candidate_source_selected": false,
+    "dataset_population_freeze_allowed": false,
+    "holdout_execution_allowed": false,
+    "outcome_generation_allowed": false,
+    "price_dataset_artifact_allowed": false,
+    "provider_mismatch_exclusion_allowed": false
+  },
+  "probe_protocol": {
+    "credential_handling": "RECORD_KEY_IDENTITY_OR_ENTITLEMENT_ONLY; NEVER_PERSIST_SECRET",
+    "fixed_control_session": "2026-08-18",
+    "fixed_symbols": [
+      {
+        "market": "TPEX",
+        "role": "MISMATCH_TARGET",
+        "symbol": "1259"
+      },
+      {
+        "market": "TPEX",
+        "role": "SAME_JOB_CONTROL",
+        "symbol": "1240"
+      },
+      {
+        "market": "TPEX",
+        "role": "SAME_JOB_CONTROL",
+        "symbol": "12561"
+      },
+      {
+        "market": "TWSE",
+        "role": "MARKET_CONTROL",
+        "symbol": "2330"
+      },
+      {
+        "market": "TWSE",
+        "role": "MARKET_CONTROL",
+        "symbol": "2317"
+      }
+    ],
+    "future_session_sample": {
+      "minimum_common_sessions": 5,
+      "selection_policy": "EARLY_MIDDLE_LATE_FROM_VALIDATED_DUAL_MARKET_CALENDAR",
+      "sessions": null
+    },
+    "request": {
+      "fields": [
+        "OPEN",
+        "HIGH",
+        "LOW",
+        "CLOSE",
+        "VOLUME",
+        "AVERAGE"
+      ],
+      "sort": "ASC",
+      "timeframe": "ONE_MINUTE"
+    },
+    "response_preservation": [
+      "HTTP_STATUS",
+      "RESPONSE_HEADERS_WITHOUT_SECRETS",
+      "RAW_RESPONSE_SHA256",
+      "RETRIEVED_AT",
+      "SOURCE_VERSION"
+    ]
+  },
+  "qualification_checks": [
+    {
+      "check_id": "ENTITLEMENT_AND_RESEARCH_USE_LICENSE_RECORDED",
+      "evidence_level": "LOCAL_ENVIRONMENT",
+      "status": "FAIL"
+    },
+    {
+      "check_id": "SYMBOL_1259_NONEMPTY_FOR_OFFICIAL_CONTROL_SESSION",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "TWSE_AND_TPEX_CONTROL_SYMBOLS_RECONCILED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "PIT_ELIGIBLE_AND_DELISTED_SYMBOL_POLICY_VERIFIED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "ONE_MINUTE_ASIA_TAIPEI_SESSION_ALIGNMENT_VERIFIED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "OHLC_AND_VOLUME_SEMANTICS_RECONCILED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "CUMULATIVE_INTRADAY_VWAP_EQUIVALENCE_VERIFIED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "VOLUME_NORMALIZED_TO_SHARES",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "check_id": "SESSION_COMPLETENESS_AND_MISSING_BAR_CODES_PRODUCED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "RAW_PRICE_AND_CORPORATE_ACTION_POLICY_SEPARATED",
+      "evidence_level": "DOCUMENTATION_AND_FROZEN_POLICY",
+      "status": "PASS"
+    },
+    {
+      "check_id": "RAW_AND_NORMALIZED_PAYLOAD_DIGESTS_PRODUCED",
+      "evidence_level": "NONE",
+      "status": "NOT_EXECUTED"
+    },
+    {
+      "check_id": "SOURCE_PRECEDENCE_AND_NO_SILENT_MIXING_POLICY_FROZEN",
+      "evidence_level": "FROZEN_UPSTREAM_POLICY",
+      "status": "PASS"
+    },
+    {
+      "check_id": "COST_AND_LIQUIDITY_INPUT_COMPATIBILITY_VERIFIED",
+      "evidence_level": "DOCUMENTATION_ONLY",
+      "status": "INSUFFICIENT_EVIDENCE"
+    }
+  ],
+  "result": {
+    "fail_count": 1,
+    "insufficient_evidence_count": 5,
+    "not_executed_count": 5,
+    "pass_count": 2,
+    "qualified": false,
+    "verdict": "INSUFFICIENT_EVIDENCE"
+  },
+  "schema_version": "intraday_source_qualification_v1",
+  "source_documentation": {
+    "authentication_url": "https://developer.fugle.tw/docs/data/http-api/getting-started/",
+    "historical_candles_url": "https://developer.fugle.tw/docs/data/http-api/historical/candles/",
+    "observed_contract": {
+      "historical_minute_start": "2023-05-23",
+      "no_data_behavior": "HTTP_404_NOT_EMPTY_ARRAY",
+      "regular_stock_minute_volume_unit": "COMMON_LOT",
+      "timestamp": "ISO_8601_WITH_UTC_PLUS_08_00",
+      "vwap_candidate_field": "AVERAGE_CUMULATIVE_FROM_MARKET_OPEN"
+    }
+  },
+  "status": "BLOCKED",
+  "upstream_reference": {
+    "artifact_id": "price-provider-coverage-resolution-v1-2026-08-20-r1",
+    "canonical_sha256": "9beda1f6131a6fd7b384cfe77083f6f5c027eaec72c4e0d1155ac59f091a8418"
+  }
+}

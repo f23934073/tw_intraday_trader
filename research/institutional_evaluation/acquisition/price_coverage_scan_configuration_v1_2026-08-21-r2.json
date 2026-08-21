@@ -1,0 +1,85 @@
+{
+  "artifact_id": "price-coverage-scan-configuration-v1-2026-08-21-r2",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "checkpoint_snapshot": {
+    "checkpoint_metadata_sha256": "233aac68745aef2b6d206fdf7c4bac2148a4b7a61820c2e81525143a355cb655",
+    "checkpointed_partition_count": 678,
+    "legacy_empty_revalidation_pending_count": 0,
+    "nonempty_partition_count": 670,
+    "typed_price_data_unavailable_count": 8
+  },
+  "coverage_amendment": {
+    "artifact_id": "institutional-formal-evaluation-coverage-amendment-v1-2026-08-21",
+    "canonical_sha256": "6a5a943e720dc3bf0e9bc952805539a4c0a460d3f8137462f714773fbaba96ab"
+  },
+  "execution_lock": {
+    "formal_coverage_audit_allowed": false,
+    "holdout_allowed": false,
+    "outcome_generation_allowed": false,
+    "population_freeze_allowed": false
+  },
+  "job": {
+    "job_id": "dataset-download-f914feaddea04e37b3cbdcfce2b0179b",
+    "job_kind": "DATASET_DOWNLOAD",
+    "request_sha256": "db64dc6741df8a228c8a6550823cb280de18caabdf5525bd9c704dc333e2a9b9",
+    "requested_end_date": "2026-08-18",
+    "requested_start_date": "2023-08-19",
+    "target_count": 2738,
+    "universe_selection": "ALL_CURRENT"
+  },
+  "prior_segments": [
+    {
+      "artifact_id": "price-coverage-scan-segment-v1-2026-08-21-r0",
+      "canonical_sha256": "53c42a21c170973933d4ac12555bf17fbe906136a9f0259fead59156cd7a17c2"
+    },
+    {
+      "artifact_id": "price-coverage-scan-segment-v1-2026-08-21-r1",
+      "canonical_sha256": "30d609a22d6827a6bca47fefba4668ef681df053ce0f53dd432c84940b52df26"
+    }
+  ],
+  "provider": {
+    "adapter_class": "market_data.provider.ShioajiProvider",
+    "adapter_source_sha256": "f8788ea9c9b217d12c05aa58c9d1b670bf9ef400f267779212fac519b8be843d",
+    "historical_query": "Shioaji.kbars",
+    "sdk_package": "shioaji",
+    "sdk_version": "1.7.2"
+  },
+  "registered_at": "2026-08-21T10:52:17+08:00",
+  "resume_boundary": {
+    "activation_rule": "REGISTERED_BEFORE_RESUME",
+    "next_target_index": 678,
+    "prior_pause_event": "RATE_LIMITED",
+    "prior_pause_observed_at": "2026-08-21T10:44:50.180685+08:00",
+    "retry_symbol": "2101"
+  },
+  "scan_configuration": {
+    "cli_source_sha256": "5950bd1d5117f85c2412a316ab46fe83a2f9579a729b82baff4642d885fce675",
+    "coverage_scan_mode": true,
+    "historical_downloader_source_sha256": "e194610613f9094e8d610a5ccd2f0843ef6ff59dffeaa803e7cfe3913fc7f036",
+    "invocation_command": "PROVIDER=shioaji .venv/bin/python scripts/download_backtest_history.py --resume dataset-download-f914feaddea04e37b3cbdcfce2b0179b --continue-on-empty-for-coverage-audit",
+    "per_symbol_failure_policy": {
+      "PRICE_DATA_UNAVAILABLE": "WRITE_ZERO_BAR_ERROR_OBSERVATION_AND_CONTINUE",
+      "SYMBOL_MAPPING_ERROR": "WRITE_ZERO_BAR_ERROR_OBSERVATION_AND_CONTINUE",
+      "TEMPORARY_FETCH_FAILURE": "WRITE_ZERO_BAR_ERROR_OBSERVATION_AND_CONTINUE"
+    },
+    "provider_window_days": 30,
+    "repository_commit": "6f7a8424270a1688b3dcd3fbd12116107ee415a6",
+    "whole_job_failure_policy": {
+      "RATE_LIMITED": "WRITE_NO_PARTIAL_PARTITION_AND_SAFE_PAUSE"
+    }
+  },
+  "schema_version": "price_coverage_scan_configuration_v1",
+  "scope": {
+    "formal_pit_denominator_available": false,
+    "outcome_fields_read": false,
+    "price_values_read_for_decision": false,
+    "purpose": "PROVIDER_COVERAGE_OBSERVATION_ONLY",
+    "research_eligible": false
+  },
+  "status": "FROZEN_PENDING_PROVIDER_RESET_AND_R2_RESUME",
+  "summary_lineage_policy": {
+    "final_raw_scan_summary_source": "AGGREGATE_SEALED_SEGMENT_MANIFESTS",
+    "mixed_configuration_without_segment_reference_allowed": false,
+    "r2_segment_required_before_its_observations_can_enter_summary": true
+  }
+}

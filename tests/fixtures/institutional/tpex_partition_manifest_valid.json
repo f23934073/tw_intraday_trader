@@ -1,0 +1,19 @@
+{
+  "correction_policy": "ORIGINAL_TRADES",
+  "first_observed_at": "2026-08-19T18:10:00+08:00",
+  "market": "TPEX",
+  "normalized_row_count": 1,
+  "normalized_sha256": "2152d8ba5cfda783edb52e1dd4242e64cb49fb579af7cf640265b78b17766e3a",
+  "partition_id": "tpex-2026-08-19-final",
+  "raw_artifact_id": "tpex-2026-08-19-final",
+  "raw_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "response_scope_note": "Original trades; foreign investors exclude foreign dealers and published total includes dealer total once.",
+  "retrieved_at": "2026-08-19T18:15:00+08:00",
+  "schema_version": "institutional_partition_manifest_v1",
+  "session_date": "2026-08-19",
+  "source_product": "TPEX_DAILY",
+  "source_row_count": 1,
+  "status": "NORMALIZED",
+  "trade_scope_id": "TPEX_DAILY_ORIGINAL_TRADES_V1",
+  "usable_from_session": "2026-08-20"
+}

@@ -1,0 +1,209 @@
+{
+  "artifact_id": "institutional-formal-evaluation-gate-v1",
+  "approval": {
+    "approved_by": "research_owner",
+    "approval_evidence": "user_confirmation_ok_2026-08-20",
+    "change_policy": "IMMUTABLE_NEW_VERSION_REQUIRED"
+  },
+  "definition_identities": {
+    "cost_model": {
+      "definition_digest": "8032a83eefa7d59f79dde021527b4d1436895e20504afee40bb31e6bd3bccd76",
+      "definition_id": "tw_equity_intraday_cost_v1",
+      "version": "v1"
+    },
+    "evaluation_plan": {
+      "definition_digest": "fa99e2661c28d5f99a97aec79786987eaf8511b9b383f2bbbab43b50146ea23a",
+      "definition_id": "institutional_formal_evaluation_plan_v1",
+      "version": "v1"
+    },
+    "outcome_definition": {
+      "definition_digest": "0fe783847642321ed52acd86e23c26bc0e590acec357fde319845cd885a15d46",
+      "definition_id": "legacy_gap_vwap_intraday_outcome_v1",
+      "version": "v1"
+    },
+    "setup_definition": {
+      "definition_digest": "620bbe99818ab26ea3c2e53344c248c2392565ffa82b98afb20a6ab703c8137a",
+      "definition_id": "legacy_gap_volume_vwap_setup_v1",
+      "version": "v1"
+    }
+  },
+  "evaluation_arms": [
+    "ELIGIBLE_UNIVERSE",
+    "PRICE_ONLY",
+    "INSTITUTIONAL_ONLY",
+    "COMBINED",
+    "MATCHED_CONTROL"
+  ],
+  "execution_lock": {
+    "holdout_execution_allowed": false,
+    "holdout_outcome_materialization_allowed": false,
+    "outcome_generation_allowed": false,
+    "unlock_requires": [
+      "COVERAGE_RESOLUTION_ARTIFACT",
+      "EXACT_SPLIT_DATES",
+      "COMPOSITE_RESEARCH_INPUT_MANIFEST_V1",
+      "RESEARCH_ELIGIBLE_TRUE"
+    ]
+  },
+  "gate_thresholds": {
+    "confidence_level": "0.95",
+    "maximum_guardrail_net_expectancy_deterioration": "0",
+    "maximum_turnover_rate_increase": "0.10",
+    "minimum_executions_per_arm": 100,
+    "minimum_guardrail_executions_per_arm": 30,
+    "minimum_sessions": 60,
+    "primary_metric": "combined_minus_price_only_net_expectancy",
+    "required_liquidity_cohorts": [
+      "ADV20_HIGH",
+      "ADV20_MID",
+      "ADV20_LOW"
+    ],
+    "required_markets": [
+      "TWSE",
+      "TPEX"
+    ],
+    "thresholds_contract_version": "v0",
+    "thresholds_digest": "0ee3c4fe8ac247b07f3283e02f0b451cf75725143211ac760e008db50ef024a6"
+  },
+  "liquidity_definition": {
+    "as_of": "T_MINUS_1_COMPLETED_SESSION",
+    "corporate_action_policy": "NORMALIZE_BEFORE_ADV20",
+    "formula": "MEAN_PRIOR_20_ELIGIBLE_SESSION_DAILY_VOLUME_SHARES",
+    "insufficient_history_policy": "BLOCKED",
+    "labels_high_to_low": [
+      "ADV20_HIGH",
+      "ADV20_MID",
+      "ADV20_LOW"
+    ],
+    "lookback_sessions": 20,
+    "metric_id": "adv20_shares_v1",
+    "partition": "WITHIN_MARKET_TERCILES",
+    "tie_break": "SYMBOL_ASC"
+  },
+  "matched_control_definition": {
+    "candidate_order": "CANDIDATE_RANK_THEN_MARKET_THEN_SYMBOL",
+    "control_reuse": "WITHOUT_REPLACEMENT_WITHIN_SESSION",
+    "exact_match_fields": [
+      "MARKET",
+      "INDUSTRY_CODE",
+      "MARKET_CAP_COHORT",
+      "ADV20_LIQUIDITY_COHORT"
+    ],
+    "fallback_policy": "NO_RELAXATION_UNMATCHED_RECORDED",
+    "institutional_selection_required": false,
+    "nearest_match_field": "PRIOR_20_SESSION_RETURN_RANK",
+    "version": "matched_control_v1"
+  },
+  "population_definition": {
+    "availability_cutoff": "BEFORE_TARGET_SESSION_OPEN",
+    "markets": [
+      "TWSE",
+      "TPEX"
+    ],
+    "pit_required": true,
+    "security_types": [
+      "COMMON_STOCK"
+    ],
+    "survivorship_substitution_allowed": false
+  },
+  "primary_hypothesis": {
+    "baseline": "PRICE_ONLY",
+    "metric": "NET_EXPECTANCY_DIFFERENCE",
+    "multiple_testing_policy": "SECONDARY_AND_SUBGROUP_METRICS_CANNOT_PROMOTE_PASS",
+    "pass_rule": "SESSION_CLUSTERED_CONFIDENCE_INTERVAL_LOWER_BOUND_GT_ZERO",
+    "treatment": "COMBINED"
+  },
+  "registered_at": "2026-08-20T16:09:32+08:00",
+  "reporting_policy": {
+    "persist_all_verdicts": [
+      "PASS",
+      "FAIL",
+      "BLOCKED",
+      "INSUFFICIENT_EVIDENCE"
+    ],
+    "post_hoc_subgroup_promotion_allowed": false,
+    "report_negative_and_null_results": true
+  },
+  "safety": {
+    "broker_allowed": false,
+    "execution_allowed": false,
+    "real_money": "PROHIBITED",
+    "subscription_allowed": false
+  },
+  "schema_version": "institutional_formal_evaluation_gate_v1",
+  "split_policy": {
+    "coverage_resolution_fields_allowed": [
+      "SESSION_DATE",
+      "MARKET",
+      "SOURCE_AVAILABILITY",
+      "PIT_ELIGIBILITY_COUNT",
+      "ROW_COUNT",
+      "ISSUE_CODE"
+    ],
+    "coverage_resolution_outcome_fields_allowed": false,
+    "exact_ranges": {
+      "holdout": null,
+      "train": null,
+      "validation": null
+    },
+    "minimum_holdout_sessions": 60,
+    "ordering": "TRADING_SESSION_ASC",
+    "ratio": {
+      "holdout": "0.20",
+      "train": "0.60",
+      "validation": "0.20"
+    },
+    "resolution_rule": "FLOOR_TRAIN_FLOOR_VALIDATION_REMAINDER_HOLDOUT",
+    "status": "PENDING_COVERAGE_ONLY_RESOLUTION"
+  },
+  "status": "PREREGISTERED_PENDING_COVERAGE_RESOLUTION",
+  "strategy_contract": {
+    "execution_model": {
+      "end_of_day_exit": "SESSION_CLOSE",
+      "entry_and_non_eod_exit": "NEXT_BAR_OPEN"
+    },
+    "entry_policy": "ANY",
+    "entry_strategies": [
+      {
+        "definition_digest": "5ebf451dd56de5a31a24ef1832595bcc5a7ef6f51db39f03518ac74b6cfeca61",
+        "strategy_id": "legacy_gap_volume_vwap_entry_v1",
+        "version": "v1"
+      }
+    ],
+    "exit_policy": "ANY",
+    "exit_strategies": [
+      {
+        "definition_digest": "dc99330d29b1cb5990d48d13ddd72b30251f3c54395e7005a2ed15300914fb46",
+        "strategy_id": "stop_loss_exit_v1",
+        "version": "v1"
+      },
+      {
+        "definition_digest": "2532845af174bb14c4be36eda7be67e1896c30560220cf2853fd7566e8cc9276",
+        "strategy_id": "take_profit_exit_v1",
+        "version": "v1"
+      },
+      {
+        "definition_digest": "a41ca995b5612d5d9ebe4fb79271efde97345ba9f3fd33678924bfd2110aa49e",
+        "strategy_id": "end_of_day_exit_v1",
+        "version": "v1"
+      }
+    ],
+    "holding_period": "INTRADAY_FLAT_BY_END_OF_DAY",
+    "priority_order": [
+      "stop_loss_exit_v1",
+      "take_profit_exit_v1",
+      "end_of_day_exit_v1"
+    ],
+    "position_policy": {
+      "minimum_lot_shares": 1000,
+      "position_fraction": "0.10",
+      "starting_cash_twd": "10000000"
+    }
+  },
+  "transaction_cost_model": {
+    "commission_rate": "0.001425",
+    "cost_model_id": "tw_equity_intraday_cost_v1",
+    "sell_tax_rate": "0.003",
+    "slippage_bps_each_fill": "5"
+  }
+}

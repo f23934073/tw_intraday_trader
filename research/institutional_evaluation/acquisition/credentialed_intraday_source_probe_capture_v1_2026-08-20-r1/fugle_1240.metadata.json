@@ -1,0 +1,42 @@
+{
+  "body_file": "fugle_1240.response.bin",
+  "http_status": 200,
+  "market": "TPEX",
+  "raw_response_bytes": 1123,
+  "raw_response_sha256": "bed761bb8f905c6a8fa55b48138b64e54388ccee1baafb660cef8081de759bb3",
+  "request": {
+    "endpoint": "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/1240",
+    "query": {
+      "fields": "open,high,low,close,volume,average",
+      "from": "2026-08-18",
+      "sort": "asc",
+      "timeframe": "1",
+      "to": "2026-08-18"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "api_key,authorization,content-type",
+    "access-control-allow-methods": "GET,HEAD,OPTIONS,POST,DELETE",
+    "access-control-expose-headers": "content-length,fr-aa,Retry-After,X-RateLimit-Limit,X-RateLimit-Remaining,X-RateLimit-Reset",
+    "access-control-max-age": "1728000",
+    "alt-svc": "h3=\":443\"; ma=2592000",
+    "connection": "close",
+    "content-length": "1123",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Thu, 20 Aug 2026 09:47:20 GMT",
+    "etag": "W/\"463-kBQFGErKsmlr5VUmo8Ak5FZzgHs\"",
+    "retry-after": "59.948",
+    "server": "Unknown",
+    "vary": "Accept-Encoding",
+    "via": "1.1 google",
+    "x-cache": "MISS",
+    "x-ratelimit-limit": "60",
+    "x-ratelimit-remaining": "58",
+    "x-ratelimit-reset": "1787219300622"
+  },
+  "retrieved_at": "2026-08-20T17:47:20.606738+08:00",
+  "role": "SAME_JOB_CONTROL",
+  "source_version": "FUGLE_MARKETDATA_HTTP_V1_0",
+  "symbol": "1240"
+}

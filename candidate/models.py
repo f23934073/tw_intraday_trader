@@ -22,6 +22,7 @@ class CandidateSource(StrEnum):
 
     AUTO = "AUTO"
     SCANNER = "SCANNER"
+    PREVIOUS_SESSION_WATCHLIST = "PREVIOUS_SESSION_WATCHLIST"
     MANUAL = "MANUAL"
     POSITION = "POSITION"       # 未來：持倉股票自動進候選池
     NEWS = "NEWS"               # 未來：新聞訊號

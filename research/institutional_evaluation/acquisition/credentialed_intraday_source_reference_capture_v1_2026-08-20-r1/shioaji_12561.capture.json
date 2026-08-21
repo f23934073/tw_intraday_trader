@@ -1,0 +1,116 @@
+{
+  "capture_name": "credentialed_intraday_probe_reference_12561",
+  "captured_fields": [
+    "ts",
+    "Open",
+    "High",
+    "Low",
+    "Close",
+    "Volume",
+    "Amount"
+  ],
+  "field_counts": {
+    "Amount": 2,
+    "Close": 2,
+    "High": 2,
+    "Low": 2,
+    "Open": 2,
+    "Volume": 2,
+    "ts": 2
+  },
+  "provider": "SHIOAJI",
+  "queried_at": "2026-08-20T17:48:22.426310+08:00",
+  "raw_response_type": "builtins.KBars",
+  "raw_rows": [
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "101100.0",
+        "text": "101100.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "101.1",
+        "text": "101.1"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "101.1",
+        "text": "101.1"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "101.1",
+        "text": "101.1"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "101.1",
+        "text": "101.1"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "1",
+        "text": "1"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787050140000000000",
+        "text": "1787050140000000000"
+      }
+    },
+    {
+      "Amount": {
+        "python_type": "builtins.float",
+        "repr": "102550.0",
+        "text": "102550.0"
+      },
+      "Close": {
+        "python_type": "builtins.float",
+        "repr": "102.55",
+        "text": "102.55"
+      },
+      "High": {
+        "python_type": "builtins.float",
+        "repr": "102.55",
+        "text": "102.55"
+      },
+      "Low": {
+        "python_type": "builtins.float",
+        "repr": "102.55",
+        "text": "102.55"
+      },
+      "Open": {
+        "python_type": "builtins.float",
+        "repr": "102.55",
+        "text": "102.55"
+      },
+      "Volume": {
+        "python_type": "builtins.int",
+        "repr": "1",
+        "text": "1"
+      },
+      "ts": {
+        "python_type": "builtins.int",
+        "repr": "1787050800000000000",
+        "text": "1787050800000000000"
+      }
+    }
+  ],
+  "raw_rows_digest": "1058c3c5437d3add206e46633fbd23837f3ae818a611666a3bad442d1203676d",
+  "request": {
+    "api": "Shioaji.kbars",
+    "interval_parameter_observed": false,
+    "parameters_observed": [
+      "contract",
+      "start",
+      "end",
+      "timeout"
+    ],
+    "query_end": "2026-08-18",
+    "query_start": "2026-08-18"
+  },
+  "schema_version": "shioaji_equity_kbar_capture_v1",
+  "sdk_version": "1.7.2",
+  "symbol": "12561"
+}

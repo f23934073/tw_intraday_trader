@@ -1,0 +1,144 @@
+{
+  "artifact_id": "institutional-population-coverage-v1-2026-08-20-repository-snapshot",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "coverage": {
+    "end_date": null,
+    "start_date": null
+  },
+  "gate": {
+    "composite_manifest_allowed": false,
+    "dataset_population_frozen": false,
+    "holdout_allowed": false,
+    "outcome_generation_allowed": false,
+    "status": "BLOCKED"
+  },
+  "inspected_at": "2026-08-20T16:17:54+08:00",
+  "inspection_scope": {
+    "allowed_fields": [
+      "SESSION_DATE",
+      "MARKET",
+      "SOURCE_AVAILABILITY",
+      "PIT_ELIGIBILITY_COUNT",
+      "EXCLUDED_MEMBER_COUNT",
+      "ROW_COUNT",
+      "ISSUE_CODE"
+    ],
+    "outcome_fields_read": false
+  },
+  "issues": [
+    {
+      "code": "PIT_UNIVERSE_MISSING",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "INSTITUTIONAL_PARTITIONS_MISSING",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "PRICE_DATASET_MISSING",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "CORPORATE_ACTIONS_MISSING",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "REFERENCE_DATA_MISSING",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "TPEX_CALENDAR_COVERAGE_UNPROVEN",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "COVERAGE_RANGE_UNRESOLVED",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "INSUFFICIENT_SESSIONS",
+      "severity": "BLOCKING"
+    }
+  ],
+  "markets": {
+    "TPEX": {
+      "coverage_end": null,
+      "coverage_start": null,
+      "eligible_member_count": null,
+      "eligible_session_count": null,
+      "excluded_member_count": null,
+      "status": "MISSING"
+    },
+    "TWSE": {
+      "coverage_end": null,
+      "coverage_start": null,
+      "eligible_member_count": null,
+      "eligible_session_count": null,
+      "excluded_member_count": null,
+      "status": "MISSING"
+    }
+  },
+  "protocol": {
+    "artifact_id": "institutional-formal-evaluation-gate-v1",
+    "canonical_sha256": "b769cf1b672e15d599cf610d22bda49d37981ddc36ae999b120b52702b197dc4"
+  },
+  "repository_observations": {
+    "backtest_catalog": {
+      "inspection_mode": "SQLITE_READ_ONLY_IMMUTABLE",
+      "row_counts": {
+        "backtest_datasets": 0,
+        "backtest_runs": 0,
+        "backtest_trades": 0
+      }
+    }
+  },
+  "schema_version": "institutional_population_coverage_v1",
+  "sources": {
+    "corporate_actions": {
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "row_count": null,
+      "status": "MISSING"
+    },
+    "institutional_partitions": {
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "row_count": null,
+      "status": "MISSING"
+    },
+    "pit_universe": {
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "row_count": null,
+      "status": "MISSING"
+    },
+    "price_dataset": {
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "row_count": 0,
+      "status": "MISSING"
+    },
+    "reference_data": {
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "row_count": null,
+      "status": "MISSING"
+    },
+    "trading_calendar": {
+      "artifact_id": "twse_calendar_2026_v1",
+      "canonical_sha256": "ccceb7157ba38dee013eb76a34ad7346180c996739ad1377d9475c747ed6f44c",
+      "markets_proven": [
+        "TWSE"
+      ],
+      "row_count": null,
+      "status": "PARTIAL"
+    }
+  },
+  "split": {
+    "eligible_session_count": null,
+    "holdout": null,
+    "minimum_holdout_sessions": 60,
+    "policy": "CHRONOLOGICAL_60_20_20",
+    "train": null,
+    "validation": null
+  }
+}

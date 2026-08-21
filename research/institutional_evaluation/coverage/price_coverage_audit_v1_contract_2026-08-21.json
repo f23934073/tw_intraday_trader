@@ -1,0 +1,64 @@
+{
+  "artifact_id": "price-coverage-audit-v1-contract-2026-08-21-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "coverage_amendment": {
+    "artifact_id": "institutional-formal-evaluation-coverage-amendment-v1-2026-08-21",
+    "canonical_sha256": "6a5a943e720dc3bf0e9bc952805539a4c0a460d3f8137462f714773fbaba96ab"
+  },
+  "execution_lock": {
+    "evaluation_universe_freeze_allowed": false,
+    "holdout_allowed": false,
+    "outcome_generation_allowed": false,
+    "price_coverage_audit_materialized": false
+  },
+  "final_audit_lineage_requirements": [
+    "ORIGINAL_FORMAL_EVALUATION_PROTOCOL_DIGEST",
+    "COVERAGE_AMENDMENT_DIGEST",
+    "PRICE_COVERAGE_SCAN_CONFIGURATION_DIGEST",
+    "FINAL_SCAN_CHECKPOINT_METADATA_DIGEST",
+    "PIT_UNIVERSE_DIGEST",
+    "INSTITUTIONAL_PARTITION_SET_DIGEST",
+    "TRADING_CALENDAR_DIGEST",
+    "REFERENCE_DATA_DIGEST",
+    "CORPORATE_ACTION_DIGEST"
+  ],
+  "missing_reason_disposition": {
+    "PRICE_DATA_UNAVAILABLE": "ELIGIBLE_FOR_DATA_COVERAGE_EXCLUSION_ONLY_AFTER_FINAL_PIT_AUDIT",
+    "PROVIDER_EMPTY_KBAR": "RECORD_AS_PRICE_DATA_UNAVAILABLE",
+    "RATE_LIMITED": "RETRY_OR_RESOLUTION_REQUIRED",
+    "SYMBOL_MAPPING_ERROR": "RESOLUTION_REQUIRED",
+    "TEMPORARY_FETCH_FAILURE": "RETRY_OR_RESOLUTION_REQUIRED",
+    "TIMEOUT": "RETRY_OR_RESOLUTION_REQUIRED"
+  },
+  "output_contract": {
+    "concentration_dimensions": [
+      "MARKET",
+      "MARKET_CAP_COHORT",
+      "ADV20_LIQUIDITY_COHORT",
+      "INDUSTRY_CODE",
+      "LISTING_STATUS_ACTIVE_VS_LATER_DELISTED"
+    ],
+    "coverage_gate": {
+      "minimum_aggregate_session_coverage_rate": "0.99",
+      "minimum_per_symbol_session_coverage_rate": "0.99",
+      "minimum_symbol_coverage_rate": "0.95"
+    },
+    "required_sections": [
+      "SYMBOL_COVERAGE",
+      "PER_SYMBOL_AND_AGGREGATE_SESSION_COVERAGE",
+      "EXCLUSION_CONCENTRATION",
+      "ISSUE_REASON_DISTRIBUTION"
+    ]
+  },
+  "protocol": {
+    "artifact_id": "institutional-formal-evaluation-gate-v1",
+    "canonical_sha256": "b769cf1b672e15d599cf610d22bda49d37981ddc36ae999b120b52702b197dc4"
+  },
+  "registered_at": "2026-08-21T10:01:32+08:00",
+  "scan_configuration": {
+    "artifact_id": "price-coverage-scan-configuration-v1-2026-08-21-r1",
+    "canonical_sha256": "16de2310f21fef0acb066f719227e5260539debab2b3647a18296e7802bfc887"
+  },
+  "schema_version": "price_coverage_audit_v1_contract",
+  "status": "PREREGISTERED_PENDING_FULL_SCAN_AND_PIT_INPUTS"
+}

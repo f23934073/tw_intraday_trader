@@ -1,0 +1,49 @@
+{
+  "approval": {
+    "approved_by": "research_owner",
+    "approval_evidence": "coverage_amendment_review_approved_2026-08-21",
+    "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED"
+  },
+  "artifact_id": "price-coverage-observation-continuation-v1-2026-08-21-r1",
+  "continuation": {
+    "command": "PROVIDER=shioaji .venv/bin/python scripts/download_backtest_history.py --resume dataset-download-f914feaddea04e37b3cbdcfce2b0179b --continue-on-empty-for-coverage-audit",
+    "default_downloader_policy_unchanged": true,
+    "explicit_option_required": true,
+    "job_id": "dataset-download-f914feaddea04e37b3cbdcfce2b0179b",
+    "provider": "ShioajiProvider",
+    "provider_empty_action": "WRITE_ZERO_BAR_ERROR_OBSERVATION_AND_CONTINUE",
+    "provider_empty_reason_code": "PRICE_DATA_UNAVAILABLE",
+    "provider_limit_or_temporary_failure_action": "PAUSE_WITH_RETRY_SYMBOL",
+    "requested_end_date": "2026-08-18",
+    "requested_start_date": "2023-08-19"
+  },
+  "coverage_amendment": {
+    "artifact_id": "institutional-formal-evaluation-coverage-amendment-v1-2026-08-21",
+    "canonical_sha256": "6a5a943e720dc3bf0e9bc952805539a4c0a460d3f8137462f714773fbaba96ab"
+  },
+  "evidence_semantics": {
+    "empty_observation_counts_as_data_success": false,
+    "empty_observation_counts_as_formal_evaluation_exclusion": false,
+    "empty_observation_counts_as_provider_coverage_evidence": true,
+    "named_symbol_special_case": false,
+    "outcome_fields_read": false,
+    "price_values_read_for_decision": false,
+    "synthetic_fill_allowed": false
+  },
+  "execution_lock": {
+    "dataset_population_freeze_allowed": false,
+    "formal_price_dataset_artifact_allowed": false,
+    "holdout_allowed": false,
+    "outcome_generation_allowed": false
+  },
+  "registered_at": "2026-08-21T09:50:56+08:00",
+  "resulting_staging_constraints": {
+    "formal_coverage_audit_allowed": false,
+    "research_eligible": false,
+    "survivorship_free": false,
+    "universe_selection": "ALL_CURRENT",
+    "use": "PROVIDER_COVERAGE_OBSERVATION_ONLY"
+  },
+  "schema_version": "price_coverage_observation_continuation_v1",
+  "status": "APPROVED_FOR_DATA_ONLY_CONTINUATION"
+}

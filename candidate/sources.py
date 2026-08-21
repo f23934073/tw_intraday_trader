@@ -11,6 +11,28 @@ from candidate.models import Candidate, CandidateSource
 from market_data.scanner import ScannerClient, ScannerRankType, ScannerResponse
 
 
+@dataclass(frozen=True, order=True)
+class CandidateContributionReference:
+    """Bounded pointer to source evidence; never embeds source-domain details."""
+
+    source: CandidateSource
+    artifact_id: str
+    entry_digest: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source", CandidateSource(self.source))
+        artifact_id = self.artifact_id.strip()
+        if not artifact_id:
+            raise ValueError("candidate evidence artifact_id must not be empty")
+        if len(self.entry_digest) != 64 or any(
+            character not in "0123456789abcdef" for character in self.entry_digest
+        ):
+            raise ValueError(
+                "candidate evidence entry_digest must be a lowercase SHA256 digest"
+            )
+        object.__setattr__(self, "artifact_id", artifact_id)
+
+
 @dataclass(frozen=True)
 class CandidateDiscovery:
     symbol: str
@@ -20,6 +42,7 @@ class CandidateDiscovery:
     discovered_at: datetime
     expires_at: datetime | None
     priority: int
+    contribution_ref: CandidateContributionReference | None = None
     evidence: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -44,6 +67,11 @@ class CandidateDiscovery:
                 }
             )
         )
+        if (
+            self.contribution_ref is not None
+            and self.contribution_ref.source is not self.source
+        ):
+            raise ValueError("candidate contribution reference source mismatch")
         object.__setattr__(self, "symbol", symbol)
         object.__setattr__(self, "rank_types", rank_types)
         object.__setattr__(self, "evidence", _freeze_mapping(self.evidence))

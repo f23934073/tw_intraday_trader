@@ -1,0 +1,31 @@
+{
+  "body_file": "finmind_08_2330_TaiwanStockPriceTick.response.bin",
+  "data_array_present": true,
+  "dataset": "TaiwanStockPriceTick",
+  "http_status": 200,
+  "json_message": "success",
+  "json_status": 200,
+  "market": "TWSE",
+  "raw_response_bytes": 542496,
+  "raw_response_sha256": "2f8cc584075793efff3256d5d10e7d845f5b106503a4c1db5d15ed0518cc8aef",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "data_id": "2330",
+      "dataset": "TaiwanStockPriceTick",
+      "start_date": "2026-08-18"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-origin": "*",
+    "connection": "close",
+    "content-length": "542496",
+    "content-type": "application/json",
+    "date": "Fri, 21 Aug 2026 01:13:10 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-21T09:13:10.544831+08:00",
+  "role": "MARKET_CONTROL",
+  "source_version": "FINMIND_API_V4",
+  "symbol": "2330"
+}

@@ -1,0 +1,37 @@
+{
+  "rows": [
+    {
+      "correction_policy": "ORIGINAL_TRADES",
+      "dealer_hedge_buy_shares": 500,
+      "dealer_hedge_net_shares": -500,
+      "dealer_hedge_sell_shares": 1000,
+      "dealer_proprietary_buy_shares": 1000,
+      "dealer_proprietary_net_shares": 500,
+      "dealer_proprietary_sell_shares": 500,
+      "dealer_total_buy_shares": 1500,
+      "dealer_total_net_shares": 0,
+      "dealer_total_sell_shares": 1500,
+      "first_observed_at": "2026-08-19T18:10:00+08:00",
+      "foreign_dealer_buy_shares": 400,
+      "foreign_dealer_net_shares": 200,
+      "foreign_dealer_sell_shares": 200,
+      "foreign_ex_dealer_buy_shares": 8000,
+      "foreign_ex_dealer_net_shares": 3000,
+      "foreign_ex_dealer_sell_shares": 5000,
+      "investment_trust_buy_shares": 2000,
+      "investment_trust_net_shares": 1500,
+      "investment_trust_sell_shares": 500,
+      "market": "TPEX",
+      "partition_id": "tpex-2026-08-19-final",
+      "published_total_net_shares": 4500,
+      "raw_artifact_id": "tpex-2026-08-19-final",
+      "raw_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "retrieved_at": "2026-08-19T18:15:00+08:00",
+      "session_date": "2026-08-19",
+      "symbol": "6488",
+      "trade_scope_id": "TPEX_DAILY_ORIGINAL_TRADES_V1",
+      "usable_from_session": "2026-08-20"
+    }
+  ],
+  "schema_version": "institutional_flow_rows_v1"
+}

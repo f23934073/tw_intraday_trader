@@ -1,0 +1,104 @@
+{
+  "acquisition_manifest_reference": {
+    "artifact_id": "institutional-dataset-acquisition-manifest-v1-2026-08-20-r2-first-institutional-partition-set",
+    "canonical_sha256": "f23a220631b09a3a54c220558a66774f96ce6b0ef6ea6fca831f85415129cf12"
+  },
+  "artifact_id": "institutional-dataset-acquisition-completion-v1-2026-08-20-r1",
+  "blocking_issues": [
+    {"code": "PRICE_DATASET_MISSING", "dataset": "price", "severity": "BLOCKING"},
+    {"code": "INSTITUTIONAL_HISTORY_INCOMPLETE", "dataset": "institutional", "severity": "BLOCKING"},
+    {"code": "PIT_UNIVERSE_MISSING", "dataset": "pit_universe", "severity": "BLOCKING"},
+    {"code": "CORPORATE_ACTIONS_MISSING", "dataset": "corporate_actions", "severity": "BLOCKING"},
+    {"code": "REFERENCE_DATA_MISSING", "dataset": "reference_data", "severity": "BLOCKING"},
+    {"code": "TPEX_CALENDAR_COVERAGE_UNPROVEN", "dataset": "trading_calendar", "severity": "BLOCKING"}
+  ],
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "dataset_readiness": {
+    "corporate_actions": {
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "ready": false,
+      "status": "MISSING"
+    },
+    "institutional": {
+      "artifact_id": "institutional-partition-set-v1-2026-08-19-pilot",
+      "canonical_sha256": "1e6e78317d6b3e46ca4011fc948ad42878121f06fbfff8ee3161e23062f551dd",
+      "ready": false,
+      "status": "PARTIAL"
+    },
+    "pit_universe": {
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "ready": false,
+      "status": "MISSING"
+    },
+    "price": {
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "ready": false,
+      "status": "MISSING"
+    },
+    "reference_data": {
+      "artifact_id": null,
+      "canonical_sha256": null,
+      "ready": false,
+      "status": "MISSING"
+    },
+    "trading_calendar": {
+      "artifact_id": "twse_calendar_2026_v1",
+      "canonical_sha256": "ccceb7157ba38dee013eb76a34ad7346180c996739ad1377d9475c747ed6f44c",
+      "ready": false,
+      "status": "PARTIAL"
+    }
+  },
+  "evaluated_at": "2026-08-20T16:47:02+08:00",
+  "gate": {
+    "all_required_datasets_ready": false,
+    "composite_manifest_allowed": false,
+    "coverage_revision_allowed": false,
+    "dataset_population_freeze_allowed": false,
+    "holdout_allowed": false,
+    "outcome_generation_allowed": false,
+    "status": "BLOCKED"
+  },
+  "inspection_scope": {
+    "adapters_count_as_ready": false,
+    "inventory_method": "IMMUTABLE_ARTIFACT_AND_METADATA_ONLY_STAGING_SCAN",
+    "outcome_fields_read": false,
+    "staging_payloads_read": false,
+    "test_fixtures_count_as_ready": false
+  },
+  "non_qualifying_evidence": [
+    {
+      "acquired_markets": ["TWSE", "TPEX"],
+      "code": "PRICE_STAGING_JOB_INCOMPLETE",
+      "completed_partition_count": 542,
+      "error_partition_count": 130,
+      "job_id": "dataset-download-f914feaddea04e37b3cbdcfce2b0179b",
+      "job_status": "PAUSED",
+      "nonempty_partition_count": 412,
+      "reason": "NO_IMMUTABLE_DATASET_MANIFEST",
+      "requested_symbol_count": 2738,
+      "staged_bar_count": 9335704
+    }
+  ],
+  "readiness_policy": {
+    "all_required_rule": "EVERY_REQUIRED_DATASET_STATUS_VALIDATED",
+    "required_datasets": [
+      "price",
+      "institutional",
+      "pit_universe",
+      "corporate_actions",
+      "reference_data",
+      "trading_calendar"
+    ],
+    "required_status": "VALIDATED"
+  },
+  "schema_version": "institutional_dataset_acquisition_completion_v1",
+  "summary": {
+    "missing_count": 4,
+    "partial_count": 2,
+    "required_dataset_count": 6,
+    "validated_count": 0
+  }
+}

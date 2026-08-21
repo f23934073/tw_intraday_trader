@@ -1,0 +1,122 @@
+{
+  "amendment_scope": {
+    "changed": [
+      "EVALUATION_POPULATION_DATA_COVERAGE_POLICY",
+      "PRE_POPULATION_FREEZE_COVERAGE_GATES"
+    ],
+    "unchanged": [
+      "PRIMARY_HYPOTHESIS",
+      "PRIMARY_METRIC",
+      "STRATEGY_CONTRACT",
+      "TRANSACTION_COST_MODEL",
+      "LIQUIDITY_DEFINITION",
+      "MATCHED_CONTROL_DEFINITION",
+      "CHRONOLOGICAL_SPLIT_POLICY",
+      "EXACT_SPLIT_DATES_PENDING_COVERAGE_RESOLUTION",
+      "OUTCOME_GATE_THRESHOLDS"
+    ]
+  },
+  "approval": {
+    "approved_by": "research_owner",
+    "approval_evidence": "user_confirmation_uniform_coverage_exclusion_2026-08-21",
+    "change_policy": "IMMUTABLE_NEW_VERSION_REQUIRED"
+  },
+  "artifact_id": "institutional-formal-evaluation-coverage-amendment-v1-2026-08-21",
+  "coverage_gate": {
+    "aggregate_session_coverage": {
+      "denominator": "EXPECTED_PIT_ELIGIBLE_SYMBOL_SESSION_ROWS_FOR_COVERED_SYMBOLS",
+      "minimum_rate": "0.99",
+      "numerator": "COMPLETE_SYMBOL_SESSION_ROWS_FOR_COVERED_SYMBOLS",
+      "zero_denominator_policy": "BLOCKED"
+    },
+    "covered_symbol_qualification": {
+      "minimum_symbol_session_coverage_rate": "0.99",
+      "rule": "COMPLETE_SYMBOL_SESSION_ROWS_DIVIDED_BY_EXPECTED_PIT_ELIGIBLE_SYMBOL_SESSION_ROWS_FOR_SYMBOL",
+      "zero_denominator_policy": "BLOCKED"
+    },
+    "symbol_coverage": {
+      "denominator": "PIT_ELIGIBLE_SYMBOLS_IN_FROZEN_DATE_RANGE",
+      "minimum_rate": "0.95",
+      "numerator": "COVERED_PIT_ELIGIBLE_SYMBOLS",
+      "zero_denominator_policy": "BLOCKED"
+    }
+  },
+  "evaluation_population_policy": {
+    "complete_symbol_session_requirements": [
+      "PIT_ELIGIBLE_COMMON_STOCK_ON_SESSION",
+      "INSTITUTIONAL_INPUT_AVAILABLE_BEFORE_TARGET_SESSION_OPEN",
+      "QUALIFIED_REGULAR_SESSION_ONE_MINUTE_PRICE_INPUT_COMPLETE",
+      "TRADING_CALENDAR_JOIN_VALID",
+      "REFERENCE_IDENTITY_JOIN_VALID",
+      "CORPORATE_ACTION_POLICY_RESOLVED"
+    ],
+    "exclusion_code": "DATA_COVERAGE_EXCLUDED",
+    "exclusion_unit": "INCOMPLETE_SYMBOL_SESSION_ROW",
+    "missing_data_fill_allowed": false,
+    "named_symbol_overrides": [],
+    "rule": "INCLUDE_ONLY_COVERED_PIT_ELIGIBLE_SYMBOLS_AND_THEIR_COMPLETE_SYMBOL_SESSION_ROWS",
+    "symbol_specific_exception_allowed": false
+  },
+  "execution_lock": {
+    "dataset_population_freeze_allowed": false,
+    "holdout_execution_allowed": false,
+    "holdout_outcome_materialization_allowed": false,
+    "outcome_generation_allowed": false,
+    "unlock_requires": [
+      "IMMUTABLE_DATA_COVERAGE_AUDIT_V1",
+      "SYMBOL_COVERAGE_GTE_0_95",
+      "AGGREGATE_SESSION_COVERAGE_GTE_0_99",
+      "MISSINGNESS_CONCENTRATION_OWNER_APPROVAL",
+      "EXACT_EVALUATION_POPULATION_FREEZE",
+      "EXACT_SPLIT_DATES",
+      "COMPOSITE_RESEARCH_INPUT_MANIFEST_V1",
+      "RESEARCH_ELIGIBLE_TRUE"
+    ]
+  },
+  "forbidden_changes": [
+    "NAMED_SYMBOL_SPECIAL_CASE",
+    "OUTCOME_RESPONSIVE_EXCLUSION",
+    "SILENT_PROVIDER_AVAILABILITY_FILTER",
+    "SURVIVORSHIP_SUBSTITUTION",
+    "SYNTHETIC_MISSING_PRICE_FILL"
+  ],
+  "missingness_concentration_audit": {
+    "automatic_pass_thresholds": null,
+    "dimensions": [
+      "MARKET",
+      "MARKET_CAP_COHORT",
+      "ADV20_LIQUIDITY_COHORT",
+      "INDUSTRY_CODE",
+      "LISTING_STATUS_ACTIVE_VS_LATER_DELISTED"
+    ],
+    "outcome_fields_allowed": false,
+    "owner_review_required_before_population_freeze": true,
+    "required_outputs_per_group": [
+      "PIT_ELIGIBLE_SYMBOL_COUNT",
+      "COVERED_SYMBOL_COUNT",
+      "EXCLUDED_SYMBOL_COUNT",
+      "SYMBOL_COVERAGE_RATE",
+      "EXCLUSION_SHARE",
+      "COVERAGE_RATE_GAP_VS_OVERALL"
+    ],
+    "unapproved_threshold_policy": "BLOCKED_PENDING_COVERAGE_ONLY_OWNER_REVIEW"
+  },
+  "pre_outcome_attestation": {
+    "holdout_outcome_materialized": false,
+    "outcome_fields_read": false,
+    "outcome_generated": false,
+    "protocol_execution_locks_verified_false_before_amendment": true
+  },
+  "protocol": {
+    "artifact_id": "institutional-formal-evaluation-gate-v1",
+    "canonical_sha256": "b769cf1b672e15d599cf610d22bda49d37981ddc36ae999b120b52702b197dc4"
+  },
+  "registered_at": "2026-08-21T09:35:48+08:00",
+  "reporting_scope": {
+    "claim": "INSTITUTIONAL_CANDIDATE_PRIOR_EFFECT_WITHIN_THE_FROZEN_DATA_COVERED_PIT_EQUITY_POPULATION",
+    "claim_all_taiwan_equities_allowed": false,
+    "coverage_exclusions_must_be_reported": true
+  },
+  "schema_version": "institutional_formal_evaluation_coverage_amendment_v1",
+  "status": "PREREGISTERED_PENDING_COVERAGE_AUDIT"
+}

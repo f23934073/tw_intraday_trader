@@ -1,0 +1,19 @@
+{
+  "correction_policy": "ORIGINAL_TRADES",
+  "first_observed_at": "2026-08-19T20:05:00+08:00",
+  "market": "TWSE",
+  "normalized_row_count": 1,
+  "normalized_sha256": "2c00c0da0d4053eef5499f87f7ced75e01e00fd5776a4d5f4352ad96750a31be",
+  "partition_id": "twse-2026-08-19-final",
+  "raw_artifact_id": "twse-t86-2026-08-19-final",
+  "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "response_scope_note": "Regular, odd-lot, after-hours fixed-price and block trades; excludes auction and tender offer.",
+  "retrieved_at": "2026-08-19T20:10:00+08:00",
+  "schema_version": "institutional_partition_manifest_v1",
+  "session_date": "2026-08-19",
+  "source_product": "TWSE_T86_FINAL",
+  "source_row_count": 1,
+  "status": "NORMALIZED",
+  "trade_scope_id": "TWSE_T86_FINAL_WITH_BLOCK_V1",
+  "usable_from_session": "2026-08-20"
+}

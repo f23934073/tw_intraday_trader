@@ -1,0 +1,326 @@
+{
+  "artifact_id": "credentialed-finmind-intraday-source-probe-capture-v1-2026-08-21-r2",
+  "authentication": {
+    "credential_environment_name": "FINMIND_API_TOKEN",
+    "credential_present": true,
+    "credential_value_persisted": false
+  },
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "protocol_reference": {
+    "artifact_id": "credentialed-finmind-intraday-source-probe-protocol-v1-2026-08-21-r2",
+    "canonical_sha256": "e0ecce5f893911d6a183396eee2fa94e2c785f3bb327c40882562d3d5e9e9f68"
+  },
+  "records": [
+    {
+      "body_file": "finmind_01_1259_TaiwanStockKBar.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockKBar",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TPEX",
+      "raw_response_bytes": 40,
+      "raw_response_sha256": "bd3deae97b9bbf5496db1c19da707df924ec244a8568f606429c0a6532ddca72",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "1259",
+          "dataset": "TaiwanStockKBar",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "40",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:05 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:05.957337+08:00",
+      "role": "MISMATCH_TARGET",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "1259"
+    },
+    {
+      "body_file": "finmind_02_1259_TaiwanStockPriceTick.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockPriceTick",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TPEX",
+      "raw_response_bytes": 40,
+      "raw_response_sha256": "bd3deae97b9bbf5496db1c19da707df924ec244a8568f606429c0a6532ddca72",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "1259",
+          "dataset": "TaiwanStockPriceTick",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "40",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:06 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:06.369260+08:00",
+      "role": "MISMATCH_TARGET",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "1259"
+    },
+    {
+      "body_file": "finmind_03_1240_TaiwanStockKBar.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockKBar",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TPEX",
+      "raw_response_bytes": 1110,
+      "raw_response_sha256": "86c68ab64ae2c21c7396a62302c9e84d21860c1a7d91674e1d3d3c62eca60ea7",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "1240",
+          "dataset": "TaiwanStockKBar",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "1110",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:06 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:06.959545+08:00",
+      "role": "SAME_JOB_CONTROL",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "1240"
+    },
+    {
+      "body_file": "finmind_04_1240_TaiwanStockPriceTick.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockPriceTick",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TPEX",
+      "raw_response_bytes": 1020,
+      "raw_response_sha256": "cea98e91691d68616e27ab1cfc99c17662b8ae60a5962c0100e3d567c1bdc87b",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "1240",
+          "dataset": "TaiwanStockPriceTick",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "1020",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:07 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:07.481367+08:00",
+      "role": "SAME_JOB_CONTROL",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "1240"
+    },
+    {
+      "body_file": "finmind_05_12561_TaiwanStockKBar.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockKBar",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TPEX",
+      "raw_response_bytes": 40,
+      "raw_response_sha256": "bd3deae97b9bbf5496db1c19da707df924ec244a8568f606429c0a6532ddca72",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "12561",
+          "dataset": "TaiwanStockKBar",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "40",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:07 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:08.418685+08:00",
+      "role": "SAME_JOB_CONTROL",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "12561"
+    },
+    {
+      "body_file": "finmind_06_12561_TaiwanStockPriceTick.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockPriceTick",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TPEX",
+      "raw_response_bytes": 40,
+      "raw_response_sha256": "bd3deae97b9bbf5496db1c19da707df924ec244a8568f606429c0a6532ddca72",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "12561",
+          "dataset": "TaiwanStockPriceTick",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "40",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:08 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:09.157988+08:00",
+      "role": "SAME_JOB_CONTROL",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "12561"
+    },
+    {
+      "body_file": "finmind_07_2330_TaiwanStockKBar.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockKBar",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TWSE",
+      "raw_response_bytes": 34088,
+      "raw_response_sha256": "7af871bb1ef17d55d6dfc92dbedaf5faae5e7cd2f88459e23de02af921e3a855",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "2330",
+          "dataset": "TaiwanStockKBar",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "34088",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:08 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:09.780969+08:00",
+      "role": "MARKET_CONTROL",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "2330"
+    },
+    {
+      "body_file": "finmind_08_2330_TaiwanStockPriceTick.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockPriceTick",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TWSE",
+      "raw_response_bytes": 542496,
+      "raw_response_sha256": "2f8cc584075793efff3256d5d10e7d845f5b106503a4c1db5d15ed0518cc8aef",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "2330",
+          "dataset": "TaiwanStockPriceTick",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "542496",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:10 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:10.544831+08:00",
+      "role": "MARKET_CONTROL",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "2330"
+    },
+    {
+      "body_file": "finmind_09_2317_TaiwanStockKBar.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockKBar",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TWSE",
+      "raw_response_bytes": 33132,
+      "raw_response_sha256": "9f505d6641e3a4467f0b50af6753bc63eca4fd2d8d12c5cfbed4d3d65f2226a4",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "2317",
+          "dataset": "TaiwanStockKBar",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "33132",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:13 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:12.959908+08:00",
+      "role": "MARKET_CONTROL",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "2317"
+    },
+    {
+      "body_file": "finmind_10_2317_TaiwanStockPriceTick.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockPriceTick",
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TWSE",
+      "raw_response_bytes": 987010,
+      "raw_response_sha256": "54f21ba6caf944a041b9630726fb88eea490efb6436226fbfa4a729fba0f2854",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "2317",
+          "dataset": "TaiwanStockPriceTick",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "987010",
+        "content-type": "application/json",
+        "date": "Fri, 21 Aug 2026 01:13:15 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-21T09:13:13.840082+08:00",
+      "role": "MARKET_CONTROL",
+      "source_version": "FINMIND_API_V4",
+      "symbol": "2317"
+    }
+  ],
+  "schema_version": "credentialed_finmind_intraday_source_probe_capture_v1"
+}

@@ -1,0 +1,31 @@
+{
+  "body_file": "finmind_04_1240_TaiwanStockPriceTick.response.bin",
+  "data_array_present": true,
+  "dataset": "TaiwanStockPriceTick",
+  "http_status": 200,
+  "json_message": "success",
+  "json_status": 200,
+  "market": "TPEX",
+  "raw_response_bytes": 1020,
+  "raw_response_sha256": "cea98e91691d68616e27ab1cfc99c17662b8ae60a5962c0100e3d567c1bdc87b",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "data_id": "1240",
+      "dataset": "TaiwanStockPriceTick",
+      "start_date": "2026-08-18"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-origin": "*",
+    "connection": "close",
+    "content-length": "1020",
+    "content-type": "application/json",
+    "date": "Fri, 21 Aug 2026 01:13:07 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-21T09:13:07.481367+08:00",
+  "role": "SAME_JOB_CONTROL",
+  "source_version": "FINMIND_API_V4",
+  "symbol": "1240"
+}

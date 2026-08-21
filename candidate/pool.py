@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from candidate.models import CandidateSource
-from candidate.sources import CandidateDiscovery
+from candidate.sources import CandidateContributionReference, CandidateDiscovery
 
 
 @dataclass(frozen=True)
@@ -41,6 +41,7 @@ class CandidatePoolEntry:
     in_grace: bool
     pinned: bool
     active_episode: bool
+    contribution_refs: tuple[CandidateContributionReference, ...] = ()
 
     @property
     def protected(self) -> bool:
@@ -90,6 +91,14 @@ class CandidatePoolDecision:
                     "in_grace": entry.in_grace,
                     "pinned": entry.pinned,
                     "active_episode": entry.active_episode,
+                    "contribution_refs": [
+                        {
+                            "source": reference.source.value,
+                            "artifact_id": reference.artifact_id,
+                            "entry_digest": reference.entry_digest,
+                        }
+                        for reference in entry.contribution_refs
+                    ],
                 }
                 for entry in self.entries
             ],
@@ -302,6 +311,15 @@ class CandidatePool:
             and bool(expiring)
             and all(evaluated_at > value for value in expiring)
         )
+        contribution_refs = tuple(
+            sorted(
+                {
+                    item.discovery.contribution_ref
+                    for item in contributions
+                    if item.discovery.contribution_ref is not None
+                }
+            )
+        )
         return CandidatePoolEntry(
             symbol=symbol,
             sources=sources,
@@ -320,6 +338,7 @@ class CandidatePool:
             in_grace=in_grace,
             pinned=pinned,
             active_episode=active_episode,
+            contribution_refs=contribution_refs,
         )
 
     @staticmethod

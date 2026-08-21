@@ -1,0 +1,78 @@
+{
+  "artifact_id": "price-coverage-scan-segment-v1-2026-08-21-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "configuration_binding": {
+    "binding_kind": "COVERAGE_SCAN_CONFIGURATION",
+    "scan_configuration": {
+      "artifact_id": "price-coverage-scan-configuration-v1-2026-08-21-r1",
+      "canonical_sha256": "16de2310f21fef0acb066f719227e5260539debab2b3647a18296e7802bfc887"
+    }
+  },
+  "execution_lock": {
+    "formal_coverage_audit_allowed": false,
+    "holdout_allowed": false,
+    "outcome_generation_allowed": false,
+    "population_freeze_allowed": false
+  },
+  "job": {
+    "job_id": "dataset-download-f914feaddea04e37b3cbdcfce2b0179b",
+    "request_sha256": "db64dc6741df8a228c8a6550823cb280de18caabdf5525bd9c704dc333e2a9b9",
+    "target_count": 2738,
+    "universe_selection": "ALL_CURRENT"
+  },
+  "legacy_empty_revalidation": {
+    "initial_pending_count_at_r1_configuration_snapshot": 72,
+    "policy": "REOBSERVE_FROM_EARLIEST_LEGACY_EMPTY_BEFORE_NEW_TARGETS",
+    "remaining_pending_count_at_r1_boundary": 0,
+    "result": "ALL_R1_SCOPE_LEGACY_EMPTY_ROWS_REOBSERVED_UNDER_R1_CONTINUATION_POLICY"
+  },
+  "metadata_snapshot": {
+    "canonical_projection_fields": [
+      "target_index",
+      "symbol",
+      "market",
+      "bar_count",
+      "observation_status",
+      "error_message",
+      "observed_at"
+    ],
+    "checkpoint_metadata_sha256": "778b8218a40b22edfe1d664c3ee902aeb8b26bf70a5137036907fa5d2e9e0d7b",
+    "first_observed_at": "2026-08-21T09:52:11.722363+08:00",
+    "last_observed_at": "2026-08-21T10:44:39.556130+08:00",
+    "market_status_counts": {
+      "TPEX": {
+        "NON_EMPTY_SUCCESS": 52,
+        "PRICE_DATA_UNAVAILABLE": 7
+      },
+      "TWSE": {
+        "NON_EMPTY_SUCCESS": 207,
+        "PRICE_DATA_UNAVAILABLE": 1
+      }
+    },
+    "observation_count": 267,
+    "observation_status_counts": {
+      "NON_EMPTY_SUCCESS": 259,
+      "PRICE_DATA_UNAVAILABLE": 8
+    },
+    "payloads_or_price_values_read": false
+  },
+  "registered_at": "2026-08-21T10:51:00+08:00",
+  "safe_pause_boundary": {
+    "event_code": "RATE_LIMITED",
+    "job_status": "PAUSED",
+    "no_partial_partition_written": true,
+    "next_target_index": 678,
+    "observed_at": "2026-08-21T10:44:50.180685+08:00",
+    "retry_symbol": "2101"
+  },
+  "schema_version": "price_coverage_scan_segment_manifest_v1",
+  "segment": {
+    "ordinal": 1,
+    "segment_id": "coverage-scan-r1",
+    "target_index_inclusive_end": 677,
+    "target_index_inclusive_start": 411,
+    "target_index_semantics": "ORIGINAL_JOB_REQUEST_ORDER",
+    "target_count": 267
+  },
+  "status": "SEALED_AT_TYPED_RATE_LIMIT_SAFE_PAUSE_NOT_FINAL_COVERAGE"
+}
