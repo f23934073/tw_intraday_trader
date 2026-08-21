@@ -50,6 +50,8 @@ python3 -m dashboard
 
 瀏覽器開啟 `http://127.0.0.1:8000`。首頁預設是「市場總覽」：先看候選數、資料健康、待處理委託與已成交持倉，再選取候選股查看完整評估。左側功能欄可收合成圖示列；手機版會變成可滑出的導覽。候選清單仍是單次掃描快照，只有按下「重新掃描」才會再次執行全市場掃描。選取候選股後，預設顯示 1 日來源 Kbar，也可切換 5 日、20 日或 3 月；3 月日 K 額外顯示 MA5／MA20／MA60、成交量與區間高低點。歷史資料只會在選取該股票時向後端查詢；長週期會由後端分段取得，避免超過資料來源的單次 Kbar 查詢限制。
 
+右上角會每 60 秒讀取目前登入連線的 Shioaji 流量狀態；只有流量已達上限時，才會顯示紅色的「Shioaji 流量已超過」警示。這項檢查不會額外呼叫 Snapshot 或 Kbar 行情 API，MockProvider 也不會顯示警示。
+
 ### 台指期夜盤盤前情境
 
 市場總覽會另外顯示「台指期夜盤」panel。後端依 versioned TAIFEX calendar 找出下一個一般交易日與實際夜盤窗口；例如星期一使用前一個交易日 15:00 到隔日 05:00，不會把星期日當成夜盤。2026 calendar artifact 的資料狀態截至 2026-08-19，包含年度休市日與 2026-07-10 臨時休市；超出覆蓋年度時會回傳 `UNAVAILABLE`，不使用 weekday 猜測。
@@ -97,11 +99,89 @@ MOMENTUM_DASHBOARD_WS_MAX_CLIENTS=32
 
 每檔候選使用一對 Tick／BidAsk 訂閱，最多同時評估 100 檔。超過容量、尚未收到完整行情或訂閱尚未確認的候選仍會出現在清單中，但會標示無法評估原因，絕不顯示為 0 分。若即時 Shioaji 資料未配置或連線失敗，畫面會直接顯示「即時資料不可用」，不會退回固定 Replay 資料。Evidence Score 是規則證據，不是漲停機率，也不是買進或下單指令。
 
-左側的「模擬下單」可建立本機紙上限價委託；「委託」可查看已送出、成交、取消或拒絕的紀錄；「持倉」只顯示由已成交模擬委託建立的股票與其平均成交價、最新成交、買一／賣一、市值和損益。這些功能會開啟整頁工作區；瀏覽器每 2 秒讀取一次本機投影，不會因畫面更新而輪詢 Shioaji snapshot 或帳務 API。
+左側的「模擬下單」可建立本機紙上限價委託；「委託」可查看已送出、成交、取消或拒絕的紀錄；「持倉」只顯示由已成交模擬委託建立的股票與其平均成交價、最新成交、買一／賣一、市值和損益。這些功能會開啟整頁工作區；瀏覽器在初次快照後連線 `/ws/simulation/projection`，後端每 250ms 檢查一次內存投影，價格、買一／賣一或損益改變時就透過 WebSocket 推送。WebSocket 斷線期間才每 2 秒讀取 HTTP 投影作為備援；這兩種畫面傳輸都不會輪詢 Shioaji snapshot 或帳務 API。
 
 這個功能是 **LOCAL_PAPER_SIMULATION**：預設虛擬現金為 1,000 萬元，只支援多頭整張限價單（1 張＝1,000 股），不計手續費或稅金。使用 `PROVIDER=shioaji` 時，後端只對持倉與尚未成交委託動態訂閱 Tick＋BidAsk；買進以賣一、賣出以買一判斷並作為本機模擬成交價，Tick 用來更新持倉市值與未實現損益。每檔使用兩個行情訂閱，程式最多允許同時監控 100 檔。若使用 MockProvider，則保留 snapshot 立即撮合，方便離線開發與測試。
 
-所有委託與持倉只存在此 Web process 的記憶體，重啟後會清空。Shioaji 登入明確使用 `subscribe_trade=False`，沒有啟用憑證、註冊委託 callback 或呼叫下單 API；因此它仍不是 Shioaji Simulation 帳戶，也不會送出任何真實券商委託。
+委託會經過 `PENDING`、`PARTIALLY_FILLED`、`FILLED`、`CANCELLED`、`EXPIRED` 或 `RECOVERY_REQUIRED` 等明確狀態。最優一檔量可限制每次本機成交量；未成交餘量會保留，逾時取消或到期後只能建立有次數上限的 successor order。timeout、expiry 與恢復異常會顯示在模擬工作區。Shioaji 登入明確使用 `subscribe_trade=False`，沒有啟用憑證、註冊委託 callback 或呼叫下單 API；因此它仍不是 Shioaji Simulation 帳戶，也不會送出任何真實券商委託。
+
+LOCAL_PAPER Journal 預設使用明確的 `memory` adapter。若要保存 command、risk decision、fill、rejection、cancel 與 projection checkpoint，可安裝 `postgres` extra 並設定：
+
+```bash
+TRADING_JOURNAL_BACKEND=postgresql
+DATABASE_URL=postgresql://user:password@127.0.0.1:5432/tw_intraday_trader
+```
+
+現有環境在過渡期間也相容 `PostgreSQL_DSN`。啟動時會套用 forward-only migrations，資料表位於 `trading` logical schema，runtime 使用 bounded connection pool；資料庫無法連線、migration 或 health check 失敗時不會退回 memory 接單。runtime 使用固定的 checkpointed LOCAL_PAPER session，會從 Journal 驗證並恢復現金、持倉歸屬、委託狀態、未成交保留量、冪等識別、每日開盤權益基準及 lifecycle alerts；已核准但缺少 simulator acknowledgement 的命令會以 `RECOVERY_REQUIRED` fail closed，不會自動重送。quote cache 不會偽造恢復，重啟後仍須等待新的 Tick／BidAsk。若保留預設 `memory` adapter，資料只存在目前 process，不能宣稱跨 process 恢復。
+
+Phase 5 的 operator UAT 不允許 memory fallback。請把一次性測試資料庫填入
+`TEST_POSTGRES_DSN`，再執行：
+
+```bash
+TEST_POSTGRES_DSN=postgresql://... \
+  .venv/bin/python scripts/run_phase5_paper_sell_uat.py
+```
+
+runner 會固定驗證 ownership 拒賣、stale BidAsk、SELL rejection、timeout/retry、
+partial fill、13:30 reconciliation，以及以新 PostgreSQL connection 重建三次 runtime
+後的持倉、掛單、reservation、冪等與 alert 一致性。
+
+### 策略模擬意圖
+
+策略程式可把一筆已版本化的 BUY 或 SELL 意圖送到
+`POST /api/simulation/strategy-intents`。每筆意圖會先寫入本機 Journal，再以
+`STRATEGY_AUTOMATED` origin 通過與手動委託相同的 RiskGate 與
+`SimulationService`；相同 `intent_id` 重送不會重複成交，同一識別碼若改變內容則會
+fail closed。成交、持倉與損益會直接出現在既有「委託」與「持倉」工作區。
+
+請分別送出 entry 與 exit 意圖，讓實際行情決定每張限價單何時成交。以下是 MockProvider
+可重現的最小閉環；先以 `PROVIDER=mock .venv/bin/python -m dashboard` 啟動，並把
+`signaled_at` 換成執行當日的 Asia/Taipei 時間：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/simulation/strategy-intents \
+  -H 'Content-Type: application/json' \
+  -d '{"intent_id":"orb-entry-3231-demo","strategy_id":"opening_range_breakout","strategy_version":"opening_range_breakout_entry_v1","symbol":"3231","side":"BUY","lots":1,"limit_price":"106","signaled_at":"2026-08-21T10:30:00+08:00"}'
+
+curl -X POST http://127.0.0.1:8000/api/simulation/strategy-intents \
+  -H 'Content-Type: application/json' \
+  -d '{"intent_id":"orb-exit-3231-demo","strategy_id":"opening_range_breakout","strategy_version":"opening_range_breakout_exit_v1","symbol":"3231","side":"SELL","lots":1,"limit_price":"105","signaled_at":"2026-08-21T10:31:00+08:00"}'
+```
+
+這個入口仍只負責執行明確的策略意圖；Candidate 與 Buy Score 不會直接變成委託。
+
+### 常駐自動模擬策略
+
+「模擬下單」工作區另提供必須人工啟動的 Momentum 自動模擬控制器。啟動前必須明確
+輸入停損百分比、停利百分比與每日最大虧損金額；系統不提供未經校準的預設風險值。
+它只接受後端 Momentum Shadow 同時證明即時來源為 live、連線為 `RUNNING`、資料健康
+為 `HEALTHY`、加速訊號已觸發，而且 Tick 價格仍在五秒新鮮度內的候選。Candidate
+快照分數只用於候選訂閱優先順序，不是買進條件。
+
+第一版固定一張、最多一個持倉、每次啟動最多一筆進場。TWSE 交易日 09:00～13:20
+可進場；持倉達到人工輸入的停損或停利時，會以五秒內的最新買一送出全數本機模擬
+賣單，13:25 起也會嘗試強制出場。缺少 reviewed calendar、Mock／Snapshot 模式、行情
+不健康、資料過期、多持倉、既有掛單或達每日虧損上限時都會 fail closed，原因會顯示
+在工作區狀態。
+
+啟動方式：
+
+```bash
+PROVIDER=shioaji .venv/bin/python -m dashboard
+```
+
+開啟「模擬下單」，填入三個風險參數後按「啟動自動模擬」。也可透過
+`GET /api/simulation/automated-strategy` 讀取狀態、
+`POST /api/simulation/automated-strategy/start` 啟動，以及
+`POST /api/simulation/automated-strategy/stop` 停止。停止只會阻止新的自動意圖，不會
+擅自清除既有持倉；Dashboard 重啟後控制器固定為停止。若 Journal 使用 PostgreSQL，
+本機模擬委託、持倉、保留量與交易日風控基準會恢復，但仍須由操作人重新啟動控制器；
+預設 memory adapter 則不提供跨 process 恢復。
+
+自動控制器只把意圖送入既有 `Journal → RiskGate → SimulationService` 路徑；沒有
+CA、券商委託 callback、`place_order` 或 `subscribe_trade=True`。目前撮合支援最優一檔量
+限制下的部分成交，但仍不計手續費、證交稅、滑價與真實排隊順位，所以適合策略流程與
+多日 paper evidence，不代表可直接升級為真實交易。
 
 ---
 
@@ -137,12 +217,35 @@ python scripts/derive_backtest_daily_dataset.py \
 
 資料 cadence 依每個 `(symbol, session_date)` 的 timestamp 間距推導，不再用整個市場單日總筆數猜測。一分鐘資料仍可有缺 bar，但需要完整 09:00～09:14 的 ORB 當日才會產生有效 opening range；indicator 全程使用 `Decimal`，每個 session 重新 warm-up。舊的 `backtest-engine-v1` Run 仍可用原版本重試，新 Run 預設使用 v2。
 
-本機預設把資料集與歷史結果存於 `data/backtest/`（SQLite）；平台部署可設定 `BACKTEST_DATABASE_URL=postgresql://...` 並安裝 PostgreSQL extra：
+正式 runtime 預設使用 PostgreSQL 單一 database 的 `backtest` logical schema；可直接設定 `BACKTEST_DATABASE_URL=postgresql://...`，或設定 `BACKTEST_DATABASE_BACKEND=postgresql` 來沿用 `DATABASE_URL`／`POSTGRESQL_DSN`／舊版 `PostgreSQL_DSN`。未提供 DSN 時會 fail closed，不會自動建立新的 SQLite 權威；SQLite adapter 僅供顯式 local dev 與測試：
 
 ```bash
 python3 -m pip install -e ".[postgres,dev]"
 BACKTEST_DATABASE_URL='postgresql://user:password@host:5432/tw_backtest' python3 -m dashboard
 ```
+
+既有 SQLite 搬遷採唯讀、可重跑流程；工具會保留原檔，將 stale `RUNNING` job 在目的端轉為可續跑的 `PAUSED`，並在十張表的筆數與內容 digest 全部一致後才回報成功：
+
+```bash
+.venv/bin/python scripts/migrate_backtest_sqlite_to_postgres.py \
+  --sqlite data/backtest/backtest.sqlite3
+```
+
+驗證通過後才設定 `BACKTEST_DATABASE_BACKEND=postgresql`。若已另有 PostgreSQL backup／restore 能力，可以移除舊 SQLite；不可讓 SQLite 與 PostgreSQL 同時 claim 新工作。
+
+原子策略平台的 Template、Draft、immutable Version、Publish event/state/outbox、Publish operation 與 exact-version Strategy Set 固定使用 PostgreSQL；這些新 mutation 不支援 SQLite，也不會在 PostgreSQL unavailable 時 fallback。Phase 1 尚未開放 Web mutation UI/API。
+
+PostgreSQL migration、row lock 與 concurrent Publish 測試必須使用明確的專用測試資料庫。測試 fixture 會刪除該資料庫中的 `backtest` schema，請勿填入開發或正式環境 DSN：
+
+```bash
+python3 -m pip install -e ".[dev,postgres]"
+TEST_POSTGRES_DSN='postgresql://user:password@127.0.0.1:5432/tw_intraday_trader_test' \
+  .venv/bin/python -m pytest -q \
+  tests/test_strategy_migrations.py \
+  tests/test_strategy_publish_idempotency.py
+```
+
+沒有 `TEST_POSTGRES_DSN` 時，上述 PostgreSQL integration tests 會顯示明確 skip；一般 domain／atomic strategy／backtest regression tests 仍會執行，不會改用 SQLite 冒充 PostgreSQL contract evidence。
 
 ### 可續傳的歷史資料下載 script
 
@@ -173,7 +276,7 @@ Downloader 會把 Shioaji Kbar 查詢限制在每 10 秒最多 40 次，低於�
 
 舊版 Downloader 已經寫入「資料來源未回傳 Kbar」的工作也可以直接使用新版 `--resume`。新版會保留第一個 0 根異常以前的成功資料，並重抓該異常與後續尾段；不需要刪除資料庫，也不要建立新的 job。不同商品可能因 Provider 可提供的歷史範圍而同時只回傳約一年資料，因此不會只憑共同起始日把非零分區判定為損壞。
 
-SQLite 預設寫入 `data/backtest/backtest.sqlite3`；若有設定 `BACKTEST_DATABASE_URL=postgresql://...`，partition 與工作進度會寫入 PostgreSQL。全部完成後，script 會以 streaming 方式封存 `bars.jsonl`／`manifest.json`、驗證 SHA-256，並在 `backtest_datasets` 登記為 `READY`；回到網頁按「重新整理」即可選取。
+SQLite 預設寫入 `data/backtest/backtest.sqlite3`；若有設定 PostgreSQL backend 或 `BACKTEST_DATABASE_URL=postgresql://...`，partition 與工作進度會寫入 PostgreSQL 的 `backtest` schema。全部完成後，script 會以 streaming 方式封存 `bars.jsonl`／`manifest.json`、驗證 SHA-256，並在 `backtest_datasets` 登記為 `READY`；回到網頁按「重新整理」即可選取。
 
 不要同時執行網頁的「建立資料集」與 CLI 全市場下載，否則不同 process 無法共用同一個頻率限制器，也會重複消耗 Provider 額度。舊版已經在執行中的網頁工作沒有資料庫 partition，無法把其中途進度轉成新的 `--resume` 工作；請先在網頁取消，再啟動或接續 CLI。
 
@@ -193,9 +296,9 @@ BACKTEST_INCREMENTAL_SYNC_OVERLAP_DAYS=1
 BACKTEST_ACTIVE_JOB_STALE_MINUTES=30
 ```
 
-這是應用程式內排程，因此電腦與 Dashboard process 必須運行。SQLite 適合目前單一 Dashboard process；若平台部署多個 Web process，應只讓一個 process 啟用排程，其他 process 設定 `BACKTEST_INCREMENTAL_SYNC_ENABLED=false`。
+這是應用程式內排程，因此電腦與 Dashboard process 必須運行。目前正式 runtime 使用 PostgreSQL；SQLite 僅供顯式 dev/test。若平台部署多個 Web process，應只讓一個 process 啟用排程，其他 process 設定 `BACKTEST_INCREMENTAL_SYNC_ENABLED=false`。
 
-其他可用設定：`BACKTEST_ENABLED`（預設 `true`）、`BACKTEST_DATA_DIR`（預設 `data/backtest`）、`BACKTEST_DATABASE_URL` 與 `BACKTEST_WORKERS`。完整驗證可先執行：
+其他可用設定：`BACKTEST_ENABLED`（預設 `true`）、`BACKTEST_DATA_DIR`（預設 `data/backtest`）、`BACKTEST_DATABASE_BACKEND`、`BACKTEST_DATABASE_URL` 與 `BACKTEST_WORKERS`。完整驗證可先執行：
 
 ```bash
 python3 -m pytest -q tests/test_backtest_core.py tests/test_backtest_api.py

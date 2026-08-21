@@ -17,6 +17,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+build/
 
 # IDE / Editor files
 .vscode/
@@ -31,4 +32,5 @@ shioaji.log
 
 # Local immutable historical backtest datasets, SQLite results and temporary seals
 data/backtest/
+data/finmind_sponsor/
 data/premarket/
