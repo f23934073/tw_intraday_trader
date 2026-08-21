@@ -17,6 +17,7 @@ from market_data.events import (
     BidAskEvent,
     EventEnvelope,
     InstrumentReference,
+    MARKET_EVENT_SCHEMA_VERSION,
     MarketEventSource,
     MarketStreamKind,
     TickEvent,
@@ -29,7 +30,6 @@ from market_data.order_book_store import OrderBookStore
 
 
 REPLAY_SCHEMA_VERSION = "momentum-replay-v1"
-MARKET_EVENT_SCHEMA_VERSION = "market-event-v1"
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 

@@ -1,0 +1,36 @@
+{
+  "schema": "clock-postflight-evidence-v1",
+  "captured_at": "2026-08-21T01:40:12Z",
+  "preflight_evidence": "clock_preflight-20260821T093332+0800.json",
+  "session_id": "hqual-20260821T093358-841c8ca7",
+  "ntp_server": "time.apple.com",
+  "post_capture_offset_seconds": 0.009870,
+  "post_capture_uncertainty_seconds": 0.053092,
+  "clock_result": "STABLE_NO_SYSTEMATIC_SOURCE_AHEAD",
+  "market_event_observation": {
+    "event_count": 638,
+    "source_ahead_count": 0,
+    "source_minus_received_min_ms": -177.551,
+    "source_minus_received_p50_ms": -43.383,
+    "source_minus_received_p95_ms": -27.999,
+    "source_minus_received_p99_ms": -23.568,
+    "source_minus_received_max_ms": -18.370
+  },
+  "qualification_result": {
+    "requested_case": "A",
+    "classification": "CASE_B",
+    "status": "NOT_PASSED",
+    "exact_replay": "PASS",
+    "accepted": 637,
+    "rejected": 1,
+    "incidents": 0,
+    "reason": "NATURAL_BIDASK_LATE_DELIVERY"
+  },
+  "policy_boundary": {
+    "freshness_threshold_changed": false,
+    "market_event_contract_changed": false,
+    "source_clock_skew_logic_changed": false,
+    "watermark_contract_changed": false,
+    "events_filtered_or_injected": false
+  }
+}

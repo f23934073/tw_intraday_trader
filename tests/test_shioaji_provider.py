@@ -1,6 +1,7 @@
 """Tests for ShioajiProvider's snapshot mapping and batching."""
 
 from datetime import date, datetime, timedelta
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -33,6 +34,91 @@ def make_provider(tse: list[object], otc: list[object], snapshots: list[object])
     return provider
 
 
+def test_stock_contract_readiness_waits_for_automatic_catalog_load():
+    contract = SimpleNamespace(code="2330")
+    responses = iter((None, None, contract))
+    now = [0.0]
+    waits: list[float] = []
+
+    class Stocks:
+        def __getitem__(self, symbol: str):
+            assert symbol == "2330"
+            return next(responses)
+
+    api = SimpleNamespace(
+        Contracts=SimpleNamespace(Stocks=Stocks()),
+    )
+
+    def wait(seconds: float) -> None:
+        waits.append(seconds)
+        now[0] += seconds
+
+    ShioajiProvider._wait_for_stock_contracts(
+        api,
+        timeout_seconds=1.0,
+        poll_seconds=0.1,
+        clock=lambda: now[0],
+        wait=wait,
+    )
+
+    assert waits == [0.1, 0.1]
+
+
+def test_stock_contract_readiness_timeout_is_explicit():
+    now = [0.0]
+    api = SimpleNamespace(
+        Contracts=SimpleNamespace(Stocks={}),
+    )
+
+    def wait(seconds: float) -> None:
+        now[0] += seconds
+
+    with pytest.raises(RuntimeError, match="股票合約目錄未在 0.2 秒內就緒"):
+        ShioajiProvider._wait_for_stock_contracts(
+            api,
+            timeout_seconds=0.2,
+            poll_seconds=0.1,
+            clock=lambda: now[0],
+            wait=wait,
+        )
+
+
+def test_provider_logs_out_when_stock_contract_catalog_never_becomes_ready(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class FakeAPI:
+        def __init__(self) -> None:
+            self.logged_out = False
+
+        def login(self, **_kwargs):
+            return []
+
+        def logout(self) -> None:
+            self.logged_out = True
+
+    api = FakeAPI()
+    fake_shioaji = SimpleNamespace(
+        __version__="1.7.2",
+        Shioaji=lambda **_kwargs: api,
+        ShioajiTimeoutError=RuntimeError,
+    )
+    monkeypatch.setitem(sys.modules, "shioaji", fake_shioaji)
+    monkeypatch.setenv("SHIOAJI_API_KEY", "data-key")
+    monkeypatch.setenv("SHIOAJI_SECRET", "data-secret")
+    monkeypatch.setattr(
+        ShioajiProvider,
+        "_wait_for_stock_contracts",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("catalog timeout")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="catalog timeout"):
+        ShioajiProvider()
+
+    assert api.logged_out is True
+
+
 def test_snapshot_mapping_uses_cumulative_and_reference_fields():
     provider = object.__new__(ShioajiProvider)
     snapshot = SimpleNamespace(
@@ -55,6 +141,25 @@ def test_snapshot_mapping_uses_cumulative_and_reference_fields():
     assert stock.vwap == 104.5
     assert stock.relative_volume == 1.5
     assert stock.market == "TPEX"
+
+
+def test_stock_identity_uses_contract_catalog_without_snapshot_request():
+    contract = SimpleNamespace(code="00909", name="國泰數位支付服務")
+
+    class FakeAPI:
+        def __init__(self) -> None:
+            self.Contracts = SimpleNamespace(Stocks={"00909": contract})
+
+        def snapshots(self, _contracts):
+            raise AssertionError("streaming order admission must not require snapshot")
+
+    provider = object.__new__(ShioajiProvider)
+    provider._api = FakeAPI()
+
+    assert provider.get_stock_identity("00909") == (
+        "00909",
+        "國泰數位支付服務",
+    )
 
 
 def test_market_snapshot_queries_include_tse_and_otc():

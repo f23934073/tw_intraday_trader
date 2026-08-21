@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Callable, Protocol, runtime_checkable
 
@@ -62,6 +63,40 @@ class StreamLifecycleEvent:
             normalized = self.symbol.strip().upper()
             if not normalized or normalized != self.symbol:
                 raise ValueError("lifecycle symbol must be normalized")
+
+
+@dataclass(frozen=True)
+class QualificationBootstrapEvidence:
+    """Provider evidence captured before the qualification Journal boundary."""
+
+    reference: InstrumentReference
+    instrument_name: str
+    security_type: str
+    instrument_source_identity: str
+    captured_at: datetime
+    received_at: datetime
+    prior_session_date: date
+    previous_close: Decimal
+    previous_session_volume_lots: int
+    snapshot_source_identity: str
+
+    def __post_init__(self) -> None:
+        _require_aware(self.captured_at, "bootstrap captured_at")
+        _require_aware(self.received_at, "bootstrap received_at")
+        if self.captured_at > self.received_at:
+            raise ValueError("bootstrap capture cannot follow receipt")
+        for value, name in (
+            (self.instrument_name, "instrument_name"),
+            (self.security_type, "security_type"),
+            (self.instrument_source_identity, "instrument_source_identity"),
+            (self.snapshot_source_identity, "snapshot_source_identity"),
+        ):
+            if not value.strip():
+                raise ValueError(f"{name} must not be empty")
+        if self.previous_close <= 0:
+            raise ValueError("previous_close must be positive")
+        if self.previous_session_volume_lots < 0:
+            raise ValueError("previous_session_volume_lots must be non-negative")
 
 
 MarketEventHandler = Callable[[EventEnvelope], None]

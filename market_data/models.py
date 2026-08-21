@@ -80,3 +80,5 @@ class RealtimeQuoteUpdate:
     last_price: float | None = None
     bid_price: float | None = None
     ask_price: float | None = None
+    bid_volume_lots: int | None = None
+    ask_volume_lots: int | None = None

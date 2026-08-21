@@ -80,6 +80,210 @@
   the broker/account intake defines read-only authorization and timing metadata
   without creating an adapter.
 
+### Live discovery capture (2026-08-20 09:05 Asia/Taipei)
+
+- A 120-second data-only capture for `2330` was deliberately labelled
+  `discovery` / `continuous_discovery`; it is not evidence that the symbol
+  belongs to any approved liquidity tier. The immutable artifact is
+  `research/captures/freshness_quote/quote_20260820T090534+0800.json`
+  (SHA-256 `17dd2ead6a7ad17b2c389f4e263104c756096c5dd4131c45a7a6143f438b5e97`,
+  263,563 bytes, schema `freshness_calibration_quote_v1`).
+- Digest inspection passed. It holds 494 observations: 474 BidAsk and 20 Tick,
+  with no missing stream kind, no missing market event timestamp, no callback
+  monotonic regression, and no captured callback error.
+- Lifecycle provenance confirms a successful paired acknowledgement: `TIC` and
+  `QUO` were both acknowledged for `TSE/2330`, after which all observations
+  record `CONNECTED` / `ACTIVE`. Cleanup then recorded an explicit
+  `DISCONNECTED` / `INACTIVE` transition.
+- The source event timestamp cannot yet be used as a transport-latency clock:
+  353 of 474 BidAsk and all 20 Tick observations have a negative
+  event-to-callback value. Raw values are retained for audit; they are not
+  clamped, discarded, or turned into a freshness threshold.
+- A post-capture, read-only NTP sample against `time.apple.com` selected an
+  offset of `+58.825 ms +/- 53.094 ms`. It establishes limited host-clock
+  provenance without changing the system clock. It does not establish the
+  exchange/provider event-clock offset, so it cannot correct the negative raw
+  values or qualify event-to-callback latency as an SLA metric.
+- The capture establishes that the callback-to-store measurement seam works
+  during the continuous session. It remains insufficient for every threshold:
+  it has one discovery-labelled symbol, one session window, no independently
+  verified clock relation, and no broker/account read evidence. Consequently
+  `FreshnessPolicyV1` remains `BLOCKING_EVIDENCE` and no candidate is emitted.
+
+### Qualified cohort selection (in progress)
+
+- The user authorized continuation during the regular session. This permits
+  collection and evidence provenance work only; it does not authorize Portfolio
+  Phase 1, broker account reads, or execution APIs.
+- The official TWSE historical-data page documents a daily individual-security
+  trading value/volume dataset available from 2010-01-04. The selection path is
+  therefore to snapshot the prior completed-session dataset, record its source
+  date/digest and a predeclared percentile rule, then freeze the resulting
+  high/mid/low symbols in the cohort manifest before any qualified capture.
+- This replaces reputation-based labels with auditable completed-session
+  evidence. It must remain separate from current-session callback counts so
+  selection cannot be altered after viewing capture outcomes.
+- Downloaded the official TWSE `MI_INDEX` response for 2026-08-19 into an
+  ephemeral inspection file. It reports `stat=OK`, contains a 1,377-row
+  `Daily Quotes(All(no Warrant & CBBC & OCBBC))` table with explicit
+  `Security Code`, `Trade Volume`, `Transaction`, and `Trade Value` fields,
+  and has SHA-256
+  `6e4105775abb4a5517706a47ee803e42f0f6063a9aea5e894a9c089a158e0c19`.
+- The first generic `data` lookup was empty because this response is a
+  multi-table schema rather than a single-table schema. The selection parser
+  will target the named Daily Quotes table and validate its headers before
+  calculating ranks; it will not silently use an index or market-summary table.
+- The verified selection universe is now fixed as: four-digit numeric security
+  codes whose first digit is `1`–`9`, with positive 2026-08-19 `Trade Value`.
+  It yields 1,086 eligible rows and excludes 291 other rows from the 1,377-row
+  Daily Quotes table. The completed-session `Trade Value` nearest-rank anchors
+  are p10 `1530` (NT$842,314), p50 `6863` (NT$18,430,437), and p90 `2886`
+  (NT$1,184,984,848).
+- These anchors are selected solely from the downloaded completed-session
+  snapshot and before any qualified capture outcome is examined. They will be
+  persisted as `low`, `mid`, and `high` respectively in the cohort manifest;
+  this is an observation-cohort classification, not a statement about a stale
+  threshold, tradeability, or Portfolio risk policy.
+- Frozen `cohort_manifest_2026-08-20_twse_2026-08-19.json` at
+  2026-08-20T09:14:51+08:00 with `2886:high`, `6863:mid`, and `1530:low`;
+  its source digest matched the inspected TWSE snapshot. The operational
+  collection windows are opening 09:00–09:30, continuous 09:30–13:00, and
+  close 13:00–13:30 Asia/Taipei. They segment evidence only, not a stale
+  threshold or exchange-rule claim.
+- A read-only NTP preflight immediately before the first qualified capture
+  selected `+54.431 ms +/- 49.857 ms` from `time.apple.com`. It is host-clock
+  provenance only and does not make source event timestamps a latency SLA.
+- The frozen 10-minute opening capture started at 09:16:16 +08:00 and wrote
+  `quote_20260820T091616+0800.json` with 1,048 observations and all six
+  `symbol × {Tick,BidAsk}` groups present. Initial counts are: high 2886
+  (816 BidAsk, 180 Tick), mid 6863 (24 BidAsk, 2 Tick), and low 1530
+  (23 BidAsk, 3 Tick). Integrity/lifecycle inspection remains pending.
+- Integrity inspection passed (SHA-256
+  `816e35617c3efa3ff555f91ae24cb4ba242986ccbc8bedac100cd875708ac572`,
+  539,087 bytes) and each symbol received `TIC` plus `QUO`. However every
+  persisted observation is `CONNECTED/PENDING`, so this artifact is **not
+  qualified evidence** under the existing fail-closed rule.
+- Root cause is contained in the calibration collector: after one symbol became
+  `ACTIVE`, the aggregate state was still `PENDING` while other symbols awaited
+  acknowledgement; the lifecycle transition helper then broadcast that aggregate
+  `PENDING` back to every per-symbol state, erasing the completed acknowledgement.
+  This is an instrumentation bug, not a market-data failure. Preserve the raw
+  artifact, repair the state propagation with a multi-symbol regression test,
+  then recapture using the unchanged frozen manifest.
+- The isolated repair leaves global lifecycle transitions intact but prevents an
+  aggregate `PENDING` transition from rewriting per-symbol states. Reconnecting
+  now explicitly resets both acknowledgement parts and per-symbol states to
+  `UNKNOWN`. The multi-symbol regression passes: a fully acknowledged symbol
+  remains `ACTIVE` while another symbol is still `PENDING`, then both become
+  `ACTIVE` after their own paired acknowledgement.
+- The 70-second opening recapture
+  `quote_20260820T092834+0800.json` passed schema/digest inspection
+  (SHA-256 `65edf0a391207fa69953e9440fb1e14a3fc4baa306a61f70764063b8241c110b`,
+  63,606 bytes). Its three paired acknowledgements are present and every
+  observation is `CONNECTED/ACTIVE`: high 2886 has 95 BidAsk plus 20 Tick,
+  and mid 6863 has 2 BidAsk. It is valid partial evidence, but **not complete
+  opening coverage** because mid Tick and both low 1530 stream groups had no
+  callback in the 70-second interval. Missing market activity is a coverage
+  result, never synthetic stale evidence.
+- The 15-minute continuous capture
+  `quote_20260820T093046+0800.json` is the first complete qualified cohort
+  artifact: schema/digest passed (SHA-256
+  `7451e75b3a3fe26e750844e9e902a7aeb5e62ffe84d4276bacc7e4f24ddccad1`,
+  779,582 bytes), every configured `symbol × {Tick,BidAsk}` group has a
+  callback, all 1,513 rows are `CONNECTED/ACTIVE`, all three symbols have
+  `TIC` plus `QUO`, and no callback error or monotonic regression occurred.
+- Its observed cadence validates a key contract premise without selecting a
+  threshold: high 2886 has 1,203 BidAsk / 251 Tick updates (maximum gap about
+  8.025 seconds); mid 6863 has 46 / 4 (about 166.857 / 124.389 seconds); low
+  1530 has 8 / 1 (about 164.827 seconds / no Tick gap). Thus a quiet Tick can
+  coexist with an active, paired-acknowledged subscription and must not alone
+  be treated as an executable-data failure.
+- Source-clock skew remains material in every cohort/stream, and the measured
+  callback-to-store timing is only the calibration in-memory buffer. One date,
+  continuous window coverage alone, uncalibrated source event time, and the
+  independent broker/account evidence gap keep all eight thresholds unset.
+- A one-time task heartbeat is active for the frozen 13:00–13:30 close window.
+  Its work scope is limited to the same immutable quote cohort and artifact
+  review; scheduling does not authorize broker/account reads, change the cohort,
+  select a threshold, or begin Portfolio Phase 1.
+- Cross-artifact quality profiling confirms the two rejected/partial artifacts
+  remain segregated: all four files have no duplicate
+  `(symbol, stream_kind, callback_received_monotonic_ns)` keys, no receipt
+  outside the respective capture range, and no callback error. Only
+  `quote_20260820T093046+0800.json` has complete six-group, all-ACTIVE qualified
+  cohort coverage; the durable campaign ledger records each disposition.
+- A second independent continuous capture began at approximately 09:55 +08:00
+  under the unchanged manifest after a read-only NTP preflight (selected host
+  offset about `+47.647 ms +/- 48.080 ms`). The capture runner returned its
+  control channel before its child process completed; two later retry attempts
+  were therefore stopped before completion, while the earliest process remains
+  the sole retained sample. This is collection-process provenance only, not a
+  data-quality result or threshold candidate.
+- The retained repeat completed as
+  `quote_20260820T095444+0800.json` (SHA-256
+  `7c937d32d3fc48f46307b880d2feda58e3f1d5449b020f2da1ad12fdd339638c`,
+  834,811 bytes). It has 1,621 all-`CONNECTED/ACTIVE` observations, paired
+  acknowledgement for every cohort symbol, complete six-group coverage, and
+  zero callback errors, monotonic regressions, duplicate composite callback
+  keys, or out-of-range receipts.
+- The independent repeat strengthens the non-threshold finding: low 1530's
+  longest Tick gap is 488.363 seconds and mid 6863's is 210.941 seconds despite
+  continued paired-active subscriptions and BidAsk callbacks. Neither this nor
+  the earlier continuous sample makes Tick silence a valid stale/executable
+  failure signal. Source clock skew persists (879/1,621 negative raw
+  event-to-callback measurements), so all quote values remain unset; broker /
+  account evidence remains a separate, uncollected blocker.
+- The third non-overlapping continuous artifact
+  `quote_20260820T101439+0800.json` is also qualified (SHA-256
+  `181a59b0d9fbd378a70b638f659b0d854a8e5e74b29dd6c2cceeedb321accd6f`,
+  963,235 bytes, 1,872 observations): paired acknowledgement, six-group
+  coverage, all ACTIVE rows, zero callback errors, zero monotonic regressions,
+  zero duplicate composite keys, and zero receipts outside its capture range.
+  Its low/mid Tick counts are only 1/3 despite active BidAsk callbacks (20/26).
+- Across the three complete continuous samples, mid Tick gaps span
+  124.389–210.941 seconds; low has two single-Tick samples and one 488.363-second
+  observed Tick gap. The third artifact's lower negative raw event-to-callback
+  count (89/1,872) is variation, not proof of clock alignment. It reinforces the
+  separate requirements for calendar/session coverage, source-clock disposition,
+  and a broker/account evidence source; it does not change any threshold status.
+- A pre-close cross-artifact integrity profile now covers all six immutable
+  files: 6,665 observations, zero within- or cross-artifact duplicate composite
+  callback keys, zero callback receipts outside their capture ranges, and zero
+  callback errors. The known 09:16 `CONNECTED/PENDING` artifact remains the
+  sole lifecycle-rejected artifact; it is retained but excluded. These are
+  collection-integrity checks only and do not resolve source-clock, session,
+  threshold, or broker/account evidence gates.
+- Reviewer disposition: the morning continuous campaign is formally qualified
+  evidence and can freeze the qualitative invariant that executable quote health
+  is **not** Tick freshness alone. It rejects `no Tick for N -> BOOK_STALE` and
+  supports a future connection/subscription-plus-BidAsk health model. This is
+  not a duration threshold, RiskGate implementation, or Phase 1 authorization.
+  The full evidence-status ledger is preserved in
+  `research/freshness_calibration/reviews/2026-08-20_morning_reviewer_disposition.md`.
+- Execution order is now explicitly frozen: today's close quote evidence, then
+  cross-session quote evidence, then source-clock disposition, then a separate
+  broker/account campaign only with explicit read-only authorization. No
+  migration, Portfolio core, RiskGate freshness code, provisional threshold, or
+  broker/account endpoint call may occur before `FreshnessPolicyV1` is frozen.
+- The scheduled 13:01 close capture completed as
+  `quote_20260820T130116+0800.json` (SHA-256
+  `1994292cc3c9868952567283f9dc7b02a8ada8dca03a05e7c131872c8e3aed70`,
+  2,092 all-ACTIVE observations). Its paired acknowledgements, schema/digest,
+  duplicate/range, callback-error, and monotonicity checks pass. It is partial
+  close evidence only: low 1530 has eight BidAsk callbacks but zero Tick
+  callbacks, and the 13:01–13:16 interval does not reach the 13:30
+  market/session boundary. The result supports the existing Tick-only model
+  rejection but leaves close/session-boundary evidence insufficient.
+- The 2026-08-21 cross-session close artifact
+  `quote_20260821T130144+0800.json` (SHA-256
+  `d00da28a50d2df53fa120c43a1aebf91cfa1baecca91705f590067898977469e`)
+  passed schema/digest, paired acknowledgement, all-ACTIVE, error, monotonic,
+  duplicate, and receipt-range checks for 1,497 observations. It repeats the
+  5/6 callback coverage: 1530 has one BidAsk callback and zero Tick callbacks,
+  while high/mid have both streams. This is partial cross-session early-close
+  evidence that further rejects Tick-only executable health; it does not
+  establish a BidAsk timeout or observe the 13:30 boundary.
+
 
 ## 2026-08-19 — Basic strategy expansion implementation
 

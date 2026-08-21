@@ -223,6 +223,14 @@ class LiveQuoteFreshnessCapture:
                 connection_state = ConnectionState.DISCONNECTED
                 subscription_state = SubscriptionState.UNKNOWN
             elif event_code == 12:
+                self._acknowledged_parts = {
+                    configured_symbol: set()
+                    for configured_symbol in self.symbol_tiers
+                }
+                self._subscription_states = {
+                    configured_symbol: SubscriptionState.UNKNOWN
+                    for configured_symbol in self.symbol_tiers
+                }
                 connection_state = ConnectionState.UNKNOWN
                 subscription_state = SubscriptionState.UNKNOWN
             elif event_code == 13:
@@ -261,6 +269,7 @@ class LiveQuoteFreshnessCapture:
                 raw_response_code=resp_code,
                 raw_event_code=event_code,
                 raw_info=info,
+                reset_symbol_states=False,
             )
 
     def _record(
@@ -343,10 +352,11 @@ class LiveQuoteFreshnessCapture:
         raw_response_code: int | None,
         raw_event_code: int | None,
         raw_info: str | None,
+        reset_symbol_states: bool = True,
     ) -> None:
         self.connection_state = connection_state
         self.subscription_state = subscription_state
-        if subscription_state in {
+        if reset_symbol_states and subscription_state in {
             SubscriptionState.INACTIVE,
             SubscriptionState.PENDING,
             SubscriptionState.UNKNOWN,

@@ -1,0 +1,48 @@
+{
+  "schema": "clock-preflight-evidence-v1",
+  "captured_at": "2026-08-21T01:33:32Z",
+  "host_timezone": "Asia/Taipei",
+  "ntp_server": "time.apple.com",
+  "purpose": "historical-qualification-case-a-environment-preflight",
+  "policy_boundary": {
+    "freshness_threshold_frozen": false,
+    "market_event_contract_changed": false,
+    "source_clock_skew_logic_changed": false,
+    "watermark_contract_changed": false
+  },
+  "before_correction": {
+    "selected_offset_seconds": 0.159865,
+    "uncertainty_seconds": 0.075152,
+    "status": "SYSTEMATIC_HOST_OFFSET_PRESENT"
+  },
+  "correction": {
+    "network_time_enabled": true,
+    "network_time_server": "time.apple.com",
+    "method": "sntp-clock_settime",
+    "administrator_authorized": true
+  },
+  "after_correction": {
+    "initial_selected_offset_seconds": 0.003214,
+    "initial_uncertainty_seconds": 0.056026,
+    "stability_samples": [
+      {
+        "offset_seconds": -0.007454,
+        "uncertainty_seconds": 0.053810
+      },
+      {
+        "offset_seconds": -0.006338,
+        "uncertainty_seconds": 0.060159
+      },
+      {
+        "offset_seconds": 0.001551,
+        "uncertainty_seconds": 0.053573
+      }
+    ],
+    "status": "SYSTEMATIC_HOST_OFFSET_CLEARED"
+  },
+  "qualification": {
+    "case_a_capture_eligible": true,
+    "decision_basis": "The prior approximately 160 ms systematic host offset is absent across time-separated post-correction samples.",
+    "not_a_freshness_threshold": true
+  }
+}

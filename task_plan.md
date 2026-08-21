@@ -121,6 +121,8 @@ Phase 13 — Freshness Calibration Evidence
 - [x] Complete non-sensitive capture preflight: local CLI/runtime, credential presence only, timezone, artifact integrity, and output readiness.
 - [x] Record SDK lifecycle provenance and require paired Tick/BidAsk acknowledgement before a capture calls its subscription active.
 - [x] Publish a read-only broker/account evidence intake checklist; do not add a broker adapter or call account endpoints.
+- [x] Obtain and validate a prior completed-session official TWSE quote snapshot as the provenance source for cohort selection.
+- [x] Freeze the 2026-08-20 high/mid/low cohort manifest before its qualified captures begin.
 - [ ] Collect and inspect live data-quality evidence segmented by liquidity and session period; record quote versus broker/account collection gaps separately.
 - [x] Produce the initial review report with no threshold candidates and retain `BLOCKING_EVIDENCE`.
 - **Status:** in_progress
@@ -151,6 +153,7 @@ Phase 13 — Freshness Calibration Evidence
 | Treat quote and broker/account freshness as separate evidence campaigns | The approved Phase 0 baseline explicitly prohibits deriving broker/account SLA from quote latency. |
 | Prepare cohort evidence as reviewer-supplied labels, not inferred liquidity facts | The current checkout has no reviewed liquidity ranking data; assigning tiers from reputation would bias the calibration evidence. |
 | Subscribe only held and pending-order symbols | Keeps the stream bounded and avoids turning the dashboard into a full-market realtime scanner. |
+| Complete the Freshness evidence chain before Portfolio Phase 1 | Execute close-window quote evidence, cross-session quote evidence, source-clock disposition, then separately authorized broker/account evidence. Until `FreshnessPolicyV1` is frozen, do not implement migrations, Portfolio core, RiskGate freshness, provisional thresholds, or broker/account reads. |
 
 ## Errors Encountered
 
@@ -167,6 +170,13 @@ Phase 13 — Freshness Calibration Evidence
 | `node --check` cannot parse an `.html` file directly | 1 | Keep Python compilation evidence and validate the extracted inline script with a Node file-read command. |
 | First README patch included an unnecessary second context with a typo | 1 | Applied only the verified historical-backtest paragraph context; unrelated README edits stayed intact. |
 | First Phase 12 completion patch expected an outdated `previous-day premarket` label | 1 | Re-read the live planning block and applied the completion update against the actual `previous-day watchlist` heading. |
+| First qualified multi-symbol quote capture persisted `PENDING` after all paired acknowledgements | 1 | Preserve the raw artifact as rejected evidence; repair aggregate-to-per-symbol lifecycle state propagation and add a multi-symbol regression test before recapture. |
+| Initial automation inspection used an unsupported `action` field | 1 | Tool returned its valid mode discriminator; use its `view` mode to inspect existing automations before creating a close-window heartbeat. |
+| Long-running capture runner returned control before the child process completed, causing duplicate retry attempts | 1 | Verified the actual process table, terminated only the two later duplicate subscriptions, and retained the earliest capture as the sole second continuous sample. |
+| Initial cross-artifact profile one-liner had mismatched parentheses | 1 | No artifact changed; replace the dense expression with a readable, read-only short script. |
+| Initial multi-file close-review patch omitted one added-line prefix | 1 | No file changed; split the documentation update into small exact-context patches. |
+| First 2026-08-21 close-review patch repeated the added-line-prefix omission | 2 | No file changed; create the review in smaller audited patch blocks before updating the ledger. |
+| Full-field automation pause update did not return and left the heartbeat active | 1 | Terminated the stalled tool call after status recheck; retry once with the resolved id and minimal pause payload, never by editing the system automation file. |
 
 ## Notes
 

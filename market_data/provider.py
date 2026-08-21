@@ -98,6 +98,11 @@ class MarketDataProvider:
     def get_stock(self, symbol: str) -> StockData:
         raise NotImplementedError
 
+    def get_stock_identity(self, symbol: str) -> tuple[str, str]:
+        """Resolve canonical symbol/name; default providers may use a snapshot."""
+        stock = self.get_stock(symbol)
+        return stock.symbol, stock.name
+
     def get_market_stocks(self) -> list[StockData]:
         raise NotImplementedError
 
@@ -513,6 +518,9 @@ class ShioajiProvider(MarketDataProvider):
     KBAR_REQUEST_TIMEOUT_MS = 60_000
     KBAR_TIMEOUT_ATTEMPTS = 3
     KBAR_TIMEOUT_BACKOFF_SECONDS = (2.0, 5.0)
+    STOCK_CONTRACT_READY_SYMBOL = "2330"
+    STOCK_CONTRACT_READY_TIMEOUT_SECONDS = 30.0
+    STOCK_CONTRACT_READY_POLL_SECONDS = 0.1
 
     def __init__(self) -> None:
         try:
@@ -540,13 +548,25 @@ class ShioajiProvider(MarketDataProvider):
 
         simulation_str = os.environ.get("SJ_SIMULATION", "true").lower()
         simulation = simulation_str != "false"
+        self._environment_identity = (
+            f"shioaji:{getattr(sj, '__version__', 'unknown')}:"
+            f"simulation={str(simulation).lower()}"
+        )
 
         self._api = sj.Shioaji(simulation=simulation)
-        accounts = self._api.login(
-            api_key=api_key,
-            secret_key=secret,
-            subscribe_trade=False,
-        )
+        try:
+            accounts = self._api.login(
+                api_key=api_key,
+                secret_key=secret,
+                subscribe_trade=False,
+            )
+            self._wait_for_stock_contracts(self._api)
+        except Exception:
+            try:
+                self._api.logout()
+            except Exception:
+                pass
+            raise
 
         self._stream_lock = RLock()
         self._stream_handler: Callable[[RealtimeQuoteUpdate], None] | None = None
@@ -560,6 +580,52 @@ class ShioajiProvider(MarketDataProvider):
 
         mode = "模擬盤" if simulation else "正式環境"
         print(f"  [ShioajiProvider] 登入成功（{mode}），帳號數：{len(accounts)}")
+
+    @classmethod
+    def _wait_for_stock_contracts(
+        cls,
+        api: object,
+        *,
+        timeout_seconds: float | None = None,
+        poll_seconds: float | None = None,
+        clock: Callable[[], float] = monotonic,
+        wait: Callable[[float], None] = sleep,
+    ) -> None:
+        """Wait for Shioaji's post-login automatic stock catalog load."""
+
+        timeout = (
+            cls.STOCK_CONTRACT_READY_TIMEOUT_SECONDS
+            if timeout_seconds is None
+            else timeout_seconds
+        )
+        poll = (
+            cls.STOCK_CONTRACT_READY_POLL_SECONDS
+            if poll_seconds is None
+            else poll_seconds
+        )
+        deadline = clock() + timeout
+
+        while True:
+            try:
+                stocks = getattr(getattr(api, "Contracts"), "Stocks")
+                contract = stocks[cls.STOCK_CONTRACT_READY_SYMBOL]
+            except (AttributeError, IndexError, KeyError, TypeError):
+                contract = None
+            if contract is not None:
+                return
+
+            remaining = deadline - clock()
+            if remaining <= 0:
+                raise RuntimeError(
+                    f"Shioaji 股票合約目錄未在 {timeout:g} 秒內就緒"
+                )
+            wait(min(poll, remaining))
+
+    @property
+    def environment_identity(self) -> str:
+        """Identify the data environment without exposing credentials."""
+
+        return self._environment_identity
 
     def _snap_to_stock(self, snap: object, contract: object) -> StockData:
         """將 Shioaji snapshot + contract 轉為 StockData。"""
@@ -600,6 +666,14 @@ class ShioajiProvider(MarketDataProvider):
             raise KeyError(f"Snapshot not found: {symbol}")
 
         return self._snap_to_stock(snapshots[0], contract)
+
+    def get_stock_identity(self, symbol: str) -> tuple[str, str]:
+        """Resolve a stock from the contract catalog without requiring snapshot I/O."""
+        contract = self._stock_contract(symbol)
+        return (
+            str(getattr(contract, "code", "")).strip().upper(),
+            str(getattr(contract, "name", "")).strip(),
+        )
 
     def get_market_stocks(self) -> list[StockData]:
         """取得 TSE 與 OTC 股票快照，按 Shioaji 限制分批查詢。"""
@@ -749,6 +823,12 @@ class ShioajiProvider(MarketDataProvider):
             return
         bid_price = self._first_positive(getattr(event, "bid_price", None))
         ask_price = self._first_positive(getattr(event, "ask_price", None))
+        bid_volume_lots = self._first_non_negative_int(
+            getattr(event, "bid_volume", None)
+        )
+        ask_volume_lots = self._first_non_negative_int(
+            getattr(event, "ask_volume", None)
+        )
         if bid_price is None and ask_price is None:
             return
         self._dispatch_stream_update(
@@ -759,6 +839,8 @@ class ShioajiProvider(MarketDataProvider):
                 received_at=datetime.now(ZoneInfo("Asia/Taipei")),
                 bid_price=bid_price,
                 ask_price=ask_price,
+                bid_volume_lots=bid_volume_lots,
+                ask_volume_lots=ask_volume_lots,
             )
         )
 
@@ -808,6 +890,23 @@ class ShioajiProvider(MarketDataProvider):
         except (TypeError, ValueError):
             return None
         return number if number > 0 else None
+
+    @staticmethod
+    def _first_non_negative_int(values: object) -> int | None:
+        if values is None:
+            return None
+        try:
+            iterator = iter(values)  # type: ignore[arg-type]
+        except TypeError:
+            return None
+        for value in iterator:
+            try:
+                number = int(value)
+            except (TypeError, ValueError):
+                continue
+            if number >= 0:
+                return number
+        return None
 
     def supports_kbars(self) -> bool:
         return True

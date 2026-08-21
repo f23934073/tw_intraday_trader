@@ -197,6 +197,45 @@ def test_collector_requires_paired_ack_before_marking_a_symbol_active() -> None:
     assert capture.connection_transitions[-1].raw_info == "QUO/v1/STK/*/TSE/2330"
 
 
+def test_collector_preserves_active_symbol_when_another_symbol_is_pending() -> None:
+    capture = LiveQuoteFreshnessCapture(
+        {"2330": "high", "2317": "mid"},
+        "continuous",
+    )
+    capture.transition(
+        ConnectionState.CONNECTED,
+        SubscriptionState.PENDING,
+        detail="subscribe_requested",
+    )
+    high_event = type(
+        "Tick",
+        (),
+        {"code": "2330", "datetime": BASE, "intraday_odd": False},
+    )()
+    mid_event = type(
+        "Tick",
+        (),
+        {"code": "2317", "datetime": BASE, "intraday_odd": False},
+    )()
+
+    capture.on_lifecycle(200, 16, "TIC/v1/STK/*/TSE/2330", "subscribe")
+    capture.on_lifecycle(200, 16, "QUO/v1/STK/*/TSE/2330", "subscribe")
+    capture.on_tick(None, high_event)
+    capture.on_tick(None, mid_event)
+    capture.on_lifecycle(200, 16, "TIC/v1/STK/*/TSE/2317", "subscribe")
+    capture.on_lifecycle(200, 16, "QUO/v1/STK/*/TSE/2317", "subscribe")
+    capture.on_tick(None, high_event)
+    capture.on_tick(None, mid_event)
+
+    states = [item.subscription_state for item in capture.observations]
+    assert states == [
+        SubscriptionState.ACTIVE,
+        SubscriptionState.PENDING,
+        SubscriptionState.ACTIVE,
+        SubscriptionState.ACTIVE,
+    ]
+
+
 def test_writer_uses_exclusive_create_for_evidence_artifacts(tmp_path) -> None:
     capture = LiveQuoteFreshnessCapture({"2330": "high"}, "open")
     artifact = capture.payload(

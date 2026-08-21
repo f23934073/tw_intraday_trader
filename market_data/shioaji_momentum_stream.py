@@ -6,7 +6,7 @@ import hashlib
 import os
 from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation
-from threading import RLock
+from threading import Lock, RLock
 from typing import Callable
 from zoneinfo import ZoneInfo
 
@@ -15,6 +15,7 @@ from market_data.events import (
     BidAskEvent,
     EventEnvelope,
     InstrumentReference,
+    MARKET_EVENT_SCHEMA_VERSION,
     MarketEventSource,
     MarketStreamKind,
     TickEvent,
@@ -22,6 +23,7 @@ from market_data.events import (
 from market_data.momentum_stream import (
     LifecycleEventHandler,
     MarketEventHandler,
+    QualificationBootstrapEvidence,
     StreamLifecycleEvent,
     StreamLifecycleEventType,
     StreamQuotePart,
@@ -31,7 +33,6 @@ from runtime.clock import Clock, SystemClock
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
-MARKET_EVENT_SCHEMA_VERSION = "market-event-v1"
 SOURCE_MODE = "TICK_BIDASK"
 
 
@@ -45,6 +46,7 @@ class ShioajiMomentumStream:
         session_id: str,
         clock: Clock | None = None,
         owns_session: bool = False,
+        environment_identity: str = "shioaji:externally-owned-session",
     ) -> None:
         if not session_id.strip():
             raise ValueError("stream session_id must not be empty")
@@ -52,13 +54,14 @@ class ShioajiMomentumStream:
         self._session_id = session_id
         self._clock = clock or SystemClock()
         self._owns_session = owns_session
+        self._environment_identity = environment_identity
         self._lock = RLock()
+        self._ingress_lock = Lock()
         self._event_handler: MarketEventHandler | None = None
         self._lifecycle_handler: LifecycleEventHandler | None = None
         self._running = False
         self._stopping = False
         self._sequence = 0
-        self._last_received_at: datetime | None = None
         self._pending: dict[
             tuple[StreamSubscriptionAction, str], set[StreamQuotePart]
         ] = {}
@@ -99,6 +102,10 @@ class ShioajiMomentumStream:
             session_id=session_id,
             clock=clock,
             owns_session=True,
+            environment_identity=(
+                f"shioaji:{getattr(sj, '__version__', 'unknown')}:"
+                f"simulation={str(simulation).lower()}"
+            ),
         )
 
     @property
@@ -110,6 +117,10 @@ class ShioajiMomentumStream:
     def subscribed_symbols(self) -> frozenset[str]:
         with self._lock:
             return frozenset(self._subscribed_symbols)
+
+    @property
+    def environment_identity(self) -> str:
+        return self._environment_identity
 
     def scanner_client(self):
         """Build the discovery-only Scanner adapter on the shared login."""
@@ -175,6 +186,63 @@ class ShioajiMomentumStream:
             price_limit_applies=limit_up is not None and limit_down is not None,
             trading_unit_shares=unit,
             source_updated_at=update_date,
+        )
+
+    def qualification_bootstrap_evidence(
+        self,
+        symbol: str,
+        session_date: date,
+        prior_session_date: date,
+    ) -> QualificationBootstrapEvidence:
+        """Capture real contract/snapshot context without creating a trade path."""
+        normalized = self._normalize_symbol(symbol)
+        contract = self._stock_contract(normalized)
+        reference = self.instrument_reference(normalized, session_date)
+        if reference.source_updated_at != session_date:
+            raise ValueError(
+                f"{normalized} contract reference is not current-session evidence"
+            )
+        captured_at = self._clock.now()
+        snapshots = self._api.snapshots([contract])
+        received_at = self._clock.now()
+        if not snapshots:
+            raise ValueError(f"{normalized} bootstrap snapshot is unavailable")
+        snapshot = snapshots[0]
+        name = str(getattr(contract, "name", "")).strip()
+        security_type_raw = getattr(contract, "security_type", None)
+        security_type = str(
+            getattr(security_type_raw, "value", security_type_raw) or ""
+        ).strip()
+        if not name or not security_type:
+            raise ValueError(
+                f"{normalized} contract name/security_type is unavailable"
+            )
+        previous_volume = self._integer(
+            getattr(snapshot, "yesterday_volume", None)
+        )
+        if previous_volume is None or previous_volume < 0:
+            raise ValueError(
+                f"{normalized} previous-session volume is unavailable"
+            )
+        exchange = reference.exchange.strip().upper()
+        provider_exchange = str(
+            getattr(getattr(contract, "exchange", ""), "value", "")
+            or exchange
+        ).strip().upper()
+        return QualificationBootstrapEvidence(
+            reference=reference,
+            instrument_name=name,
+            security_type=security_type,
+            instrument_source_identity=f"{provider_exchange}:{normalized}",
+            captured_at=captured_at,
+            received_at=received_at,
+            prior_session_date=prior_session_date,
+            previous_close=reference.reference_price,
+            previous_session_volume_lots=previous_volume,
+            snapshot_source_identity=(
+                f"shioaji-snapshot:{provider_exchange}:{normalized}:"
+                f"{received_at.isoformat()}"
+            ),
         )
 
     def request_subscribe(self, symbol: str) -> None:
@@ -299,11 +367,12 @@ class ShioajiMomentumStream:
         if raw is None or bool(getattr(raw, "intraday_odd", False)):
             return
         try:
-            envelope = self._map_event(raw, stream_kind)
-            with self._lock:
-                handler = self._event_handler
-            if handler is not None:
-                handler(envelope)
+            with self._ingress_lock:
+                envelope = self._map_event(raw, stream_kind)
+                with self._lock:
+                    handler = self._event_handler
+                if handler is not None:
+                    handler(envelope)
         except Exception as error:
             with self._lock:
                 self._callback_errors.append(
@@ -636,12 +705,6 @@ class ShioajiMomentumStream:
     def _next_receipt(self) -> tuple[datetime, int]:
         with self._lock:
             received_at = self._clock.now()
-            if (
-                self._last_received_at is not None
-                and received_at < self._last_received_at
-            ):
-                received_at = self._last_received_at
-            self._last_received_at = received_at
             self._sequence += 1
             return received_at, self._sequence
 

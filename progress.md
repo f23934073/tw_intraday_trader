@@ -218,6 +218,312 @@
   - Verification passed: JSON template validation, 25 focused tests, CLI help,
     compilation, and whitespace check.
 
+### Phase 13b: Live quote discovery capture
+
+- **Status:** in_progress
+- Actions taken:
+  - At 2026-08-20 09:05 Asia/Taipei, started a 120-second data-only live
+    Tick/BidAsk capture for `2330`, labelled `discovery` rather than assigned
+    an unsupported liquidity tier.
+  - The sandbox blocked the SDK native client before it could create a
+    subscription; reran the identical capture in the approved local runtime.
+  - Produced `research/captures/freshness_quote/quote_20260820T090534+0800.json`.
+    Its initial review has 494 observations (474 BidAsk, 20 Tick), no missing
+    stream kind, and no proposed threshold.
+  - Source event timestamps exhibit material clock skew (353/474 BidAsk and
+    20/20 Tick observations with a negative event-to-callback value), so this
+    capture must be retained as raw evidence rather than treated as an SLA.
+  - A read-only post-capture NTP sample recorded host-clock provenance
+    (`+58.825 ms +/- 53.094 ms`); it neither adjusted the clock nor established
+    the provider event-clock offset required to interpret source latency.
+  - Wrote the durable review at
+    `research/freshness_calibration/reviews/2026-08-20_0905_discovery_review.md`.
+    It records lifecycle success, collector-buffer timing, data-quality limits,
+    and the unchanged evidence gates without proposing a threshold.
+  - Regression and hygiene verification after capture/reporting passed:
+    25 focused freshness/capture/stream tests and `git diff --check`.
+
+### Phase 13c: Qualified cohort provenance
+
+- **Status:** in_progress
+- Actions taken:
+  - Restored planning context after the discovery capture and reconfirmed the
+    only remaining work is Freshness Calibration Evidence.
+  - User authorized continued intraday evidence work. Began an auditable cohort
+    selection path based on official prior completed-session trading value,
+    rather than inferred liquidity or callback outcomes.
+  - Validated the downloaded 2026-08-19 official TWSE multi-table response and
+    derived the fixed 1,086-row completed-session universe. Its p10/p50/p90
+    trade-value anchors are `1530`/`6863`/`2886`; manifest creation and paired
+    stream acknowledgement will occur before qualifying their first capture.
+  - Frozen and JSON-validated
+    `cohort_manifest_2026-08-20_twse_2026-08-19.json`; the saved source SHA-256
+    matches the inspected official snapshot. Captured the frozen three-symbol
+    cohort for ten minutes in the `opening` window after a read-only NTP
+    preflight (`+54.431 ms +/- 49.857 ms`).
+  - Initial collector review reports 1,048 observations across all six
+    required symbol/stream groups. Artifact digest, timestamp range, lifecycle,
+    per-row state, and data-quality disposition are the next verification step.
+  - Inspection found a calibration-harness state-propagation defect: all six
+    groups retain `CONNECTED/PENDING` despite per-symbol paired acknowledgements.
+    The 09:16 artifact is immutable raw evidence but excluded from qualified
+    threshold review. Will add a multi-symbol lifecycle test, repair only the
+    capture instrumentation, then recapture with the same frozen manifest.
+  - Repaired lifecycle state propagation and added a multi-symbol regression;
+    focused calibration tests now pass (`7 passed`). A 70-second opening
+    recapture verified `CONNECTED/ACTIVE` rows after all paired acknowledgements
+    (digest `65edf0a…1c110b`). It is partial coverage only: high has Tick/BidAsk,
+    mid has BidAsk, and low has no callbacks in that short window.
+  - Next: run the unchanged frozen cohort in the `continuous` window and retain
+    any sparse low-tier behavior as data quality / coverage evidence.
+  - Completed the 15-minute `continuous` capture. Artifact
+    `quote_20260820T093046+0800.json` passed digest/schema, paired-ack, complete
+    six-group coverage, ACTIVE-state, error, timestamp, and monotonic checks;
+    it has 1,513 observations. Published its data-quality review at
+    `research/freshness_calibration/reviews/2026-08-20_0930_continuous_review.md`.
+  - The review retains all eight thresholds as unset: sparse mid/low Ticks are
+    real observed cadence, source clock skew remains unresolved, and broker /
+    account capture remains separately unavailable.
+
+### Phase 13d: Close-window scheduling and evidence readiness
+
+- **Status:** in_progress
+- Actions taken:
+  - Restored the active calibration plan after the continuous capture; its next
+    valid quote window is 13:00–13:30 Asia/Taipei.
+  - Inspected the app automation capability. The first read used an unsupported
+    action field; the tool returned the valid `view/create/update/delete` mode
+    contract. Will inspect existing automation state before adding any one-time
+    close-window heartbeat.
+  - Confirmed no matching existing automation. Created and verified one active,
+    one-time thread heartbeat named `Freshness close-window capture` for the
+    remaining 13:00–13:30 close window. Its prompt is limited to NTP provenance,
+    frozen-cohort Tick/BidAsk collection, artifact review, and planning records;
+    it explicitly prohibits broker/account/order/CA/trade-callback APIs and
+    Portfolio Phase 1.
+- Next:
+  - The heartbeat will perform the close-window capture. Continue to preserve
+    the independent broker/account evidence blocker until a read-only source
+    and environment are explicitly authorized.
+  - Wrote `research/freshness_calibration/reviews/2026-08-20_campaign_checkpoint.md`
+    after cross-artifact quality checks. It keeps discovery, lifecycle-rejected,
+    partial-opening, and qualified-continuous files explicitly segregated and
+    records zero duplicate callback keys, out-of-range callback times, or
+    callback errors across the current campaign artifacts.
+  - Final pre-close verification passed: 26 focused calibration/capture/stream
+    tests, manifest JSON validation, and `git diff --check`.
+- Next:
+  - Acquire and validate the official completed-session source snapshot, freeze
+    the derived cohort manifest, and only then run qualified quote captures.
+- Next:
+  - Verify digest, lifecycle acknowledgement state, and raw schema before
+    deciding whether the capture qualifies only as discovery evidence or
+    exposes a harness defect.
+
+### Phase 13e: Independent continuous repeat sample
+
+- **Status:** in_progress
+- Actions taken:
+  - Performed a read-only NTP preflight before the second continuous sample;
+    selected host offset was `+47.647 ms +/- 48.080 ms`. This is provenance only
+    and did not adjust the system clock or calibrate source event time.
+  - The capture control channel returned before its child process completed;
+    process inspection found two duplicate retries. Stopped only those later
+    duplicate data-only subscriptions and retained the earliest process as the
+    sole sample. The retained capture ran 900.514 seconds.
+  - Validated `quote_20260820T095444+0800.json`: SHA-256
+    `7c937d32d3fc48f46307b880d2feda58e3f1d5449b020f2da1ad12fdd339638c`,
+    schema `freshness_calibration_quote_v1`, 1,621 observations, paired
+    Tick/BidAsk acknowledgement, six-group coverage, all ACTIVE rows, zero
+    callback errors, zero monotonic regressions, zero duplicate composite keys,
+    and zero receipts outside the capture interval.
+  - Published
+    `research/freshness_calibration/reviews/2026-08-20_0954_continuous_repeat_review.md`
+    and updated the campaign ledger. The repeated low/mid Tick silence confirms
+    only that Tick silence cannot itself signal stale executable data; every
+    quote threshold remains unset and all broker/account thresholds remain
+    separately blocked.
+- Next:
+  - Preserve the active 13:00 close-window heartbeat; do not add a second
+    heartbeat or change its frozen collection scope.
+
+### Phase 13f: Continued calibration collection
+
+- **Status:** in_progress
+- Actions taken:
+  - User requested uninterrupted progress. Reconfirmed the sole authorized
+    scope is Freshness Calibration Evidence: Tick/BidAsk-only quote artifacts
+    may be collected and profiled, while Portfolio Phase 1, account/order/CA /
+    trade-callback APIs, and any broker freshness inference remain prohibited.
+  - Reapplied the campaign's data-quality method: treat the event grain as one
+    callback observation; validate lifecycle state, paired acknowledgements,
+    duplicate composite keys, receipt range, timestamp skew, and coverage
+    separately from inter-arrival distributions. Preserve each sample as a
+    separate artifact rather than pooling it into a threshold claim.
+- Next:
+  - Start the next non-overlapping continuous sample under the unchanged frozen
+    manifest, then inspect it with the same gates. The existing one-time close
+    heartbeat remains the only scheduled collection task.
+
+### Phase 13g: Third continuous repeat sample
+
+- **Status:** in_progress
+- Actions taken:
+  - Ran the unchanged 15-minute Tick/BidAsk-only cohort capture following a
+    read-only NTP preflight. The selected host offset was `+33.583 ms +/-
+    53.005 ms`; two NTP exchanges timed out but successful samples remained,
+    and no system-clock change was made.
+  - Validated `quote_20260820T101439+0800.json`: SHA-256
+    `181a59b0d9fbd378a70b638f659b0d854a8e5e74b29dd6c2cceeedb321accd6f`,
+    1,872 observations, six-group coverage, paired acknowledgement, all
+    `CONNECTED/ACTIVE`, zero callback errors, monotonic regressions, duplicate
+    composite keys, and out-of-range receipts.
+  - Published
+    `research/freshness_calibration/reviews/2026-08-20_1014_continuous_third_review.md`
+    and updated the campaign ledger. The three same-day continuous samples
+    demonstrate material low/mid Tick sparsity while the subscription remains
+    active; all thresholds remain unset.
+- Next:
+  - Continue only through the existing 13:00 close-window heartbeat. Before
+    freezing quote thresholds, obtain qualified opening and close coverage,
+    multi-day repetition, and source-clock disposition; obtain a separate
+    authorized broker/account evidence source for the other four thresholds.
+
+### Phase 13h: Morning continuous data-quality synthesis
+
+- **Status:** in_progress
+- Actions taken:
+  - Confirmed the active close-window heartbeat remains scheduled for 13:00 and
+    is restricted to the frozen cohort and quote-only APIs.
+  - Published
+    `research/freshness_calibration/reviews/2026-08-20_morning_continuous_data_quality_summary.md`.
+    It records event grain, integrity/lifecycle gates, per-sample volume,
+    cadence variation, clock limitation, and the separate broker/account gap.
+    It neither pools same-day samples into a cutoff nor proposes a threshold.
+- Next:
+  - Wait for the scheduled close capture and apply the identical quality gate.
+
+### Phase 13i: Pre-close cross-artifact integrity review
+
+- **Status:** in_progress
+- Actions taken:
+  - Performed a read-only profile of all six immutable quote artifacts. It found
+    6,665 total observations, zero duplicate composite callback keys within or
+    across artifacts, zero callback receipts outside each artifact range, and
+    zero callback errors.
+  - Corrected the campaign ledger wording from four to six reviewed artifacts.
+    The 09:16 all-PENDING artifact remains explicitly rejected for its known
+    instrumentation defect; integrity success does not qualify it as threshold
+    evidence.
+- Next:
+  - Continue only with the scheduled close capture and its separate artifact
+    review. P1 remains blocked until the full FreshnessPolicyV1 gate is frozen.
+
+### Phase 13j: Morning evidence reviewer disposition
+
+- **Status:** in_progress
+- Actions taken:
+  - Recorded the reviewed `PASS` disposition for the morning continuous data:
+    collector/lifecycle integrity passed; morning cadence is qualified evidence;
+    Tick-only executable-health is rejected; the connection/subscription-plus-
+    BidAsk direction is supported without selecting a duration threshold.
+  - Published
+    `research/freshness_calibration/reviews/2026-08-20_morning_reviewer_disposition.md`
+    and linked its detailed status ledger from the campaign checkpoint. No
+    collector, cohort, Portfolio contract, risk implementation, or P1 code was
+    changed.
+- Next:
+  - Preserve the scheduled close capture and continue the unchanged measurement
+    protocol. P1 remains blocked pending close/multi-session/clock disposition
+    plus independently authorized broker/account evidence.
+
+### Phase 13k: Evidence-chain execution order freeze
+
+- **Status:** in_progress
+- Actions taken:
+  - Recorded the approved execution order: close-window quote evidence,
+    cross-session quote evidence, source-clock disposition, then a separately
+    authorized broker/account evidence campaign.
+  - Added an explicit implementation guardrail: while `FreshnessPolicyV1` is
+    not frozen, do not create migrations, Portfolio core, RiskGate freshness
+    code, provisional thresholds, or broker/account API calls.
+- Next:
+  - The active 13:00 heartbeat remains the immediate next action. A qualified
+    close artifact will extend evidence only and cannot independently unblock
+    Phase 1.
+
+### Phase 13l: Scheduled close-window collection
+
+- **Status:** in_progress
+- Actions taken:
+  - The one-time close-window heartbeat triggered at 13:00 Asia/Taipei.
+    Reconfirmed the evidence-only boundary: unchanged frozen cohort, Tick/
+    BidAsk callbacks with `subscribe_trade=False`, no account/order/CA/
+    trade-callback API, no execution, and no Portfolio Phase 1.
+- Next:
+  - Record read-only NTP provenance, run one 15-minute close capture, then
+    validate its immutable artifact before assigning any evidence disposition.
+
+### Phase 13m: Close-window artifact review
+
+- **Status:** in_progress
+- Actions taken:
+  - Performed read-only NTP provenance before the 13:01 close capture. The
+    selected offset was `+32.587 ms +/- 53.185 ms`; successful samples and
+    timeout attempts are retained without changing the system clock.
+  - Validated `quote_20260820T130116+0800.json`: SHA-256
+    `1994292cc3c9868952567283f9dc7b02a8ada8dca03a05e7c131872c8e3aed70`,
+    2,092 observations, paired acknowledgement, all ACTIVE rows, zero callback
+    errors, zero monotonic regressions, zero duplicate composite keys, and zero
+    receipts outside range.
+  - Published
+    `research/freshness_calibration/reviews/2026-08-20_1301_close_review.md`.
+    It is partial close evidence: 1530/Tick has no callback and the 13:01–13:16
+    capture ends before the 13:30 market/session boundary. It cannot complete
+    the close gate or select a threshold.
+- Next:
+  - On later completed sessions collect complete close-regime evidence that
+    covers the documented session transition, then repeat all regimes across
+    dates. Keep broker/account evidence separate and await explicit read-only
+    authorization. Phase 1 remains blocked.
+
+### Phase 13n: 2026-08-21 cross-session close collection
+
+- **Status:** in_progress
+- Actions taken:
+  - A close-window heartbeat triggered for a second completed trading date.
+    Reconfirmed the frozen cross-session protocol and the no-Portfolio/no-
+    broker-accounting boundary before collection.
+- Next:
+  - Run one 15-minute close Tick/BidAsk capture, validate its artifact against
+    the unchanged quality gate, and retain it as separate date/regime evidence.
+  - Session catch-up identifies a broad pre-existing dirty worktree that includes
+    product and P1-adjacent paths. Preserve it entirely; this heartbeat remains
+    limited to the freshness artifacts, reviews, and planning records.
+  - NTP preflight recorded five successful read-only samples (selected
+    `+54.899 ms +/- 95.187 ms`) before the 13:01 capture. No system-clock change
+    was made and source event time remains outside SLA selection.
+  - Validated `quote_20260821T130144+0800.json`: SHA-256
+    `d00da28a50d2df53fa120c43a1aebf91cfa1baecca91705f590067898977469e`,
+    1,497 all-ACTIVE observations, paired acknowledgement, zero callback errors,
+    monotonic regressions, duplicate composite keys, and out-of-range receipts.
+  - Published
+    `research/freshness_calibration/reviews/2026-08-21_1301_close_review.md`
+    and `2026-08-21_cross_session_close_checkpoint.md`. The close sample is
+    partial (5/6 callback groups, no 1530 Tick) and ends at 13:16 before the
+    13:30 session boundary; it adds cross-session qualitative evidence only.
+- Next:
+  - Do not infer or implement a threshold. Future work needs a complete
+    boundary-crossing close protocol, full cross-date regime evidence,
+    source-clock disposition, and separately authorized broker/account reads.
+    Phase 1 remains blocked.
+  - The one-time heartbeat unexpectedly triggered on a second day despite its
+    `COUNT=1` rule. Its configuration still reports `ACTIVE`. Two system-tool
+    pause attempts (full then minimal payload) stalled without state change and
+    were terminated; no automation file was edited directly. Treat any future
+    automated capture as requiring explicit user confirmation until the app
+    automation service can be updated successfully.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |

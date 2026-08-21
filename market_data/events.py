@@ -14,6 +14,9 @@ from decimal import Decimal
 from enum import StrEnum
 
 
+MARKET_EVENT_SCHEMA_VERSION = "market-event-v1"
+
+
 class AggressorSide(StrEnum):
     BUY = "BUY"
     SELL = "SELL"
@@ -268,6 +271,10 @@ class EventEnvelope:
             (self.source_identity, "source_identity"),
         ):
             _require_non_empty(value, name)
+        if self.schema_version != MARKET_EVENT_SCHEMA_VERSION:
+            raise ValueError(
+                f"unsupported market event schema: {self.schema_version}"
+            )
         _require_aware(self.event_at, "event_at")
         _require_aware(self.received_at, "received_at")
         if self.ingress_sequence < 0:
