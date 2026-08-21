@@ -21,23 +21,47 @@ def apply_migrations(connection: Any) -> tuple[str, ...]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS journal_schema_migrations (
+                CREATE SCHEMA IF NOT EXISTS trading
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS trading.journal_schema_migrations (
                     version TEXT PRIMARY KEY,
                     applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
+            cursor.execute(
+                "SELECT to_regclass('public.journal_schema_migrations')"
+            )
+            if cursor.fetchone()[0] is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO trading.journal_schema_migrations (version, applied_at)
+                    SELECT version, applied_at
+                    FROM public.journal_schema_migrations
+                    ON CONFLICT (version) DO NOTHING
+                    """
+                )
             for path in migration_files():
                 version = path.name
                 cursor.execute(
-                    "SELECT 1 FROM journal_schema_migrations WHERE version = %s",
+                    """
+                    SELECT 1
+                    FROM trading.journal_schema_migrations
+                    WHERE version = %s
+                    """,
                     (version,),
                 )
                 if cursor.fetchone() is not None:
                     continue
                 cursor.execute(path.read_text(encoding="utf-8"))
                 cursor.execute(
-                    "INSERT INTO journal_schema_migrations (version) VALUES (%s)",
+                    """
+                    INSERT INTO trading.journal_schema_migrations (version)
+                    VALUES (%s)
+                    """,
                     (version,),
                 )
                 applied.append(version)

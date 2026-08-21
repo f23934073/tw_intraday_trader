@@ -26,6 +26,7 @@ dev = [
 ]
 postgres = [
     "psycopg[binary]>=3.2,<4",
+    "psycopg-pool>=3.2,<4",
 ]
 
 [tool.pytest.ini_options]
@@ -36,9 +37,10 @@ python_functions = ["test_*"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["market_data*", "candidate*", "scoring*", "position*", "config*", "dashboard*", "runtime*", "simulation*", "signals*", "trading*", "features*", "backtest*", "strategy_catalog*", "premarket*"]
+include = ["market_data*", "candidate*", "scoring*", "position*", "config*", "dashboard*", "runtime*", "simulation*", "signals*", "trading*", "features*", "backtest*", "strategy_catalog*", "atomic_strategies*", "premarket*", "institutional_data*", "institutional_research*", "institutional_prior*", "watchlist*"]
 
 [tool.setuptools.package-data]
 trading = ["migrations/*.sql"]
 backtest = ["migrations/*.sql"]
-config = ["taifex_calendar_2026.json"]
+institutional_prior = ["migrations/*.sql"]
+config = ["taifex_calendar_2026.json", "twse_calendar_2026.json"]

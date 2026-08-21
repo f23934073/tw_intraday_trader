@@ -63,6 +63,8 @@ def command(*, origin: CommandOrigin = CommandOrigin.MANUAL_WEB) -> OrderCommand
         limit_price=Decimal("100"),
         idempotency_key="browser-1",
         requested_at=AT,
+        strategy_id=("test-strategy" if origin is CommandOrigin.STRATEGY_AUTOMATED else None),
+        strategy_version=("v1" if origin is CommandOrigin.STRATEGY_AUTOMATED else None),
     )
 
 
@@ -254,11 +256,12 @@ def test_approved_command_can_use_legacy_local_paper_only_through_adapter() -> N
 
     assert result.status is ApplicationStatus.APPLIED
     assert result.handler_result["status"] == "FILLED"
-    assert result.outcome_journal_sequences == (2,)
+    assert result.outcome_journal_sequences == (2, 3)
     assert simulation.positions()[0]["quantity"] == 1000
     assert [item.record.kind for item in journal.records(SESSION_ID)] == [
         "order_command.v1",
         "local_paper_fill.v1",
+        "local_paper_order_state.v1",
     ]
     assert journal.records(SESSION_ID)[1].record.payload["command_id"] == (
         "command-local-paper-1"

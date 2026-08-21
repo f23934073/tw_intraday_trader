@@ -21,8 +21,12 @@ class LocalPaperSimulationCommandAdapter:
             symbol=command.symbol,
             side=command.side.value,
             lots=command.quantity_shares // 1_000,
-        limit_price=command.limit_price,
+            limit_price=command.limit_price,
             idempotency_key=command.idempotency_key,
             origin=command.origin.value,
+            strategy_id=command.strategy_id,
+            strategy_version=command.strategy_version,
+            attempt=command.attempt,
+            predecessor_order_id=command.predecessor_order_id,
         )
         return order

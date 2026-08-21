@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from trading.journal import (
@@ -16,17 +18,48 @@ from trading.journal import (
 
 
 class PostgresJournalRepository(JournalRepository):
-    """Sync PostgreSQL adapter; callers own connection lifecycle and migrations."""
+    """Sync PostgreSQL adapter using one test connection or a runtime pool."""
 
-    def __init__(self, connection: Any) -> None:
+    def __init__(
+        self,
+        connection: Any | None = None,
+        *,
+        pool: Any | None = None,
+        owns_pool: bool = False,
+    ) -> None:
+        if (connection is None) == (pool is None):
+            raise ValueError("provide exactly one PostgreSQL connection or pool")
+        if owns_pool and pool is None:
+            raise ValueError("owns_pool requires a pool")
         self._connection = connection
+        self._pool = pool
+        self._owns_pool = owns_pool
+
+    @contextmanager
+    def _transaction(self) -> Iterator[Any]:
+        if self._pool is not None:
+            with self._pool.connection() as connection:
+                try:
+                    yield connection
+                    connection.commit()
+                except Exception:
+                    connection.rollback()
+                    raise
+            return
+
+        try:
+            yield self._connection
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            raise
 
     def start_session(self, session: JournalSession) -> None:
-        try:
-            with self._connection.cursor() as cursor:
+        with self._transaction() as connection:
+            with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO journal_sessions
+                    INSERT INTO trading.journal_sessions
                         (session_id, started_at, mode, metadata_json, schema_version)
                     VALUES (%s, %s, %s, %s::jsonb, %s)
                     ON CONFLICT DO NOTHING
@@ -43,7 +76,7 @@ class PostgresJournalRepository(JournalRepository):
                     cursor.execute(
                         """
                         SELECT started_at, mode, metadata_json::text, schema_version
-                        FROM journal_sessions
+                        FROM trading.journal_sessions
                         WHERE session_id = %s
                         """,
                         (session.session_id,),
@@ -58,17 +91,35 @@ class PostgresJournalRepository(JournalRepository):
                         raise JournalConflictError(
                             "session metadata conflicts with existing session"
                         )
-            self._connection.commit()
-        except Exception:
-            self._connection.rollback()
-            raise
 
-    def append(self, record: JournalRecord) -> JournalAppendResult:
-        try:
-            with self._connection.cursor() as cursor:
+    def session(self, session_id: str) -> JournalSession | None:
+        with self._transaction() as connection:
+            with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO journal_records (
+                    SELECT started_at, mode, metadata_json::text, schema_version
+                    FROM trading.journal_sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                row = cursor.fetchone()
+        if row is None:
+            return None
+        return JournalSession(
+            session_id=session_id,
+            started_at=row[0],
+            mode=row[1],
+            metadata=json.loads(row[2]),
+            schema_version=row[3],
+        )
+
+    def append(self, record: JournalRecord) -> JournalAppendResult:
+        with self._transaction() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO trading.journal_records (
                         session_id, record_id, kind, occurred_at, payload_json,
                         idempotency_scope, idempotency_key, schema_version, fingerprint
                     ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
@@ -89,7 +140,6 @@ class PostgresJournalRepository(JournalRepository):
                 )
                 created = cursor.fetchone()
                 if created is not None:
-                    self._connection.commit()
                     return JournalAppendResult(record, int(created[0]), False)
 
                 existing = self._find_existing(cursor, record)
@@ -97,11 +147,7 @@ class PostgresJournalRepository(JournalRepository):
                     raise JournalConflictError(
                         "Journal identity conflicts with existing record"
                     )
-                self._connection.commit()
                 return JournalAppendResult(record, int(existing[0]), True)
-        except Exception:
-            self._connection.rollback()
-            raise
 
     def records(
         self,
@@ -111,19 +157,20 @@ class PostgresJournalRepository(JournalRepository):
     ) -> tuple[JournalAppendResult, ...]:
         if after_sequence < 0:
             raise ValueError("after_sequence must be non-negative")
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT journal_sequence, record_id, kind, occurred_at,
-                       payload_json::text, idempotency_scope, idempotency_key,
-                       schema_version
-                FROM journal_records
-                WHERE session_id = %s AND journal_sequence > %s
-                ORDER BY journal_sequence
-                """,
-                (session_id, after_sequence),
-            )
-            rows = cursor.fetchall()
+        with self._transaction() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT journal_sequence, record_id, kind, occurred_at,
+                           payload_json::text, idempotency_scope, idempotency_key,
+                           schema_version
+                    FROM trading.journal_records
+                    WHERE session_id = %s AND journal_sequence > %s
+                    ORDER BY journal_sequence
+                    """,
+                    (session_id, after_sequence),
+                )
+                rows = cursor.fetchall()
         return tuple(
             JournalAppendResult(
                 record=JournalRecord(
@@ -143,11 +190,11 @@ class PostgresJournalRepository(JournalRepository):
         )
 
     def save_checkpoint(self, checkpoint: ProjectionCheckpoint) -> None:
-        try:
-            with self._connection.cursor() as cursor:
+        with self._transaction() as connection:
+            with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO projection_checkpoints (
+                    INSERT INTO trading.projection_checkpoints AS current_checkpoint (
                         session_id, projection_name, journal_sequence, digest,
                         schema_version
                     ) VALUES (%s, %s, %s, %s, %s)
@@ -156,7 +203,7 @@ class PostgresJournalRepository(JournalRepository):
                         digest = EXCLUDED.digest,
                         schema_version = EXCLUDED.schema_version,
                         updated_at = CURRENT_TIMESTAMP
-                    WHERE projection_checkpoints.journal_sequence
+                    WHERE current_checkpoint.journal_sequence
                         < EXCLUDED.journal_sequence
                     """,
                     (
@@ -171,7 +218,7 @@ class PostgresJournalRepository(JournalRepository):
                     cursor.execute(
                         """
                         SELECT journal_sequence, digest, schema_version
-                        FROM projection_checkpoints
+                        FROM trading.projection_checkpoints
                         WHERE session_id = %s AND projection_name = %s
                         """,
                         (checkpoint.session_id, checkpoint.projection_name),
@@ -185,26 +232,23 @@ class PostgresJournalRepository(JournalRepository):
                         raise JournalConflictError(
                             "projection checkpoint cannot move backward"
                         )
-            self._connection.commit()
-        except Exception:
-            self._connection.rollback()
-            raise
 
     def latest_checkpoint(
         self,
         session_id: str,
         projection_name: str,
     ) -> ProjectionCheckpoint | None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT journal_sequence, digest, schema_version
-                FROM projection_checkpoints
-                WHERE session_id = %s AND projection_name = %s
-                """,
-                (session_id, projection_name),
-            )
-            row = cursor.fetchone()
+        with self._transaction() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT journal_sequence, digest, schema_version
+                    FROM trading.projection_checkpoints
+                    WHERE session_id = %s AND projection_name = %s
+                    """,
+                    (session_id, projection_name),
+                )
+                row = cursor.fetchone()
         if row is None:
             return None
         return ProjectionCheckpoint(
@@ -215,12 +259,27 @@ class PostgresJournalRepository(JournalRepository):
             schema_version=row[2],
         )
 
+    def check_health(self) -> None:
+        """Fail if the pool/connection cannot complete a round trip."""
+
+        with self._transaction() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                if cursor.fetchone() != (1,):
+                    raise RuntimeError("PostgreSQL Journal health check returned no row")
+
+    def close(self) -> None:
+        """Close only the production pool explicitly owned by this adapter."""
+
+        if self._owns_pool and self._pool is not None:
+            self._pool.close()
+
     @staticmethod
     def _find_existing(cursor: Any, record: JournalRecord) -> tuple[Any, ...] | None:
         cursor.execute(
             """
             SELECT journal_sequence, fingerprint
-            FROM journal_records
+            FROM trading.journal_records
             WHERE session_id = %s AND record_id = %s
             """,
             (record.session_id, record.record_id),
@@ -231,7 +290,7 @@ class PostgresJournalRepository(JournalRepository):
         cursor.execute(
             """
             SELECT journal_sequence, fingerprint
-            FROM journal_records
+            FROM trading.journal_records
             WHERE idempotency_scope = %s AND idempotency_key = %s
             """,
             (record.idempotency_scope, record.idempotency_key),

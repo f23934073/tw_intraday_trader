@@ -73,7 +73,7 @@ def test_non_marketable_order_stays_out_of_holdings_and_can_be_cancelled():
         idempotency_key="pending-buy",
     )
 
-    assert order["status"] == "SUBMITTED"
+    assert order["status"] == "PENDING"
     assert service.positions() == []
 
     cancelled, idempotent = service.cancel_order(
@@ -108,7 +108,7 @@ def test_pending_buy_reservation_blocks_aggregate_overcommit_and_releases_on_can
         idempotency_key="reserved-buy-2",
     )
 
-    assert first["status"] == "SUBMITTED"
+    assert first["status"] == "PENDING"
     assert second["status"] == "REJECTED"
     assert second["reason"] == "可用虛擬現金不足"
     assert service.session()["reserved_cash"] == 100_000.0

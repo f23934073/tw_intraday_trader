@@ -72,6 +72,7 @@ def test_submit_uses_journal_risk_gate_and_records_local_fill_once():
     assert [item.record.kind for item in journal.records(_SESSION_ID)] == [
         "order_command.v1",
         "local_paper_fill.v1",
+        "local_paper_order_state.v1",
     ]
     assert simulation.positions()[0]["quantity"] == 1_000
 
@@ -93,7 +94,7 @@ def test_facade_rejects_reserved_cash_overcommit_and_journals_cancellation():
         idempotency_key="facade-reserved-buy-2",
     )
 
-    assert first["status"] == "SUBMITTED"
+    assert first["status"] == "PENDING"
     assert second["status"] == "REJECTED"
     assert "INSUFFICIENT_CASH" in second["reason"]
     assert simulation.session()["reserved_cash"] == 100_000.0
@@ -108,8 +109,11 @@ def test_facade_rejects_reserved_cash_overcommit_and_journals_cancellation():
     assert simulation.session()["available_cash"] == 150_000.0
     assert [item.record.kind for item in journal.records(_SESSION_ID)] == [
         "order_command.v1",
+        "local_paper_order_state.v1",
         "order_command.v1",
+        "local_paper_order_state.v1",
         "local_paper_rejection.v1",
         "local_paper_cancel_command.v1",
+        "local_paper_order_state.v1",
         "local_paper_cancellation.v1",
     ]

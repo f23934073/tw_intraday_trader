@@ -18,6 +18,7 @@ from trading.journal import (  # noqa: E402
     JournalSession,
     ProjectionCheckpoint,
 )
+from trading import migrations as trading_migrations  # noqa: E402
 from trading.migrations import apply_migrations  # noqa: E402
 from trading.postgres_journal import PostgresJournalRepository  # noqa: E402
 
@@ -32,12 +33,17 @@ def journal():
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                DROP TABLE IF EXISTS projection_checkpoints, journal_records,
-                journal_sessions, journal_schema_migrations CASCADE
+                DROP SCHEMA IF EXISTS trading CASCADE;
+                DROP TABLE IF EXISTS public.projection_checkpoints,
+                public.journal_records, public.journal_sessions,
+                public.journal_schema_migrations CASCADE
                 """
             )
         connection.commit()
-        apply_migrations(connection)
+        assert apply_migrations(connection) == (
+            "001_journal.sql",
+            "002_trading_schema.sql",
+        )
         repository = PostgresJournalRepository(connection)
         repository.start_session(
             JournalSession(
@@ -49,6 +55,16 @@ def journal():
         )
         yield repository
     finally:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DROP SCHEMA IF EXISTS trading CASCADE;
+                DROP TABLE IF EXISTS public.projection_checkpoints,
+                public.journal_records, public.journal_sessions,
+                public.journal_schema_migrations CASCADE
+                """
+            )
+        connection.commit()
         connection.close()
 
 
@@ -83,3 +99,67 @@ def test_postgres_migration_append_idempotency_and_checkpoint(journal) -> None:
 
     with pytest.raises(JournalConflictError, match="conflicts"):
         journal.append(replace(record(), payload={"symbol": "2317"}))
+
+
+def test_migration_moves_legacy_public_journal_into_trading_schema() -> None:
+    connection = psycopg.connect(TEST_POSTGRES_DSN)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DROP SCHEMA IF EXISTS trading CASCADE;
+                DROP TABLE IF EXISTS public.projection_checkpoints,
+                public.journal_records, public.journal_sessions,
+                public.journal_schema_migrations CASCADE
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE public.journal_schema_migrations (
+                    version TEXT PRIMARY KEY,
+                    applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            cursor.execute(
+                (trading_migrations.MIGRATIONS_DIRECTORY / "001_journal.sql").read_text(
+                    encoding="utf-8"
+                )
+            )
+            cursor.execute(
+                """
+                INSERT INTO public.journal_schema_migrations (version)
+                VALUES ('001_journal.sql')
+                """
+            )
+        connection.commit()
+
+        assert apply_migrations(connection) == ("002_trading_schema.sql",)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    to_regclass('public.journal_sessions'),
+                    to_regclass('trading.journal_sessions'),
+                    to_regclass('trading.journal_records'),
+                    to_regclass('trading.projection_checkpoints')
+                """
+            )
+            assert cursor.fetchone() == (
+                None,
+                "trading.journal_sessions",
+                "trading.journal_records",
+                "trading.projection_checkpoints",
+            )
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DROP SCHEMA IF EXISTS trading CASCADE;
+                DROP TABLE IF EXISTS public.projection_checkpoints,
+                public.journal_records, public.journal_sessions,
+                public.journal_schema_migrations CASCADE
+                """
+            )
+        connection.commit()
+        connection.close()

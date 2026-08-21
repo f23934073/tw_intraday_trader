@@ -22,7 +22,11 @@ from trading.application import (
     OrderApplicationService,
 )
 from trading.journal import JournalRecord, JournalRepository
-from trading.local_paper import LocalPaperFillOutcomeRecorder
+from trading.local_paper import (
+    LocalPaperFillOutcomeRecorder,
+    daily_baseline_record,
+    write_local_paper_checkpoint,
+)
 from trading.risk import (
     CommandOrigin,
     CommandSide,
@@ -44,14 +48,12 @@ class LocalPaperTerminalOutcomeRecorder(CommandOutcomeRecorder):
         command: OrderCommand,
         handler_result: Mapping[str, Any],
     ) -> tuple[JournalRecord, ...]:
-        fill_records = self._fill_recorder.records_for(command, handler_result)
-        if fill_records:
-            return fill_records
+        records = list(self._fill_recorder.records_for(command, handler_result))
         if handler_result.get("status") != "REJECTED":
-            return ()
+            return tuple(records)
         order_id = str(handler_result["order_id"])
         occurred_at = datetime.fromisoformat(str(handler_result["updated_at"]))
-        return (
+        records.append(
             JournalRecord(
                 record_id=f"local-paper-rejection:{order_id}",
                 session_id=command.session_id,
@@ -66,8 +68,9 @@ class LocalPaperTerminalOutcomeRecorder(CommandOutcomeRecorder):
                 },
                 idempotency_scope=f"{command.session_id}:local-paper-rejection",
                 idempotency_key=order_id,
-            ),
+            )
         )
+        return tuple(records)
 
 
 class LocalPaperCommandService:
@@ -90,20 +93,28 @@ class LocalPaperCommandService:
         self._session_id = session_id
         self._clock = clock
         self._lock = RLock()
+        self._commands_by_key: dict[str, OrderCommand] = {}
+        self._outcome_recorder = LocalPaperTerminalOutcomeRecorder()
         self._application = OrderApplicationService(
             journal=journal,
             risk_gate=RiskGate(
                 RiskPolicy(
                     version="local-paper-risk-v1",
-                    allow_strategy_origin=False,
+                    allow_strategy_origin=True,
                     max_order_notional=simulation.starting_cash,
                     max_position_notional=simulation.starting_cash,
                     max_daily_loss=simulation.starting_cash,
+                    require_fresh_book=simulation.requires_fresh_book,
+                    max_book_age_seconds=simulation.max_book_age_seconds,
+                    fresh_book_sides=frozenset({CommandSide.SELL}),
                 )
             ),
             handler=LocalPaperSimulationCommandAdapter(simulation),
-            outcome_recorder=LocalPaperTerminalOutcomeRecorder(),
+            outcome_recorder=self._outcome_recorder,
         )
+        self._restore_commands_from_journal()
+        simulation.set_terminal_order_handler(self._record_later_terminal_order)
+        simulation.set_daily_baseline_handler(self._record_daily_baseline)
 
     @property
     def session_id(self) -> str:
@@ -119,7 +130,59 @@ class LocalPaperCommandService:
         limit_price: Decimal | float | int | str,
         idempotency_key: str,
     ) -> tuple[dict[str, Any], bool]:
-        """Record, risk-check, and apply one local-paper limit order."""
+        """Record, risk-check, and apply one manual local-paper limit order."""
+        return self._submit_order(
+            symbol=symbol,
+            side=side,
+            lots=lots,
+            limit_price=limit_price,
+            idempotency_key=idempotency_key,
+            command_id=uuid4().hex,
+            origin=CommandOrigin.MANUAL_WEB,
+            strategy_id=None,
+            strategy_version=None,
+        )
+
+    def submit_strategy_order(
+        self,
+        *,
+        intent_id: str,
+        strategy_id: str,
+        strategy_version: str,
+        symbol: str,
+        side: str,
+        lots: int,
+        limit_price: Decimal | float | int | str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Apply one explicit strategy intent through the local-only path."""
+        normalized_intent_id = self._normalize_key(intent_id)
+        return self._submit_order(
+            symbol=symbol,
+            side=side,
+            lots=lots,
+            limit_price=limit_price,
+            idempotency_key=f"strategy-paper:{normalized_intent_id}",
+            command_id=f"strategy-paper-command:{normalized_intent_id}",
+            origin=CommandOrigin.STRATEGY_AUTOMATED,
+            strategy_id=self._normalize_key(strategy_id),
+            strategy_version=self._normalize_key(strategy_version),
+        )
+
+    def _submit_order(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        lots: int,
+        limit_price: Decimal | float | int | str,
+        idempotency_key: str,
+        command_id: str,
+        origin: CommandOrigin,
+        strategy_id: str | None,
+        strategy_version: str | None,
+        attempt: int = 1,
+        predecessor_order_id: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
         normalized_symbol = self._normalize_symbol(symbol)
         normalized_side = self._normalize_side(side)
         normalized_lots = self._normalize_lots(lots)
@@ -133,16 +196,21 @@ class LocalPaperCommandService:
 
             now = self._clock.now()
             command = OrderCommand(
-                command_id=uuid4().hex,
+                command_id=command_id,
                 session_id=self._session_id,
-                origin=CommandOrigin.MANUAL_WEB,
+                origin=origin,
                 symbol=normalized_symbol,
                 side=normalized_side,
                 quantity_shares=normalized_lots * 1_000,
                 limit_price=normalized_price,
                 idempotency_key=normalized_key,
                 requested_at=now,
+                strategy_id=strategy_id,
+                strategy_version=strategy_version,
+                attempt=attempt,
+                predecessor_order_id=predecessor_order_id,
             )
+            self._commands_by_key[normalized_key] = command
             result = self._application.apply(
                 command,
                 self._risk_snapshot(normalized_symbol),
@@ -150,6 +218,7 @@ class LocalPaperCommandService:
             )
             if result.status is ApplicationStatus.APPLIED:
                 assert result.handler_result is not None
+                self._write_checkpoint()
                 return dict(result.handler_result), False
             if result.status in {ApplicationStatus.BLOCKED, ApplicationStatus.REJECTED}:
                 reason = ", ".join(reason.value for reason in result.risk.reasons)
@@ -160,10 +229,122 @@ class LocalPaperCommandService:
                     limit_price=normalized_price,
                     idempotency_key=normalized_key,
                     reason=f"風控拒絕：{reason}",
+                    origin=origin.value,
                 )
                 self._append_rejection_outcome(command, order)
+                self._write_checkpoint()
                 return order, False
             raise SimulationStateError("委託稽核未完成，請勿重送並檢查本機 Journal")
+
+    def retry_order(
+        self,
+        order_id: str,
+        idempotency_key: str,
+        *,
+        limit_price: Decimal | float | int | str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """Create one bounded successor for the unfilled remainder."""
+
+        with self._lock:
+            source = next(
+                (item for item in self._simulation.orders() if item["order_id"] == order_id),
+                None,
+            )
+            if source is None:
+                raise SimulationValidationError("找不到欲重試的委託")
+            if source["status"] not in {"CANCELLED", "EXPIRED"}:
+                raise SimulationStateError("只有已取消或到期委託可以重試")
+            attempt = int(source.get("attempt") or 1) + 1
+            if attempt > self._simulation.max_retry_attempts:
+                raise SimulationStateError("委託重試次數已達上限")
+            remaining = int(source.get("remaining_quantity") or 0)
+            if remaining <= 0 or remaining % 1_000 != 0:
+                raise SimulationStateError("委託沒有可安全重試的整股餘量")
+            normalized_key = self._normalize_key(idempotency_key)
+            return self._submit_order(
+                symbol=str(source["symbol"]),
+                side=str(source["side"]),
+                lots=remaining // 1_000,
+                limit_price=(source["limit_price"] if limit_price is None else limit_price),
+                idempotency_key=normalized_key,
+                command_id=f"local-paper-retry:{order_id}:{attempt}:{normalized_key}",
+                origin=CommandOrigin(str(source["origin"])),
+                strategy_id=(
+                    str(source["strategy_id"])
+                    if source.get("strategy_id") is not None
+                    else None
+                ),
+                strategy_version=(
+                    str(source["strategy_version"])
+                    if source.get("strategy_version") is not None
+                    else None
+                ),
+                attempt=attempt,
+                predecessor_order_id=order_id,
+            )
+
+    def _record_later_terminal_order(self, order: Mapping[str, Any]) -> None:
+        """Append a fill/rejection produced by a later snapshot or BidAsk."""
+        normalized_key = self._normalize_key(str(order.get("idempotency_key", "")))
+        with self._lock:
+            command = self._commands_by_key.get(normalized_key)
+            if command is None:
+                raise SimulationStateError("找不到模擬終態對應的原始委託")
+            records = self._outcome_recorder.records_for(command, order)
+            if not records:
+                raise SimulationStateError("模擬終態沒有可寫入的成交或拒絕紀錄")
+            for record in records:
+                self._journal.append(record)
+            self._write_checkpoint()
+
+    def _record_daily_baseline(self, baseline: Mapping[str, Any]) -> None:
+        """Persist a newly frozen trading-day equity baseline outside sim lock."""
+        with self._lock:
+            self._journal.append(
+                daily_baseline_record(
+                    session_id=self._session_id,
+                    trading_date=str(baseline["trading_date"]),
+                    opening_equity=str(baseline["opening_equity"]),
+                    opening_realized_pnl=str(baseline["opening_realized_pnl"]),
+                    occurred_at=datetime.fromisoformat(str(baseline["created_at"])),
+                )
+            )
+            self._write_checkpoint()
+
+    def _restore_commands_from_journal(self) -> None:
+        for result in self._journal.records(self._session_id):
+            record = result.record
+            if record.kind != "order_command.v1":
+                continue
+            payload = record.payload
+            command = OrderCommand(
+                command_id=str(payload["command_id"]),
+                session_id=self._session_id,
+                origin=CommandOrigin(str(payload["origin"])),
+                symbol=str(payload["symbol"]),
+                side=CommandSide(str(payload["side"])),
+                quantity_shares=int(payload["quantity_shares"]),
+                limit_price=Decimal(str(payload["limit_price"])),
+                idempotency_key=str(payload["idempotency_key"]),
+                requested_at=record.occurred_at,
+                strategy_id=(
+                    str(payload["strategy_id"])
+                    if payload.get("strategy_id") is not None
+                    else None
+                ),
+                strategy_version=(
+                    str(payload["strategy_version"])
+                    if payload.get("strategy_version") is not None
+                    else None
+                ),
+                attempt=int(payload.get("attempt") or 1),
+                predecessor_order_id=(
+                    str(payload["predecessor_order_id"])
+                    if payload.get("predecessor_order_id") is not None
+                    else None
+                ),
+            )
+            self._commands_by_key[command.idempotency_key] = command
 
     def cancel_order(
         self,
@@ -182,7 +363,7 @@ class LocalPaperCommandService:
             )
             if pending is None:
                 raise SimulationValidationError("找不到委託")
-            if pending["status"] != "SUBMITTED":
+            if pending["status"] not in {"SUBMITTED", "PENDING", "PARTIALLY_FILLED"}:
                 raise SimulationStateError("只有已送出的委託可以取消")
 
             now = self._clock.now()
@@ -203,6 +384,11 @@ class LocalPaperCommandService:
             if intent.idempotent:
                 raise SimulationStateError("取消委託稽核需要復原，請勿重送")
             order, _ = self._simulation.cancel_order(order_id, normalized_key)
+            command = self._commands_by_key.get(str(pending["idempotency_key"]))
+            if command is None:
+                raise SimulationStateError("找不到取消委託對應的原始命令")
+            for record in self._outcome_recorder.records_for(command, order):
+                self._journal.append(record)
             self._journal.append(
                 JournalRecord(
                     record_id=f"local-paper-cancellation:{order_id}",
@@ -218,7 +404,22 @@ class LocalPaperCommandService:
                     idempotency_key=order_id,
                 )
             )
+            self._write_checkpoint()
             return order, False
+
+    def _write_checkpoint(self) -> None:
+        """Persist a verified fill/accounting projection after a complete mutation."""
+
+        try:
+            write_local_paper_checkpoint(
+                self._journal,
+                session_id=self._session_id,
+                starting_cash=self._simulation.starting_cash,
+            )
+        except Exception as error:
+            raise SimulationStateError(
+                "模擬交易已寫入 Journal，但投影 checkpoint 未完成，請勿重送"
+            ) from error
 
     def _risk_snapshot(self, symbol: str) -> RiskSnapshot:
         raw = self._simulation.risk_snapshot(symbol)
@@ -243,23 +444,8 @@ class LocalPaperCommandService:
         command: OrderCommand,
         order: Mapping[str, Any],
     ) -> None:
-        self._journal.append(
-            JournalRecord(
-                record_id=f"local-paper-rejection:{order['order_id']}",
-                session_id=self._session_id,
-                kind="local_paper_rejection.v1",
-                occurred_at=datetime.fromisoformat(str(order["updated_at"])),
-                payload={
-                    "command_id": command.command_id,
-                    "order_id": str(order["order_id"]),
-                    "symbol": str(order["symbol"]),
-                    "side": str(order["side"]),
-                    "reason": str(order.get("reason") or "RISK_REJECTED"),
-                },
-                idempotency_scope=f"{self._session_id}:local-paper-rejection",
-                idempotency_key=str(order["order_id"]),
-            )
-        )
+        for record in self._outcome_recorder.records_for(command, order):
+            self._journal.append(record)
 
     @staticmethod
     def _normalize_symbol(symbol: str) -> str:

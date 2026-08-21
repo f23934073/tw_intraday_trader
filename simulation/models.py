@@ -7,6 +7,8 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
+from trading.trade_management import OrderLifecycleState
+
 
 class OrderSide(StrEnum):
     """本機紙上模擬支援的多頭交易方向。"""
@@ -15,13 +17,7 @@ class OrderSide(StrEnum):
     SELL = "SELL"
 
 
-class OrderStatus(StrEnum):
-    """本機紙上模擬的精簡委託生命週期。"""
-
-    SUBMITTED = "SUBMITTED"
-    FILLED = "FILLED"
-    CANCELLED = "CANCELLED"
-    REJECTED = "REJECTED"
+OrderStatus = OrderLifecycleState
 
 
 @dataclass
@@ -41,12 +37,26 @@ class SimulationOrder:
     updated_at: datetime
     filled_price: Decimal | None = None
     filled_quantity: int = 0
+    filled_notional: Decimal = Decimal("0")
+    last_fill_price: Decimal | None = None
+    last_fill_quantity: int = 0
+    fill_sequence: int = 0
     reason: str | None = None
+    strategy_id: str | None = None
+    strategy_version: str | None = None
+    attempt: int = 1
+    predecessor_order_id: str | None = None
+    timeout_at: datetime | None = None
+    expires_at: datetime | None = None
 
     @property
     def quantity(self) -> int:
         """內部以股數表示成交與持倉數量。"""
         return self.lots * 1_000
+
+    @property
+    def remaining_quantity(self) -> int:
+        return self.quantity - self.filled_quantity
 
 
 @dataclass
@@ -57,3 +67,6 @@ class SimulationPosition:
     name: str
     quantity: int
     average_price: Decimal
+    owner_origin: str
+    owner_strategy_id: str | None = None
+    owner_strategy_version: str | None = None

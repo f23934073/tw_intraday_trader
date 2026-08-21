@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from queue import Full, Queue
 from threading import RLock, Thread
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from market_data.models import RealtimeQuoteUpdate, StockData
 from market_data.provider import MarketDataProvider
+from runtime.clock import Clock, SystemClock
+from simulation.execution_policy import EXECUTABLE_BOOK_MAX_AGE_SECONDS
 from simulation.models import (
     OrderSide,
     OrderStatus,
@@ -24,15 +26,24 @@ from simulation.models import (
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
 _DEFAULT_STARTING_CASH = Decimal("10000000")
-_RECENT_BOOK_SECONDS = 15.0
 _DEFAULT_QUOTE_QUEUE_CAPACITY = 1_024
+_DEFAULT_PENDING_TIMEOUT_SECONDS = 30
+_DEFAULT_ORDER_EXPIRY_SECONDS = 120
+_DEFAULT_MAX_RETRY_ATTEMPTS = 3
+_ACTIVE_ORDER_STATUSES = frozenset(
+    {
+        OrderStatus.SUBMITTED,
+        OrderStatus.PENDING,
+        OrderStatus.PARTIALLY_FILLED,
+    }
+)
 
 
 @dataclass
 class _QuoteState:
     """合併 snapshot、Tick 與 BidAsk，但分開維持兩條 stream 的順序。"""
 
-    snapshot: StockData
+    snapshot: StockData | None = None
     last_price: Decimal | None = None
     bid_price: Decimal | None = None
     ask_price: Decimal | None = None
@@ -40,6 +51,8 @@ class _QuoteState:
     book_at: datetime | None = None
     received_at: datetime | None = None
     book_received_at: datetime | None = None
+    bid_available_quantity: int | None = None
+    ask_available_quantity: int | None = None
 
 
 class SimulationValidationError(ValueError):
@@ -66,6 +79,11 @@ class SimulationService:
         starting_cash: Decimal | float | int = _DEFAULT_STARTING_CASH,
         *,
         quote_queue_capacity: int = _DEFAULT_QUOTE_QUEUE_CAPACITY,
+        max_book_age_seconds: int = EXECUTABLE_BOOK_MAX_AGE_SECONDS,
+        pending_timeout_seconds: int = _DEFAULT_PENDING_TIMEOUT_SECONDS,
+        order_expiry_seconds: int = _DEFAULT_ORDER_EXPIRY_SECONDS,
+        max_retry_attempts: int = _DEFAULT_MAX_RETRY_ATTEMPTS,
+        clock: Clock | None = None,
     ) -> None:
         normalized_starting_cash = self._money(starting_cash, "starting_cash")
         if normalized_starting_cash <= 0:
@@ -76,10 +94,39 @@ class SimulationService:
             or quote_queue_capacity <= 0
         ):
             raise ValueError("quote_queue_capacity 必須是大於 0 的整數")
+        if (
+            isinstance(max_book_age_seconds, bool)
+            or not isinstance(max_book_age_seconds, int)
+            or max_book_age_seconds <= 0
+        ):
+            raise ValueError("max_book_age_seconds 必須是大於 0 的整數")
+        for value, field_name in (
+            (pending_timeout_seconds, "pending_timeout_seconds"),
+            (order_expiry_seconds, "order_expiry_seconds"),
+            (max_retry_attempts, "max_retry_attempts"),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{field_name} 必須是大於 0 的整數")
 
         self._provider = provider
+        self._clock = clock or SystemClock()
+        provider_identity = getattr(provider, "environment_identity", None)
+        self._provider_identity = (
+            str(provider_identity).strip()
+            if provider_identity is not None
+            else f"{type(provider).__module__}.{type(provider).__qualname__}"
+        )
+        if not self._provider_identity:
+            raise ValueError("provider identity must not be empty")
         self._starting_cash = normalized_starting_cash
         self._cash = normalized_starting_cash
+        self._max_book_age_seconds = max_book_age_seconds
+        self._pending_timeout_seconds = pending_timeout_seconds
+        self._order_expiry_seconds = order_expiry_seconds
+        self._max_retry_attempts = max_retry_attempts
+        self._trading_date = self._clock.session_date()
+        self._opening_equity = normalized_starting_cash
+        self._opening_realized_pnl = Decimal("0")
         self._orders: dict[str, SimulationOrder] = {}
         self._order_ids_by_key: dict[str, str] = {}
         self._cancel_order_ids_by_key: dict[str, str] = {}
@@ -87,6 +134,7 @@ class SimulationService:
         self._positions: dict[str, SimulationPosition] = {}
         self._quotes: dict[str, _QuoteState] = {}
         self._realized_pnl_by_symbol: dict[str, Decimal] = {}
+        self._alerts: list[dict[str, Any]] = []
         self._lock = RLock()
         self._stream_capable = provider.supports_streaming_quotes()
         self._streaming_enabled = False
@@ -97,6 +145,9 @@ class SimulationService:
             maxsize=quote_queue_capacity
         )
         self._quote_worker: Thread | None = None
+        self._terminal_order_handler: Callable[[dict[str, Any]], None] | None = None
+        self._daily_baseline_handler: Callable[[dict[str, Any]], None] | None = None
+        self._pending_daily_baselines: list[dict[str, Any]] = []
 
         if self._stream_capable:
             self._quote_worker = Thread(
@@ -119,16 +170,45 @@ class SimulationService:
         """Expose immutable starting cash for the command facade and Journal."""
         return self._starting_cash
 
+    @property
+    def requires_fresh_book(self) -> bool:
+        return self._stream_capable
+
+    @property
+    def max_book_age_seconds(self) -> int:
+        return self._max_book_age_seconds
+
+    @property
+    def max_retry_attempts(self) -> int:
+        return self._max_retry_attempts
+
+    def set_terminal_order_handler(
+        self,
+        handler: Callable[[dict[str, Any]], None] | None,
+    ) -> None:
+        """Register the local Journal bridge for orders completed after submit."""
+        with self._lock:
+            self._terminal_order_handler = handler
+
+    def set_daily_baseline_handler(
+        self,
+        handler: Callable[[dict[str, Any]], None] | None,
+    ) -> None:
+        """Register the Journal bridge for a newly frozen trading-day baseline."""
+        with self._lock:
+            self._daily_baseline_handler = handler
+
+    def daily_baseline(self) -> dict[str, Any]:
+        """Return the currently frozen trading-day risk baseline."""
+        self._roll_trading_day()
+        with self._lock:
+            return self._daily_baseline_payload()
+
     def session(self) -> dict[str, Any]:
         """回傳不會觸發 Provider 或券商呼叫的 session 中繼資料。"""
+        self._roll_trading_day()
         with self._lock:
-            market_value = sum(
-                (
-                    position.quantity * self._current_price(position)
-                    for position in self._positions.values()
-                ),
-                Decimal("0"),
-            )
+            market_value = self._market_value()
             reserved_cash = self._reserved_cash()
             available_cash = self._cash - reserved_cash
             received_times = [
@@ -142,10 +222,10 @@ class SimulationService:
                 else self.label
             )
             notice = (
-                "委託與持倉只存在本機記憶體；行情來自 Shioaji Tick／BidAsk，"
-                "不會送出 Shioaji 或真實券商委託。"
+                "委託、持倉與交易日風控基準由本機 Journal checkpoint 管理；"
+                "行情來自 Shioaji Tick／BidAsk，不會送出 Shioaji 或真實券商委託。"
                 if self._stream_capable
-                else "本機紙上模擬，重啟後委託與持倉會清空；"
+                else "委託、持倉與交易日風控基準由本機 Journal checkpoint 管理；"
                 "不會送出 Shioaji 或真實券商委託。"
             )
             return {
@@ -153,6 +233,9 @@ class SimulationService:
                 "label": label,
                 "ordering_enabled": True,
                 "starting_cash": float(self._starting_cash),
+                "trading_date": self._trading_date.isoformat(),
+                "opening_equity": float(self._opening_equity),
+                "daily_loss_includes_unrealized": True,
                 "available_cash": float(available_cash),
                 "reserved_cash": float(reserved_cash),
                 "market_value": float(market_value),
@@ -174,10 +257,12 @@ class SimulationService:
 
     def projection(self) -> dict[str, Any]:
         """回傳瀏覽器可直接讀取的本機訂單、持倉與 session 投影。"""
+        self.reconcile_orders()
         return {
             "session": self.session(),
             "orders": self.orders(),
             "positions": self.positions(),
+            "alerts": self.alerts(),
         }
 
     def orders(self) -> list[dict[str, Any]]:
@@ -190,8 +275,206 @@ class SimulationService:
             )
             return [self._order_payload(order) for order in orders]
 
+    def alerts(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(alert) for alert in reversed(self._alerts)]
+
+    def restore_state(
+        self,
+        *,
+        cash: Decimal,
+        positions: list[dict[str, Any]],
+        realized_pnl_by_symbol: dict[str, Decimal],
+        order_states: list[dict[str, Any]],
+        daily_baseline: dict[str, Any] | None = None,
+    ) -> None:
+        """Restore one checkpoint-verified local-paper projection before use."""
+
+        with self._lock:
+            if self._orders or self._positions or self._cash != self._starting_cash:
+                raise SimulationStateError("本機模擬已有狀態，禁止重複復原")
+            self._cash = self._money(cash, "restored.cash")
+            self._realized_pnl_by_symbol = {
+                self._normalize_symbol(symbol): self._money(value, "restored.realized_pnl")
+                for symbol, value in realized_pnl_by_symbol.items()
+            }
+            for raw in positions:
+                symbol = self._normalize_symbol(str(raw["symbol"]))
+                position = SimulationPosition(
+                    symbol=symbol,
+                    name=str(raw["name"]),
+                    quantity=int(raw["quantity"]),
+                    average_price=self._money(raw["average_price"], "restored.average_price"),
+                    owner_origin=str(raw.get("owner_origin") or "MANUAL_WEB"),
+                    owner_strategy_id=(
+                        str(raw["owner_strategy_id"])
+                        if raw.get("owner_strategy_id") is not None
+                        else None
+                    ),
+                    owner_strategy_version=(
+                        str(raw["owner_strategy_version"])
+                        if raw.get("owner_strategy_version") is not None
+                        else None
+                    ),
+                )
+                self._positions[symbol] = position
+                self._quotes.setdefault(symbol, _QuoteState())
+            for raw in order_states:
+                order = SimulationOrder(
+                    order_id=str(raw["order_id"]),
+                    idempotency_key=str(raw["idempotency_key"]),
+                    origin=str(raw["origin"]),
+                    strategy_id=(
+                        str(raw["strategy_id"])
+                        if raw.get("strategy_id") is not None
+                        else None
+                    ),
+                    strategy_version=(
+                        str(raw["strategy_version"])
+                        if raw.get("strategy_version") is not None
+                        else None
+                    ),
+                    symbol=self._normalize_symbol(str(raw["symbol"])),
+                    name=str(raw["name"]),
+                    side=OrderSide(str(raw["side"])),
+                    lots=int(raw["lots"]),
+                    limit_price=self._money(raw["limit_price"], "restored.limit_price"),
+                    status=OrderStatus(str(raw["status"])),
+                    submitted_at=datetime.fromisoformat(str(raw["submitted_at"])),
+                    updated_at=datetime.fromisoformat(str(raw["updated_at"])),
+                    filled_price=(
+                        self._money(raw["filled_price"], "restored.filled_price")
+                        if raw.get("filled_price") is not None
+                        else None
+                    ),
+                    filled_quantity=int(raw.get("filled_quantity") or 0),
+                    filled_notional=self._money(
+                        raw.get("filled_amount") or 0,
+                        "restored.filled_amount",
+                    ),
+                    last_fill_price=(
+                        self._money(raw["last_fill_price"], "restored.last_fill_price")
+                        if raw.get("last_fill_price") is not None
+                        else None
+                    ),
+                    last_fill_quantity=int(raw.get("last_fill_quantity") or 0),
+                    fill_sequence=int(raw.get("fill_sequence") or 0),
+                    reason=(str(raw["reason"]) if raw.get("reason") is not None else None),
+                    attempt=int(raw.get("attempt") or 1),
+                    predecessor_order_id=(
+                        str(raw["predecessor_order_id"])
+                        if raw.get("predecessor_order_id") is not None
+                        else None
+                    ),
+                    timeout_at=(
+                        datetime.fromisoformat(str(raw["timeout_at"]))
+                        if raw.get("timeout_at") is not None
+                        else None
+                    ),
+                    expires_at=(
+                        datetime.fromisoformat(str(raw["expires_at"]))
+                        if raw.get("expires_at") is not None
+                        else None
+                    ),
+                )
+                self._orders[order.order_id] = order
+                self._order_ids_by_key[order.idempotency_key] = order.order_id
+                self._quotes.setdefault(order.symbol, _QuoteState())
+                if order.status in _ACTIVE_ORDER_STATUSES and order.side is OrderSide.BUY:
+                    self._reserved_buy_notional_by_order[order.order_id] = (
+                        order.remaining_quantity * order.limit_price
+                    )
+                recovered_alert = {
+                    "ORDER_TIMEOUT": "ORDER_TIMEOUT_CANCELLED",
+                    "ORDER_EXPIRED": "ORDER_EXPIRED",
+                    "COMMAND_ACKNOWLEDGEMENT_MISSING": "RECOVERY_REQUIRED",
+                }.get(order.reason or "")
+                if recovered_alert is not None:
+                    self._alerts.append(
+                        {
+                            "alert_id": f"{recovered_alert}:{order.order_id}:restored",
+                            "code": recovered_alert,
+                            "severity": "HIGH",
+                            "order_id": order.order_id,
+                            "symbol": order.symbol,
+                            "message": f"{order.symbol} 委託復原狀態：{order.reason}",
+                            "created_at": order.updated_at.isoformat(),
+                            "acknowledged": False,
+                        }
+                    )
+            latest = order_states[-1] if order_states else None
+            if daily_baseline is not None:
+                restored_date = date.fromisoformat(
+                    str(daily_baseline["trading_date"])
+                )
+                if restored_date > self._clock.session_date():
+                    raise SimulationStateError("交易日風控基準不可晚於目前交易日")
+                if daily_baseline.get("includes_unrealized_pnl") is not True:
+                    raise SimulationStateError("交易日風控基準未凍結未實現損益政策")
+                self._trading_date = restored_date
+                self._opening_equity = self._money(
+                    daily_baseline["opening_equity"],
+                    "restored.opening_equity",
+                )
+                self._opening_realized_pnl = self._money(
+                    daily_baseline.get("opening_realized_pnl") or 0,
+                    "restored.opening_realized_pnl",
+                )
+            elif latest and latest.get("trading_date") == self._trading_date.isoformat():
+                self._opening_equity = self._money(
+                    latest.get("opening_equity"),
+                    "restored.opening_equity",
+                )
+                self._opening_realized_pnl = sum(
+                    self._realized_pnl_by_symbol.values(),
+                    Decimal("0"),
+                )
+            else:
+                self._opening_equity = self._cash + self._market_value()
+                self._opening_realized_pnl = sum(
+                    self._realized_pnl_by_symbol.values(),
+                    Decimal("0"),
+                )
+        self._sync_quote_subscriptions()
+
+    def reconcile_orders(self) -> None:
+        """Apply deterministic timeout/expiry transitions using the injected clock."""
+
+        changed = False
+        notifications: list[dict[str, Any]] = []
+        with self._lock:
+            now = self._now()
+            for order in self._orders.values():
+                if order.status not in _ACTIVE_ORDER_STATUSES:
+                    continue
+                if order.expires_at is not None and now >= order.expires_at:
+                    self._end_order(
+                        order,
+                        status=OrderStatus.EXPIRED,
+                        reason="ORDER_EXPIRED",
+                        alert_code="ORDER_EXPIRED",
+                        alert_message=f"{order.symbol} 委託已到期，未成交餘量停止撮合",
+                    )
+                    notifications.append(self._order_payload(order))
+                    changed = True
+                elif order.timeout_at is not None and now >= order.timeout_at:
+                    self._end_order(
+                        order,
+                        status=OrderStatus.CANCELLED,
+                        reason="ORDER_TIMEOUT",
+                        alert_code="ORDER_TIMEOUT_CANCELLED",
+                        alert_message=f"{order.symbol} 委託逾時，已取消未成交餘量",
+                    )
+                    notifications.append(self._order_payload(order))
+                    changed = True
+        for payload in notifications:
+            self._notify_terminal_order(payload)
+        if changed:
+            self._sync_quote_subscriptions()
+
     def positions(self) -> list[dict[str, Any]]:
         """讀取由已成交委託建立的持倉投影，不會呼叫資料來源。"""
+        self._roll_trading_day()
         with self._lock:
             positions: list[dict[str, Any]] = []
             for position in sorted(self._positions.values(), key=lambda item: item.symbol):
@@ -199,11 +482,11 @@ class SimulationService:
                 current_price = self._current_price(position)
                 market_value = position.quantity * current_price
                 unrealized_pnl = position.quantity * (current_price - position.average_price)
-                quote_at = (
-                    quote.received_at or quote.snapshot.timestamp
-                    if quote is not None
-                    else None
-                )
+                quote_at = None
+                if quote is not None:
+                    quote_at = quote.received_at
+                    if quote_at is None and quote.snapshot is not None:
+                        quote_at = quote.snapshot.timestamp
                 positions.append(
                     {
                         "symbol": position.symbol,
@@ -223,12 +506,20 @@ class SimulationService:
                                 position.symbol, Decimal("0")
                             )
                         ),
+                        "owner_origin": position.owner_origin,
+                        "owner_strategy_id": position.owner_strategy_id,
+                        "owner_strategy_version": position.owner_strategy_version,
                         "bid_price": float(quote.bid_price) if quote and quote.bid_price else None,
                         "ask_price": float(quote.ask_price) if quote and quote.ask_price else None,
                         "last_quote_at": quote_at.isoformat() if quote_at else None,
                         "quote_received_at": (
                             quote.received_at.isoformat()
                             if quote and quote.received_at
+                            else None
+                        ),
+                        "book_received_at": (
+                            quote.book_received_at.isoformat()
+                            if quote and quote.book_received_at
                             else None
                         ),
                         "quote_source": (
@@ -249,6 +540,10 @@ class SimulationService:
         limit_price: Decimal | float | int | str,
         idempotency_key: str,
         origin: str = "MANUAL_WEB",
+        strategy_id: str | None = None,
+        strategy_version: str | None = None,
+        attempt: int = 1,
+        predecessor_order_id: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """接受限價委託；串流模式以賣一／買一，本機模式以 snapshot 撮合。"""
         normalized_symbol = self._normalize_symbol(symbol)
@@ -256,39 +551,79 @@ class SimulationService:
         normalized_lots = self._normalize_lots(lots)
         normalized_price = self._normalize_price(limit_price)
         normalized_key = self._normalize_idempotency_key(idempotency_key)
+        normalized_origin = str(origin).strip().upper()
+        normalized_strategy_id = self._optional_identity(strategy_id)
+        normalized_strategy_version = self._optional_identity(strategy_version)
+        if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+            raise SimulationValidationError("委託 attempt 必須是大於 0 的整數")
+        if attempt > self._max_retry_attempts:
+            raise SimulationValidationError("委託重試次數已達上限")
+        normalized_predecessor = self._optional_identity(predecessor_order_id)
+        if (attempt == 1) != (normalized_predecessor is None):
+            raise SimulationValidationError("委託 predecessor 與 attempt 不一致")
+        if normalized_origin == "STRATEGY_AUTOMATED":
+            if normalized_strategy_id is None or normalized_strategy_version is None:
+                raise SimulationValidationError("自動策略委託缺少策略歸屬")
+        elif normalized_strategy_id is not None or normalized_strategy_version is not None:
+            raise SimulationValidationError("手動委託不可帶入自動策略歸屬")
 
+        self._roll_trading_day()
         with self._lock:
             existing_order_id = self._order_ids_by_key.get(normalized_key)
             if existing_order_id is not None:
                 return self._order_payload(self._orders[existing_order_id]), True
 
-            stock = self._get_stock(normalized_symbol)
-            self._quotes.setdefault(stock.symbol, _QuoteState(snapshot=stock)).snapshot = stock
-            now = datetime.now(_TAIPEI)
+            if self._stream_capable:
+                stock_symbol, stock_name = self._get_stock_identity(normalized_symbol)
+                self._quotes.setdefault(stock_symbol, _QuoteState())
+            else:
+                stock = self._get_stock(normalized_symbol)
+                stock_symbol, stock_name = stock.symbol, stock.name
+                self._quotes.setdefault(
+                    stock_symbol,
+                    _QuoteState(snapshot=stock),
+                ).snapshot = stock
+            now = self._now()
             order = SimulationOrder(
                 order_id=uuid4().hex,
                 idempotency_key=normalized_key,
-                origin=origin,
-                symbol=stock.symbol,
-                name=stock.name,
+                origin=normalized_origin,
+                symbol=stock_symbol,
+                name=stock_name,
                 side=normalized_side,
                 lots=normalized_lots,
                 limit_price=normalized_price,
                 status=OrderStatus.SUBMITTED,
                 submitted_at=now,
                 updated_at=now,
+                strategy_id=normalized_strategy_id,
+                strategy_version=normalized_strategy_version,
+                attempt=attempt,
+                predecessor_order_id=normalized_predecessor,
+                timeout_at=now + timedelta(seconds=self._pending_timeout_seconds),
+                expires_at=now + timedelta(seconds=self._order_expiry_seconds),
             )
             self._orders[order.order_id] = order
             self._order_ids_by_key[normalized_key] = order.order_id
 
             if normalized_side is OrderSide.BUY:
+                position = self._positions.get(order.symbol)
+                if position is not None and not self._same_owner(order, position):
+                    self._reject(order, "持倉歸屬衝突，禁止合併部位")
                 reserved = order.quantity * order.limit_price
-                if reserved > self._available_cash():
+                if order.status is OrderStatus.SUBMITTED and reserved > self._available_cash():
                     self._reject(order, "可用虛擬現金不足")
-                else:
+                elif order.status is OrderStatus.SUBMITTED:
                     self._reserved_buy_notional_by_order[order.order_id] = reserved
             else:
-                if order.quantity > self._available_to_sell(
+                position = self._positions.get(order.symbol)
+                if (
+                    normalized_origin == "STRATEGY_AUTOMATED"
+                    and position is not None
+                    and not self._same_owner(order, position)
+                ):
+                    self._reject(order, "自動策略不可賣出不屬於該策略的持倉")
+                elif order.quantity > self._available_to_sell(
                     order.symbol,
                     exclude_order_id=order.order_id,
                 ):
@@ -296,7 +631,7 @@ class SimulationService:
 
             if order.status is OrderStatus.SUBMITTED:
                 execution_price = (
-                    self._stream_execution_price(order, self._quotes[stock.symbol])
+                    self._stream_execution_price(order, self._quotes[stock_symbol])
                     if self._stream_capable
                     else self._stock_price(stock)
                 )
@@ -304,7 +639,27 @@ class SimulationService:
                     execution_price is not None
                     and self._is_marketable_price(order, execution_price)
                 ):
-                    self._fill(order, execution_price)
+                    fill_quantity = (
+                        self._book_fill_quantity(order, self._quotes[stock_symbol])
+                        if self._stream_capable
+                        else order.remaining_quantity
+                    )
+                    if fill_quantity > 0:
+                        self._fill(
+                            order,
+                            execution_price,
+                            fill_quantity=fill_quantity,
+                        )
+                        if self._stream_capable:
+                            self._consume_book_quantity(
+                                order,
+                                self._quotes[stock_symbol],
+                                fill_quantity,
+                            )
+
+            if order.status is OrderStatus.SUBMITTED:
+                order.status = OrderStatus.PENDING
+                order.updated_at = self._now()
 
             payload = self._order_payload(order)
 
@@ -326,11 +681,12 @@ class SimulationService:
             order = self._orders.get(order_id)
             if order is None:
                 raise SimulationValidationError("找不到委託")
-            if order.status is not OrderStatus.SUBMITTED:
+            if order.status not in _ACTIVE_ORDER_STATUSES:
                 raise SimulationStateError("只有已送出的委託可以取消")
 
             order.status = OrderStatus.CANCELLED
-            order.updated_at = datetime.now(_TAIPEI)
+            order.reason = "OPERATOR_CANCELLED"
+            order.updated_at = self._now()
             self._reserved_buy_notional_by_order.pop(order.order_id, None)
             self._cancel_order_ids_by_key[normalized_key] = order.order_id
             payload = self._order_payload(order)
@@ -344,13 +700,14 @@ class SimulationService:
             self._sync_quote_subscriptions()
             return
 
+        notifications: list[dict[str, Any]] = []
         with self._lock:
             symbols = {
                 *self._positions,
                 *(
                     order.symbol
                     for order in self._orders.values()
-                    if order.status is OrderStatus.SUBMITTED
+                    if order.status in _ACTIVE_ORDER_STATUSES
                 ),
             }
 
@@ -368,10 +725,16 @@ class SimulationService:
                 quote = quotes.get(order.symbol)
                 if (
                     quote is not None
-                    and order.status is OrderStatus.SUBMITTED
+                    and order.status in _ACTIVE_ORDER_STATUSES
                     and self._is_marketable_price(order, self._stock_price(quote))
                 ):
-                    self._fill(order, self._stock_price(quote))
+                    self._fill(
+                        order,
+                        self._stock_price(quote),
+                    )
+                    notifications.append(self._order_payload(order))
+        for payload in notifications:
+            self._notify_terminal_order(payload)
 
     def receive_quote_update(self, update: RealtimeQuoteUpdate) -> None:
         """供 Provider callback 快速排入背景 worker，不在 callback thread 撮合。"""
@@ -419,6 +782,17 @@ class SimulationService:
             raise SimulationValidationError(f"{symbol} 沒有可用的正確報價")
         return stock
 
+    def _get_stock_identity(self, symbol: str) -> tuple[str, str]:
+        try:
+            canonical_symbol, name = self._provider.get_stock_identity(symbol)
+        except KeyError as error:
+            raise SimulationValidationError(f"找不到股票：{symbol}") from error
+        normalized_symbol = str(canonical_symbol).strip().upper()
+        normalized_name = str(name).strip()
+        if not normalized_symbol or not normalized_name:
+            raise SimulationValidationError(f"找不到股票：{symbol}")
+        return normalized_symbol, normalized_name
+
     @staticmethod
     def _is_marketable_price(order: SimulationOrder, execution_price: Decimal) -> bool:
         return (
@@ -427,17 +801,39 @@ class SimulationService:
             else order.limit_price <= execution_price
         )
 
-    @staticmethod
     def _stream_execution_price(
+        self,
         order: SimulationOrder,
         quote: _QuoteState,
     ) -> Decimal | None:
         if quote.book_received_at is None or quote.book_at is None:
             return None
-        age = (datetime.now(_TAIPEI) - quote.book_received_at).total_seconds()
-        if age > _RECENT_BOOK_SECONDS:
+        age = (self._now() - quote.book_received_at).total_seconds()
+        if age < 0 or age > self._max_book_age_seconds:
             return None
         return quote.ask_price if order.side is OrderSide.BUY else quote.bid_price
+
+    @staticmethod
+    def _book_fill_quantity(order: SimulationOrder, quote: _QuoteState) -> int:
+        available = (
+            quote.ask_available_quantity
+            if order.side is OrderSide.BUY
+            else quote.bid_available_quantity
+        )
+        if available is None:
+            return order.remaining_quantity
+        return min(order.remaining_quantity, available)
+
+    @staticmethod
+    def _consume_book_quantity(
+        order: SimulationOrder,
+        quote: _QuoteState,
+        quantity: int,
+    ) -> None:
+        if order.side is OrderSide.BUY and quote.ask_available_quantity is not None:
+            quote.ask_available_quantity = max(0, quote.ask_available_quantity - quantity)
+        elif order.side is OrderSide.SELL and quote.bid_available_quantity is not None:
+            quote.bid_available_quantity = max(0, quote.bid_available_quantity - quantity)
 
     def _available_to_sell(
         self,
@@ -447,23 +843,35 @@ class SimulationService:
         position = self._positions.get(symbol)
         held_quantity = position.quantity if position else 0
         pending_quantity = sum(
-            order.quantity
+            order.remaining_quantity
             for order in self._orders.values()
             if (
                 order.symbol == symbol
                 and order.side is OrderSide.SELL
-                and order.status is OrderStatus.SUBMITTED
+                and order.status in _ACTIVE_ORDER_STATUSES
                 and order.order_id != exclude_order_id
             )
         )
         return held_quantity - pending_quantity
 
-    def _fill(self, order: SimulationOrder, fill_price: Decimal) -> None:
+    def _fill(
+        self,
+        order: SimulationOrder,
+        fill_price: Decimal,
+        *,
+        fill_quantity: int | None = None,
+    ) -> None:
         """在 lock 內以已驗證的 snapshot／買一／賣一完成本機紙上成交。"""
+        quantity = min(fill_quantity or order.remaining_quantity, order.remaining_quantity)
+        if quantity <= 0:
+            return
         if order.side is OrderSide.BUY:
-            fill_amount = order.quantity * fill_price
+            fill_amount = quantity * fill_price
             if fill_amount > self._cash:
-                self._reject(order, "目前報價造成可用虛擬現金不足")
+                self._reject(
+                    order,
+                    "目前報價造成可用虛擬現金不足",
+                )
                 return
 
             position = self._positions.get(order.symbol)
@@ -471,44 +879,111 @@ class SimulationService:
                 self._positions[order.symbol] = SimulationPosition(
                     symbol=order.symbol,
                     name=order.name,
-                    quantity=order.quantity,
+                    quantity=quantity,
                     average_price=fill_price,
+                    owner_origin=order.origin,
+                    owner_strategy_id=order.strategy_id,
+                    owner_strategy_version=order.strategy_version,
                 )
             else:
-                total_quantity = position.quantity + order.quantity
+                total_quantity = position.quantity + quantity
                 position.average_price = (
                     position.average_price * position.quantity
-                    + fill_price * order.quantity
+                    + fill_price * quantity
                 ) / total_quantity
                 position.quantity = total_quantity
             self._cash -= fill_amount
         else:
             position = self._positions.get(order.symbol)
-            if position is None or position.quantity < order.quantity:
-                self._reject(order, "可賣出持股不足")
+            if position is None or position.quantity < quantity:
+                self._reject(
+                    order,
+                    "可賣出持股不足",
+                )
                 return
 
-            realized_pnl = (fill_price - position.average_price) * order.quantity
+            realized_pnl = (fill_price - position.average_price) * quantity
             self._realized_pnl_by_symbol[order.symbol] = (
                 self._realized_pnl_by_symbol.get(order.symbol, Decimal("0"))
                 + realized_pnl
             )
-            position.quantity -= order.quantity
-            self._cash += order.quantity * fill_price
+            position.quantity -= quantity
+            self._cash += quantity * fill_price
             if position.quantity == 0:
                 del self._positions[order.symbol]
 
-        order.status = OrderStatus.FILLED
-        self._reserved_buy_notional_by_order.pop(order.order_id, None)
-        order.filled_price = fill_price
-        order.filled_quantity = order.quantity
-        order.updated_at = datetime.now(_TAIPEI)
+        order.filled_notional += fill_price * quantity
+        order.filled_quantity += quantity
+        order.filled_price = order.filled_notional / order.filled_quantity
+        order.last_fill_price = fill_price
+        order.last_fill_quantity = quantity
+        order.fill_sequence += 1
+        if order.remaining_quantity == 0:
+            order.status = OrderStatus.FILLED
+            self._reserved_buy_notional_by_order.pop(order.order_id, None)
+        else:
+            order.status = OrderStatus.PARTIALLY_FILLED
+            if order.side is OrderSide.BUY:
+                self._reserved_buy_notional_by_order[order.order_id] = (
+                    order.remaining_quantity * order.limit_price
+                )
+        now = self._now()
+        order.updated_at = (
+            now
+            if now > order.updated_at
+            else order.updated_at + timedelta(microseconds=1)
+        )
 
-    def _reject(self, order: SimulationOrder, reason: str) -> None:
+    def _reject(
+        self,
+        order: SimulationOrder,
+        reason: str,
+    ) -> None:
         order.status = OrderStatus.REJECTED
         order.reason = reason
         self._reserved_buy_notional_by_order.pop(order.order_id, None)
-        order.updated_at = datetime.now(_TAIPEI)
+        order.updated_at = self._now()
+
+    def _end_order(
+        self,
+        order: SimulationOrder,
+        *,
+        status: OrderStatus,
+        reason: str,
+        alert_code: str,
+        alert_message: str,
+    ) -> None:
+        order.status = status
+        order.reason = reason
+        order.updated_at = self._now()
+        self._reserved_buy_notional_by_order.pop(order.order_id, None)
+        self._alerts.append(
+            {
+                "alert_id": f"{alert_code}:{order.order_id}:{order.updated_at.isoformat()}",
+                "code": alert_code,
+                "severity": "HIGH",
+                "order_id": order.order_id,
+                "symbol": order.symbol,
+                "message": alert_message,
+                "created_at": order.updated_at.isoformat(),
+                "acknowledged": False,
+            }
+        )
+
+    def _notify_terminal_order(self, payload: dict[str, Any]) -> None:
+        with self._lock:
+            handler = self._terminal_order_handler
+        if handler is None:
+            return
+        try:
+            handler(payload)
+        except Exception as error:
+            with self._lock:
+                self._quote_ingress_blocked = True
+                self._stream_error = (
+                    "模擬成交 Journal 寫入失敗，已停止接受新的模擬委託："
+                    f"{type(error).__name__}"
+                )
 
     def _quote_for(self, position: SimulationPosition) -> _QuoteState | None:
         return self._quotes.get(position.symbol)
@@ -517,7 +992,11 @@ class SimulationService:
         quote = self._quote_for(position)
         if quote is None:
             return position.average_price
-        return quote.last_price or self._stock_price(quote.snapshot)
+        if quote.last_price is not None:
+            return quote.last_price
+        if quote.snapshot is not None:
+            return self._stock_price(quote.snapshot)
+        return position.average_price
 
     def _run_quote_worker(self) -> None:
         while True:
@@ -529,6 +1008,8 @@ class SimulationService:
                 self._sync_quote_subscriptions()
 
     def _apply_quote_update(self, update: RealtimeQuoteUpdate) -> bool:
+        self._roll_trading_day()
+        notifications: list[dict[str, Any]] = []
         with self._lock:
             if self._quote_ingress_blocked:
                 return False
@@ -551,6 +1032,16 @@ class SimulationService:
                 quote.ask_price = self._optional_money(update.ask_price)
                 quote.book_at = update.exchange_timestamp
                 quote.book_received_at = update.received_at
+                quote.bid_available_quantity = (
+                    update.bid_volume_lots * 1_000
+                    if update.bid_volume_lots is not None
+                    else None
+                )
+                quote.ask_available_quantity = (
+                    update.ask_volume_lots * 1_000
+                    if update.ask_volume_lots is not None
+                    else None
+                )
             else:
                 return False
 
@@ -561,16 +1052,26 @@ class SimulationService:
             filled = False
             if update.kind == "BIDASK":
                 for order in self._orders.values():
-                    if order.symbol != update.symbol or order.status is not OrderStatus.SUBMITTED:
+                    if order.symbol != update.symbol or order.status not in _ACTIVE_ORDER_STATUSES:
                         continue
                     execution_price = self._stream_execution_price(order, quote)
                     if (
                         execution_price is not None
                         and self._is_marketable_price(order, execution_price)
                     ):
-                        self._fill(order, execution_price)
-                        filled = True
-            return filled
+                        fill_quantity = self._book_fill_quantity(order, quote)
+                        if fill_quantity > 0:
+                            self._fill(
+                                order,
+                                execution_price,
+                                fill_quantity=fill_quantity,
+                            )
+                            self._consume_book_quantity(order, quote, fill_quantity)
+                            notifications.append(self._order_payload(order))
+                            filled = True
+        for payload in notifications:
+            self._notify_terminal_order(payload)
+        return filled
 
     def _desired_quote_symbols(self) -> set[str]:
         return {
@@ -578,7 +1079,7 @@ class SimulationService:
             *(
                 order.symbol
                 for order in self._orders.values()
-                if order.status is OrderStatus.SUBMITTED
+                if order.status in _ACTIVE_ORDER_STATUSES
             ),
         }
 
@@ -639,15 +1140,96 @@ class SimulationService:
         return normalized
 
     @staticmethod
-    def _order_payload(order: SimulationOrder) -> dict[str, Any]:
+    def _optional_identity(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        if not normalized:
+            raise SimulationValidationError("策略歸屬識別不可為空")
+        return normalized
+
+    @staticmethod
+    def _same_owner(order: SimulationOrder, position: SimulationPosition) -> bool:
+        if order.origin != position.owner_origin:
+            return False
+        if order.origin != "STRATEGY_AUTOMATED":
+            return True
+        return order.strategy_id == position.owner_strategy_id
+
+    def _now(self) -> datetime:
+        return self._clock.now().astimezone(_TAIPEI)
+
+    def _market_value(self) -> Decimal:
+        return sum(
+            (
+                position.quantity * self._current_price(position)
+                for position in self._positions.values()
+            ),
+            Decimal("0"),
+        )
+
+    def _ensure_trading_day(self) -> None:
+        trading_date = self._clock.session_date()
+        if trading_date == self._trading_date:
+            return
+        self._opening_equity = self._cash + self._market_value()
+        self._opening_realized_pnl = sum(
+            self._realized_pnl_by_symbol.values(),
+            Decimal("0"),
+        )
+        self._trading_date = trading_date
+        self._pending_daily_baselines.append(self._daily_baseline_payload())
+
+    def _roll_trading_day(self) -> None:
+        with self._lock:
+            self._ensure_trading_day()
+            notifications = self._pending_daily_baselines
+            self._pending_daily_baselines = []
+            handler = self._daily_baseline_handler
+        if handler is None:
+            return
+        for payload in notifications:
+            try:
+                handler(payload)
+            except Exception as error:
+                with self._lock:
+                    self._quote_ingress_blocked = True
+                    self._stream_error = (
+                        "交易日風控基準 Journal 寫入失敗，已停止接受新的模擬委託："
+                        f"{type(error).__name__}"
+                    )
+
+    def _daily_baseline_payload(self) -> dict[str, Any]:
+        return {
+            "trading_date": self._trading_date.isoformat(),
+            "opening_equity": str(self._opening_equity),
+            "opening_realized_pnl": str(self._opening_realized_pnl),
+            "includes_unrealized_pnl": True,
+            "created_at": self._now().isoformat(),
+        }
+
+    def _order_payload(self, order: SimulationOrder) -> dict[str, Any]:
+        quote = self._quotes.get(order.symbol)
+        waiting_reason = None
+        if order.status in _ACTIVE_ORDER_STATUSES and self._stream_capable:
+            if quote is None or quote.book_received_at is None:
+                waiting_reason = "WAITING_FOR_FIRST_BIDASK"
+            elif self._stream_execution_price(order, quote) is None:
+                waiting_reason = "WAITING_FOR_FRESH_BIDASK"
+            else:
+                waiting_reason = "LIMIT_NOT_REACHED"
         return {
             "order_id": order.order_id,
+            "idempotency_key": order.idempotency_key,
             "origin": order.origin,
+            "strategy_id": order.strategy_id,
+            "strategy_version": order.strategy_version,
             "symbol": order.symbol,
             "name": order.name,
             "side": order.side.value,
             "lots": order.lots,
             "quantity": order.quantity,
+            "remaining_quantity": order.remaining_quantity,
             "limit_price": float(order.limit_price),
             "estimated_amount": float(order.quantity * order.limit_price),
             "status": order.status.value,
@@ -655,33 +1237,76 @@ class SimulationService:
             "updated_at": order.updated_at.isoformat(),
             "filled_price": float(order.filled_price) if order.filled_price is not None else None,
             "filled_quantity": order.filled_quantity,
-            "filled_amount": (
-                float(order.filled_price * order.filled_quantity)
-                if order.filled_price is not None
+            "last_fill_price": (
+                float(order.last_fill_price)
+                if order.last_fill_price is not None
                 else None
             ),
+            "last_fill_quantity": order.last_fill_quantity,
+            "fill_sequence": order.fill_sequence,
+            "filled_amount": (
+                float(order.filled_notional)
+                if order.filled_quantity > 0
+                else None
+            ),
+            "attempt": order.attempt,
+            "predecessor_order_id": order.predecessor_order_id,
+            "timeout_at": order.timeout_at.isoformat() if order.timeout_at else None,
+            "expires_at": order.expires_at.isoformat() if order.expires_at else None,
+            "trading_date": self._trading_date.isoformat(),
+            "opening_equity": float(self._opening_equity),
             "reason": order.reason,
+            "waiting_reason": waiting_reason,
+            "bid_price": (
+                float(quote.bid_price)
+                if quote is not None and quote.bid_price is not None
+                else None
+            ),
+            "ask_price": (
+                float(quote.ask_price)
+                if quote is not None and quote.ask_price is not None
+                else None
+            ),
+            "last_quote_at": (
+                quote.book_at.isoformat()
+                if quote is not None and quote.book_at is not None
+                else None
+            ),
+            "quote_received_at": (
+                quote.book_received_at.isoformat()
+                if quote is not None and quote.book_received_at is not None
+                else None
+            ),
+            "fill_source": "paper_simulation",
+            "provider_identity": self._provider_identity,
+            "execution_authority": False,
         }
 
     def risk_snapshot(self, symbol: str) -> dict[str, Any]:
         """Return local-only evidence for the command facade without provider I/O."""
         normalized_symbol = self._normalize_symbol(symbol)
+        self._roll_trading_day()
         with self._lock:
             position = self._positions.get(normalized_symbol)
             pending = [
                 order
                 for order in self._orders.values()
-                if order.symbol == normalized_symbol and order.status is OrderStatus.SUBMITTED
+                if order.symbol == normalized_symbol and order.status in _ACTIVE_ORDER_STATUSES
             ]
             quote = self._quotes.get(normalized_symbol)
             book_age = None
             if quote is not None and quote.book_received_at is not None:
                 book_age = max(
                     0,
-                    int((datetime.now(_TAIPEI) - quote.book_received_at).total_seconds()),
+                    int((self._now() - quote.book_received_at).total_seconds()),
                 )
             return {
-                "data_health_state": "BLOCKED" if self._quote_ingress_blocked else "HEALTHY",
+                "data_health_state": (
+                    "BLOCKED"
+                    if self._quote_ingress_blocked
+                    or (self._stream_capable and not self._streaming_enabled)
+                    else "HEALTHY"
+                ),
                 "available_cash": self._available_cash(),
                 "current_position_shares": position.quantity if position else 0,
                 "pending_buy_shares": sum(
@@ -693,7 +1318,8 @@ class SimulationService:
                 "daily_realized_pnl": sum(
                     self._realized_pnl_by_symbol.values(),
                     Decimal("0"),
-                ),
+                )
+                - self._opening_realized_pnl,
                 "book_age_seconds": book_age,
             }
 
@@ -733,14 +1359,18 @@ class SimulationService:
             existing_order_id = self._order_ids_by_key.get(normalized_key)
             if existing_order_id is not None:
                 return self._order_payload(self._orders[existing_order_id])
-            stock = self._get_stock(normalized_symbol)
-            now = datetime.now(_TAIPEI)
+            if self._stream_capable:
+                stock_symbol, stock_name = self._get_stock_identity(normalized_symbol)
+            else:
+                stock = self._get_stock(normalized_symbol)
+                stock_symbol, stock_name = stock.symbol, stock.name
+            now = self._now()
             order = SimulationOrder(
                 order_id=uuid4().hex,
                 idempotency_key=normalized_key,
                 origin=origin,
-                symbol=stock.symbol,
-                name=stock.name,
+                symbol=stock_symbol,
+                name=stock_name,
                 side=normalized_side,
                 lots=normalized_lots,
                 limit_price=normalized_price,
