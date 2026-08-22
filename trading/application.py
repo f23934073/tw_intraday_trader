@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -26,10 +28,71 @@ class ApplicationStatus(StrEnum):
     HANDLER_FAILED = "HANDLER_FAILED"
 
 
-class LocalPaperCommandHandler(Protocol):
-    """Side-effect port; the existing simulator is not wired here yet."""
+@dataclass(frozen=True)
+class ProposedOrderCommand:
+    """Normalized order proposal that has not passed Hard Risk admission."""
 
-    def submit(self, command: OrderCommand) -> Mapping[str, Any]:
+    command: OrderCommand
+
+    @property
+    def command_digest(self) -> str:
+        return _canonical_digest(_order_command_payload(self.command))
+
+
+@dataclass(frozen=True)
+class ApprovedOrderCommand:
+    """The only command type an execution adapter is allowed to receive."""
+
+    proposal: ProposedOrderCommand
+    risk_decision: RiskDecision
+    risk_snapshot_digest: str
+    effective_policy_digest: str
+    approved_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.risk_decision.status is not RiskDecisionStatus.APPROVED:
+            raise ValueError("只有 Hard Risk APPROVED 的 command 可以進入 adapter")
+        for value, field_name in (
+            (self.risk_snapshot_digest, "risk_snapshot_digest"),
+            (self.effective_policy_digest, "effective_policy_digest"),
+        ):
+            if len(value) != 64 or any(
+                character not in "0123456789abcdef" for character in value
+            ):
+                raise ValueError(f"{field_name} must be a lowercase SHA-256 digest")
+
+    @property
+    def command(self) -> OrderCommand:
+        return self.proposal.command
+
+    @property
+    def risk_decision_digest(self) -> str:
+        return _risk_decision_digest(
+            proposal=self.proposal,
+            risk_decision=self.risk_decision,
+            risk_snapshot_digest=self.risk_snapshot_digest,
+            effective_policy_digest=self.effective_policy_digest,
+        )
+
+    @property
+    def risk_decision_id(self) -> str:
+        return f"risk-decision-v1:{self.risk_decision_digest}"
+
+    @property
+    def approved_command_digest(self) -> str:
+        return _canonical_digest(
+            {
+                "proposed_command_digest": self.proposal.command_digest,
+                "risk_decision_digest": self.risk_decision_digest,
+                "approved_at": self.approved_at.isoformat(),
+            }
+        )
+
+
+class LocalPaperCommandHandler(Protocol):
+    """Local-only side-effect port that accepts approved commands only."""
+
+    def submit(self, command: ApprovedOrderCommand) -> Mapping[str, Any]:
         """Apply an already-approved local-paper command."""
 
 
@@ -65,9 +128,61 @@ def _risk_snapshot_payload(snapshot: RiskSnapshot) -> dict[str, object]:
         "pending_buy_shares": snapshot.pending_buy_shares,
         "pending_sell_shares": snapshot.pending_sell_shares,
         "daily_realized_pnl": str(snapshot.daily_realized_pnl),
+        "daily_loss": (
+            str(snapshot.daily_loss) if snapshot.daily_loss is not None else None
+        ),
         "same_side_pending_order": snapshot.same_side_pending_order,
         "book_age_seconds": snapshot.book_age_seconds,
     }
+
+
+def _order_command_payload(command: OrderCommand) -> dict[str, object]:
+    return {
+        "command_id": command.command_id,
+        "session_id": command.session_id,
+        "origin": command.origin.value,
+        "symbol": command.symbol,
+        "side": command.side.value,
+        "quantity_shares": command.quantity_shares,
+        "limit_price": str(command.limit_price),
+        "idempotency_key": command.idempotency_key,
+        "requested_at": command.requested_at.isoformat(),
+        "strategy_id": command.strategy_id,
+        "strategy_version": command.strategy_version,
+        "attempt": command.attempt,
+        "predecessor_order_id": command.predecessor_order_id,
+    }
+
+
+def _canonical_digest(payload: Mapping[str, object]) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _risk_decision_digest(
+    *,
+    proposal: ProposedOrderCommand,
+    risk_decision: RiskDecision,
+    risk_snapshot_digest: str,
+    effective_policy_digest: str,
+) -> str:
+    return _canonical_digest(
+        {
+            "proposed_command_digest": proposal.command_digest,
+            "risk_snapshot_digest": risk_snapshot_digest,
+            "effective_policy_digest": effective_policy_digest,
+            "status": risk_decision.status.value,
+            "reasons": [reason.value for reason in risk_decision.reasons],
+            "approved_quantity_shares": risk_decision.approved_quantity_shares,
+            "policy_version": risk_decision.policy_version,
+            "evaluated_at": risk_decision.evaluated_at.isoformat(),
+        }
+    )
 
 
 class OrderApplicationService:
@@ -93,10 +208,32 @@ class OrderApplicationService:
         *,
         evaluated_at: datetime,
     ) -> CommandApplicationResult:
+        proposed = ProposedOrderCommand(command)
+        risk_snapshot_payload = _risk_snapshot_payload(snapshot)
+        risk_snapshot_digest = _canonical_digest(risk_snapshot_payload)
+        effective_policy_digest = self._risk_gate.policy_digest
+        effective_policy_payload = self._risk_gate.policy_payload
         risk = self._risk_gate.evaluate(
-            command,
+            proposed.command,
             snapshot,
             evaluated_at=evaluated_at,
+        )
+        risk_decision_digest = _risk_decision_digest(
+            proposal=proposed,
+            risk_decision=risk,
+            risk_snapshot_digest=risk_snapshot_digest,
+            effective_policy_digest=effective_policy_digest,
+        )
+        approved = (
+            ApprovedOrderCommand(
+                proposal=proposed,
+                risk_decision=risk,
+                risk_snapshot_digest=risk_snapshot_digest,
+                effective_policy_digest=effective_policy_digest,
+                approved_at=evaluated_at,
+            )
+            if risk.status is RiskDecisionStatus.APPROVED
+            else None
         )
         appended = self._journal.append(
             JournalRecord(
@@ -119,7 +256,19 @@ class OrderApplicationService:
                     "risk_status": risk.status.value,
                     "risk_reasons": [reason.value for reason in risk.reasons],
                     "risk_policy_version": risk.policy_version,
-                    "risk_snapshot": _risk_snapshot_payload(snapshot),
+                    "risk_snapshot": risk_snapshot_payload,
+                    "proposed_command_digest": proposed.command_digest,
+                    "risk_snapshot_digest": risk_snapshot_digest,
+                    "effective_risk_policy": effective_policy_payload,
+                    "effective_risk_policy_digest": effective_policy_digest,
+                    "risk_decision_id": f"risk-decision-v1:{risk_decision_digest}",
+                    "risk_decision_digest": risk_decision_digest,
+                    "approved_command_digest": (
+                        approved.approved_command_digest
+                        if approved is not None
+                        else None
+                    ),
+                    "command_state": "PROPOSED",
                 },
                 idempotency_scope=f"{command.session_id}:order_command",
                 idempotency_key=command.idempotency_key,
@@ -145,7 +294,8 @@ class OrderApplicationService:
             )
 
         try:
-            handler_result = self._handler.submit(command)
+            assert approved is not None
+            handler_result = self._handler.submit(approved)
         except Exception as error:
             self._journal.append(
                 JournalRecord(

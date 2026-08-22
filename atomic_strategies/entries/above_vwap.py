@@ -51,9 +51,12 @@ class AboveVwapEntryStrategy:
         implementation_version="v1",
         implementation_digest=hashlib.sha256(b"above-vwap-entry-kernel-v1").hexdigest(),
         parameter_schema=PARAMETER_SCHEMA,
-        required_capabilities=("OHLCV", "KBAR_INTRADAY_1M"),
+        required_capabilities=("OHLCV", "KBAR_INTRADAY", "KBAR_1M", "SESSION_BOUNDARIES"),
         feature_requirements=({"feature_id": "vwap_session_v1", "parameters": {}},),
-        runtime_bindings={"BACKTEST_KBAR_1M": "above_vwap.backtest_kbar_1m_v1"},
+        runtime_bindings={
+            "BACKTEST_KBAR_1M": "above_vwap.backtest_kbar_1m_v1",
+            "LOCAL_PAPER_TICK_BIDASK": "above_vwap.local_paper_tick_bidask_v1",
+        },
         description_zh_tw="完整一分鐘 Kbar 收盤價高於當日已完成資料 VWAP 時觸發。",
     )
 

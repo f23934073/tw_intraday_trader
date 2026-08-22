@@ -128,16 +128,12 @@ def test_sqlite_copy_is_idempotent_verified_and_reconciles_only_stale_job(
             cursor.execute(
                 """
                 SELECT
-                    to_regclass('public.backtest_jobs'),
-                    to_regclass('backtest.backtest_jobs'),
-                    to_regclass('backtest.backtest_history_partitions')
+                    to_regclass('public.backtest_jobs') IS NULL,
+                    to_regclass('backtest.backtest_jobs') IS NOT NULL,
+                    to_regclass('backtest.backtest_history_partitions') IS NOT NULL
                 """
             )
-            assert cursor.fetchone() == (
-                None,
-                "backtest.backtest_jobs",
-                "backtest.backtest_history_partitions",
-            )
+            assert cursor.fetchone() == (True, True, True)
 
         source = sqlite3.connect(sqlite_path)
         try:

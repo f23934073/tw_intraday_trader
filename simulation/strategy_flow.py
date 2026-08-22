@@ -2,21 +2,30 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Mapping
 
 from runtime.clock import TAIPEI, Clock
 from simulation.application import LocalPaperCommandService
 from simulation.service import SimulationStateError, SimulationValidationError
 from trading.canonical_values import canonical_decimal_string
-from trading.journal import JournalConflictError, JournalRecord, JournalRepository
+from trading.journal import (
+    JournalAppendResult,
+    JournalConflictError,
+    JournalRecord,
+    JournalRepository,
+)
 from trading.risk import CommandSide
+from trading.risk import RiskPolicy
+from strategy_catalog.parameter_schema import canonical_digest
 
 
 STRATEGY_PAPER_INTENT_VERSION = "strategy-paper-intent-v1"
 STRATEGY_PAPER_INTENT_KIND = "strategy_paper_intent.v1"
+STRATEGY_RUNTIME_CHECKPOINT_KIND = "strategy_runtime_checkpoint.v1"
 
 
 @dataclass(frozen=True)
@@ -32,6 +41,7 @@ class StrategyPaperIntent:
     signaled_at: datetime
     quantity_shares: int | None = None
     lots: int | None = None
+    decision_evidence: Mapping[str, Any] | None = None
     schema_version: str = STRATEGY_PAPER_INTENT_VERSION
 
     def __post_init__(self) -> None:
@@ -81,6 +91,8 @@ class StrategyPaperIntent:
             raise SimulationValidationError("signal_at 必須包含時區")
         if self.schema_version != STRATEGY_PAPER_INTENT_VERSION:
             raise SimulationValidationError("不支援的策略紙上意圖版本")
+        if self.decision_evidence is not None:
+            object.__setattr__(self, "decision_evidence", dict(self.decision_evidence))
 
     @classmethod
     def create(
@@ -95,6 +107,7 @@ class StrategyPaperIntent:
         signaled_at: datetime,
         quantity_shares: int | None = None,
         lots: int | None = None,
+        decision_evidence: Mapping[str, Any] | None = None,
     ) -> "StrategyPaperIntent":
         try:
             normalized_side = CommandSide(str(side).strip().upper())
@@ -114,10 +127,11 @@ class StrategyPaperIntent:
             signaled_at=signaled_at,
             quantity_shares=quantity_shares,
             lots=lots,
+            decision_evidence=decision_evidence,
         )
 
     def journal_payload(self) -> dict[str, object]:
-        return {
+        payload = {
             "schema_version": self.schema_version,
             "intent_id": self.intent_id,
             "strategy_id": self.strategy_id,
@@ -130,6 +144,9 @@ class StrategyPaperIntent:
             "signaled_at": self.signaled_at.isoformat(),
             "execution_boundary": "LOCAL_ONLY",
         }
+        if self.decision_evidence is not None:
+            payload["decision_evidence"] = dict(self.decision_evidence)
+        return payload
 
 
 class StrategyPaperFlowService:
@@ -187,6 +204,119 @@ class StrategyPaperFlowService:
             "order": order,
         }
 
+    def activate_run(
+        self,
+        *,
+        owner_strategy_id: str,
+        operator_max_daily_loss: Decimal,
+        activation_config: Mapping[str, Any],
+        actor_id: str,
+        idempotency_key: str,
+        occurred_at: datetime,
+    ) -> Mapping[str, Any]:
+        """Journal one exact-set activation before installing its Risk Policy."""
+
+        policy, risk_evidence = self._commands.prepare_strategy_risk_policy(
+            owner_strategy_id=owner_strategy_id,
+            operator_max_daily_loss=operator_max_daily_loss,
+        )
+        payload = {
+            "contract_version": "strategy-runtime-activation-v1",
+            "owner_strategy_id": owner_strategy_id,
+            "actor_id": actor_id,
+            "idempotency_key": idempotency_key,
+            "activation_config": dict(activation_config),
+            "effective_risk": dict(risk_evidence),
+        }
+        record = JournalRecord(
+            record_id=(
+                f"strategy-runtime-activation:{owner_strategy_id}:"
+                f"{idempotency_key}"
+            ),
+            session_id=self._session_id,
+            kind="strategy_runtime_activation.v1",
+            occurred_at=occurred_at,
+            payload=payload,
+            idempotency_scope=(
+                f"{self._session_id}:strategy-runtime-activation:"
+                f"{owner_strategy_id}"
+            ),
+            idempotency_key=idempotency_key,
+        )
+        try:
+            existing = self._activation_record(
+                owner_strategy_id=owner_strategy_id,
+                idempotency_key=idempotency_key,
+            )
+            appended = (
+                self._activation_replay(existing, record)
+                if existing is not None
+                else self._journal.append(record)
+            )
+        except JournalConflictError as error:
+            existing = self._activation_record(
+                owner_strategy_id=owner_strategy_id,
+                idempotency_key=idempotency_key,
+            )
+            try:
+                if existing is None:
+                    raise error
+                appended = self._activation_replay(existing, record)
+            except JournalConflictError as replay_error:
+                raise SimulationStateError(
+                    "Local Paper activation 內容與既有紀錄衝突"
+                ) from replay_error
+        self._commands.activate_strategy_risk_policy(
+            owner_strategy_id=owner_strategy_id,
+            policy=policy,
+        )
+        return {
+            **risk_evidence,
+            "actor_id": actor_id,
+            "activation_idempotency_key": idempotency_key,
+            "activation_sequence": appended.sequence,
+            "activation_idempotent": appended.idempotent,
+        }
+
+    def _activation_record(
+        self,
+        *,
+        owner_strategy_id: str,
+        idempotency_key: str,
+    ) -> JournalAppendResult | None:
+        scope = (
+            f"{self._session_id}:strategy-runtime-activation:"
+            f"{owner_strategy_id}"
+        )
+        return next(
+            (
+                item
+                for item in self._journal.records(self._session_id)
+                if item.record.idempotency_scope == scope
+                and item.record.idempotency_key == idempotency_key
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _activation_replay(
+        existing: JournalAppendResult,
+        requested: JournalRecord,
+    ) -> JournalAppendResult:
+        if (
+            existing.record.record_id != requested.record_id
+            or existing.record.kind != requested.kind
+            or existing.record.payload_json != requested.payload_json
+        ):
+            raise JournalConflictError(
+                "Local Paper activation request conflicts with existing result"
+            )
+        return JournalAppendResult(
+            record=existing.record,
+            sequence=existing.sequence,
+            idempotent=True,
+        )
+
     def cancel(self, order_id: str, idempotency_key: str) -> dict[str, Any]:
         """Cancel one local-paper order through the existing journal-first path."""
 
@@ -208,3 +338,44 @@ class StrategyPaperFlowService:
             limit_price=limit_price,
         )
         return {"order": order, "idempotent": idempotent}
+
+    def checkpoint(self, payload: Mapping[str, Any], *, occurred_at: datetime) -> None:
+        """Persist a content-addressed controller checkpoint in the same Journal."""
+
+        canonical = dict(payload)
+        digest = canonical_digest(canonical)
+        self._journal.append(
+            JournalRecord(
+                record_id=f"strategy-runtime-checkpoint:{digest}",
+                session_id=self._session_id,
+                kind=STRATEGY_RUNTIME_CHECKPOINT_KIND,
+                occurred_at=occurred_at,
+                payload={**canonical, "checkpoint_digest": digest},
+                idempotency_scope=f"{self._session_id}:strategy-runtime-checkpoint",
+                idempotency_key=digest,
+            )
+        )
+
+    def latest_checkpoint(
+        self,
+        *,
+        owner_strategy_id: str,
+        pipeline_digest: str | None,
+    ) -> Mapping[str, Any] | None:
+        """Return the newest verified checkpoint for one exact runtime owner."""
+
+        matches = []
+        for stored in self._journal.records(self._session_id):
+            record = stored.record
+            if record.kind != STRATEGY_RUNTIME_CHECKPOINT_KIND:
+                continue
+            payload = json.loads(record.payload_json)
+            saved_digest = str(payload.pop("checkpoint_digest", ""))
+            if not saved_digest or canonical_digest(payload) != saved_digest:
+                raise SimulationStateError("策略 runtime checkpoint digest 不一致")
+            if payload.get("owner_strategy_id") != owner_strategy_id:
+                continue
+            if payload.get("pipeline_digest") != pipeline_digest:
+                continue
+            matches.append((stored.sequence, payload))
+        return dict(max(matches, key=lambda item: item[0])[1]) if matches else None

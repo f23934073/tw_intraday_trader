@@ -242,15 +242,23 @@ class MockProvider(MarketDataProvider):
     不需要任何真實網路連線或帳號。
     """
 
-    def __init__(self, add_noise: bool = False) -> None:
+    def __init__(
+        self,
+        add_noise: bool = False,
+        *,
+        history_anchor_date: date | None = None,
+    ) -> None:
         """
         Args:
             add_noise: 若為 True，每次取得資料時隨機微幅波動，模擬盤中報價更新。
+            history_anchor_date: 可注入的 Kbar 基準日，供可重現測試使用。
         """
         self._add_noise = add_noise
         # 以 dict 儲存原始資料，timestamp 在每次取得時動態注入
         self._raw: dict[str, dict] = {d["symbol"]: d for d in _MOCK_STOCKS}
-        self._history_anchor_date = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        self._history_anchor_date = history_anchor_date or datetime.now(
+            ZoneInfo("Asia/Taipei")
+        ).date()
 
     def _build(self, data: dict) -> StockData:
         """從原始 dict 建構 StockData，timestamp 注入當下時間。"""

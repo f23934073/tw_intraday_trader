@@ -13,6 +13,10 @@ from uuid import uuid4
 from market_data.equity_calendar import ReviewedEquityCalendar
 from runtime.clock import TAIPEI, Clock
 from simulation.execution_policy import EXECUTABLE_BOOK_MAX_AGE_SECONDS
+from simulation.atomic_runtime import (
+    AtomicPaperRuntimeResolution,
+    PaperSetStatus,
+)
 from simulation.strategy_flow import StrategyPaperFlowService, StrategyPaperIntent
 
 
@@ -39,6 +43,57 @@ class _StrategyFlow(Protocol):
         limit_price: Decimal | float | int | str | None = None,
     ) -> dict[str, Any]: ...
 
+    def activate_run(
+        self,
+        *,
+        owner_strategy_id: str,
+        operator_max_daily_loss: Decimal,
+        activation_config: Mapping[str, Any],
+        actor_id: str,
+        idempotency_key: str,
+        occurred_at: datetime,
+    ) -> Mapping[str, Any]: ...
+
+
+class LocalPaperKillSwitch:
+    """Process-local emergency stop; reset always requires an explicit call."""
+
+    def __init__(self) -> None:
+        self._lock = RLock()
+        self._engaged = False
+        self._reason: str | None = None
+        self._engaged_at: datetime | None = None
+
+    def engage(self, reason: str, *, at: datetime) -> dict[str, Any]:
+        normalized = reason.strip()
+        if not normalized:
+            raise ValueError("kill switch reason 不可為空")
+        with self._lock:
+            self._engaged = True
+            self._reason = normalized
+            self._engaged_at = at
+            return self.status()
+
+    def reset(self) -> dict[str, Any]:
+        with self._lock:
+            self._engaged = False
+            self._reason = None
+            self._engaged_at = None
+            return self.status()
+
+    def status(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "engaged": self._engaged,
+                "reason": self._reason,
+                "engaged_at": _iso(self._engaged_at),
+            }
+
+    @property
+    def engaged(self) -> bool:
+        with self._lock:
+            return self._engaged
+
 
 class AutomatedStrategyStateError(RuntimeError):
     """The requested controller lifecycle transition is not allowed."""
@@ -51,6 +106,9 @@ class AutomatedStrategyConfig:
     stop_loss_pct: Decimal
     take_profit_pct: Decimal
     max_daily_loss: Decimal
+    entry_strategy_set_version_id: str | None = None
+    actor_id: str = "local-operator"
+    activation_idempotency_key: str = "direct-controller-start"
     poll_seconds: float = 1.0
     max_signal_age_seconds: float = 5.0
     max_quote_age_seconds: float = EXECUTABLE_BOOK_MAX_AGE_SECONDS
@@ -76,6 +134,21 @@ class AutomatedStrategyConfig:
             raise ValueError("行情新鮮度秒數必須大於 0")
         if self.max_exit_attempts <= 0:
             raise ValueError("max_exit_attempts 必須大於 0")
+        if self.entry_strategy_set_version_id is not None:
+            normalized_set_id = self.entry_strategy_set_version_id.strip()
+            if not normalized_set_id:
+                raise ValueError("entry_strategy_set_version_id 不可為空")
+            object.__setattr__(
+                self, "entry_strategy_set_version_id", normalized_set_id
+            )
+        for value, field_name in (
+            (self.actor_id, "actor_id"),
+            (self.activation_idempotency_key, "activation_idempotency_key"),
+        ):
+            normalized = value.strip()
+            if not normalized:
+                raise ValueError(f"{field_name} 不可為空")
+            object.__setattr__(self, field_name, normalized)
         if not (
             self.entry_open
             < self.entry_cutoff
@@ -91,12 +164,18 @@ class AutomatedStrategyConfig:
         stop_loss_pct: Decimal | float | int | str,
         take_profit_pct: Decimal | float | int | str,
         max_daily_loss: Decimal | float | int | str,
+        entry_strategy_set_version_id: str | None = None,
+        actor_id: str = "local-operator",
+        activation_idempotency_key: str = "direct-controller-start",
         poll_seconds: float = 1.0,
     ) -> "AutomatedStrategyConfig":
         return cls(
             stop_loss_pct=_decimal(stop_loss_pct, "stop_loss_pct"),
             take_profit_pct=_decimal(take_profit_pct, "take_profit_pct"),
             max_daily_loss=_decimal(max_daily_loss, "max_daily_loss"),
+            entry_strategy_set_version_id=entry_strategy_set_version_id,
+            actor_id=actor_id,
+            activation_idempotency_key=activation_idempotency_key,
             poll_seconds=poll_seconds,
         )
 
@@ -104,6 +183,9 @@ class AutomatedStrategyConfig:
         return {
             "strategy_id": CONTINUOUS_STRATEGY_ID,
             "strategy_version": CONTINUOUS_STRATEGY_VERSION,
+            "entry_strategy_set_version_id": self.entry_strategy_set_version_id,
+            "actor_id": self.actor_id,
+            "activation_idempotency_key": self.activation_idempotency_key,
             "lots": 1,
             "max_entries_per_session": 1,
             "stop_loss_pct": str(self.stop_loss_pct),
@@ -131,12 +213,16 @@ class ContinuousPaperStrategyController:
         signal_reader: Callable[[], Mapping[str, Any]],
         calendar: ReviewedEquityCalendar,
         clock: Clock,
+        atomic_resolver: Callable[[str], AtomicPaperRuntimeResolution] | None = None,
+        kill_switch: LocalPaperKillSwitch | None = None,
     ) -> None:
         self._flow = flow
         self._projection_reader = projection_reader
         self._signal_reader = signal_reader
         self._calendar = calendar
         self._clock = clock
+        self._atomic_resolver = atomic_resolver
+        self._kill_switch = kill_switch or LocalPaperKillSwitch()
         self._lock = RLock()
         self._stop = Event()
         self._thread: Thread | None = None
@@ -153,6 +239,8 @@ class ContinuousPaperStrategyController:
         self._last_exit_reason: str | None = None
         self._entries_submitted = 0
         self._consumed_signal_digests: set[str] = set()
+        self._atomic_resolution: AtomicPaperRuntimeResolution | None = None
+        self._effective_risk_evidence: Mapping[str, Any] | None = None
 
     def start(
         self,
@@ -160,23 +248,82 @@ class ContinuousPaperStrategyController:
         *,
         background: bool = True,
     ) -> dict[str, Any]:
+        if self._kill_switch.engaged:
+            raise AutomatedStrategyStateError(
+                "Local Paper kill switch 尚未解除，禁止啟動策略"
+            )
         with self._lock:
             if self._state == "RUNNING":
                 raise AutomatedStrategyStateError("自動模擬策略已在執行")
+            atomic_resolution = None
+            effective_risk_evidence = None
+            started_at = self._clock.now()
+            if config.entry_strategy_set_version_id is not None:
+                if self._atomic_resolver is None:
+                    raise AutomatedStrategyStateError(
+                        "尚未設定 exact Strategy Set Local Paper resolver"
+                    )
+                atomic_resolution = self._atomic_resolver(
+                    config.entry_strategy_set_version_id
+                )
+                activator = getattr(self._flow, "activate_run", None)
+                if not callable(activator):
+                    raise AutomatedStrategyStateError(
+                        "exact Strategy Set flow 缺少 durable activation boundary"
+                    )
+                effective_risk_evidence = activator(
+                    owner_strategy_id=atomic_resolution.pipeline.owner_strategy_id,
+                    operator_max_daily_loss=config.max_daily_loss,
+                    activation_config={
+                        "config": config.payload(),
+                        "pipeline": {
+                            **atomic_resolution.pipeline.to_dict(),
+                            "snapshot_digest": (
+                                atomic_resolution.pipeline.snapshot_digest
+                            ),
+                        },
+                    },
+                    actor_id=config.actor_id,
+                    idempotency_key=config.activation_idempotency_key,
+                    occurred_at=started_at,
+                )
+            previous_runtime = (
+                self._config,
+                self._atomic_resolution,
+                self._effective_risk_evidence,
+                self._entries_submitted,
+                set(self._consumed_signal_digests),
+            )
             self._config = config
+            self._atomic_resolution = atomic_resolution
+            self._effective_risk_evidence = effective_risk_evidence
+            self._entries_submitted = 0
+            self._consumed_signal_digests.clear()
+            try:
+                self._restore_session_ownership_locked()
+                self._restore_runtime_checkpoint_locked()
+            except Exception:
+                (
+                    self._config,
+                    self._atomic_resolution,
+                    self._effective_risk_evidence,
+                    self._entries_submitted,
+                    previous_digests,
+                ) = previous_runtime
+                self._consumed_signal_digests = previous_digests
+                raise
             self._run_id = uuid4().hex
             self._state = "RUNNING"
             self._decision = "STARTED"
             self._message = "自動模擬策略已啟動，等待有效盤中訊號"
-            self._started_at = self._clock.now()
+            self._started_at = started_at
             self._last_checked_at = None
             self._last_action_at = None
             self._last_error = None
             self._last_intent = None
             self._last_exit_reason = None
-            self._entries_submitted = 0
-            self._consumed_signal_digests.clear()
             self._stop.clear()
+            self._write_runtime_checkpoint_locked()
             if background:
                 self._thread = Thread(
                     target=self._run_loop,
@@ -201,10 +348,31 @@ class ContinuousPaperStrategyController:
             self._state = "STOPPED"
             self._decision = "STOPPED"
             self._message = "自動模擬策略已停止；既有本機持倉不會自動清除"
+            self._write_runtime_checkpoint_locked()
             return self._status_locked()
 
     def close(self) -> None:
         self.stop()
+
+    def engage_kill_switch(self, reason: str) -> dict[str, Any]:
+        self._kill_switch.engage(reason, at=self._clock.now())
+        self._stop.set()
+        with self._lock:
+            self._state = "KILLED"
+            self._decision = "KILL_SWITCH_ENGAGED"
+            self._message = "全域 Local Paper kill switch 已啟用；禁止產生新意圖"
+            self._write_runtime_checkpoint_locked()
+            return self._status_locked()
+
+    def reset_kill_switch(self) -> dict[str, Any]:
+        self._kill_switch.reset()
+        with self._lock:
+            if self._state == "KILLED":
+                self._state = "STOPPED"
+                self._decision = "STOPPED"
+                self._message = "kill switch 已解除；必須重新手動啟動策略"
+            self._write_runtime_checkpoint_locked()
+            return self._status_locked()
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -216,6 +384,7 @@ class ContinuousPaperStrategyController:
                 return self._status_locked()
             try:
                 self._evaluate_locked(self._clock.now())
+                self._write_runtime_checkpoint_locked()
             except Exception as error:
                 self._state = "ERROR"
                 self._decision = "ERROR"
@@ -237,6 +406,12 @@ class ContinuousPaperStrategyController:
     def _evaluate_locked(self, now: datetime) -> None:
         config = self._require_config()
         self._last_checked_at = now
+        if self._kill_switch.engaged:
+            self._state = "KILLED"
+            self._decision = "KILL_SWITCH_ENGAGED"
+            self._message = "全域 Local Paper kill switch 已啟用；禁止產生新意圖"
+            self._stop.set()
+            return
         local = now.astimezone(TAIPEI)
         try:
             trading_day = self._calendar.is_trading_day(local.date())
@@ -314,7 +489,7 @@ class ContinuousPaperStrategyController:
             if str(order.get("status"))
             in {"SUBMITTED", "PENDING", "PARTIALLY_FILLED"}
             and str(order.get("origin")) == "STRATEGY_AUTOMATED"
-            and str(order.get("strategy_id")) == CONTINUOUS_STRATEGY_ID
+            and str(order.get("strategy_id")) == self._owner_strategy_id()
         ]
         for order in active:
             order_id = str(order.get("order_id") or "").strip()
@@ -328,7 +503,7 @@ class ContinuousPaperStrategyController:
             position
             for position in positions
             if str(position.get("owner_origin")) == "STRATEGY_AUTOMATED"
-            and str(position.get("owner_strategy_id")) == CONTINUOUS_STRATEGY_ID
+            and str(position.get("owner_strategy_id")) == self._owner_strategy_id()
         ]
         if owned_positions or any(str(order.get("side")) == "SELL" for order in active):
             self._set_decision(
@@ -349,6 +524,9 @@ class ContinuousPaperStrategyController:
         now: datetime,
         config: AutomatedStrategyConfig,
     ) -> None:
+        if self._atomic_resolution is not None:
+            self._evaluate_atomic_entry(now, config)
+            return
         snapshot = self._signal_reader()
         source = _mapping(snapshot.get("source"), "momentum.source")
         if not (
@@ -430,6 +608,82 @@ class ContinuousPaperStrategyController:
         decision = "ENTRY_REJECTED" if order_status == "REJECTED" else "ENTRY_SUBMITTED"
         self._set_decision(decision, f"已送出 {symbol} 一張本機模擬進場意圖")
 
+    def _evaluate_atomic_entry(
+        self,
+        now: datetime,
+        config: AutomatedStrategyConfig,
+    ) -> None:
+        resolution = self._atomic_resolution
+        if resolution is None:
+            raise AutomatedStrategyStateError("atomic Local Paper runtime 尚未解析")
+        result = resolution.evaluate_projection(
+            self._signal_reader(),
+            evaluated_at=now,
+            max_age_seconds=config.max_signal_age_seconds,
+        )
+        triggered = [
+            item
+            for item in result.triggered
+            if item.decision_digest not in self._consumed_signal_digests
+        ]
+        if not triggered:
+            if result.blocked_reasons:
+                self._set_decision(
+                    "BLOCKED_SIGNAL",
+                    "；".join(result.blocked_reasons[:3]),
+                )
+                return
+            unavailable = [
+                item
+                for item in result.candidates
+                if item.status
+                in {PaperSetStatus.BLOCKED, PaperSetStatus.INSUFFICIENT_DATA}
+            ]
+            if unavailable:
+                self._set_decision(
+                    "BLOCKED_SIGNAL",
+                    "exact Strategy Set 尚缺必要 Feature evidence",
+                )
+            else:
+                self._set_decision(
+                    "WAITING_SIGNAL",
+                    "等待 exact Strategy Set 產生新觸發",
+                )
+            return
+
+        decision = sorted(triggered, key=lambda item: item.symbol)[0]
+        short_digest = decision.decision_digest[:32]
+        intent = StrategyPaperIntent.create(
+            intent_id=f"auto:{self._run_id}:entry:{short_digest}",
+            strategy_id=resolution.pipeline.owner_strategy_id,
+            strategy_version=(
+                f"local-paper-pipeline:{resolution.pipeline.snapshot_digest}"
+            ),
+            symbol=decision.symbol,
+            side="BUY",
+            lots=1,
+            limit_price=decision.entry_limit_price,
+            signaled_at=decision.event_at,
+            decision_evidence={
+                "pipeline": resolution.pipeline.to_dict(),
+                "pipeline_digest": resolution.pipeline.snapshot_digest,
+                "strategy_set_decision": decision.evidence(),
+            },
+        )
+        flow_result = self._flow.submit(intent)
+        self._consumed_signal_digests.add(decision.decision_digest)
+        self._entries_submitted += 1
+        self._last_action_at = now
+        self._last_intent = intent.journal_payload()
+        order_status = str(
+            _mapping(flow_result.get("order"), "flow.order").get("status")
+        )
+        outcome = "ENTRY_REJECTED" if order_status == "REJECTED" else "ENTRY_SUBMITTED"
+        self._set_decision(
+            outcome,
+            f"已依 exact Strategy Set 送出 {decision.symbol} 一張本機模擬進場意圖",
+        )
+
     def _evaluate_position(
         self,
         position: Mapping[str, Any],
@@ -447,7 +701,7 @@ class ContinuousPaperStrategyController:
             return
         if not (
             position.get("owner_origin") == "STRATEGY_AUTOMATED"
-            and position.get("owner_strategy_id") == CONTINUOUS_STRATEGY_ID
+            and position.get("owner_strategy_id") == self._owner_strategy_id()
         ):
             self._set_decision(
                 "BLOCKED_OWNERSHIP",
@@ -470,7 +724,7 @@ class ContinuousPaperStrategyController:
             if str(order.get("symbol")) == symbol
             and str(order.get("side")) == "SELL"
             and str(order.get("origin")) == "STRATEGY_AUTOMATED"
-            and str(order.get("strategy_id")) == CONTINUOUS_STRATEGY_ID
+            and str(order.get("strategy_id")) == self._owner_strategy_id()
             and str(order.get("status")) in {"CANCELLED", "EXPIRED"}
             and int(order.get("remaining_quantity") or 0) > 0
         ]
@@ -524,8 +778,8 @@ class ContinuousPaperStrategyController:
 
         intent = StrategyPaperIntent.create(
             intent_id=f"auto:{self._run_id}:{symbol}:exit:{reason.lower()}",
-            strategy_id=CONTINUOUS_STRATEGY_ID,
-            strategy_version=f"{CONTINUOUS_STRATEGY_VERSION}:exit:{reason.lower()}",
+            strategy_id=self._owner_strategy_id(),
+            strategy_version=f"{self._owner_strategy_version()}:exit:{reason.lower()}",
             symbol=symbol,
             side="SELL",
             lots=1,
@@ -600,6 +854,116 @@ class ContinuousPaperStrategyController:
             raise AutomatedStrategyStateError("自動模擬策略尚未設定")
         return self._config
 
+    def _owner_strategy_id(self) -> str:
+        if self._atomic_resolution is not None:
+            return self._atomic_resolution.pipeline.owner_strategy_id
+        return CONTINUOUS_STRATEGY_ID
+
+    def _owner_strategy_version(self) -> str:
+        if self._atomic_resolution is not None:
+            return f"local-paper-pipeline:{self._atomic_resolution.pipeline.snapshot_digest}"
+        return CONTINUOUS_STRATEGY_VERSION
+
+    def _restore_session_ownership_locked(self) -> None:
+        """Fail closed on another automated owner and recover one-entry state."""
+
+        projection = self._projection_reader()
+        positions = _mapping_list(projection.get("positions"), "positions")
+        orders = _mapping_list(projection.get("orders"), "orders")
+        expected_owner = self._owner_strategy_id()
+        automated_owners = {
+            str(item.get("owner_strategy_id") or "").strip()
+            for item in positions
+            if item.get("owner_origin") == "STRATEGY_AUTOMATED"
+        } | {
+            str(item.get("strategy_id") or "").strip()
+            for item in orders
+            if item.get("origin") == "STRATEGY_AUTOMATED"
+        }
+        automated_owners.discard("")
+        foreign = sorted(automated_owners - {expected_owner})
+        if foreign:
+            raise AutomatedStrategyStateError(
+                "偵測到其他自動策略 owner，必須先人工完成 recovery："
+                + ", ".join(foreign)
+            )
+        if expected_owner in automated_owners:
+            self._entries_submitted = 1
+
+    def _restore_runtime_checkpoint_locked(self) -> None:
+        reader = getattr(self._flow, "latest_checkpoint", None)
+        if not callable(reader):
+            return
+        checkpoint = reader(
+            owner_strategy_id=self._owner_strategy_id(),
+            pipeline_digest=(
+                self._atomic_resolution.pipeline.snapshot_digest
+                if self._atomic_resolution is not None
+                else None
+            ),
+        )
+        if checkpoint is None:
+            return
+        try:
+            entries = int(checkpoint.get("entries_submitted", 0))
+            consumed = checkpoint.get("consumed_decision_digests", ())
+        except (TypeError, ValueError) as error:
+            raise AutomatedStrategyStateError(
+                "策略 runtime checkpoint 無法重建"
+            ) from error
+        if entries < 0 or not isinstance(consumed, (list, tuple)):
+            raise AutomatedStrategyStateError("策略 runtime checkpoint 格式無效")
+        checkpoint_risk = checkpoint.get("effective_risk")
+        if self._atomic_resolution is not None:
+            if not isinstance(checkpoint_risk, Mapping):
+                raise AutomatedStrategyStateError(
+                    "策略 runtime checkpoint 缺少 Effective Hard Risk evidence"
+                )
+            current_digest = str(
+                (self._effective_risk_evidence or {}).get(
+                    "effective_policy_digest", ""
+                )
+            )
+            if str(checkpoint_risk.get("effective_policy_digest", "")) != current_digest:
+                raise AutomatedStrategyStateError(
+                    "策略 runtime checkpoint 的 Effective Hard Risk 已漂移"
+                )
+        self._entries_submitted = max(self._entries_submitted, entries)
+        self._consumed_signal_digests.update(str(item) for item in consumed)
+
+    def _write_runtime_checkpoint_locked(self) -> None:
+        writer = getattr(self._flow, "checkpoint", None)
+        if not callable(writer) or self._run_id is None:
+            return
+        occurred_at = self._clock.now()
+        writer(
+            {
+                "contract_version": "strategy-runtime-checkpoint-v1",
+                "run_id": self._run_id,
+                "owner_strategy_id": self._owner_strategy_id(),
+                "pipeline_digest": (
+                    self._atomic_resolution.pipeline.snapshot_digest
+                    if self._atomic_resolution is not None
+                    else None
+                ),
+                "effective_risk": (
+                    dict(self._effective_risk_evidence)
+                    if self._effective_risk_evidence is not None
+                    else None
+                ),
+                "state": self._state,
+                "decision": self._decision,
+                "entries_submitted": self._entries_submitted,
+                "consumed_decision_digests": sorted(
+                    self._consumed_signal_digests
+                ),
+                "last_checked_at": _iso(self._last_checked_at),
+                "last_action_at": _iso(self._last_action_at),
+                "checkpointed_at": occurred_at.isoformat(),
+            },
+            occurred_at=occurred_at,
+        )
+
     def _status_locked(self) -> dict[str, Any]:
         return {
             "mode": "LOCAL_PAPER_SIMULATION",
@@ -616,7 +980,21 @@ class ContinuousPaperStrategyController:
             "last_exit_reason": self._last_exit_reason,
             "entries_submitted": self._entries_submitted,
             "config": self._config.payload() if self._config else None,
+            "pipeline": (
+                {
+                    **self._atomic_resolution.pipeline.to_dict(),
+                    "snapshot_digest": self._atomic_resolution.pipeline.snapshot_digest,
+                }
+                if self._atomic_resolution is not None
+                else None
+            ),
+            "effective_risk": (
+                dict(self._effective_risk_evidence)
+                if self._effective_risk_evidence is not None
+                else None
+            ),
             "restart_behavior": "MANUAL_START_REQUIRED",
+            "kill_switch": self._kill_switch.status(),
             "notice": (
                 "只會產生本機紙上模擬意圖；不具 Shioaji 或券商下單權限。"
             ),

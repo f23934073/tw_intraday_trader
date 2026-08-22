@@ -8,6 +8,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Mapping
 
+from backtest.comparability import run_comparability_diff
 from backtest.domain import BacktestRunConfig, digest
 from backtest.engine import BacktestEngineResult
 
@@ -77,7 +78,7 @@ def compare_runs(
 ) -> dict[str, Any]:
     baseline_config = dict(baseline_run["config"])
     challenger_config = dict(challenger_run["config"])
-    config_diff = _comparison_config_diff(baseline_config, challenger_config)
+    config_diff = run_comparability_diff(baseline_config, challenger_config)
     comparable = not config_diff
     baseline_summary = baseline_result["summary"]
     challenger_summary = challenger_result["summary"]
@@ -208,17 +209,6 @@ def _strategy_attribution(
                     row["primary_trades"] += 1
                     row["primary_net_pnl"] += float(trade["net_pnl"])
     return sorted(rows.values(), key=lambda item: (item["role"], item["strategy_id"]))
-
-
-def _comparison_config_diff(
-    baseline: Mapping[str, Any], challenger: Mapping[str, Any]) -> list[dict[str, Any]]:
-    ignored = {"strategy_set", "experiment_id", "baseline_run_id", "parent_run_id", "change_note"}
-    keys = sorted((set(baseline) | set(challenger)) - ignored)
-    return [
-        {"field": key, "baseline": baseline.get(key), "challenger": challenger.get(key)}
-        for key in keys
-        if baseline.get(key) != challenger.get(key)
-    ]
 
 
 def _metric_delta(challenger: Any, baseline: Any) -> float | None:

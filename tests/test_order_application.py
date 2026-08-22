@@ -1,9 +1,13 @@
 from datetime import datetime
 from decimal import Decimal
 
+import pytest
+
 from trading.application import (
+    ApprovedOrderCommand,
     ApplicationStatus,
     OrderApplicationService,
+    ProposedOrderCommand,
 )
 from trading.journal import InMemoryJournalRepository, JournalSession
 from trading.local_paper import (
@@ -32,10 +36,10 @@ class RecordingHandler:
     def __init__(self, journal: InMemoryJournalRepository, *, fail: bool = False) -> None:
         self._journal = journal
         self._fail = fail
-        self.calls: list[OrderCommand] = []
+        self.calls: list[ApprovedOrderCommand] = []
         self.record_count_at_call: int | None = None
 
-    def submit(self, command: OrderCommand) -> dict[str, object]:
+    def submit(self, command: ApprovedOrderCommand) -> dict[str, object]:
         self.calls.append(command)
         self.record_count_at_call = len(self._journal.records(SESSION_ID))
         if self._fail:
@@ -116,7 +120,38 @@ def test_approved_command_is_journaled_before_handler_side_effect() -> None:
     assert result.status is ApplicationStatus.APPLIED
     assert handler.record_count_at_call == 1
     assert len(handler.calls) == 1
+    assert handler.calls[0].command == command()
+    assert handler.calls[0].risk_decision.status.value == "APPROVED"
+    assert len(handler.calls[0].proposal.command_digest) == 64
+    assert len(handler.calls[0].risk_snapshot_digest) == 64
+    assert len(handler.calls[0].effective_policy_digest) == 64
+    assert handler.calls[0].risk_decision_id.startswith("risk-decision-v1:")
+    assert len(handler.calls[0].approved_command_digest) == 64
     assert journal.records(SESSION_ID)[0].record.kind == "order_command.v1"
+    payload = journal.records(SESSION_ID)[0].record.payload
+    assert payload["command_state"] == "PROPOSED"
+    assert payload["proposed_command_digest"] == handler.calls[0].proposal.command_digest
+    assert payload["risk_snapshot_digest"] == handler.calls[0].risk_snapshot_digest
+    assert payload["effective_risk_policy"]["max_daily_loss"] == "50000"
+    assert payload["effective_risk_policy_digest"] == (
+        handler.calls[0].effective_policy_digest
+    )
+    assert payload["risk_decision_id"] == handler.calls[0].risk_decision_id
+    assert payload["risk_decision_digest"] == handler.calls[0].risk_decision_digest
+    assert payload["approved_command_digest"] == (
+        handler.calls[0].approved_command_digest
+    )
+
+
+def test_local_paper_adapter_rejects_an_unapproved_proposal() -> None:
+    simulation = SimulationService(MockProvider(), starting_cash=300_000)
+    adapter = LocalPaperSimulationCommandAdapter(simulation)
+
+    try:
+        with pytest.raises(TypeError, match="ApprovedOrderCommand"):
+            adapter.submit(ProposedOrderCommand(command()))  # type: ignore[arg-type]
+    finally:
+        simulation.close()
 
 
 def test_command_journal_evidence_preserves_complete_risk_snapshot() -> None:
@@ -132,6 +167,7 @@ def test_command_journal_evidence_preserves_complete_risk_snapshot() -> None:
         daily_realized_pnl=Decimal("-12.34"),
         same_side_pending_order=False,
         book_age_seconds=7,
+        daily_loss=Decimal("34.56"),
     )
 
     application.apply(command(), risk_snapshot, evaluated_at=AT)
@@ -146,6 +182,7 @@ def test_command_journal_evidence_preserves_complete_risk_snapshot() -> None:
         "pending_buy_shares": 2000,
         "pending_sell_shares": 500,
         "daily_realized_pnl": "-12.34",
+        "daily_loss": "34.56",
         "same_side_pending_order": False,
         "book_age_seconds": 7,
     }

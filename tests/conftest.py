@@ -13,7 +13,8 @@ os.environ.pop("BACKTEST_DATABASE_URL", None)
 
 
 def postgres_test_database_is_safe(database_name: str, explicit_reset: bool) -> bool:
-    return "test" in database_name.strip().lower() or explicit_reset
+    normalized = database_name.strip().lower().replace("-", "_")
+    return "test" in normalized.split("_") or explicit_reset
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +49,8 @@ def postgres_test_connection(postgres_test_dsn: str) -> Iterator[Any]:
         connection.close()
         pytest.fail(
             "refusing destructive PostgreSQL fixture cleanup: database name must "
-            "contain 'test' or ALLOW_POSTGRES_TEST_SCHEMA_RESET=1 must be explicit"
+            "contain a standalone 'test' token or "
+            "ALLOW_POSTGRES_TEST_SCHEMA_RESET=1 must be explicit"
         )
     lock_id = 1_984_073_521
     legacy_tables = (

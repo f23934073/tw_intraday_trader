@@ -126,43 +126,41 @@ runner 會固定驗證 ownership 拒賣、stale BidAsk、SELL rejection、timeou
 partial fill、13:30 reconciliation，以及以新 PostgreSQL connection 重建三次 runtime
 後的持倉、掛單、reservation、冪等與 alert 一致性。
 
-### 策略模擬意圖
+### 策略模擬意圖邊界
 
-策略程式可把一筆已版本化的 BUY 或 SELL 意圖送到
-`POST /api/simulation/strategy-intents`。每筆意圖會先寫入本機 Journal，再以
-`STRATEGY_AUTOMATED` origin 通過與手動委託相同的 RiskGate 與
-`SimulationService`；相同 `intent_id` 重送不會重複成交，同一識別碼若改變內容則會
-fail closed。成交、持倉與損益會直接出現在既有「委託」與「持倉」工作區。
+原本接受 caller 自行提供 `strategy_id/version` 的
+`POST /api/simulation/strategy-intents` 已關閉，避免繞過 exact Strategy Set 與
+`PAPER_APPROVED` lifecycle admission。策略意圖只能由已人工啟動的 Atomic Local Paper
+控制器在 process 內產生；它仍會先寫入 Journal，再走相同的 Hard Risk 與
+SimulationService。瀏覽器不能直接製造任意策略 BUY／SELL 意圖。
 
-請分別送出 entry 與 exit 意圖，讓實際行情決定每張限價單何時成交。以下是 MockProvider
-可重現的最小閉環；先以 `PROVIDER=mock .venv/bin/python -m dashboard` 啟動，並把
-`signaled_at` 換成執行當日的 Asia/Taipei 時間：
+### Exact Strategy Set 自動模擬
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/simulation/strategy-intents \
-  -H 'Content-Type: application/json' \
-  -d '{"intent_id":"orb-entry-3231-demo","strategy_id":"opening_range_breakout","strategy_version":"opening_range_breakout_entry_v1","symbol":"3231","side":"BUY","quantity_shares":125,"limit_price":"106","signaled_at":"2026-08-21T10:30:00+08:00"}'
+「模擬下單」工作區提供必須人工啟動的 Atomic Local Paper 控制器。啟動前必須選擇一個
+PostgreSQL 保存的 immutable `ENTRY` Strategy Set Version，並明確輸入停損百分比、停利
+百分比與每日最大虧損金額；系統不提供未經校準的預設風險值。目前已接上 Local Paper
+runtime binding 的原子進場策略是「站上 VWAP」與「突破盤中前高」，可用 `ANY`、`ALL`
+或 `AT_LEAST_N` 組合。每次啟動會重新核對 Strategy Version、參數、Template、Schema、
+implementation 與 runtime binding digest；任一身分漂移都會 fail closed。
+Strategy Set 內每個 Version 的 PostgreSQL lifecycle projection 還必須正好是
+`PAPER_APPROVED`；activation 會在同一個 transaction 鎖定 Set、Version、projection 與
+最後一筆 lifecycle event，並把 sequence、event ID、projection digest 收入 Pipeline
+snapshot。`PUBLISHED`、`REVIEWED`、`BACKTESTED`、`PAUSED` 或 `RETIRED` 都不能啟動。
 
-curl -X POST http://127.0.0.1:8000/api/simulation/strategy-intents \
-  -H 'Content-Type: application/json' \
-  -d '{"intent_id":"orb-exit-3231-demo","strategy_id":"opening_range_breakout","strategy_version":"opening_range_breakout_exit_v1","symbol":"3231","side":"SELL","quantity_shares":125,"limit_price":"105","signaled_at":"2026-08-21T10:31:00+08:00"}'
-```
-
-這個入口仍只負責執行明確的策略意圖；Candidate 與 Buy Score 不會直接變成委託。
-
-### 常駐自動模擬策略
-
-「模擬下單」工作區另提供必須人工啟動的 Momentum 自動模擬控制器。啟動前必須明確
-輸入停損百分比、停利百分比與每日最大虧損金額；系統不提供未經校準的預設風險值。
-它只接受後端 Momentum Shadow 同時證明即時來源為 live、連線為 `RUNNING`、資料健康
-為 `HEALTHY`、加速訊號已觸發，而且 Tick 價格仍在五秒新鮮度內的候選。Candidate
-快照分數只用於候選訂閱優先順序，不是買進條件。
+策略判斷直接使用既有 Momentum Shadow 的 canonical `FeatureEngine` projection，不會另建
+第三套 VWAP／前高計算器。即時來源必須是 live、連線為 `RUNNING`、資料健康為 `HEALTHY`，
+Tick 與可執行 BidAsk 也必須在新鮮度範圍內；策略以 Tick 現價評估，進場模擬限價使用
+最新賣一。Candidate 快照分數只用於候選訂閱優先順序，不是買進條件。
 
 第一版固定一張、最多一個持倉、每次啟動最多一筆進場。TWSE 交易日 09:00～13:20
 可進場；持倉達到人工輸入的停損或停利時，會以五秒內的最新買一送出全數本機模擬
 賣單，13:25 起也會嘗試強制出場。缺少 reviewed calendar、Mock／Snapshot 模式、行情
 不健康、資料過期、多持倉、既有掛單或達每日虧損上限時都會 fail closed，原因會顯示
-在工作區狀態。
+在工作區狀態。每日最大虧損不是 controller-only 提示：每次啟動會用
+`min(system ceiling, operator limit)` 建立該 exact Set owner 專用的 Effective Hard Risk
+Policy；完整 policy、digest、權益虧損 snapshot 與 decision 會寫入 Journal，checkpoint
+也會保存並在重新啟動時核對。相同股票的不同 owner 掛單會在保留額度前拒絕，撮合時
+仍會在 lock 內再次核對，禁止把手動與自動策略持倉合併。
 
 啟動方式：
 
@@ -170,15 +168,31 @@ curl -X POST http://127.0.0.1:8000/api/simulation/strategy-intents \
 PROVIDER=shioaji .venv/bin/python -m dashboard
 ```
 
-開啟「模擬下單」，填入三個風險參數後按「啟動自動模擬」。也可透過
+先到「策略管理」依序建立／驗證／發布策略版本，再用已發布的 `ENTRY` versions 建立策略
+組合。因 Local Paper binding 會進入 Template identity，舊 Template 建立的版本不會被
+靜默沿用；若選單沒有可用版本，必須重新發布目前 Template 的版本。接著開啟「模擬下單」，
+選擇精確的進場策略組合、填入三個風險參數後按「啟動自動模擬」。也可透過
 `GET /api/simulation/automated-strategy` 讀取狀態、
 `POST /api/simulation/automated-strategy/start` 啟動，以及
-`POST /api/simulation/automated-strategy/stop` 停止。停止只會阻止新的自動意圖，不會
+`POST /api/simulation/automated-strategy/stop` 停止。start payload 必須包含
+`entry_strategy_set_version_id`、`stop_loss_pct`、`take_profit_pct`、`max_daily_loss`、
+`actor_id` 與 `activation_idempotency_key`；瀏覽器會在 response-loss retry 保留同一個
+activation key。所有 mutation 都受 loopback、完整 Origin 與 CSRF 防護。另有「緊急停止」可立即禁止新的自動
+意圖；解除後仍維持 `STOPPED`，必須再次人工啟動。一般停止只阻止新的自動意圖，不會
 擅自清除既有持倉；Dashboard 重啟後控制器固定為停止。若 Journal 使用 PostgreSQL，
 本機模擬委託、持倉、保留量與交易日風控基準會恢復，但仍須由操作人重新啟動控制器；
-預設 memory adapter 則不提供跨 process 恢復。
+策略 runtime checkpoint 也會用 exact Strategy Set owner 與 pipeline digest 恢復 signal dedup
+狀態。預設 memory adapter 則不提供跨 process 恢復。
 
-自動控制器只把意圖送入既有 `Journal → RiskGate → SimulationService` 路徑；沒有
+MVP audit 限制：start activation 已保存 actor、完整 config 與 durable idempotency result；
+stop、kill-switch engage/reset 目前仍是 process-local control，尚未各自保存 actor 與 durable
+idempotency operation。這項限制必須在多使用者、外網、自動 promotion 或任何正式交易前
+補齊；目前不能把 Local Paper control audit 宣稱為完整多使用者稽核。
+
+自動控制器只把意圖送入既有
+`Journal → ProposedOrderCommand → RiskGate → ApprovedOrderCommand → SimulationService`
+路徑；proposal、Risk snapshot、effective policy、decision 與 approved command 都保存
+穩定 digest，Simulation adapter 會拒絕未核准的 proposal。沒有
 CA、券商委託 callback、`place_order` 或 `subscribe_trade=True`。目前撮合支援最優一檔量
 限制下的部分成交，但仍不計手續費、證交稅、滑價與真實排隊順位，所以適合策略流程與
 多日 paper evidence，不代表可直接升級為真實交易。
@@ -192,7 +206,7 @@ CA、券商委託 callback、`place_order` 或 `subscribe_trade=True`。目前�
 1. 準備歷史資料：建立或選擇封存的歷史資料集；按「建立資料集」會在背景透過後端 Provider 下載 Kbar，不會卡住網頁。
 2. 設定策略組合：分別選擇買入與賣出策略，每一側可只選 1 個獨立執行，也可複選多個並設定 `ANY`、`ALL` 或「至少 N 個」條件。
 3. 回測工作與結果：建立回測後，可查看進度、取消、失敗重試、OOS 勝率／信賴區間、損益、回撤、Profit Factor、交易明細與策略歸因。
-4. Baseline／Challenger 比較：選擇舊 Run、填寫調整原因後複製並調整，再比較兩個已完成 Run。
+4. 比較與資格判定：先比較兩個已完成 Run；正式 qualification 只填固定 train／validation／Primary OOS 日期與 walk-forward folds，attempt history、multiple-testing family 與門檻由伺服器 ledger／policy 產生，再把不可變 evidence 寫入 PostgreSQL。
 
 點選交易可查看該筆進出場的主要策略、所有同時觸發策略、門檻與當時觀測值；也可以匯出 CSV。
 
@@ -233,16 +247,27 @@ BACKTEST_DATABASE_URL='postgresql://user:password@host:5432/tw_backtest' python3
 
 驗證通過後才設定 `BACKTEST_DATABASE_BACKEND=postgresql`。若已另有 PostgreSQL backup／restore 能力，可以移除舊 SQLite；不可讓 SQLite 與 PostgreSQL 同時 claim 新工作。
 
-原子策略平台的 Template、Draft、immutable Version、Publish event/state/outbox、Publish operation 與 exact-version Strategy Set 固定使用 PostgreSQL；這些新 mutation 不支援 SQLite，也不會在 PostgreSQL unavailable 時 fallback。Phase 1 尚未開放 Web mutation UI/API。
+原子策略平台的 Template、Draft、immutable Version、Publish event/state/outbox、Publish operation、mutation audit 與 exact-version Strategy Set 固定使用 PostgreSQL；這些 mutation 不支援 SQLite，也不會在 PostgreSQL unavailable 時 fallback。Dashboard handler 與背景 backtest worker 透過 bounded PostgreSQL connection pool 在每次 operation checkout，各 transaction 不共用單一 connection／rollback 狀態。
 
-PostgreSQL migration、row lock 與 concurrent Publish 測試必須使用明確的專用測試資料庫。測試 fixture 會刪除該資料庫中的 `backtest` schema，並在執行前要求 database 名稱包含 `test`；不符合時會直接拒絕 cleanup。只有受控的 disposable database 才可明確設定 `ALLOW_POSTGRES_TEST_SCHEMA_RESET=1` 覆寫名稱檢查，請勿填入開發或正式環境 DSN：
+Dashboard 啟動後，可用以下歷史回測流程：
+
+1. 開啟左側「策略管理」，選擇伺服器提供的策略 Template；表單欄位、預設值、範圍與單位都由 code-owned Schema 產生。
+2. 儲存 Draft、執行驗證，再 Publish 成不可修改的 Version；參數變更必須複製成新 Draft／Version，不會覆寫舊回測所引用的版本。
+3. 選取一個或多個相同 stage 的精確 Version，建立 `ANY`、`ALL` 或 `AT_LEAST_N` Strategy Set。
+4. 到「歷史回測」選擇 READY 資料集與該 Strategy Set，再送出原子策略回測。Run 會保存完整 Set、Version、Feature Specification、implementation digest 與 as-of semantics；複製或重試也不接受 raw strategy ID 覆寫。建立要接受正式資格判定的 Challenger 時，必須在同一表單選擇一個已完成 Atomic Baseline；伺服器會由 Dataset／config／成本／adapter、精確 Baseline Strategy Version 與研究 protocol 推導穩定的 research-baseline identity，並在建立 Run 的同一個 PostgreSQL transaction 登錄單調 attempt sequence。相同研究基準即使重新執行成不同 Run ID，也會回到同一個 family 與同一份嘗試額度。
+5. 到「比較與資格判定」選取該 Baseline／Challenger，只需填寫研究假設、固定切割與 walk-forward folds。所有 fold OOS 都必須在 Primary OOS 開始前結束，不能重複使用最終 OOS 證據。完整 attempted Run history、family head、Bonferroni alpha／planned attempts 與門檻都由伺服器 ledger/policy 產生，瀏覽器不能覆寫。系統會核對 Run config/result、Run row 與 config 內的 Dataset identity、DatasetManifest、成本／資金／exit contract 與 Feature adapter identity，再建立不可變 qualification；通過只代表可送人工 promotion Review，不會自動啟用策略。Qualification 會保存可驗證 digest 的 immutable family snapshot，detail API 另外提供目前 family linkage，讓 Reviewer 分辨當時 evidence 與後續 hypothesis／qualification 關聯。
+
+目前這條 Phase 3 流程只接歷史回測，ENTRY Set 仍搭配既有伺服器端收盤退出政策；不會啟動本機紙上模擬、模擬交易、Shioaji／券商委託或 real-money execution。固定政策至少要求 Primary OOS 30 筆、10 個獨立交易日、最大回撤 20%，以及至少 2 個位於 Primary OOS 之前的 Walk-forward folds；family alpha 固定 5%、最多 20 次嘗試。新 mutation API 僅接受 loopback client、同源請求、process CSRF token 與 idempotency key，成功與衝突結果都保留 PostgreSQL audit evidence。Qualification persistence 固定使用 PostgreSQL；SQLite 開發模式可繼續使用舊版回測，但畫面會明確顯示不能建立正式資格證據。
+
+PostgreSQL migration、row lock 與 concurrent Publish 測試必須使用明確的專用測試資料庫。測試 fixture 會刪除該資料庫中的 `backtest` schema，並在執行前要求 database 名稱含獨立的 `test` token（例如 `_test`）；不符合時會直接拒絕 cleanup。只有受控的 disposable database 才可明確設定 `ALLOW_POSTGRES_TEST_SCHEMA_RESET=1` 覆寫名稱檢查，請勿填入開發或正式環境 DSN：
 
 ```bash
 python3 -m pip install -e ".[dev,postgres]"
 TEST_POSTGRES_DSN='postgresql://user:password@127.0.0.1:5432/tw_intraday_trader_test' \
   .venv/bin/python -m pytest -q \
   tests/test_strategy_migrations.py \
-  tests/test_strategy_publish_idempotency.py
+  tests/test_strategy_publish_idempotency.py \
+  tests/test_backtest_qualification_postgres.py
 ```
 
 沒有 `TEST_POSTGRES_DSN` 時，上述 PostgreSQL integration tests 會顯示明確 skip；一般 domain／atomic strategy／backtest regression tests 仍會執行，不會改用 SQLite 冒充 PostgreSQL contract evidence。

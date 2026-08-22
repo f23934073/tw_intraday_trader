@@ -11,6 +11,10 @@ from typing import Any, Iterator, Mapping, Protocol
 from backtest.domain import canonical_json
 
 
+class BacktestIdempotencyConflict(ValueError):
+    """The same durable key was reused for a different run request."""
+
+
 class BacktestRepository(Protocol):
     def upsert_strategy_definition(self, definition: Mapping[str, Any]) -> bool:
         ...
@@ -72,6 +76,16 @@ class BacktestRepository(Protocol):
     def update_run(self, run_id: str, **changes: Any) -> dict[str, Any]:
         ...
 
+    def cancel_atomic_run(
+        self,
+        run_id: str,
+        *,
+        idempotency_key: str,
+        actor_id: str,
+        request_digest: str,
+    ) -> tuple[dict[str, Any], bool]:
+        ...
+
     def save_result(self, run_id: str, result: Mapping[str, Any]) -> None:
         ...
 
@@ -82,6 +96,29 @@ class BacktestRepository(Protocol):
         ...
 
     def get_comparison(self, comparison_id: str) -> dict[str, Any]:
+        ...
+
+    def create_qualification(
+        self,
+        record: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        ...
+
+    def replay_qualification(
+        self,
+        *,
+        idempotency_key: str,
+        request_digest: str,
+    ) -> dict[str, Any] | None:
+        ...
+
+    def get_qualification(self, qualification_id: str) -> dict[str, Any]:
+        ...
+
+    def list_qualifications(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        ...
+
+    def get_experiment_family_for_run(self, run_id: str) -> dict[str, Any]:
         ...
 
 
@@ -388,20 +425,13 @@ class _JsonBacktestRepository:
         with self._transaction() as cursor:
             self._execute(
                 cursor,
-                "SELECT * FROM backtest_runs WHERE idempotency_key = ?",
-                (record["idempotency_key"],),
-            )
-            existing = cursor.fetchone()
-            if existing is not None:
-                return self._run_payload(self._row(cursor, existing)), True
-            self._execute(
-                cursor,
                 """
                 INSERT INTO backtest_runs (
                     run_id, idempotency_key, status, config_json, config_digest,
                     dataset_id, dataset_digest, progress, progress_message,
                     created_at, updated_at, error_message, result_digest
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                ON CONFLICT (idempotency_key) DO NOTHING
                 """,
                 (
                     record["run_id"],
@@ -417,8 +447,29 @@ class _JsonBacktestRepository:
                     record["created_at"],
                 ),
             )
+            created = cursor.rowcount == 1
+            self._execute(
+                cursor,
+                "SELECT * FROM backtest_runs WHERE idempotency_key = ?",
+                (record["idempotency_key"],),
+            )
+            existing = cursor.fetchone()
+            if existing is None:
+                raise RuntimeError("回測建立後無法讀回 durable operation result")
+            existing_payload = self._run_payload(self._row(cursor, existing))
+            if existing_payload["config_digest"] != record["config_digest"]:
+                raise BacktestIdempotencyConflict(
+                    "相同 idempotency key 的回測設定不同"
+                )
+            if not created:
+                return existing_payload, True
             self._execute(cursor, "SELECT * FROM backtest_runs WHERE run_id = ?", (record["run_id"],))
-            return self._run_payload(self._row(cursor, cursor.fetchone())), False
+            created_payload = self._run_payload(self._row(cursor, cursor.fetchone()))
+            self._after_run_created(cursor, created_payload)
+            return created_payload, False
+
+    def _after_run_created(self, cursor: Any, run: Mapping[str, Any]) -> None:
+        """Transactional extension point; SQLite/legacy Runs have no family ledger."""
 
     def get_run(self, run_id: str) -> dict[str, Any]:
         with self._cursor() as cursor:

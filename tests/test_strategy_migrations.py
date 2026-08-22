@@ -14,6 +14,11 @@ ATOMIC_TABLES = (
     "strategy_lifecycle_outbox",
     "strategy_set_versions",
     "strategy_set_members",
+    "strategy_mutation_operations",
+    "strategy_audit_events",
+    "backtest_qualifications",
+    "backtest_experiment_families",
+    "backtest_experiment_attempts",
 )
 
 EXPECTED_CONSTRAINT_COUNTS = {
@@ -26,6 +31,11 @@ EXPECTED_CONSTRAINT_COUNTS = {
     "strategy_lifecycle_outbox": 5,
     "strategy_set_versions": 7,
     "strategy_set_members": 8,
+    "strategy_mutation_operations": 1,
+    "strategy_audit_events": 1,
+    "backtest_qualifications": 10,
+    "backtest_experiment_families": 10,
+    "backtest_experiment_attempts": 8,
 }
 
 ATOMIC_INDEXES = (
@@ -33,13 +43,23 @@ ATOMIC_INDEXES = (
     "strategy_versions_strategy_index",
     "strategy_version_events_stream_index",
     "strategy_lifecycle_outbox_pending_index",
+    "strategy_mutation_operations_actor_index",
+    "strategy_audit_resource_index",
+    "strategy_audit_operation_index",
+    "strategy_audit_outcome_index",
+    "backtest_qualifications_created_index",
+    "backtest_qualifications_runs_index",
+    "backtest_qualifications_family_index",
+    "backtest_experiment_families_created_index",
+    "backtest_experiment_attempts_family_index",
+    "backtest_qualifications_family_sequence_index",
 )
 
 
 def test_atomic_strategy_migration_is_numbered_and_owned_by_runner() -> None:
     files = migration_files()
-    assert files[-1].name == "005_atomic_strategy_platform.sql"
-    sql = files[-1].read_text(encoding="utf-8")
+    assert files[-1].name == "010_backtest_experiment_family_identity.sql"
+    sql = "\n".join(file.read_text(encoding="utf-8") for file in files[-6:])
     for table in ATOMIC_TABLES:
         assert f"backtest.{table}" in sql
 
@@ -48,6 +68,7 @@ def test_postgresql_fixture_requires_test_database_name_or_explicit_sentinel() -
     assert postgres_test_database_is_safe("tw_intraday_trader_test", False) is True
     assert postgres_test_database_is_safe("postgres", True) is True
     assert postgres_test_database_is_safe("trading_dev", False) is False
+    assert postgres_test_database_is_safe("contest_prod", False) is False
 
 
 def test_atomic_strategy_migration_applies_once_to_postgresql(
@@ -57,6 +78,11 @@ def test_atomic_strategy_migration_applies_once_to_postgresql(
     second = apply_migrations(postgres_test_connection)
 
     assert "005_atomic_strategy_platform.sql" in first
+    assert "006_atomic_strategy_web_management.sql" in first
+    assert "007_atomic_strategy_audit_contract.sql" in first
+    assert "008_backtest_qualification.sql" in first
+    assert "009_backtest_experiment_families.sql" in first
+    assert "010_backtest_experiment_family_identity.sql" in first
     assert second == ()
     with postgres_test_connection.cursor() as cursor:
         cursor.execute(

@@ -18,14 +18,28 @@ export function createSimulationWorkspace(context) {
   const positionsDrawer = document.getElementById("positions-drawer");
   const positionsPanel = document.getElementById("positions-panel");
   const automatedStrategyForm = document.getElementById("automated-strategy-form");
+  const automatedStrategySet = document.getElementById("automated-strategy-set");
   const automatedStopLoss = document.getElementById("automated-stop-loss");
   const automatedTakeProfit = document.getElementById("automated-take-profit");
   const automatedMaxDailyLoss = document.getElementById("automated-max-daily-loss");
   const automatedStrategyStart = document.getElementById("automated-strategy-start");
   const automatedStrategyStop = document.getElementById("automated-strategy-stop");
+  const automatedStrategyKill = document.getElementById("automated-strategy-kill");
+  const automatedStrategyKillReset = document.getElementById("automated-strategy-kill-reset");
   const automatedStrategyStatus = document.getElementById("automated-strategy-status");
   const automatedStrategyBadge = document.getElementById("automated-strategy-badge");
   const automatedStrategyError = document.getElementById("automated-strategy-error");
+  let automatedStrategyCsrf = "";
+  let pendingAutomatedStartKey = "";
+
+      async function loadAutomatedStrategySecurity() {
+        const response = await fetch("/api/atomic-strategies/capabilities", { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.csrf_token) {
+          throw new Error(payload.detail || "無法取得本機策略安全權杖");
+        }
+        automatedStrategyCsrf = payload.csrf_token;
+      }
 
       function renderAutomatedStrategy(payload) {
         const running = payload?.state === "RUNNING";
@@ -35,9 +49,21 @@ export function createSimulationWorkspace(context) {
         automatedStrategyStatus.innerHTML = `<strong>${escapeHtml(payload?.decision || "STOPPED")}</strong> · ${escapeHtml(payload?.message || "自動模擬策略尚未啟動")}`;
         automatedStrategyStart.disabled = running;
         automatedStrategyStop.disabled = !running;
-        [automatedStopLoss, automatedTakeProfit, automatedMaxDailyLoss].forEach((input) => {
+        automatedStrategyKill.disabled = Boolean(payload?.kill_switch?.engaged);
+        automatedStrategyKillReset.disabled = !payload?.kill_switch?.engaged;
+        [automatedStrategySet, automatedStopLoss, automatedTakeProfit, automatedMaxDailyLoss].forEach((input) => {
           input.disabled = running;
         });
+      }
+
+      async function loadAutomatedStrategySets() {
+        const response = await fetch("/api/strategy-sets", { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+        const entrySets = (payload.strategy_sets || []).filter((item) => item.stage === "ENTRY");
+        automatedStrategySet.innerHTML = entrySets.length
+          ? `<option value="">請選擇 ENTRY 策略組合版本</option>${entrySets.map((item) => `<option value="${escapeHtml(item.strategy_set_version_id)}">${escapeHtml(item.display_name_zh_tw)} · v${escapeHtml(item.version_number)}</option>`).join("")}`
+          : '<option value="">尚無可用 ENTRY Strategy Set</option>';
       }
 
       async function loadAutomatedStrategyStatus() {
@@ -54,6 +80,11 @@ export function createSimulationWorkspace(context) {
         const stopLoss = Number(automatedStopLoss.value);
         const takeProfit = Number(automatedTakeProfit.value);
         const maxDailyLoss = Number(automatedMaxDailyLoss.value);
+        if (!automatedStrategySet.value) {
+          automatedStrategyError.textContent = "請先選擇一個已發布的進場策略組合版本。";
+          automatedStrategyError.style.display = "block";
+          return;
+        }
         if (![stopLoss, takeProfit, maxDailyLoss].every((value) => Number.isFinite(value) && value > 0)) {
           automatedStrategyError.textContent = "請明確輸入大於 0 的停損、停利與每日最大虧損。";
           automatedStrategyError.style.display = "block";
@@ -61,18 +92,26 @@ export function createSimulationWorkspace(context) {
         }
         automatedStrategyStart.disabled = true;
         automatedStrategyStart.textContent = "啟動中…";
+        pendingAutomatedStartKey = pendingAutomatedStartKey || newIdempotencyKey("local-paper-start");
         try {
           const response = await fetch("/api/simulation/automated-strategy/start", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "X-Strategy-CSRF": automatedStrategyCsrf
+            },
             body: JSON.stringify({
+              entry_strategy_set_version_id: automatedStrategySet.value,
               stop_loss_pct: automatedStopLoss.value,
               take_profit_pct: automatedTakeProfit.value,
-              max_daily_loss: automatedMaxDailyLoss.value
+              max_daily_loss: automatedMaxDailyLoss.value,
+              actor_id: "local-operator",
+              activation_idempotency_key: pendingAutomatedStartKey
             })
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+          pendingAutomatedStartKey = "";
           renderAutomatedStrategy(payload);
         } catch (error) {
           automatedStrategyError.textContent = `無法啟動自動模擬：${error.message}`;
@@ -87,12 +126,38 @@ export function createSimulationWorkspace(context) {
         automatedStrategyError.style.display = "none";
         automatedStrategyStop.disabled = true;
         try {
-          const response = await fetch("/api/simulation/automated-strategy/stop", { method: "POST" });
+          const response = await fetch("/api/simulation/automated-strategy/stop", {
+            method: "POST",
+            headers: { "X-Strategy-CSRF": automatedStrategyCsrf }
+          });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
           renderAutomatedStrategy(payload);
         } catch (error) {
           automatedStrategyError.textContent = `無法停止自動模擬：${error.message}`;
+          automatedStrategyError.style.display = "block";
+          await loadAutomatedStrategyStatus().catch(() => {});
+        }
+      }
+
+      async function setAutomatedStrategyKillSwitch(engaged) {
+        automatedStrategyError.style.display = "none";
+        const path = engaged
+          ? "/api/simulation/automated-strategy/kill-switch"
+          : "/api/simulation/automated-strategy/kill-switch/reset";
+        try {
+          const response = await fetch(path, {
+            method: "POST",
+            headers: engaged
+              ? { "Content-Type": "application/json", "X-Strategy-CSRF": automatedStrategyCsrf }
+              : { "X-Strategy-CSRF": automatedStrategyCsrf },
+            body: engaged ? JSON.stringify({ reason: "local dashboard emergency stop" }) : undefined
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+          renderAutomatedStrategy(payload);
+        } catch (error) {
+          automatedStrategyError.textContent = `無法更新緊急停止：${error.message}`;
           automatedStrategyError.style.display = "block";
           await loadAutomatedStrategyStatus().catch(() => {});
         }
@@ -107,6 +172,13 @@ export function createSimulationWorkspace(context) {
 
       automatedStrategyForm.addEventListener("submit", submitAutomatedStrategy);
       automatedStrategyStop.addEventListener("click", stopAutomatedStrategy);
+      automatedStrategyKill.addEventListener("click", () => setAutomatedStrategyKillSwitch(true));
+      automatedStrategyKillReset.addEventListener("click", () => setAutomatedStrategyKillSwitch(false));
+      loadAutomatedStrategySecurity().then(loadAutomatedStrategySets).catch((error) => {
+        automatedStrategySet.innerHTML = '<option value="">策略組合讀取失敗</option>';
+        automatedStrategyError.textContent = `無法讀取策略組合：${error.message}`;
+        automatedStrategyError.style.display = "block";
+      });
 
       function renderSimulation(simulation) {
         const session = simulation.session || {};
@@ -158,7 +230,6 @@ export function createSimulationWorkspace(context) {
 
         list.innerHTML = positions.map((position) => {
           const positive = position.unrealized_pnl >= 0;
-
           return `
             <article class="position-card">
               <div class="position-top">

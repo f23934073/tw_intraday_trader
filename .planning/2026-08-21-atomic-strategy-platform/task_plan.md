@@ -6,11 +6,11 @@ Produce a repository-grounded, implementation-ready plan for a PostgreSQL-only, 
 
 ## Current Phase
 
-Phase 13 in progress — Gate G1 NOT PASSED; Phase 2 blocked
+Phase 22 Gate G4 remediation candidate ready for short Review; Gate G4 NOT PASSED
 
 ## Implementation Gate
 
-Contract Review returned **APPROVE / GO** for the frozen B1–B5 contracts, and the user explicitly authorized Phase 1 implementation. The implementation Review has since returned **REQUEST CHANGES**: Gate G1 is `NOT PASSED` until the Phase 13 remediation is verified. Phase 2 Web management and Phase 4 local-paper integration remain blocked and outside this slice.
+Contract Review returned **APPROVE / GO** for the frozen B1–B5 contracts, and the user explicitly authorized Phase 1 implementation. The final short implementation Reviews subsequently returned **APPROVE / Gate G1 PASSED** and **APPROVE / Gate G2 PASSED** with no remaining blocking or important finding. The user explicitly authorized Phase 3 Backtest Qualification on 2026-08-22. After two remediation rounds, the final MVP Review approved Gate G3 as **PASSED / MVP CONDITIONAL GO** for a loopback, single-user, trusted-PostgreSQL, manual-review deployment. On 2026-08-22 the user then said 「開始process」 immediately after reaffirming that Phase 4 requires separate authorization; this plan records that statement as explicit authorization to start Phase 4 Local Paper Runtime. Gate G4 remains `NOT PASSED` until implementation Review.
 
 | ID | Blocking contract | Plan status | Review status |
 |---|---|---|---|
@@ -22,9 +22,9 @@ Contract Review returned **APPROVE / GO** for the frozen B1–B5 contracts, and 
 
 Gate rules:
 
-- Contract Gate G0 remains passed; implementation Gate G1 is not passed and must satisfy the Phase 1 migration, persistence, determinism, compatibility, and stable-regression gates.
+- Contract Gate G0 and implementation Gates G1/G2 are passed. Gate G3 is `PASSED / MVP CONDITIONAL GO` under the frozen single-user/manual-review constraints recorded in Phase 20.
 - Closed blockers are not reopened without new contradictory evidence.
-- The authorization covers Phase 1 only; it does not authorize Web management, local-paper integration, simulation changes, broker orders, or real-money execution.
+- Phase 4 Local Paper Runtime is authorized; Gate G4 remains `NOT PASSED`. Authorization is limited to local simulation through the existing Journal/Risk/Simulation boundary and still excludes Shioaji/broker orders, CA, trade subscription, and real-money execution.
 
 ## Phases
 
@@ -146,15 +146,126 @@ Gate rules:
 
 ### Phase 13: Gate G1 implementation Review remediation
 
-- [ ] Snapshot each resolved Feature Specification digest, feature implementation digest, and explicit as-of semantics in every atomic backtest run.
-- [ ] Make same-key Publish replay resolve from durable PostgreSQL operation state before requiring the currently deployed Template Registry.
+- [x] Snapshot each resolved Feature Specification digest, feature implementation digest, and explicit as-of semantics in every atomic backtest run.
+- [x] Make same-key Publish replay resolve from durable PostgreSQL operation state before requiring the currently deployed Template Registry.
 - [x] Replace split command/simulator clocks in the affected trade-management fixtures with one fixed Asia/Taipei clock; post-fix full regression is green.
-- [ ] Verify Strategy Set relational rows against persisted `snapshot_json` and `snapshot_digest` on read; fail closed on drift.
-- [ ] Expand migration integration coverage to all atomic-platform tables, required constraints, and named indexes.
-- [ ] Guard destructive PostgreSQL test cleanup with a test-database name or explicit sentinel before `DROP SCHEMA ... CASCADE`.
-- [ ] Run focused tests, disposable PostgreSQL contract tests, full regression, compilation, and whitespace checks.
-- [ ] Update Gate G1 only after a short implementation Review confirms the blockers are closed.
-- **Status:** in progress — Request Changes / Gate G1 NOT PASSED / Phase 2 blocked
+- [x] Verify Strategy Set relational rows against persisted `snapshot_json` and `snapshot_digest` on read; fail closed on drift.
+- [x] Expand migration integration coverage to all atomic-platform tables, required constraints, and named indexes.
+- [x] Guard destructive PostgreSQL test cleanup with a test-database name or explicit sentinel before `DROP SCHEMA ... CASCADE`.
+- [x] Run focused tests, disposable PostgreSQL contract tests, full regression, compilation, and whitespace checks.
+- [x] Update Gate G1 only after a short implementation Review confirms the blockers are closed.
+- **Status:** complete — final Review returned APPROVE / Gate G1 PASSED with no remaining blocking or important finding
+
+### Phase 14: Implement Phase 2 Backtest Web Management
+
+- [x] Record the final G1 Review verdict and Phase 2 authorization in all planning artifacts.
+- [x] Reconcile the existing Dashboard/API seams with the Phase 2 Template, Draft, Version, Strategy Set, and Backtest Launcher contracts.
+- [x] Expose code-owned Template/Schema read APIs and PostgreSQL-only Draft create/update/get/validate/publish/clone flows.
+- [x] Expose immutable Version listing/detail/diff and exact-version Strategy Set create/list/detail flows.
+- [x] Connect an exact-version Strategy Set to the existing historical Backtest Launcher and preserve the complete reproducibility snapshot.
+- [x] Build the Schema-driven Traditional Chinese Dashboard flow without accepting arbitrary code, import paths, or raw executable JSON.
+- [x] Enforce loopback-only mutation, mutation-origin/CSRF, idempotency, audit, and fail-closed PostgreSQL behavior.
+- [x] Add domain/repository/API/frontend/browser tests and run focused plus full regression evidence.
+- [x] Submit the completed slice for Gate G2 Review; do not start local-paper or broker integration.
+- **Status:** implementation candidate complete — READY FOR REVIEW; Gate G2 remains NOT PASSED until an implementation Review approves it
+
+### Phase 15: Gate G2 implementation Review remediation
+
+- [x] Protect atomic Run cancel/retry/clone with the same loopback, Origin, CSRF, strict-input, idempotency, and audit boundary as atomic Run start.
+- [x] Replace long-lived shared psycopg connections with bounded checkout-per-operation PostgreSQL adapters for Web handlers and background workers.
+- [x] Make Run creation compare request/config digest, serialize concurrent same-key creation, and replay only same-key/same-digest results.
+- [x] Replay the original immutable Draft mutation result rather than re-reading the current mutable Draft; preserve browser idempotency keys across response-loss retries.
+- [x] Split browser clone behavior by legacy versus atomic Run and add an actual Version diff selection/rendering flow.
+- [x] Forbid unknown Atomic request fields, add Strategy Set change note, durable success/conflict audit, and Audit query/UI.
+- [x] Add hostile-Origin/no-CSRF, unknown-field, response-loss, same-key/different-digest, concurrent composition, audit, atomic clone, and Version diff tests.
+- [x] Run the full no-DSN regression and static checks; record PostgreSQL integration tests as explicit skips when no disposable DSN is available.
+- [x] Submit the remediation candidate for a short Gate G2 Review; do not start Phase 3.
+- **Status:** remediation candidate complete — READY FOR REVIEW; Gate G2 remains NOT PASSED and Phase 3 remains blocked
+
+### Phase 16: Gate G2 Host/origin and deterministic-regression remediation
+
+- [x] Record the follow-up Review verdict: Gate G2 remains NOT PASSED and Phase 3 remains blocked.
+- [x] Reproduce public `Host` token disclosure, public `Host` atomic mutation, and wrong scheme/port Origin acceptance.
+- [x] Reproduce the two wall-clock/date-dependent regression failures on 2026-08-22.
+- [x] Enforce loopback HTTP `Host` at the ASGI boundary, including the capabilities endpoint that returns the CSRF token.
+- [x] Compare mutation Origin against the complete request origin (`scheme://host:port`) after validating the Host.
+- [x] Add public-Host plus loopback-peer and wrong scheme/port negative tests.
+- [x] Inject a deterministic Mock history anchor and local-paper clock into the two affected tests.
+- [x] Run focused security/date tests, full regression, Python/JavaScript checks, and `git diff --check`.
+- [x] Update Gate G2 evidence and submit the candidate for another short Review; do not start Phase 3.
+- **Status:** complete — final Review returned APPROVE / Gate G2 PASSED with no remaining blocking or important finding
+
+### Phase 17: Implement Phase 3 Backtest Qualification
+
+- [x] Record the final G2 Review verdict and Phase 3 authorization in all planning artifacts.
+- [x] Reconcile existing explicit OOS metrics, comparison persistence, atomic Run Snapshots, Feature Requests, and adapter identities with the Phase 3 contracts.
+- [x] Freeze a deterministic qualification protocol with explicit train/validation/OOS boundaries, walk-forward folds, baseline/challenger comparability, and multiple-testing history.
+- [x] Add PostgreSQL-only immutable qualification evidence, digest integrity, idempotent mutation, audit, and migration acceptance coverage.
+- [x] Implement qualification application services that fail closed on non-comparable or incomplete Runs and never mutate Strategy lifecycle state automatically.
+- [x] Preserve parameterized Feature Request/runtime adapter identity in qualification evidence; explicitly defer a real rolling Feature state/cache owner to Phase 5 instead of claiming the helper is runtime integration.
+- [x] Add strict local-only API and a Schema-driven Traditional Chinese Web flow for creating and reviewing qualification evidence.
+- [x] Add focused domain/PostgreSQL/API/browser tests, run full regression/static checks, and record Gate G3 evidence.
+- [x] Submit the completed Phase 3 slice for implementation Review; do not start Phase 4.
+- **Status:** implementation candidate complete — READY FOR REVIEW; Gate G3 NOT PASSED and Phase 4 remains blocked
+
+### Phase 18: Gate G3 qualification-semantics remediation
+
+- [x] Record the Request Changes verdict and keep Gate G3/Phase 4 closed.
+- [x] Replace request-controlled qualification thresholds with a server-owned policy floor and require meaningful train/validation/OOS coverage plus independent OOS dates.
+- [x] Add a PostgreSQL authoritative experiment-family ledger with monotonic attempt history and family-head serialization.
+- [x] Make compare and qualification share one comparability contract, including explicit Feature adapter/runtime identities while permitting the intended Strategy Version difference.
+- [x] Verify `digest(run.config) == run.config_digest` before qualification and bind actor/change note to the qualification integrity digest.
+- [x] Remove the unsupported G3 runtime-state claim and explicitly defer the real Feature state/cache owner to Phase 5; no speculative cache was added.
+- [x] Expand the Reviewer UI to display authoritative family history, adjusted alpha, fixed policy, windows, folds, and complete Run/Feature/adapter identities.
+- [x] Add adversarial domain/PostgreSQL/API/UI tests and rerun focused, no-DSN, disposable PostgreSQL, compilation, JavaScript, browser, and whitespace verification.
+- [x] Submit the remediated Phase 3 candidate for a short Review; do not start Phase 4.
+- **Status:** remediation candidate complete — READY FOR REVIEW; Gate G3 NOT PASSED; Phase 4 remains blocked
+
+### Phase 19: Gate G3 identity/isolation remediation
+
+- [x] Record the follow-up Request Changes verdict and keep Gate G3/Phase 4 closed.
+- [x] Reject every Walk-forward fold whose OOS overlaps the Primary OOS; cover the exact overlap exploit.
+- [x] Replace Baseline Run ID family ownership with a stable server-derived research-baseline identity so equivalent Baseline Runs share one attempt budget.
+- [x] Introduce one fail-closed Run identity verifier covering config digest plus row/config Dataset ID and digest equality; apply it to Baseline, Challenger, compare, and all family attempts.
+- [x] Make the family snapshot digest reconstructable by persisting the immutable canonical snapshot body or using a stable projection; expose current/historical hypothesis qualification linkage.
+- [x] Add domain/PostgreSQL/API/UI adversarial tests for overlap, equivalent Baseline family reuse, Dataset-row tampering, and snapshot reconstruction.
+- [x] Run focused no-DSN and disposable PostgreSQL tests, full regressions, compilation, JavaScript, browser, and whitespace checks.
+- [x] Submit the second remediation candidate for short Review; do not start Phase 4.
+- **Status:** second remediation candidate complete — READY FOR REVIEW; Gate G3 NOT PASSED; Phase 4 remains blocked
+
+### Phase 20: Gate G3 MVP conditional approval
+
+- [x] Record the final Review verdict as `Gate G3: PASSED / MVP CONDITIONAL GO` for loopback, single-user, trusted-PostgreSQL, manual-review use only.
+- [x] Preserve `REVIEW_ONLY_NO_LIFECYCLE_MUTATION`; Qualification may recommend human review but may not auto-promote, mutate lifecycle, or start Local Paper.
+- [x] Freeze the current qualification policy and experiment-family contract; require an explicit migration plan for legacy `baseline_run_id` uniqueness before any contract upgrade.
+- [x] Add the manual governance rule that equal `bars_sha256` plus an equal research contract is one research Dataset, regardless of Dataset ID or repackaging, and may not reset the attempt budget.
+- [x] Register Dataset stable research identity and canonical Baseline revalidation as Phase 3 hardening backlog required before multi-user, external-network, auto-promotion, or real-trading scope.
+- [x] Mark Phase 4 `ELIGIBLE` while retaining the separate explicit-authorization requirement; do not begin implementation in this phase.
+- **Status:** complete — Gate G3 PASSED / MVP CONDITIONAL GO; Phase 4 ELIGIBLE but NOT AUTHORIZED
+
+### Phase 21: Implement Phase 4 Local Paper Runtime
+
+- [x] Record the explicit Phase 4 authorization and preserve the no-broker/no-real-money boundary.
+- [x] Reconcile `continuous_strategy.py`, `strategy_flow.py`, `Journal`, `RiskGate`, `SimulationService`, quote adapters, persistence, and Dashboard controls against the frozen Phase 4 contract.
+- [x] Replace Momentum-specific Web orchestration with an exact-version Strategy Set/Pipeline resolver while retaining the legacy direct-controller compatibility seam and existing feature/execution owners.
+- [x] Enforce `TradeIntent -> Execution Policy -> ProposedOrderCommand -> Hard Risk -> ApprovedOrderCommand -> Simulation Adapter` without any broker command port; persist proposal/snapshot/policy/decision/approval digests.
+- [x] Add deterministic ownership, signal deduplication, continuous fixed exit monitoring, kill switch, checkpoint/recovery, and fail-closed stale/missing evidence behavior.
+- [x] Keep the generic paper runner `STOPPED` by default and require an explicit local start; preserve Shioaji as market-data-only.
+- [x] Add focused domain/application/API/UI tests plus restart, stale quote, duplicate signal, risk rejection, owner isolation, kill-switch and position lifecycle coverage.
+- [x] Run focused and full regression, disposable PostgreSQL, Python/JavaScript checks, browser smoke, and `git diff --check`; prepare the candidate for Gate G4 Review.
+- **Status:** implementation candidate ready for Review — Gate G4 NOT PASSED; broker/real-money execution prohibited
+
+### Phase 22: Gate G4 lifecycle, effective-risk, and owner-isolation remediation
+
+- [x] Record the Request Changes verdict and keep Gate G4/Phase 5 closed.
+- [x] Require every exact-set member to be `PAPER_APPROVED` at activation and snapshot lifecycle sequence, event ID, and projection digest.
+- [x] Remove the raw `strategy_id/version` HTTP intent bypass or route it through exact-set activation.
+- [x] Merge operator daily-loss with the system ceiling as `min(system, operator)` in the per-run Hard Risk Policy and persist the effective-policy evidence.
+- [x] Reject cross-owner same-symbol pending reservations and revalidate owner compatibility atomically at fill time.
+- [x] Make ALL preserve BLOCKED/INSUFFICIENT whenever any member is unavailable, including mixed NOT_TRIGGERED cases.
+- [x] Add adversarial lifecycle, raw-API, effective-policy, pending/fill ownership, composition, recovery, and audit tests.
+- [x] Run focused/full/disposable-PostgreSQL/static verification and prepare the remediation candidate for short G4 re-review.
+- **Status:** remediation candidate ready for short Review — Gate G4 NOT PASSED; Phase 5 and broker/real-money execution prohibited
 
 ## Decisions Made
 
@@ -232,7 +343,7 @@ Gate rules:
 - Important findings accepted into Phase 13: Strategy Set snapshot integrity verification, full migration table/constraint/index acceptance, and a code-level guard before destructive PostgreSQL test schema cleanup.
 - Reviewer evidence: focused `16 passed, 5 skipped`; full `8 failed, 1092 passed, 10 skipped`; compilation and whitespace passed. The eight failures invalidate the prior full-regression Gate evidence.
 - PostgreSQL DSN was not configured for that Review, so real PostgreSQL tests must be rerun before G1 can be reconsidered.
-- Packaging follow-up: commit `0bcf61c` closed the wall-clock fixture finding and a fresh full run passed `1100 passed, 10 skipped`; the remaining five Phase 13 items keep Gate G1 at `NOT PASSED`.
+- At the packaging-follow-up checkpoint, commit `0bcf61c` had closed only the wall-clock fixture finding and the other five Phase 13 items were still open. The later remediation disposition above supersedes that checkpoint.
 
 ## Errors Encountered
 
@@ -249,6 +360,15 @@ Gate rules:
 | Combined service/repository/test patch had an invalid patch hunk delimiter | 1 | No file changed; split the change into three exact-context patches. |
 | Full regression expected migration 004 to remain the last file after adding migration 005 | 1 | Updated the existing ordered migration manifest assertion to include `005_atomic_strategy_platform.sql`. |
 | Combined schema-digest patch used an outdated SQL placeholder context | 1 | No file changed; split DDL, domain, repository, adapter, and fixture updates into exact-context patches. |
+| Disposable PostgreSQL could not allocate shared memory inside the filesystem sandbox | 1 | Re-ran only the disposable server lifecycle with approved local-process permissions; no existing database was accessed. |
+| First disposable PostgreSQL cluster defaulted to SQL_ASCII and returned TEXT as bytes | 1 | Stopped it and recreated the disposable cluster explicitly with UTF8 before accepting any database test evidence. |
+| Sandbox could not connect to the disposable PostgreSQL Unix socket | 1 | Re-ran only the focused pytest process with approved socket access; the UTF8 suite then passed. |
+| Full PostgreSQL regression compared `regclass` display text that changes with `search_path` | 1 | Changed the existing migration assertion to verify relation presence/absence booleans instead of presentation formatting. |
+| First semantic `regclass` assertion patch introduced excess indentation | 1 | Collection caught it before tests ran; corrected only the affected SQL/assert block and reran compilation/focused tests. |
+| One final escalated pytest process failed to launch with a transient `No such file or directory` process error | 1 | Verified the workspace and virtualenv still existed, then retried the identical bounded pytest command successfully. |
+| A temporary-directory verification loop used zsh's special `path` variable and hid `rg` for that subprocess | 1 | The shell exited without file changes; reran with the task-specific `candidate_dir` variable. |
+| Phase 4 registry inspection requested non-existent `strategy_catalog/registry.py` | 1 | No file changed; the executable allowlist owner is `atomic_strategies/registry.py`, while catalog metadata lives in `strategy_catalog/drafts.py` and the PostgreSQL repository. |
+| Phase 4 source search assumed a top-level `momentum/` package | 1 | No file changed; the live Momentum projection and canonical FeatureEngine integration are owned by `dashboard/momentum.py`. |
 
 ## Non-goals
 

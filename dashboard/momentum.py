@@ -164,12 +164,14 @@ class RealtimeMomentumDashboardService:
             )
             runtime_snapshot = read_view.snapshot
             projections = dict(read_view.projections)
+            books = dict(read_view.books)
             miss_reasons = dict(read_view.miss_reason_by_symbol)
 
             items = [
                 self._serialize_candidate(
                     symbol,
                     projection=projections.get(symbol),
+                    book=books.get(symbol),
                     miss_reason=miss_reasons.get(symbol),
                 )
                 for symbol in self._ordered_candidate_symbols(projections)
@@ -345,6 +347,7 @@ class RealtimeMomentumDashboardService:
         symbol: str,
         *,
         projection: MomentumProjection | None,
+        book: Any = None,
         miss_reason: Any,
     ) -> dict[str, Any]:
         metadata = self._candidate_metadata.get(symbol, {"symbol": symbol})
@@ -363,6 +366,7 @@ class RealtimeMomentumDashboardService:
                 "current_stage": None,
                 "current_stage_label": "等待資料",
                 "intraday": None,
+                "execution_book": None,
                 "signal": None,
             }
         signal = projection.signal_result
@@ -376,6 +380,7 @@ class RealtimeMomentumDashboardService:
             "current_stage": projection.current_stage.value,
             "current_stage_label": _STAGE_LABELS[projection.current_stage.value],
             "intraday": _serialize_intraday(projection.feature_snapshot),
+            "execution_book": _serialize_execution_book(book),
             "signal": {
                 "family": signal.signal_family.value,
                 "family_label": _FAMILY_LABELS[signal.signal_family.value],
@@ -912,6 +917,21 @@ def _serialize_intraday(
             "bid_ask_ratio_5",
             "book_imbalance_5",
         )
+    }
+
+
+def _serialize_execution_book(event: Any) -> dict[str, Any] | None:
+    if event is None:
+        return None
+    return {
+        "status": "VALID" if event.best_bid is not None and event.best_ask is not None else "MISSING",
+        "best_bid": str(event.best_bid) if event.best_bid is not None else None,
+        "best_ask": str(event.best_ask) if event.best_ask is not None else None,
+        "bid_volume_lots": event.bid_volume_lots[0] if event.bid_volume_lots else None,
+        "ask_volume_lots": event.ask_volume_lots[0] if event.ask_volume_lots else None,
+        "event_at": event.event_time.isoformat(),
+        "received_at": event.received_at.isoformat(),
+        "event_id": event.event_id,
     }
 
 

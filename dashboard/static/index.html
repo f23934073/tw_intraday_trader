@@ -200,7 +200,7 @@
         <section class="automated-strategy-card" aria-labelledby="automated-strategy-heading">
           <div class="automated-strategy-heading">
             <div>
-              <div class="kicker">Momentum · 固定一張 · 最多一個持倉</div>
+              <div class="kicker">Exact Strategy Set · 固定一張 · 最多一個持倉</div>
               <h3 id="automated-strategy-heading">自動模擬策略</h3>
             </div>
             <span class="automated-strategy-badge stopped" id="automated-strategy-badge">未啟動</span>
@@ -208,15 +208,18 @@
           <p class="automated-strategy-status" id="automated-strategy-status" role="status">讀取自動策略狀態中…</p>
           <form class="automated-strategy-form" id="automated-strategy-form">
             <div class="order-fields automated-strategy-fields">
+              <div class="order-field"><label for="automated-strategy-set">進場策略組合版本</label><select id="automated-strategy-set" name="entry_strategy_set_version_id" required><option value="">讀取 PostgreSQL 策略組合中…</option></select></div>
               <div class="order-field"><label for="automated-stop-loss">停損（%）</label><input id="automated-stop-loss" name="stop_loss_pct" min="0.1" max="99.9" step="0.1" type="number" placeholder="必填" required></div>
               <div class="order-field"><label for="automated-take-profit">停利（%）</label><input id="automated-take-profit" name="take_profit_pct" min="0.1" step="0.1" type="number" placeholder="必填" required></div>
               <div class="order-field"><label for="automated-max-daily-loss">每日最大虧損（元）</label><input id="automated-max-daily-loss" name="max_daily_loss" min="1" step="1" type="number" placeholder="必填" required></div>
             </div>
-            <p class="order-note">只在 TWSE 交易日 09:00–13:20 進場，13:25 起強制出場；重啟後需重新手動啟動。僅限 Shioaji Tick／BidAsk 驅動的本機模擬。</p>
+            <p class="order-note">只使用已發布的精確策略版本；09:00–13:20 進場，13:25 起強制出場。重啟後需重新手動啟動，且僅限 Shioaji Tick／BidAsk 驅動的本機模擬。</p>
             <p class="error" id="automated-strategy-error" role="alert"></p>
             <div class="automated-strategy-actions">
               <button class="order-submit" id="automated-strategy-start" type="submit">啟動自動模擬</button>
               <button class="automated-strategy-stop" id="automated-strategy-stop" type="button" disabled>停止</button>
+              <button class="automated-strategy-stop" id="automated-strategy-kill" type="button">緊急停止</button>
+              <button class="automated-strategy-stop" id="automated-strategy-kill-reset" type="button" disabled>解除緊急停止</button>
             </div>
           </form>
         </section>
@@ -256,7 +259,7 @@
             <button class="workspace-tab active" id="backtest-tab-data" type="button" role="tab" aria-selected="true" aria-controls="backtest-panel-data" data-backtest-tab="data">1. 準備歷史資料</button>
             <button class="workspace-tab" id="backtest-tab-setup" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-setup" data-backtest-tab="setup">2. 設定策略組合</button>
             <button class="workspace-tab" id="backtest-tab-runs" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-runs" data-backtest-tab="runs">3. 回測工作與結果</button>
-            <button class="workspace-tab" id="backtest-tab-compare" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-compare" data-backtest-tab="compare">4. Baseline／Challenger 比較</button>
+            <button class="workspace-tab" id="backtest-tab-compare" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-compare" data-backtest-tab="compare">4. 比較與資格判定</button>
           </div>
 
           <div class="backtest-grid">
@@ -277,7 +280,21 @@
 
             <section class="backtest-card tab-panel" id="backtest-panel-setup" role="tabpanel" aria-labelledby="backtest-tab-setup" data-backtest-panel="setup">
               <h3 id="backtest-config-heading">2. 設定策略組合</h3>
-              <p class="backtest-card-copy">每個策略都有固定版本。任一策略達標（ANY）、全部達標（ALL）或至少 N 個達標，都只會產生一個可追溯的交易決策。</p>
+              <p class="backtest-card-copy">優先使用已發布的原子策略組合；每個成員都鎖定不可變版本。下方舊版選擇器保留供既有回測相容。</p>
+              <form class="atomic-launcher" id="atomic-backtest-form">
+                <div class="backtest-form-grid">
+                  <div class="backtest-field wide"><label for="atomic-backtest-set">原子策略組合</label><select id="atomic-backtest-set" required><option value="">請先到策略管理建立組合</option></select></div>
+                  <div class="backtest-field wide"><label for="atomic-backtest-dataset">歷史資料集</label><select id="atomic-backtest-dataset" required></select></div>
+                  <div class="backtest-field wide"><label for="atomic-backtest-baseline">研究 Baseline（建立 Challenger 時選擇）</label><select id="atomic-backtest-baseline"><option value="">不加入 qualification family</option></select></div>
+                  <div class="backtest-field"><label for="atomic-backtest-cash">起始資金（元）</label><input id="atomic-backtest-cash" min="1000" step="1000" type="number" value="10000000"></div>
+                  <div class="backtest-field"><label for="atomic-backtest-position-fraction">每檔資金比例</label><input id="atomic-backtest-position-fraction" min="0.01" max="1" step="0.01" type="number" value="0.10"></div>
+                  <div class="backtest-field wide"><label for="atomic-backtest-note">這次回測說明</label><input id="atomic-backtest-note" maxlength="300" placeholder="例如：比較站上 VWAP v2"></div>
+                </div>
+                <div class="backtest-actions"><button class="backtest-button" id="atomic-backtest-submit" type="submit">用原子策略建立回測</button></div>
+                <p class="backtest-card-copy" id="atomic-backtest-message" role="status"></p>
+              </form>
+              <details class="legacy-backtest-settings">
+                <summary>舊版固定策略回測</summary>
               <form id="backtest-run-form">
                 <div class="backtest-form-grid">
                   <div class="backtest-field wide"><label for="backtest-dataset">資料集</label><select id="backtest-dataset" required></select></div>
@@ -298,6 +315,7 @@
                 <p class="backtest-card-copy" id="backtest-daily-sma-warning" hidden></p>
                 <div class="backtest-actions"><button class="backtest-button" id="backtest-run-submit" type="submit">建立回測</button></div>
               </form>
+              </details>
             </section>
 
             <section class="backtest-card wide tab-panel" id="backtest-panel-runs" role="tabpanel" aria-labelledby="backtest-tab-runs" data-backtest-panel="runs">
@@ -319,6 +337,32 @@
               </div>
               <div class="backtest-actions"><button class="backtest-button secondary" id="backtest-clone" type="button">以目前設定複製並調整</button><button class="backtest-button" id="backtest-compare" type="button">比較兩個已完成 Run</button></div>
               <div id="backtest-comparison"></div>
+              <div class="backtest-section-heading"><h3>5. 固定 OOS／Walk-forward 資格判定</h3><span class="panel-count">人工審核 evidence</span></div>
+              <p class="backtest-card-copy">資格判定只讀取已完成的 Atomic Runs，保存固定日期、所有嘗試、成本與 Feature 身分。即使通過，也不會自動啟用策略或啟動 Local Paper。</p>
+              <form id="backtest-qualification-form">
+                <div class="backtest-form-grid">
+                  <div class="backtest-field wide"><label for="qualification-hypothesis">假設名稱</label><input id="qualification-hypothesis" required maxlength="120" placeholder="例如 v2 優於 v1"></div>
+                  <div class="backtest-field wide"><label for="qualification-change-note">研究變更說明</label><input id="qualification-change-note" required maxlength="300" placeholder="例如：只把 VWAP 確認根數由 1 改成 2"></div>
+                </div>
+                <div class="backtest-notice">Family、嘗試序號、完整 Run 歷史、alpha 與門檻由伺服器固定管理。固定 family alpha 5%、最多 20 次；Primary 至少 30 筆／10 個獨立 OOS 日、最大回撤 20%；至少 2 個 Walk-forward folds，正向比例 60%。</div>
+                <div class="qualification-window" data-qualification-window="primary">
+                  <strong>Primary 固定切割</strong>
+                  <div class="backtest-form-grid">
+                    <div class="backtest-field"><label for="qualification-primary-train-start">Train 起</label><input id="qualification-primary-train-start" data-window-field="train_start" required type="date"></div>
+                    <div class="backtest-field"><label for="qualification-primary-train-end">Train 迄</label><input id="qualification-primary-train-end" data-window-field="train_end" required type="date"></div>
+                    <div class="backtest-field"><label for="qualification-primary-validation-start">Validation 起</label><input id="qualification-primary-validation-start" data-window-field="validation_start" required type="date"></div>
+                    <div class="backtest-field"><label for="qualification-primary-validation-end">Validation 迄</label><input id="qualification-primary-validation-end" data-window-field="validation_end" required type="date"></div>
+                    <div class="backtest-field"><label for="qualification-primary-oos-start">OOS 起</label><input id="qualification-primary-oos-start" data-window-field="oos_start" required type="date"></div>
+                    <div class="backtest-field"><label for="qualification-primary-oos-end">OOS 迄</label><input id="qualification-primary-oos-end" data-window-field="oos_end" required type="date"></div>
+                  </div>
+                </div>
+                <div class="backtest-section-heading"><h3>Walk-forward Folds</h3><button class="backtest-button secondary" id="qualification-add-fold" type="button">新增 Fold</button></div>
+                <div id="qualification-folds"></div>
+                <div class="backtest-actions"><button class="backtest-button" id="qualification-submit" type="submit">建立不可變資格證據</button></div>
+                <p class="backtest-card-copy" id="qualification-message" role="status"></p>
+              </form>
+              <div id="qualification-result"></div>
+              <div class="backtest-list" id="qualification-list"></div>
             </section>
           </div>
         </div>
@@ -330,21 +374,75 @@
       <aside class="drawer-panel" id="strategy-catalog-panel" aria-labelledby="strategy-catalog-heading" aria-modal="true" role="dialog" tabindex="-1">
         <div class="drawer-heading">
           <div>
-            <div class="kicker">Strategy Catalog</div>
-            <h2 id="strategy-catalog-heading">策略目錄</h2>
+            <div class="kicker">Atomic Strategy Management</div>
+            <h2 id="strategy-catalog-heading">策略管理</h2>
           </div>
           <button class="drawer-close" id="strategy-catalog-close" type="button" aria-label="關閉策略目錄">×</button>
         </div>
         <div class="backtest-body">
-          <p class="backtest-intro">這裡集中顯示盤前、開盤、盤中、收盤與持倉生命週期策略。參數可版本化保存；資料庫定義只描述設定，不會直接執行任意程式碼。</p>
-          <div class="backtest-form-grid">
-            <div class="backtest-field"><label for="strategy-catalog-role">策略角色</label><select id="strategy-catalog-role"><option value="">全部</option><option value="CANDIDATE">候選</option><option value="SCORE">評分</option><option value="SIGNAL">訊號</option><option value="ENTRY">買入</option><option value="EXIT">賣出</option></select></div>
-            <div class="backtest-field"><label for="strategy-catalog-phase">時段</label><select id="strategy-catalog-phase"><option value="">全部</option><option value="PRE_MARKET">盤前</option><option value="OPENING">開盤</option><option value="INTRADAY">盤中</option><option value="END_OF_DAY">收盤</option><option value="POSITION_LIFECYCLE">持倉生命週期</option><option value="ALL_SESSION">全時段</option></select></div>
-            <div class="backtest-field"><label for="strategy-catalog-status">狀態</label><select id="strategy-catalog-status"><option value="">全部</option><option value="ACTIVE">啟用</option><option value="EXPERIMENTAL">實驗中</option><option value="DRAFT">草稿</option><option value="DEPRECATED">已淘汰</option></select></div>
-            <div class="backtest-actions"><button class="backtest-button secondary" id="strategy-catalog-refresh" type="button">重新整理</button></div>
-          </div>
+          <p class="backtest-intro">從程式已部署的策略範本建立參數草稿，驗證後發布成不可變版本，再組成可重現的歷史回測。這裡不會啟動模擬交易或券商委託。</p>
+          <div class="backtest-actions"><button class="backtest-button secondary" id="strategy-catalog-refresh" type="button">重新整理</button></div>
           <p class="backtest-card-copy" id="strategy-catalog-notice" role="status">正在讀取策略目錄…</p>
-          <div class="strategy-catalog-list" id="strategy-catalog-list" aria-live="polite"><p class="backtest-empty">尚未讀取策略定義。</p></div>
+          <div class="atomic-management-grid">
+            <section class="backtest-card">
+              <h3>1. 選擇原子策略</h3>
+              <p class="backtest-card-copy">每個項目是一個可獨立回測的策略。</p>
+              <div class="strategy-catalog-list" id="strategy-template-list" aria-live="polite"><p class="backtest-empty">尚未讀取策略範本。</p></div>
+            </section>
+            <section class="backtest-card">
+              <h3>2. 設定參數草稿</h3>
+              <form id="strategy-draft-form">
+                <div id="strategy-parameter-fields"><p class="backtest-empty">請先選擇策略。</p></div>
+                <div class="backtest-field wide"><label for="strategy-change-note">調整說明</label><input id="strategy-change-note" maxlength="300" placeholder="例如：把最小距離調整為 15 bps"></div>
+                <div class="backtest-actions"><button class="backtest-button" id="strategy-draft-save" type="submit">建立草稿</button><button class="backtest-button secondary" id="strategy-draft-validate" type="button" disabled>驗證草稿</button><button class="backtest-button secondary" id="strategy-draft-publish" type="button" disabled>發布不可變版本</button></div>
+              </form>
+              <p class="backtest-card-copy" id="strategy-draft-message" role="status"></p>
+            </section>
+            <section class="backtest-card">
+              <h3>草稿</h3>
+              <div class="strategy-catalog-list" id="strategy-draft-list"><p class="backtest-empty">目前沒有草稿。</p></div>
+            </section>
+            <section class="backtest-card">
+              <h3>已發布版本</h3>
+              <div class="strategy-catalog-list" id="strategy-version-list"><p class="backtest-empty">目前沒有已發布版本。</p></div>
+              <div class="backtest-form-grid">
+                <div class="backtest-field"><label for="strategy-version-left">版本 A</label><select id="strategy-version-left"></select></div>
+                <div class="backtest-field"><label for="strategy-version-right">版本 B</label><select id="strategy-version-right"></select></div>
+              </div>
+              <div class="backtest-actions"><button class="backtest-button secondary" id="strategy-version-compare" type="button" disabled>比較版本參數</button></div>
+              <div id="strategy-version-diff" aria-live="polite"></div>
+            </section>
+            <section class="backtest-card wide">
+              <h3>3. 建立策略組合</h3>
+              <p class="backtest-card-copy">只可選擇已發布的精確版本；目前回測垂直切片支援買入策略。</p>
+              <form id="strategy-set-form">
+                <div class="backtest-form-grid">
+                  <div class="backtest-field"><label for="strategy-set-name">組合名稱</label><input id="strategy-set-name" required maxlength="120" placeholder="例如：VWAP 與前高任一觸發"></div>
+                  <div class="backtest-field"><label for="strategy-set-policy">觸發方式</label><select id="strategy-set-policy"><option value="ANY">任一策略</option><option value="ALL">全部策略</option><option value="AT_LEAST_N">至少 N 個</option></select></div>
+                  <div class="backtest-field"><label for="strategy-set-minimum">至少觸發數</label><input id="strategy-set-minimum" type="number" min="1" value="1" disabled></div>
+                  <div class="backtest-field wide"><label for="strategy-set-change-note">組合調整說明</label><input id="strategy-set-change-note" required maxlength="300" placeholder="例如：比較 VWAP 與前高任一觸發"></div>
+                </div>
+                <div class="strategy-groups"><div class="strategy-group wide" id="strategy-set-members"><p class="backtest-empty">請先發布策略版本。</p></div></div>
+                <div class="backtest-actions"><button class="backtest-button" id="strategy-set-save" type="submit">建立策略組合</button></div>
+              </form>
+              <p class="backtest-card-copy" id="strategy-set-message" role="status"></p>
+              <div class="strategy-catalog-list" id="strategy-set-list"><p class="backtest-empty">目前沒有策略組合。</p></div>
+            </section>
+            <section class="backtest-card wide">
+              <h3>4. Audit 紀錄</h3>
+              <p class="backtest-card-copy">顯示 mutation 的 actor、結果與資源；衝突也會保留 evidence。</p>
+              <div class="strategy-catalog-list" id="strategy-audit-list"><p class="backtest-empty">目前沒有 Audit 紀錄。</p></div>
+            </section>
+          </div>
+          <details class="legacy-strategy-catalog">
+            <summary>查看舊版策略目錄</summary>
+            <div class="backtest-form-grid">
+              <div class="backtest-field"><label for="strategy-catalog-role">策略角色</label><select id="strategy-catalog-role"><option value="">全部</option><option value="CANDIDATE">候選</option><option value="SCORE">評分</option><option value="SIGNAL">訊號</option><option value="ENTRY">買入</option><option value="EXIT">賣出</option></select></div>
+              <div class="backtest-field"><label for="strategy-catalog-phase">時段</label><select id="strategy-catalog-phase"><option value="">全部</option><option value="PRE_MARKET">盤前</option><option value="OPENING">開盤</option><option value="INTRADAY">盤中</option><option value="END_OF_DAY">收盤</option><option value="POSITION_LIFECYCLE">持倉生命週期</option><option value="ALL_SESSION">全時段</option></select></div>
+              <div class="backtest-field"><label for="strategy-catalog-status">狀態</label><select id="strategy-catalog-status"><option value="">全部</option><option value="ACTIVE">啟用</option><option value="EXPERIMENTAL">實驗中</option><option value="DRAFT">草稿</option><option value="DEPRECATED">已淘汰</option></select></div>
+            </div>
+            <div class="strategy-catalog-list" id="strategy-catalog-list" aria-live="polite"><p class="backtest-empty">尚未讀取舊版策略定義。</p></div>
+          </details>
         </div>
       </aside>
     </div>

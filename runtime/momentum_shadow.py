@@ -40,6 +40,7 @@ from market_data.momentum_stream import (
     StreamLifecycleEventType,
 )
 from market_data.order_book_store import OrderBookStore
+from market_data.events import BidAskEvent
 from market_data.subscriptions import (
     MissReason,
     SubscriptionDecision,
@@ -157,6 +158,7 @@ class MomentumShadowReadView:
     projections: tuple[tuple[str, MomentumProjection | None], ...]
     miss_reason_by_symbol: tuple[tuple[str, MissReason], ...]
     pending_alerts: tuple[MomentumAlert, ...]
+    books: tuple[tuple[str, BidAskEvent | None], ...] = ()
 
 
 class MomentumShadowRuntime:
@@ -433,6 +435,9 @@ class MomentumShadowRuntime:
                 (symbol, self._projections.get(symbol))
                 for symbol in normalized
             )
+            books = tuple(
+                (symbol, self._books.latest(symbol)) for symbol in normalized
+            )
             misses = tuple(
                 (symbol, reason)
                 for symbol, projection in projections
@@ -446,6 +451,7 @@ class MomentumShadowRuntime:
                 projections=projections,
                 miss_reason_by_symbol=misses,
                 pending_alerts=self._projections.pending_alerts(),
+                books=books,
             )
 
     def _build_snapshot(self) -> MomentumShadowSnapshot:

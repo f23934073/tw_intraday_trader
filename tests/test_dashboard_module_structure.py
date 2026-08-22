@@ -41,7 +41,7 @@ def test_workspace_factories_declare_cross_workspace_dependencies() -> None:
     assert "formatSource" in candidates.splitlines()[1]
     assert "formatSource" in momentum.splitlines()[1]
     assert "ruleLabels" in momentum.splitlines()[1]
-    assert "setWorkspace" in backtest.splitlines()[1]
+    assert "setWorkspace" in "\n".join(backtest.splitlines()[:6])
     assert "formatSource" in APP
     assert "ruleLabels" in APP
     assert "setWorkspace" in APP
@@ -52,16 +52,22 @@ def test_simulation_workspace_exposes_explicit_automated_strategy_controls() -> 
 
     for element_id in (
         "automated-strategy-form",
+        "automated-strategy-set",
         "automated-stop-loss",
         "automated-take-profit",
         "automated-max-daily-loss",
         "automated-strategy-start",
         "automated-strategy-stop",
+        "automated-strategy-kill",
+        "automated-strategy-kill-reset",
         "automated-strategy-status",
     ):
         assert f'id="{element_id}"' in HTML
     assert "/api/simulation/automated-strategy/start" in simulation
     assert "/api/simulation/automated-strategy/stop" in simulation
+    assert "/api/simulation/automated-strategy/kill-switch" in simulation
+    assert "/api/strategy-sets" in simulation
+    assert "X-Strategy-CSRF" in simulation
     assert "loadAutomatedStrategyStatus" in simulation
     assert "submitAutomatedStrategy" in simulation
     assert "stopAutomatedStrategy" in simulation

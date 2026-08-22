@@ -614,6 +614,26 @@ class SimulationService:
                 position = self._positions.get(order.symbol)
                 if position is not None and not self._same_owner(order, position):
                     self._reject(order, "持倉歸屬衝突，禁止合併部位")
+                conflicting_pending = next(
+                    (
+                        existing
+                        for existing in self._orders.values()
+                        if existing.order_id != order.order_id
+                        and existing.symbol == order.symbol
+                        and existing.side is OrderSide.BUY
+                        and existing.status in _ACTIVE_ORDER_STATUSES
+                        and not self._same_order_owner(order, existing)
+                    ),
+                    None,
+                )
+                if (
+                    order.status is OrderStatus.SUBMITTED
+                    and conflicting_pending is not None
+                ):
+                    self._reject(
+                        order,
+                        "同股票已有不同歸屬的買進委託，禁止跨 owner 保留或合併",
+                    )
                 reserved = order.quantity * order.limit_price
                 if order.status is OrderStatus.SUBMITTED and reserved > self._available_cash():
                     self._reject(order, "可用虛擬現金不足")
@@ -649,16 +669,16 @@ class SimulationService:
                         else order.remaining_quantity
                     )
                     if fill_quantity > 0:
-                        self._fill(
+                        executed_quantity = self._fill(
                             order,
                             execution_price,
                             fill_quantity=fill_quantity,
                         )
-                        if self._stream_capable:
+                        if self._stream_capable and executed_quantity > 0:
                             self._consume_book_quantity(
                                 order,
                                 self._quotes[stock_symbol],
-                                fill_quantity,
+                                executed_quantity,
                             )
 
             if order.status is OrderStatus.SUBMITTED:
@@ -833,7 +853,7 @@ class SimulationService:
         order: SimulationOrder,
         quote: _QuoteState,
         quantity: int,
-    ) -> None:
+    ) -> int:
         if order.side is OrderSide.BUY and quote.ask_available_quantity is not None:
             quote.ask_available_quantity = max(0, quote.ask_available_quantity - quantity)
         elif order.side is OrderSide.SELL and quote.bid_available_quantity is not None:
@@ -868,7 +888,7 @@ class SimulationService:
         """在 lock 內以已驗證的 snapshot／買一／賣一完成本機紙上成交。"""
         quantity = min(fill_quantity or order.remaining_quantity, order.remaining_quantity)
         if quantity <= 0:
-            return
+            return 0
         if order.side is OrderSide.BUY:
             fill_amount = quantity * fill_price
             if fill_amount > self._cash:
@@ -876,7 +896,7 @@ class SimulationService:
                     order,
                     "目前報價造成可用虛擬現金不足",
                 )
-                return
+                return 0
 
             position = self._positions.get(order.symbol)
             if position is None:
@@ -890,6 +910,9 @@ class SimulationService:
                     owner_strategy_version=order.strategy_version,
                 )
             else:
+                if not self._same_owner(order, position):
+                    self._reject(order, "成交時持倉歸屬衝突，禁止跨 owner 合併")
+                    return 0
                 total_quantity = position.quantity + quantity
                 position.average_price = (
                     position.average_price * position.quantity
@@ -904,7 +927,7 @@ class SimulationService:
                     order,
                     "可賣出持股不足",
                 )
-                return
+                return 0
 
             realized_pnl = (fill_price - position.average_price) * quantity
             self._realized_pnl_by_symbol[order.symbol] = (
@@ -937,6 +960,7 @@ class SimulationService:
             if now > order.updated_at
             else order.updated_at + timedelta(microseconds=1)
         )
+        return quantity
 
     def _reject(
         self,
@@ -1065,12 +1089,17 @@ class SimulationService:
                     ):
                         fill_quantity = self._book_fill_quantity(order, quote)
                         if fill_quantity > 0:
-                            self._fill(
+                            executed_quantity = self._fill(
                                 order,
                                 execution_price,
                                 fill_quantity=fill_quantity,
                             )
-                            self._consume_book_quantity(order, quote, fill_quantity)
+                            if executed_quantity > 0:
+                                self._consume_book_quantity(
+                                    order,
+                                    quote,
+                                    executed_quantity,
+                                )
                             notifications.append(self._order_payload(order))
                             filled = True
         for payload in notifications:
@@ -1194,6 +1223,14 @@ class SimulationService:
         if order.origin != "STRATEGY_AUTOMATED":
             return True
         return order.strategy_id == position.owner_strategy_id
+
+    @staticmethod
+    def _same_order_owner(left: SimulationOrder, right: SimulationOrder) -> bool:
+        if left.origin != right.origin:
+            return False
+        if left.origin != "STRATEGY_AUTOMATED":
+            return True
+        return left.strategy_id == right.strategy_id
 
     def _now(self) -> datetime:
         return self._clock.now().astimezone(_TAIPEI)
@@ -1360,6 +1397,10 @@ class SimulationService:
                     Decimal("0"),
                 )
                 - self._opening_realized_pnl,
+                "daily_loss": max(
+                    Decimal("0"),
+                    self._opening_equity - (self._cash + self._market_value()),
+                ),
                 "book_age_seconds": book_age,
             }
 

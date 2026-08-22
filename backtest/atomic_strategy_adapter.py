@@ -145,6 +145,10 @@ def resolve_atomic_entry_set(
                     "specification_digest": specification.specification_digest,
                     "feature_implementation_digest": specification.implementation_digest,
                     "as_of_semantics": specification.as_of_semantics,
+                    "runtime_identity_digest": request.runtime_identity_digest(
+                        adapter_identity=CompletedOneMinuteKbarFeatureAdapter.identity,
+                        cadence=specification.cadence,
+                    ),
                 }
             )
         feature_request_documents.append(

@@ -257,6 +257,7 @@ class BacktestRunConfig:
     engine_version: str = "backtest-engine-v2"
     experiment_id: str | None = None
     baseline_run_id: str | None = None
+    research_baseline_digest: str | None = None
     parent_run_id: str | None = None
     change_note: str = ""
     atomic_strategy_run_snapshot: Mapping[str, Any] | None = None
@@ -309,6 +310,8 @@ class BacktestRunConfig:
             "parent_run_id": self.parent_run_id,
             "change_note": self.change_note,
         }
+        if self.research_baseline_digest is not None:
+            value["research_baseline_digest"] = self.research_baseline_digest
         if self.atomic_strategy_run_snapshot is not None:
             value["atomic_strategy_run_snapshot"] = dict(self.atomic_strategy_run_snapshot)
         return value
@@ -331,6 +334,7 @@ class BacktestRunConfig:
             engine_version=str(value.get("engine_version", "backtest-engine-v1")),
             experiment_id=value.get("experiment_id"),
             baseline_run_id=value.get("baseline_run_id"),
+            research_baseline_digest=value.get("research_baseline_digest"),
             parent_run_id=value.get("parent_run_id"),
             change_note=str(value.get("change_note", "")),
             atomic_strategy_run_snapshot=(

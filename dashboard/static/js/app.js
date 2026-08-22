@@ -1,7 +1,7 @@
 import { createCandidateWorkspace } from "./workspaces/candidates.js";
 import { createSimulationWorkspace } from "./workspaces/simulation.js?v=20260822-share-native-v1";
 import { createMomentumWorkspace } from "./workspaces/momentum.js";
-import { createBacktestWorkspace } from "./workspaces/backtest.js";
+import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260821-atomic-strategy-v2";
 
         const state = {
           workspace: "overview",
@@ -30,13 +30,27 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js";
         momentumLastHeartbeatAt: null,
         momentumDialogSymbol: null,
         momentumDialogLastItem: null,
-        strategyCatalog: { strategies: [], loading: false },
+        strategyCatalog: {
+          strategies: [],
+          templates: [],
+          drafts: [],
+          versions: [],
+          strategySets: [],
+          auditEvents: [],
+          selectedTemplateId: null,
+          activeDraftId: null,
+          csrfToken: null,
+          atomicAvailable: false,
+          loading: false
+        },
         backtest: {
           capabilities: null,
           incrementalSync: null,
           datasets: [],
           strategies: [],
           runs: [],
+          qualifications: [],
+          qualificationUnavailable: null,
           activeRunId: null,
           activeResult: null,
           activeTrade: null,
@@ -167,7 +181,7 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js";
         overview: ["工作區", "市場總覽", "市場摘要、資料健康與盤前情境"],
         candidates: ["工作區", "候選清單", "選擇標的，查看規則分數、盤中快照與 K 線評估"],
         momentum: ["研究工具", "盤中動能", "即時候選策略、規則值與待確認告警"],
-        strategy: ["研究工具", "策略目錄", "策略版本、時段與 execution binding"],
+        strategy: ["研究工具", "策略管理", "參數草稿、不可變版本、策略組合與歷史回測"],
         backtest: ["研究工具", "歷史回測", "資料準備、策略組合、結果與比較"],
         orders: ["本機紙上模擬", "委託", "查看送出、成交、取消與拒絕的委託"],
         "order-ticket": ["本機紙上模擬", "模擬下單", "建立只存在本機記憶體的限價委託"],

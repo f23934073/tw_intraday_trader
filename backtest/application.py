@@ -6,26 +6,46 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from typing import Any, Mapping
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 from zoneinfo import ZoneInfo
 
 from backtest.dataset import DatasetCancelled, DatasetManifest, HistoricalDatasetCatalog
+from backtest.atomic_strategy_adapter import resolve_atomic_entry_set
+from backtest.comparability import (
+    comparability_contract_digest,
+    run_comparability_diff,
+    verify_run_identity,
+)
 from backtest.domain import (
     AggregationPolicy,
     BacktestRunConfig,
     RunStatus,
     StrategySetSnapshot,
+    digest,
 )
 from backtest.engine import BacktestCancelled, HistoricalBacktestEngine
 from backtest.historical_download import IncrementalHistoricalSync
 from backtest.metrics import compare_runs, summarize_run
 from backtest.postgres_repository import PostgresBacktestRepository
+from backtest.qualification import (
+    EvaluationWindow,
+    MultipleTestingRecord,
+    QualificationPolicy,
+    QualificationProtocol,
+    build_qualification_evidence,
+    experiment_family_id,
+    research_baseline_identity_digest,
+)
 from backtest.repository import BacktestRepository
 from backtest.sqlite_repository import SQLiteBacktestRepository
 from backtest.strategies import StrategyRegistry
+from atomic_strategies.registry import AtomicStrategyRegistry
 from config import backtest as backtest_settings
 from market_data.provider import MarketDataProvider
 from strategy_catalog.service import StrategyCatalogService
+from strategy_catalog.postgres_repository import PostgresAtomicStrategyRepository
+from strategy_catalog.repository import AtomicStrategyRepository
+from strategy_catalog.sets import ExactStrategySetSnapshot
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -51,6 +71,8 @@ class BacktestApplicationService:
         catalog: HistoricalDatasetCatalog | None = None,
         engine: HistoricalBacktestEngine | None = None,
         registry: StrategyRegistry | None = None,
+        atomic_repository: AtomicStrategyRepository | None = None,
+        atomic_registry: AtomicStrategyRegistry | None = None,
         workers: int = backtest_settings.BACKTEST_WORKERS,
     ) -> None:
         self._provider = provider
@@ -59,6 +81,12 @@ class BacktestApplicationService:
         self._repository = repository or self._build_repository()
         self._strategy_catalog = StrategyCatalogService(self._repository, self._registry)
         self._engine = engine or HistoricalBacktestEngine(self._registry)
+        self._atomic_repository = atomic_repository
+        self._atomic_registry = atomic_registry or AtomicStrategyRegistry()
+        if self._atomic_repository is None and isinstance(self._repository, PostgresBacktestRepository):
+            pool = self._repository.connection_pool
+            if pool is not None:
+                self._atomic_repository = PostgresAtomicStrategyRepository(pool=pool)
         self._incremental_sync = IncrementalHistoricalSync(
             provider=provider,
             repository=self._repository,
@@ -72,12 +100,19 @@ class BacktestApplicationService:
         database_url = backtest_settings.BACKTEST_DATABASE_URL
         if backtest_settings.BACKTEST_DATABASE_BACKEND == "postgresql":
             try:
-                import psycopg  # type: ignore[import-not-found]
+                from psycopg_pool import ConnectionPool  # type: ignore[import-not-found]
             except ImportError as error:
                 raise RuntimeError(
                     "使用 PostgreSQL 回測資料庫前，請安裝 tw-intraday-trader[postgres]"
                 ) from error
-            return PostgresBacktestRepository(psycopg.connect(database_url))
+            pool = ConnectionPool(
+                database_url,
+                min_size=1,
+                max_size=max(4, backtest_settings.BACKTEST_WORKERS + 2),
+                timeout=5,
+                open=True,
+            )
+            return PostgresBacktestRepository(pool=pool, owns_pool=True)
         return SQLiteBacktestRepository(backtest_settings.BACKTEST_DATA_DIR / "backtest.sqlite3")
 
     def close(self) -> None:
@@ -436,6 +471,87 @@ class BacktestApplicationService:
             self._executor.submit(self._run_backtest, run["run_id"])
         return run, idempotent
 
+    def create_atomic_run(
+        self,
+        *,
+        dataset_id: str,
+        strategy_set_version_id: str,
+        starting_cash: str = backtest_settings.BACKTEST_DEFAULT_STARTING_CASH,
+        position_fraction: str = backtest_settings.BACKTEST_DEFAULT_POSITION_FRACTION,
+        commission_rate: str = backtest_settings.BACKTEST_DEFAULT_COMMISSION_RATE,
+        sell_tax_rate: str = backtest_settings.BACKTEST_DEFAULT_SELL_TAX_RATE,
+        slippage_bps: str = backtest_settings.BACKTEST_DEFAULT_SLIPPAGE_BPS,
+        target_win_rate: str = "0.50",
+        minimum_oos_trades: int = 30,
+        max_drawdown_guardrail: str = "0.20",
+        idempotency_key: str,
+        change_note: str = "",
+        baseline_run_id: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        self._require_enabled()
+        repository = self._require_atomic_repository()
+        dataset = self._repository.get_dataset(dataset_id)
+        if dataset["status"] != "READY":
+            raise ValueError("歷史資料集尚未 READY，不能建立回測")
+        snapshot = repository.get_strategy_set(strategy_set_version_id)
+        resolution = resolve_atomic_entry_set(repository, self._atomic_registry, snapshot)
+        self._validate_strategy_selection(resolution.engine_strategy_set, dataset, registry=resolution.registry)
+        baseline: dict[str, Any] | None = None
+        research_baseline_digest: str | None = None
+        family_id: str | None = None
+        if baseline_run_id is not None:
+            baseline = self._repository.get_run(baseline_run_id)
+            verify_run_identity(baseline)
+            if baseline["status"] != RunStatus.COMPLETED.value:
+                raise ValueError("Experiment Baseline 必須先完成")
+            if baseline["config"].get("atomic_strategy_run_snapshot") is None:
+                raise ValueError("Experiment Baseline 必須是 Atomic Run")
+            research_baseline_digest = research_baseline_identity_digest(
+                baseline["config"]
+            )
+            family_id = experiment_family_id(research_baseline_digest)
+        config = BacktestRunConfig(
+            dataset_id=dataset_id,
+            dataset_digest=str(dataset["manifest_digest"]),
+            strategy_set=resolution.engine_strategy_set,
+            starting_cash=starting_cash,
+            position_fraction=position_fraction,
+            commission_rate=commission_rate,
+            sell_tax_rate=sell_tax_rate,
+            slippage_bps=slippage_bps,
+            target_win_rate=target_win_rate,
+            minimum_oos_trades=minimum_oos_trades,
+            max_drawdown_guardrail=max_drawdown_guardrail,
+            # Atomic versions reuse the deterministic v2 engine. Their exact
+            # implementation identity lives in atomic_strategy_run_snapshot,
+            # not in a second engine-version namespace.
+            engine_version="backtest-engine-v2",
+            experiment_id=family_id,
+            baseline_run_id=baseline_run_id,
+            research_baseline_digest=research_baseline_digest,
+            change_note=change_note,
+            atomic_strategy_run_snapshot=resolution.run_snapshot,
+        )
+        if baseline is not None:
+            config_diff = run_comparability_diff(baseline["config"], config.to_dict())
+            if config_diff:
+                fields = "、".join(item["field"] for item in config_diff)
+                raise ValueError(f"Challenger 與 Baseline 不可比較：{fields}")
+        record = {
+            "run_id": f"run-{uuid4().hex}",
+            "idempotency_key": self._validate_idempotency_key(idempotency_key),
+            "status": RunStatus.QUEUED.value,
+            "config": config.to_dict(),
+            "config_digest": config.config_digest,
+            "dataset_id": dataset_id,
+            "dataset_digest": config.dataset_digest,
+            "created_at": _now(),
+        }
+        run, idempotent = self._repository.create_run(record)
+        if not idempotent:
+            self._executor.submit(self._run_backtest, run["run_id"])
+        return run, idempotent
+
     def list_runs(self) -> list[dict[str, Any]]:
         return self._repository.list_runs()
 
@@ -447,6 +563,24 @@ class BacktestApplicationService:
         if run["status"] not in {RunStatus.QUEUED.value, RunStatus.PREFLIGHT.value, RunStatus.RUNNING.value}:
             raise ValueError("只有尚未完成的回測可以取消")
         return self._repository.update_run(run_id, status=RunStatus.CANCELLING.value, progress_message="正在取消，會在下一個安全事件邊界停止")
+
+    def cancel_atomic_run(
+        self,
+        run_id: str,
+        *,
+        idempotency_key: str,
+        actor_id: str,
+        request_digest: str,
+    ) -> tuple[dict[str, Any], bool]:
+        cancel = getattr(self._repository, "cancel_atomic_run", None)
+        if not callable(cancel):
+            raise RuntimeError("atomic Run cancel 需要 PostgreSQL durable repository")
+        return cancel(
+            run_id,
+            idempotency_key=self._validate_idempotency_key(idempotency_key),
+            actor_id=actor_id,
+            request_digest=request_digest,
+        )
 
     def retry_run(self, run_id: str, *, idempotency_key: str) -> tuple[dict[str, Any], bool]:
         existing = self._repository.get_run(run_id)
@@ -470,6 +604,23 @@ class BacktestApplicationService:
         if not change_note.strip():
             raise ValueError("複製並調整回測時必須填寫調整說明")
         existing = self._repository.get_run(run_id)
+        if existing["config"].get("atomic_strategy_run_snapshot") is not None:
+            allowed_atomic_overrides = {
+                "starting_cash",
+                "position_fraction",
+                "commission_rate",
+                "sell_tax_rate",
+                "slippage_bps",
+                "target_win_rate",
+                "minimum_oos_trades",
+                "max_drawdown_guardrail",
+            }
+            unsupported = sorted(set(overrides) - allowed_atomic_overrides)
+            if unsupported:
+                raise ValueError(
+                    "原子策略回測只能調整資金、成本與評估門檻；不可覆寫："
+                    + "、".join(unsupported)
+                )
         config = _deep_merge(existing["config"], overrides)
         config["parent_run_id"] = run_id
         config["baseline_run_id"] = existing["config"].get("baseline_run_id") or run_id
@@ -577,6 +728,8 @@ class BacktestApplicationService:
     def compare(self, baseline_run_id: str, challenger_run_id: str) -> dict[str, Any]:
         baseline = self._repository.get_run(baseline_run_id)
         challenger = self._repository.get_run(challenger_run_id)
+        verify_run_identity(baseline)
+        verify_run_identity(challenger)
         if baseline["status"] != RunStatus.COMPLETED.value or challenger["status"] != RunStatus.COMPLETED.value:
             raise ValueError("只有已完成的回測可以比較")
         comparison = compare_runs(
@@ -591,6 +744,190 @@ class BacktestApplicationService:
 
     def get_comparison(self, comparison_id: str) -> dict[str, Any]:
         return self._repository.get_comparison(comparison_id)
+
+    def qualify_runs(
+        self,
+        *,
+        baseline_run_id: str,
+        challenger_run_id: str,
+        protocol: Mapping[str, Any],
+        hypothesis_id: str,
+        idempotency_key: str,
+        actor_id: str,
+        change_note: str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Persist review-only qualification evidence for completed Atomic Runs."""
+
+        self._require_enabled()
+        create = getattr(self._repository, "create_qualification", None)
+        if not isinstance(self._repository, PostgresBacktestRepository) or not callable(create):
+            raise RuntimeError("Backtest Qualification 只允許寫入 PostgreSQL")
+        actor = actor_id.strip()
+        note = change_note.strip()
+        if not actor:
+            raise ValueError("actor_id 不可為空")
+        if not note:
+            raise ValueError("Qualification 必須填寫研究變更說明")
+        hypothesis = hypothesis_id.strip()
+        if not hypothesis:
+            raise ValueError("hypothesis_id 不可為空")
+        primary_window = EvaluationWindow.from_dict(protocol["primary_window"])
+        walk_forward_windows = tuple(
+            EvaluationWindow.from_dict(item)
+            for item in protocol.get("walk_forward_windows", ())
+        )
+        request_document = {
+            "baseline_run_id": baseline_run_id,
+            "challenger_run_id": challenger_run_id,
+            "hypothesis_id": hypothesis,
+            "primary_window": primary_window.to_dict(),
+            "walk_forward_windows": [
+                item.to_dict() for item in walk_forward_windows
+            ],
+            "actor_id": actor,
+            "change_note": note,
+        }
+        key = self._validate_idempotency_key(idempotency_key)
+        request_digest = digest(request_document)
+        replay = getattr(self._repository, "replay_qualification", None)
+        if callable(replay):
+            existing = replay(
+                idempotency_key=key,
+                request_digest=request_digest,
+            )
+            if existing is not None:
+                return existing, True
+        baseline = self._repository.get_run(baseline_run_id)
+        challenger = self._repository.get_run(challenger_run_id)
+        verify_run_identity(baseline)
+        verify_run_identity(challenger)
+        family = self._repository.get_experiment_family_for_run(challenger_run_id)
+        selected_baseline_digest = research_baseline_identity_digest(baseline["config"])
+        if family["research_baseline_digest"] != selected_baseline_digest:
+            raise ValueError("Qualification Baseline 與 authoritative family 不一致")
+        if family["family_id"] != experiment_family_id(selected_baseline_digest):
+            raise ValueError("Experiment family identity 已漂移")
+        if family["comparability_digest"] != comparability_contract_digest(
+            baseline["config"]
+        ):
+            raise ValueError("Experiment family comparability identity 已漂移")
+        current_attempt = next(
+            (
+                item
+                for item in family["attempts"]
+                if item["run_id"] == challenger_run_id
+            ),
+            None,
+        )
+        if current_attempt is None:
+            raise ValueError("Challenger 不在 authoritative family history")
+        resolved_protocol = QualificationProtocol(
+            primary_window=primary_window,
+            walk_forward_windows=walk_forward_windows,
+            multiple_testing=MultipleTestingRecord(
+                family_id=family["family_id"],
+                hypothesis_id=hypothesis,
+                attempt_number=int(current_attempt["attempt_sequence"]),
+                planned_attempts=int(family["planned_attempts"]),
+                baseline_run_id=baseline_run_id,
+                research_baseline_digest=selected_baseline_digest,
+                attempted_run_ids=tuple(
+                    str(item["run_id"]) for item in family["attempts"]
+                ),
+                family_head_sequence=int(family["head_sequence"]),
+                family_snapshot_digest=str(family["family_snapshot_digest"]),
+                alpha=family["alpha"],
+                adjustment_method=family["adjustment_method"],
+            ),
+            policy=QualificationPolicy.from_dict(family["policy"]),
+        )
+        attempted = [
+            self._repository.get_run(run_id)
+            for run_id in resolved_protocol.multiple_testing.attempted_run_ids
+        ]
+        for run in attempted:
+            verify_run_identity(run)
+        selected = (baseline, challenger)
+        results_by_id: dict[str, dict[str, Any]] = {}
+        for run in selected:
+            if run["status"] != RunStatus.COMPLETED.value:
+                raise ValueError(f"只有已完成的 Run 可以 qualification：{run['run_id']}")
+            result = self._repository.get_result(run["run_id"])
+            result_digest = result.get("summary", {}).get("result_digest")
+            if not result_digest or result_digest != run.get("result_digest"):
+                raise ValueError(f"Run result digest 不一致：{run['run_id']}")
+            summary_without_digest = dict(result.get("summary", {}))
+            summary_without_digest.pop("result_digest", None)
+            recomputed = digest(
+                {
+                    "summary": summary_without_digest,
+                    "trades": list(result.get("trades", [])),
+                    "equity": list(result.get("daily_equity", [])),
+                    "decisions": list(result.get("decisions", [])),
+                }
+            )
+            if recomputed != result_digest:
+                raise ValueError(f"Run immutable result 內容與 digest 不一致：{run['run_id']}")
+            results_by_id[str(run["run_id"])] = result
+        if baseline["dataset_id"] != challenger["dataset_id"]:
+            raise ValueError("Baseline 與 Challenger 必須使用同一資料集")
+        dataset = self._repository.get_dataset(baseline["dataset_id"])
+        try:
+            verified_manifest = DatasetManifest.from_dict(dataset)
+        except Exception as error:
+            raise ValueError("目前資料集 manifest 無法驗證") from error
+        if verified_manifest.manifest_digest != str(dataset.get("manifest_digest")):
+            raise ValueError("目前資料集 manifest 內容與 digest 不一致")
+        if verified_manifest.manifest_digest != str(baseline["dataset_digest"]):
+            raise ValueError("目前資料集 manifest 與 Run Snapshot digest 不一致")
+        evidence = build_qualification_evidence(
+            baseline_run=baseline,
+            challenger_run=challenger,
+            baseline_result=results_by_id[baseline_run_id],
+            challenger_result=results_by_id[challenger_run_id],
+            attempted_runs=attempted,
+            protocol=resolved_protocol,
+            dataset_research_eligible=verified_manifest.research_eligible,
+            dataset_start_date=date.fromisoformat(verified_manifest.start_date),
+            dataset_end_date=date.fromisoformat(verified_manifest.end_date),
+        )
+        qualification_id = f"qualification-{uuid5(NAMESPACE_URL, f'tw-intraday-trader:qualification:{key}').hex}"
+        return create(
+            {
+                "qualification_id": qualification_id,
+                "idempotency_key": key,
+                "request_digest": request_digest,
+                "request": request_document,
+                "baseline_run_id": baseline_run_id,
+                "challenger_run_id": challenger_run_id,
+                "protocol_digest": resolved_protocol.protocol_digest,
+                "protocol": resolved_protocol.to_dict(),
+                "evidence_digest": evidence["evidence_digest"],
+                "evidence": evidence,
+                "verdict": evidence["verdict"],
+                "actor_id": actor,
+                "change_note": note,
+                "hypothesis_id": hypothesis,
+                "family_id": family["family_id"],
+                "attempt_number": current_attempt["attempt_sequence"],
+                "family_head_sequence": family["head_sequence"],
+                "family_snapshot_digest": family["family_snapshot_digest"],
+                "family_snapshot": family,
+                "created_at": _now(),
+            }
+        )
+
+    def list_qualifications(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        read = getattr(self._repository, "list_qualifications", None)
+        if not isinstance(self._repository, PostgresBacktestRepository) or not callable(read):
+            raise RuntimeError("Backtest Qualification 只允許讀取 PostgreSQL")
+        return read(limit=limit)
+
+    def get_qualification(self, qualification_id: str) -> dict[str, Any]:
+        read = getattr(self._repository, "get_qualification", None)
+        if not isinstance(self._repository, PostgresBacktestRepository) or not callable(read):
+            raise RuntimeError("Backtest Qualification 只允許讀取 PostgreSQL")
+        return read(qualification_id)
 
     def _run_dataset_sync(self, job_id: str, years: int, symbols: list[str] | None, symbol_limit: int | None) -> None:
         if self._repository.get_job(job_id)["status"] == RunStatus.CANCELLING.value:
@@ -629,12 +966,26 @@ class BacktestApplicationService:
             self._repository.update_run(run_id, status=RunStatus.PREFLIGHT.value, progress_message="正在驗證資料集與策略版本")
             run = self._repository.get_run(run_id)
             config = BacktestRunConfig.from_dict(run["config"])
+            runtime_registry = self._registry
+            runtime_engine = self._engine
+            if config.atomic_strategy_run_snapshot is not None:
+                stored_atomic = dict(config.atomic_strategy_run_snapshot)
+                snapshot = ExactStrategySetSnapshot.from_dict(dict(stored_atomic["strategy_set"]))
+                resolution = resolve_atomic_entry_set(
+                    self._require_atomic_repository(),
+                    self._atomic_registry,
+                    snapshot,
+                )
+                if resolution.run_snapshot != stored_atomic:
+                    raise ValueError("atomic backtest run snapshot 已與目前可重建證據不一致")
+                runtime_registry = resolution.registry
+                runtime_engine = HistoricalBacktestEngine(runtime_registry)
             dataset = self._repository.get_dataset(config.dataset_id)
             if dataset["status"] != "READY":
                 raise ValueError("歷史資料集已不是 READY，拒絕執行回測")
             if str(dataset["manifest_digest"]) != config.dataset_digest:
                 raise ValueError("歷史資料集 manifest digest 已變更，拒絕執行回測")
-            self._validate_strategy_selection(config.strategy_set, dataset)
+            self._validate_strategy_selection(config.strategy_set, dataset, registry=runtime_registry)
             manifest = self._catalog.get_manifest(config.dataset_id)
             if manifest.manifest_digest != config.dataset_digest:
                 raise ValueError("本機歷史資料集 manifest digest 已變更，拒絕執行回測")
@@ -644,7 +995,7 @@ class BacktestApplicationService:
             )
             self._raise_if_run_cancelling(run_id)
             self._repository.update_run(run_id, status=RunStatus.RUNNING.value, progress_message="正在執行 deterministic Kbar 回測")
-            engine_result = self._engine.run(
+            engine_result = runtime_engine.run(
                 config=config,
                 bars=bars,
                 progress=lambda value, message: self._repository.update_run(run_id, progress=value, progress_message=message),
@@ -676,6 +1027,48 @@ class BacktestApplicationService:
         parent_run_id: str,
         change_note: str,
     ) -> tuple[dict[str, Any], bool]:
+        if config.get("atomic_strategy_run_snapshot") is not None:
+            atomic_config = deepcopy(dict(config))
+            atomic_config["parent_run_id"] = parent_run_id
+            atomic_config["change_note"] = change_note
+            parsed = BacktestRunConfig.from_dict(atomic_config)
+            stored_atomic = dict(parsed.atomic_strategy_run_snapshot or {})
+            snapshot = ExactStrategySetSnapshot.from_dict(
+                dict(stored_atomic["strategy_set"])
+            )
+            resolution = resolve_atomic_entry_set(
+                self._require_atomic_repository(),
+                self._atomic_registry,
+                snapshot,
+            )
+            if resolution.run_snapshot != stored_atomic:
+                raise ValueError("atomic backtest run snapshot 已與目前可重建證據不一致")
+            if resolution.engine_strategy_set != parsed.strategy_set:
+                raise ValueError("atomic backtest strategy set 已與 Run Snapshot 不一致")
+            dataset = self._repository.get_dataset(parsed.dataset_id)
+            if dataset["status"] != "READY":
+                raise ValueError("歷史資料集尚未 READY，不能建立回測")
+            if str(dataset["manifest_digest"]) != parsed.dataset_digest:
+                raise ValueError("歷史資料集 manifest digest 已變更，拒絕建立回測")
+            self._validate_strategy_selection(
+                parsed.strategy_set,
+                dataset,
+                registry=resolution.registry,
+            )
+            record = {
+                "run_id": f"run-{uuid4().hex}",
+                "idempotency_key": self._validate_idempotency_key(idempotency_key),
+                "status": RunStatus.QUEUED.value,
+                "config": parsed.to_dict(),
+                "config_digest": parsed.config_digest,
+                "dataset_id": parsed.dataset_id,
+                "dataset_digest": parsed.dataset_digest,
+                "created_at": _now(),
+            }
+            run, idempotent = self._repository.create_run(record)
+            if not idempotent:
+                self._executor.submit(self._run_backtest, run["run_id"])
+            return run, idempotent
         strategy_set = dict(config["strategy_set"])
         return self.create_run(
             dataset_id=str(config["dataset_id"]),
@@ -706,15 +1099,18 @@ class BacktestApplicationService:
         self,
         strategy_set: StrategySetSnapshot,
         dataset: Mapping[str, Any] | None = None,
+        *,
+        registry: StrategyRegistry | None = None,
     ) -> None:
+        selected_registry = registry or self._registry
         definitions = []
         for strategy_id in strategy_set.entry_strategy_ids:
-            definition = self._registry.definition(strategy_id)
+            definition = selected_registry.definition(strategy_id)
             if definition.side.value != "ENTRY":
                 raise ValueError(f"{strategy_id} 不是買入策略")
             definitions.append(definition)
         for strategy_id in strategy_set.exit_strategy_ids:
-            definition = self._registry.definition(strategy_id)
+            definition = selected_registry.definition(strategy_id)
             if definition.side.value != "EXIT":
                 raise ValueError(f"{strategy_id} 不是賣出策略")
             definitions.append(definition)
@@ -737,6 +1133,11 @@ class BacktestApplicationService:
         if not 8 <= len(normalized) <= 200:
             raise ValueError("idempotency_key 長度必須介於 8 與 200")
         return normalized
+
+    def _require_atomic_repository(self) -> AtomicStrategyRepository:
+        if self._atomic_repository is None:
+            raise RuntimeError("atomic Strategy Set 回測只支援 PostgreSQL；目前不可用")
+        return self._atomic_repository
 
     @staticmethod
     def _require_enabled() -> None:

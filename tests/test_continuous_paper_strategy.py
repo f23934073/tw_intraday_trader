@@ -9,13 +9,27 @@ from market_data.equity_calendar import ReviewedEquityCalendar
 from market_data.provider import MockProvider
 from runtime.in_memory import InMemoryJournalRepository
 from simulation.application import LocalPaperCommandService
+from simulation.atomic_runtime import (
+    AtomicPaperCandidateDecision,
+    AtomicPaperProjectionDecision,
+    LocalPaperPipelineSnapshot,
+    PaperSetStatus,
+)
 from simulation.continuous_strategy import (
     AutomatedStrategyConfig,
+    AutomatedStrategyStateError,
     ContinuousPaperStrategyController,
+    LocalPaperKillSwitch,
 )
 from simulation.service import SimulationService
 from simulation.strategy_flow import StrategyPaperFlowService
 from trading.journal import JournalSession
+from strategy_catalog.domain import StrategyRole
+from strategy_catalog.sets import (
+    CompositionPolicy,
+    ExactStrategySetSnapshot,
+    StrategySetMemberSnapshot,
+)
 
 
 TAIPEI_AT = datetime.fromisoformat("2026-08-21T10:30:00+08:00")
@@ -38,6 +52,19 @@ class FakeFlow:
         self.intents = []
         self.cancellations = []
         self.retries = []
+        self.activations = []
+
+    def activate_run(self, **payload):
+        self.activations.append(payload)
+        return {
+            "contract_version": "effective-local-paper-risk-v1",
+            "owner_strategy_id": payload["owner_strategy_id"],
+            "merge_rule": "MIN_SYSTEM_OPERATOR",
+            "system_max_daily_loss": "10000000",
+            "operator_max_daily_loss": str(payload["operator_max_daily_loss"]),
+            "effective_max_daily_loss": str(payload["operator_max_daily_loss"]),
+            "effective_policy_digest": "e" * 64,
+        }
 
     def submit(self, intent):
         self.intents.append(intent)
@@ -146,6 +173,76 @@ def config() -> AutomatedStrategyConfig:
     )
 
 
+def atomic_resolution():
+    snapshot = ExactStrategySetSnapshot(
+        strategy_set_version_id="paper-entry-set-v1",
+        strategy_set_id="paper-entry-set",
+        version_number=1,
+        display_name_zh_tw="站上 VWAP",
+        stage=StrategyRole.ENTRY,
+        policy=CompositionPolicy.ANY,
+        members=(
+            StrategySetMemberSnapshot(
+                strategy_version_id="above-vwap-v1",
+                strategy_id="above_vwap_entry",
+                role=StrategyRole.ENTRY,
+                configuration_digest="config-v1",
+                implementation_digest="implementation-v1",
+                member_order=0,
+                attribution_priority=0,
+            ),
+        ),
+    )
+
+    class Resolution:
+        pipeline = LocalPaperPipelineSnapshot(
+            entry_strategy_set=snapshot,
+            runtime_bindings=(
+                {
+                    "strategy_version_id": "above-vwap-v1",
+                    "binding": "above_vwap.local_paper_tick_bidask_v1",
+                    "implementation_digest": "implementation-v1",
+                },
+            ),
+            feature_contracts=(
+                {
+                    "feature_id": "vwap_session_v1",
+                    "source_projection": "IntradayFeatureSnapshot.vwap",
+                    "as_of_semantics": "CURRENT_TICK_AVERAGE_PRICE",
+                    "implementation_identity": "FeatureEngine.intraday_features_v0",
+                },
+            ),
+            lifecycle_admissions=(
+                {
+                    "strategy_version_id": "above-vwap-v1",
+                    "status": "PAPER_APPROVED",
+                    "last_sequence": 4,
+                    "last_event_id": "paper-approved-event-v1",
+                    "projection_digest": "a" * 64,
+                },
+            ),
+        )
+
+        def evaluate_projection(self, projection, *, evaluated_at, max_age_seconds):
+            return AtomicPaperProjectionDecision(
+                candidates=(
+                    AtomicPaperCandidateDecision(
+                        status=PaperSetStatus.TRIGGERED,
+                        symbol="3231",
+                        event_at=evaluated_at,
+                        current_price="177.5",
+                        entry_limit_price="178",
+                        decision_digest="atomic-decision-digest-1",
+                        primary_strategy_version_id="above-vwap-v1",
+                        evaluations=(),
+                    ),
+                ),
+                blocked_reasons=(),
+            )
+
+    return Resolution()
+
+
 def controller(
     *,
     clock: MutableClock | None = None,
@@ -207,6 +304,79 @@ def test_triggered_fresh_momentum_submits_one_journaled_local_entry() -> None:
     assert intent.lots == 1
     assert intent.limit_price == Decimal("177.5")
     assert intent.intent_id.endswith(":entry:signal-digest-1")
+
+
+def test_exact_strategy_set_submits_pipeline_owned_auditable_entry() -> None:
+    resolved = atomic_resolution()
+    flow = FakeFlow()
+    instance = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=ProjectionReader(),
+        signal_reader=lambda: live_signal(),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=MutableClock(),
+        atomic_resolver=lambda strategy_set_version_id: (
+            resolved
+            if strategy_set_version_id == "paper-entry-set-v1"
+            else None
+        ),
+    )
+    instance.start(
+        AutomatedStrategyConfig.create(
+            entry_strategy_set_version_id="paper-entry-set-v1",
+            stop_loss_pct="1.5",
+            take_profit_pct="3",
+            max_daily_loss="50000",
+        ),
+        background=False,
+    )
+
+    status = instance.run_once()
+
+    assert status["decision"] == "ENTRY_SUBMITTED"
+    assert status["pipeline"]["snapshot_digest"] == resolved.pipeline.snapshot_digest
+    assert status["effective_risk"]["effective_max_daily_loss"] == "50000"
+    assert flow.activations[0]["actor_id"] == "local-operator"
+    assert len(flow.intents) == 1
+    intent = flow.intents[0]
+    assert intent.strategy_id == "atomic-set:paper-entry-set-v1"
+    assert intent.strategy_version == (
+        f"local-paper-pipeline:{resolved.pipeline.snapshot_digest}"
+    )
+    assert intent.limit_price == Decimal("178")
+    assert intent.decision_evidence["strategy_set_decision"]["decision_digest"] == (
+        "atomic-decision-digest-1"
+    )
+
+
+def test_start_fails_closed_when_existing_automated_owner_differs() -> None:
+    projection = empty_projection()
+    projection["orders"] = [
+        {
+            "origin": "STRATEGY_AUTOMATED",
+            "strategy_id": "another-pipeline",
+            "status": "FILLED",
+        }
+    ]
+    instance = ContinuousPaperStrategyController(
+        flow=FakeFlow(),
+        projection_reader=ProjectionReader(projection),
+        signal_reader=lambda: live_signal(),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=MutableClock(),
+        atomic_resolver=lambda _: atomic_resolution(),
+    )
+
+    with pytest.raises(Exception, match="其他自動策略 owner"):
+        instance.start(
+            AutomatedStrategyConfig.create(
+                entry_strategy_set_version_id="paper-entry-set-v1",
+                stop_loss_pct="1.5",
+                take_profit_pct="3",
+                max_daily_loss="50000",
+            ),
+            background=False,
+        )
 
 
 @pytest.mark.parametrize(
@@ -541,6 +711,32 @@ def test_background_controller_stops_and_restart_does_not_auto_resume() -> None:
     assert flow.intents == []
 
 
+def test_global_kill_switch_stops_new_intents_fail_closed() -> None:
+    clock = MutableClock()
+    switch = LocalPaperKillSwitch()
+    flow = FakeFlow()
+    instance = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=ProjectionReader(),
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+        kill_switch=switch,
+    )
+    instance.start(config(), background=False)
+    switch.engage("operator emergency stop", at=clock.now())
+
+    status = instance.run_once()
+
+    assert status["state"] == "KILLED"
+    assert status["decision"] == "KILL_SWITCH_ENGAGED"
+    assert status["kill_switch"]["engaged"] is True
+    assert flow.intents == []
+
+    with pytest.raises(Exception, match="kill switch 尚未解除"):
+        instance.start(config(), background=False)
+
+
 def test_calendar_artifact_is_required_and_out_of_coverage_fails_closed() -> None:
     calendar = ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH)
     clock = MutableClock(datetime.fromisoformat("2027-01-04T10:00:00+08:00"))
@@ -556,6 +752,107 @@ def test_calendar_artifact_is_required_and_out_of_coverage_fails_closed() -> Non
     status = instance.run_once()
 
     assert status["decision"] == "BLOCKED_CALENDAR"
+
+
+def test_exact_runtime_checkpoint_preserves_effective_risk_and_rejects_drift() -> None:
+    clock = MutableClock()
+    simulation = SimulationService(
+        MockProvider(),
+        starting_cash=Decimal("300000"),
+        clock=clock,
+    )
+    journal = InMemoryJournalRepository()
+    session_id = "exact-risk-checkpoint-session"
+    journal.start_session(
+        JournalSession(
+            session_id=session_id,
+            started_at=clock.now(),
+            mode="LOCAL_PAPER_SIMULATION",
+            metadata={"execution_boundary": "LOCAL_ONLY"},
+        )
+    )
+    commands = LocalPaperCommandService(
+        simulation=simulation,
+        journal=journal,
+        session_id=session_id,
+        clock=clock,
+    )
+    flow = StrategyPaperFlowService(
+        commands=commands,
+        journal=journal,
+        session_id=session_id,
+        clock=clock,
+    )
+    resolved = atomic_resolution()
+    run_config = AutomatedStrategyConfig.create(
+        entry_strategy_set_version_id="paper-entry-set-v1",
+        stop_loss_pct="1.5",
+        take_profit_pct="3",
+        max_daily_loss="50000",
+        activation_idempotency_key="exact-risk-response-loss",
+    )
+
+    first = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=ProjectionReader(),
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+        atomic_resolver=lambda _: resolved,
+    )
+    first_status = first.start(run_config, background=False)
+    first.stop()
+
+    restarted = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=ProjectionReader(),
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+        atomic_resolver=lambda _: resolved,
+    )
+    replayed_status = restarted.start(run_config, background=False)
+
+    assert first_status["effective_risk"]["effective_max_daily_loss"] == "50000"
+    assert replayed_status["effective_risk"]["activation_idempotent"] is True
+    checkpoint = flow.latest_checkpoint(
+        owner_strategy_id=resolved.pipeline.owner_strategy_id,
+        pipeline_digest=resolved.pipeline.snapshot_digest,
+    )
+    assert checkpoint is not None
+    assert checkpoint["effective_risk"]["effective_policy_digest"] == (
+        replayed_status["effective_risk"]["effective_policy_digest"]
+    )
+    assert len(
+        [
+            item
+            for item in journal.records(session_id)
+            if item.record.kind == "strategy_runtime_activation.v1"
+        ]
+    ) == 1
+    restarted.stop()
+
+    drifted = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=ProjectionReader(),
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+        atomic_resolver=lambda _: resolved,
+    )
+    with pytest.raises(AutomatedStrategyStateError, match="Effective Hard Risk 已漂移"):
+        drifted.start(
+            AutomatedStrategyConfig.create(
+                entry_strategy_set_version_id="paper-entry-set-v1",
+                stop_loss_pct="1.5",
+                take_profit_pct="3",
+                max_daily_loss="40000",
+                activation_idempotency_key="exact-risk-changed-policy",
+            ),
+            background=False,
+        )
+    assert drifted.status()["state"] == "STOPPED"
+    simulation.close()
 
 
 def test_real_flow_controller_completes_entry_and_stop_loss_exit() -> None:
@@ -628,7 +925,8 @@ def test_real_flow_controller_completes_entry_and_stop_loss_exit() -> None:
     assert exit_status["decision"] == "EXIT_FILLED"
     assert exit_status["last_exit_reason"] == "STOP_LOSS"
     assert simulation.positions() == []
-    assert [item.record.kind for item in journal.records(session_id)] == [
+    kinds = [item.record.kind for item in journal.records(session_id)]
+    assert [kind for kind in kinds if kind != "strategy_runtime_checkpoint.v1"] == [
         "strategy_paper_intent.v1",
         "order_command.v1",
         "local_paper_fill.v1",
@@ -643,5 +941,28 @@ def test_real_flow_controller_completes_entry_and_stop_loss_exit() -> None:
         for item in journal.records(session_id)
         if item.record.kind == "strategy_paper_intent.v1"
     )
+    assert kinds.count("strategy_runtime_checkpoint.v1") == 3
+
     instance.stop()
+    restarted = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=executable_projection,
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+    )
+    restarted.start(
+        AutomatedStrategyConfig.create(
+            stop_loss_pct="0.05",
+            take_profit_pct="3",
+            max_daily_loss="50000",
+            poll_seconds=0.01,
+        ),
+        background=False,
+    )
+    recovered = restarted.run_once()
+    assert recovered["decision"] == "SESSION_COMPLETE"
+    assert recovered["entries_submitted"] == 1
+    instance.stop()
+    restarted.stop()
     simulation.close()

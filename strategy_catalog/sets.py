@@ -43,6 +43,18 @@ class StrategySetMemberSnapshot:
             "attribution_priority": self.attribution_priority,
         }
 
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "StrategySetMemberSnapshot":
+        return cls(
+            strategy_version_id=str(value["strategy_version_id"]),
+            strategy_id=str(value["strategy_id"]),
+            role=StrategyRole(str(value["role"])),
+            configuration_digest=str(value["configuration_digest"]),
+            implementation_digest=str(value["implementation_digest"]),
+            member_order=int(value["member_order"]),
+            attribution_priority=int(value["attribution_priority"]),
+        )
+
 
 @dataclass(frozen=True)
 class ExactStrategySetSnapshot:
@@ -111,3 +123,22 @@ class ExactStrategySetSnapshot:
             "minimum_trigger_count": self.minimum_trigger_count,
             "members": [item.to_dict() for item in self.ordered_members],
         }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "ExactStrategySetSnapshot":
+        if str(value.get("contract_version", "exact-strategy-set-v1")) != "exact-strategy-set-v1":
+            raise ValueError("不支援的 exact Strategy Set contract_version")
+        return cls(
+            strategy_set_version_id=str(value["strategy_set_version_id"]),
+            strategy_set_id=str(value["strategy_set_id"]),
+            version_number=int(value["version_number"]),
+            display_name_zh_tw=str(value["display_name_zh_tw"]),
+            stage=StrategyRole(str(value["stage"])),
+            policy=CompositionPolicy(str(value["policy"])),
+            members=tuple(
+                StrategySetMemberSnapshot.from_dict(dict(item))
+                for item in value.get("members", ())
+            ),
+            minimum_trigger_count=int(value.get("minimum_trigger_count", 1)),
+            contract_version=str(value.get("contract_version", "exact-strategy-set-v1")),
+        )

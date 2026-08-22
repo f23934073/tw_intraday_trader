@@ -95,23 +95,21 @@ class LocalPaperCommandService:
         self._lock = RLock()
         self._commands_by_key: dict[str, OrderCommand] = {}
         self._outcome_recorder = LocalPaperTerminalOutcomeRecorder()
-        self._application = OrderApplicationService(
-            journal=journal,
-            risk_gate=RiskGate(
-                RiskPolicy(
-                    version="local-paper-risk-v1",
-                    allow_strategy_origin=True,
-                    max_order_notional=simulation.starting_cash,
-                    max_position_notional=simulation.starting_cash,
-                    max_daily_loss=simulation.starting_cash,
-                    require_fresh_book=simulation.requires_fresh_book,
-                    max_book_age_seconds=simulation.max_book_age_seconds,
-                    fresh_book_sides=frozenset({CommandSide.SELL}),
-                )
-            ),
-            handler=LocalPaperSimulationCommandAdapter(simulation),
-            outcome_recorder=self._outcome_recorder,
+        self._handler = LocalPaperSimulationCommandAdapter(simulation)
+        self._base_risk_policy = RiskPolicy(
+            version="local-paper-risk-v1",
+            allow_strategy_origin=True,
+            max_order_notional=simulation.starting_cash,
+            max_position_notional=simulation.starting_cash,
+            max_daily_loss=simulation.starting_cash,
+            require_fresh_book=simulation.requires_fresh_book,
+            max_book_age_seconds=simulation.max_book_age_seconds,
+            fresh_book_sides=frozenset({CommandSide.SELL}),
         )
+        self._application = self._application_for_policy(self._base_risk_policy)
+        self._strategy_applications: dict[
+            str, tuple[RiskPolicy, OrderApplicationService]
+        ] = {}
         self._restore_commands_from_journal()
         simulation.set_terminal_order_handler(self._record_later_terminal_order)
         simulation.set_daily_baseline_handler(self._record_daily_baseline)
@@ -172,6 +170,56 @@ class LocalPaperCommandService:
             strategy_version=self._normalize_key(strategy_version),
         )
 
+    def prepare_strategy_risk_policy(
+        self,
+        *,
+        owner_strategy_id: str,
+        operator_max_daily_loss: Decimal | float | int | str,
+    ) -> tuple[RiskPolicy, dict[str, Any]]:
+        """Build the monotonic per-run policy without mutating runtime state."""
+
+        owner = self._normalize_key(owner_strategy_id)
+        operator_limit = self._normalize_price(operator_max_daily_loss)
+        system_ceiling = self._base_risk_policy.max_daily_loss
+        effective_limit = min(system_ceiling, operator_limit)
+        policy = RiskPolicy(
+            version="local-paper-risk-v1:effective-strategy-v1",
+            allow_strategy_origin=(
+                self._base_risk_policy.allow_strategy_origin and True
+            ),
+            max_order_notional=self._base_risk_policy.max_order_notional,
+            max_position_notional=self._base_risk_policy.max_position_notional,
+            max_daily_loss=effective_limit,
+            require_fresh_book=self._base_risk_policy.require_fresh_book,
+            max_book_age_seconds=self._base_risk_policy.max_book_age_seconds,
+            fresh_book_sides=frozenset(CommandSide),
+        )
+        return policy, {
+            "contract_version": "effective-local-paper-risk-v1",
+            "owner_strategy_id": owner,
+            "merge_rule": "MIN_SYSTEM_OPERATOR",
+            "system_max_daily_loss": str(system_ceiling),
+            "operator_max_daily_loss": str(operator_limit),
+            "effective_max_daily_loss": str(effective_limit),
+            "policy": policy.to_dict(),
+            "effective_policy_digest": policy.policy_digest,
+        }
+
+    def activate_strategy_risk_policy(
+        self,
+        *,
+        owner_strategy_id: str,
+        policy: RiskPolicy,
+    ) -> None:
+        """Install an already-journaled effective policy for one exact owner."""
+
+        owner = self._normalize_key(owner_strategy_id)
+        with self._lock:
+            self._strategy_applications[owner] = (
+                policy,
+                self._application_for_policy(policy),
+            )
+
     def _submit_order(
         self,
         *,
@@ -219,9 +267,24 @@ class LocalPaperCommandService:
                 predecessor_order_id=predecessor_order_id,
             )
             self._commands_by_key[normalized_key] = command
-            result = self._application.apply(
+            application = self._application
+            if origin is CommandOrigin.STRATEGY_AUTOMATED and strategy_id is not None:
+                admitted = self._strategy_applications.get(strategy_id)
+                if strategy_id.startswith("atomic-set:") and admitted is None:
+                    raise SimulationStateError(
+                        "exact Strategy Set 尚未安裝 Effective Hard Risk Policy"
+                    )
+                if admitted is not None:
+                    application = admitted[1]
+            result = application.apply(
                 command,
-                self._risk_snapshot(normalized_symbol),
+                self._risk_snapshot(
+                    normalized_symbol,
+                    normalized_side,
+                    reject_same_side_pending=(
+                        origin is CommandOrigin.STRATEGY_AUTOMATED
+                    ),
+                ),
                 evaluated_at=now,
             )
             if result.status is ApplicationStatus.APPLIED:
@@ -430,7 +493,13 @@ class LocalPaperCommandService:
                 "模擬交易已寫入 Journal，但投影 checkpoint 未完成，請勿重送"
             ) from error
 
-    def _risk_snapshot(self, symbol: str) -> RiskSnapshot:
+    def _risk_snapshot(
+        self,
+        symbol: str,
+        side: CommandSide,
+        *,
+        reject_same_side_pending: bool,
+    ) -> RiskSnapshot:
         raw = self._simulation.risk_snapshot(symbol)
         return RiskSnapshot(
             data_health_state=str(raw["data_health_state"]),
@@ -443,9 +512,27 @@ class LocalPaperCommandService:
             pending_buy_shares=int(raw["pending_buy_shares"]),
             pending_sell_shares=int(raw["pending_sell_shares"]),
             daily_realized_pnl=Decimal(raw["daily_realized_pnl"]),
-            # Cash/share reservations allow independent pending limit orders.
-            same_side_pending_order=False,
+            same_side_pending_order=(
+                reject_same_side_pending
+                and (
+                    int(raw["pending_buy_shares"]) > 0
+                    if side is CommandSide.BUY
+                    else int(raw["pending_sell_shares"]) > 0
+                )
+            ),
             book_age_seconds=raw["book_age_seconds"],
+            daily_loss=Decimal(raw["daily_loss"]),
+        )
+
+    def _application_for_policy(
+        self,
+        policy: RiskPolicy,
+    ) -> OrderApplicationService:
+        return OrderApplicationService(
+            journal=self._journal,
+            risk_gate=RiskGate(policy),
+            handler=self._handler,
+            outcome_recorder=self._outcome_recorder,
         )
 
     def _append_rejection_outcome(

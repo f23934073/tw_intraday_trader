@@ -37,9 +37,11 @@ class DashboardService:
         provider: MarketDataProvider,
         *,
         premarket_service: PremarketContextService | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._provider = provider
         self._premarket_service = premarket_service
+        self._now = now or (lambda: datetime.now(_TAIPEI))
         self._latest_snapshot: dict[str, Any] | None = None
         self._history_cache: dict[tuple[str, str], dict[str, Any]] = {}
 
@@ -105,7 +107,7 @@ class DashboardService:
             return self._history_cache[cache_key]
 
         spec = _HISTORY_PERIODS[period]
-        end = datetime.now(_TAIPEI).date()
+        end = self._now().astimezone(_TAIPEI).date()
         start = end - timedelta(days=spec["calendar_days"])
         payload: dict[str, Any] = {
             "symbol": symbol,

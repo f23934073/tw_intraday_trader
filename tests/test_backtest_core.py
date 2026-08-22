@@ -25,6 +25,7 @@ from backtest.domain import (
 )
 from backtest.engine import HistoricalBacktestEngine
 from backtest.metrics import summarize_run
+from backtest.repository import BacktestIdempotencyConflict
 from backtest.sqlite_repository import SQLiteBacktestRepository
 from market_data.provider import MockProvider
 
@@ -198,6 +199,42 @@ def test_full_jsonl_iterator_preserves_checksum_and_bar_contract_without_catalog
 
         assert iterated == catalog.load_bars(manifest.dataset_id)
         assert len(iterated) == manifest.bar_count
+
+
+def test_run_idempotency_replays_same_digest_and_rejects_different_config() -> None:
+    with TemporaryDirectory() as directory:
+        repository = SQLiteBacktestRepository(Path(directory) / "backtest.sqlite3")
+        try:
+            first_config = _config().to_dict()
+            first = {
+                "run_id": "run-idempotency-1",
+                "idempotency_key": "durable-run-key",
+                "status": "QUEUED",
+                "config": first_config,
+                "config_digest": _config().config_digest,
+                "dataset_id": "dataset-fixture",
+                "dataset_digest": "fixture-digest",
+                "created_at": "2026-08-21T09:00:00+08:00",
+            }
+            created, replayed = repository.create_run(first)
+            replay, replayed_again = repository.create_run(first | {"run_id": "ignored-run-id"})
+
+            assert replayed is False
+            assert replayed_again is True
+            assert replay["run_id"] == created["run_id"]
+
+            changed_config = _config(("momentum_breakout_entry_v1",))
+            with pytest.raises(BacktestIdempotencyConflict):
+                repository.create_run(
+                    first
+                    | {
+                        "run_id": "run-idempotency-conflict",
+                        "config": changed_config.to_dict(),
+                        "config_digest": changed_config.config_digest,
+                    }
+                )
+        finally:
+            repository.close()
 
 
 def _create_and_wait(

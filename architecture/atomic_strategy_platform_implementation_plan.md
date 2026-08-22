@@ -6,7 +6,7 @@
 
 ### 1.1 實作前 Review Gate
 
-**目前決策：契約層級 APPROVE / GO；實作 Gate G1 為 REQUEST CHANGES / NOT PASSED。** B1–B5 契約維持 `REVIEWED / CLOSED`，但 Phase 1 實作仍有可重現性、durable replay 與 regression blocker。Phase 2 不得開始，直到 Phase 1 remediation 通過短 Review：
+**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gate G3 已核准為 `PASSED / MVP CONDITIONAL GO`；Phase 4 Local Paper 已由使用者另行授權並進入實作候選驗證。** B1–B5 契約維持 `REVIEWED / CLOSED`。Gate G4 仍為 `NOT PASSED`；Phase 4 只允許既有本機 Journal／Risk／Simulation 路徑，券商委託與真實交易仍不得開始：
 
 | ID | Blocking contract | 本文件的處理方向 | Gate 狀態 |
 |---|---|---|---|
@@ -18,11 +18,11 @@
 
 契約 Gate 已關閉後仍維持下列實作邊界：
 
-- Phase 1 只修改最小 backtest vertical slice、PostgreSQL schema/repository 與對應測試；Phase 2 前不新增 Web mutation UI/API。
-- Phase 4 另行 Gate 前不啟動 local-paper 整合，更不新增任何券商委託能力。
+- Phase 1、Phase 2、Phase 3 已完成；Phase 3 只新增歷史回測 qualification evidence、PostgreSQL persistence 與 Web review，不修改 execution runtime。
+- Phase 4 已由使用者以「開始process」另行明確授權；授權只涵蓋 Local Paper Runtime。G4 Review 核准前不得標示完成，更不得新增任何券商委託能力。
 - 每一 Phase 仍須通過自己的 migration、determinism、compatibility 與 regression 驗收。
 - 先前 `1100 passed, 10 skipped` 不是有效的穩定 G1 證據：Review 在 Asia/Taipei 晚間重現 `8 failed, 1092 passed, 10 skipped`，根因為 wall-clock-dependent fixture 跨日。
-- 後續 `0bcf61c` 已讓兩個 affected fixtures 共用 deterministic clock；修正後全套為 `1100 passed, 10 skipped`。這只關閉 regression finding，其他五項 G1 blocker 仍未關閉。
+- 後續 `0bcf61c` 已讓兩個 affected fixtures 共用 deterministic clock；Phase 13 也已完成其餘 snapshot、durable replay、integrity、migration acceptance 與 test cleanup guard remediation。最新全套證據為 disposable PostgreSQL `1113 passed`，一般無 DSN 模式 `1103 passed, 10 skipped`；最終短 Review 已正式關閉 G1。
 
 核心原則：
 
@@ -800,9 +800,9 @@ Gate G0：**PASSED / GO**。使用者已明確授權開始 Phase 1 實作。
 - backtest resolve、Run Snapshot、聚合 attribution 與 bounded evidence retention。
 - legacy completed-run compatibility adapter。
 
-Gate G1：**NOT PASSED / REQUEST CHANGES**。兩個策略的單獨／組合回測與 exact-version attribution 已建立，但 run snapshot 尚須加入 resolved Feature Specification digest、feature implementation digest 與明確 as-of semantics；Publish retry 必須先走不依賴目前 Registry 的 durable PostgreSQL replay。Wall-clock-dependent fixture 已由 `0bcf61c` 修正，後續全套為 `1100 passed, 10 skipped`；但仍須完成 Strategy Set snapshot integrity read validation、全 migration table/constraint/index acceptance，以及 destructive PostgreSQL test cleanup guard。Phase 2 不得開始。
+Gate G1：**PASSED / GO**。`atomic-backtest-run-snapshot-v2` 已保存 resolved Feature Specification digest、feature implementation digest 與明確 as-of semantics；Publish retry 先走不依賴目前 Registry（包含空 Registry）的 durable PostgreSQL replay；wall-clock fixture、Strategy Set snapshot integrity read validation、全 migration table/constraint/index acceptance，以及 destructive PostgreSQL test cleanup guard 均已補齊。最終驗收為 disposable PostgreSQL 全套 `1113 passed`，以及未設定 DSN 的一般模式 `1103 passed, 10 skipped`；Python compilation 與 whitespace check 通過。最終短 Review另重跑 focused `33 passed, 5 skipped`、一般模式 `1103 passed, 10 skipped`，並確認無剩餘 blocking 或 important finding。
 
-### Phase 2 — Backtest Web Management
+### Phase 2 — Backtest Web Management（完成）
 
 - Schema-driven 繁體中文 Draft 表單、validation、transactional publish、clone/diff。
 - exact-version Strategy Set builder 與 Backtest Launcher。
@@ -810,15 +810,32 @@ Gate G1：**NOT PASSED / REQUEST CHANGES**。兩個策略的單獨／組合回�
 
 Gate G2：無任意 code/import path/JSON execution；API 不接受 raw strategy ID；browser/API/Publish transaction validation 一致。
 
-### Phase 3 — Backtest Qualification
+目前狀態：**G2 PASSED / GO**。2026-08-22 最終 Review 確認沒有剩餘 blocking 或 important finding，並獨立驗證最後三個 blocker tests `3 passed`、無 DSN full `1114 passed, 15 skipped`、disposable PostgreSQL 17 full `1129 passed`，Python compilation、Dashboard JavaScript syntax 與 `git diff --check` 通過。ASGI HTTP 邊界、完整 Origin 比對及固定測試時鐘均通過 Review；使用者已明確授權開始 Phase 3。Local Paper、模擬交易、Shioaji／券商委託與 real-money execution 仍不在本次範圍。
 
-- OOS/walk-forward、baseline/challenger、multiple-testing record、promotion evidence。
-- 驗證 parameterized rolling window、Feature Request/cache isolation 及 runtime adapter identity。
-- 先完成 backtest slice 的第二個 implementation review，不自動啟用 local paper。
+### Phase 3 — Backtest Qualification（完成；MVP Conditional Go）
 
-Gate G3：研究結果可重現，backtest architecture/retention/capability gate 通過；另行核准才可進 Phase 4。
+- OOS/walk-forward、baseline/challenger、server-owned multiple-testing family ledger、promotion evidence。
+- Client 只提交研究假設與固定日期窗；policy、alpha、planned attempts、attempt sequence/history 均由伺服器決定。
+- Compare 與 Qualification 共用一份 comparability contract；Run config/result、DatasetManifest、Atomic Snapshot 與 Feature adapter identity 全部 fail closed。
+- 每個 Walk-forward fold OOS 必須早於 Primary OOS；final OOS evidence 不得被 fold 重複使用。
+- Family 使用 server-derived research-baseline identity，不使用 Baseline Run ID 當 budget identity；等價 Baseline rerun 必須共用同一 family/head/attempt budget。
+- 統一 Run identity verifier 同時核對 config digest 及 Run row/config 的 Dataset ID/digest；Baseline、Challenger 與所有 family attempts 一律套用。
+- Qualification 保存 immutable canonical family snapshot body 與 digest；detail projection 另外顯示目前 family linkage，不改寫歷史 evidence。
+- Run Snapshot 保留 parameterized Feature Request/runtime identity；真正的 rolling Feature runtime state/cache owner 延後到該策略在 Phase 5 實作時再接入，不列為 G3 已完成能力。
+- Backtest slice 已完成第二次 implementation Review；核准結果不自動啟用 local paper。
 
-### Phase 4 — Local Paper Runtime（需另行授權）
+Gate G3：**PASSED / MVP CONDITIONAL GO**。使用者已於 2026-08-22 以「開始process」另行明確授權 Phase 4；此授權只涵蓋 Local Paper Runtime，不包含券商委託或 real-money execution。
+
+目前狀態：**G3 PASSED / MVP CONDITIONAL GO；PHASE 4 IMPLEMENTATION CANDIDATE READY FOR REVIEW；G4 NOT PASSED**。G3 核准範圍只適用於單機、loopback、single-user、可信操作者與 trusted PostgreSQL 的人工審核 MVP。Qualification 必須維持 `REVIEW_ONLY_NO_LIFECYCLE_MUTATION`：任何 `ELIGIBLE_FOR_PROMOTION_REVIEW` 只代表可交付人工 Review，不得自動 promotion 或切換 Strategy lifecycle。Phase 4 的 Local Paper 啟動必須是另一個明確、人工、loopback-only 動作，不得由 Qualification 自動觸發。現有 G3 驗證證據為 focused no-DSN `31 passed, 10 skipped`、focused PostgreSQL `8 passed`、full no-DSN `1157 passed, 20 skipped`、full disposable PostgreSQL 17 `1177 passed`；Python compilation、Dashboard JavaScript syntax、browser smoke 與 `git diff --check` 通過。
+
+MVP Conditional Gate 附帶下列凍結與人工治理條件：
+
+- 凍結目前 qualification policy 與 experiment-family contract；任何 policy/family identity 升版前，必須先設計並驗證既有 `baseline_run_id` uniqueness 的資料遷移／相容處理，不得直接套用新 contract。
+- 人工 Review 必須把相同 `bars_sha256` 且研究契約相同的 Dataset 視為同一份研究資料；不得透過重新封存、alias 或更換 Dataset ID 取得新的 family／attempt budget。
+- Dataset stable research identity 與 canonical Baseline revalidation 登記為 Phase 3 hardening backlog。兩者在本機可信 MVP 可視為 defense-in-depth，但在 multi-user、非 loopback／外網、auto-promotion 或任何正式交易能力開始前，必須完成、補對抗性測試並重新過 Gate。
+- PostgreSQL 被視為 trusted local authority；本 Gate 不涵蓋具備資料庫直接寫入權限的惡意操作者或資料庫被竄改後仍可安全運作的保證。
+
+### Phase 4 — Local Paper Runtime（已授權；候選完成待 Review）
 
 - 將 `continuous_strategy.py` 收斂為 generic paper orchestrator，而不是建立另一套策略／Feature source of truth。
 - 使用 selected exact-version Pipeline、Execution Policy、Hard Risk Policy、Journal 與 SimulationService。
@@ -826,6 +843,8 @@ Gate G3：研究結果可重現，backtest architecture/retention/capability gat
 - generic paper runner 預設 STOPPED、只允許手動 start；Shioaji 維持 market-data-only。
 
 Gate G4：完成 event loop：Feature -> Entry/Exit Intent -> Execution Policy -> ProposedOrderCommand -> Hard Risk -> ApprovedOrderCommand -> BidAsk Fill -> Position/terminal；restart fail closed；完全沒有券商委託 API。
+
+目前狀態：**REMEDIATION CANDIDATE READY FOR SHORT REVIEW；G4 NOT PASSED**。候選除既有 exact-version ENTRY Pipeline、Feature projection、Proposed -> Hard Risk -> Approved、checkpoint/recovery、continuous exit 與 Web controls 外，已補上 transactional `PAPER_APPROVED` admission（含 lifecycle sequence/event/projection digest）、封閉 raw Strategy Intent HTTP bypass、以 `min(system ceiling, operator limit)` 建立並保存 per-run Effective Hard Risk、cross-owner pending/fill-time 雙重驗證，以及 ALL unavailable precedence。start activation 保存 actor、完整 config 與 durable idempotency result；stop／kill-switch actor 與 durable operation audit 仍是明確的單機 MVP Important 限制，不得宣稱完整多使用者稽核。最終候選驗證為 focused PostgreSQL `82 passed`、無 DSN full `1178 passed, 21 skipped`、disposable PostgreSQL 17 full `1199 passed`，另含 Python compilation、Dashboard JavaScript syntax 與 `git diff --check`。一次性 PostgreSQL 叢集與測試資料已停止並刪除。在獨立短 Review 明確核准前不得標示 G4 完成，也不得開始 Phase 5 或任何 broker／real-money 工作。
 
 ### Phase 5 — 逐批擴充策略
 
@@ -839,7 +858,7 @@ Gate G5：每個已遷移策略有獨立檔案、Schema/Feature Requests、runti
 
 - Parameter Schema unit/cross-field/canonicalization tests。
 - 3m/2.0% 等 Strategy parameters 解析成正確 Feature Request，不會仍使用固定 2m window。
-- Feature cache/state key isolation：2m 與 3m、不同 adapter/cadence 不碰撞。
+- Feature Request/state-key identity unit tests：2m 與 3m、不同 adapter/cadence 產生不同 identity；真正 runtime state owner 在 Phase 5 對應 Feature 上線時才驗收，不以 helper test 宣稱已接入 runtime cache。
 - Template/Draft/Version/Event transaction、digest、immutable conflict與 Publish TOCTOU tests。
 - Lifecycle legal/illegal transition table、PAUSED reactivation preflight、RETIRED terminal與 projection deterministic rebuild/gap/fork quarantine tests。
 - PostgreSQL post-publish concurrency suites：兩個相同 Version/key 同時送達必須 replay 同一成功 event；不同 digest 必須 idempotency conflict；不同 key/stale sequence 必須 sequence conflict。
@@ -965,7 +984,52 @@ README.md
 
 Phase 1 PostgreSQL 測試基礎必須使用 disposable database/schema，並由環境變數明確 opt-in；現有一般單元測試可保留自己的隔離方式，但 atomic-platform persistence、migration、row-lock、concurrency 與 fail-closed tests 不得被全域 SQLite 設定取代。`pyproject.toml` 明列測試 dependency，README 說明本機／CI PostgreSQL test setup 與不啟用時的 skip 訊息。
 
-Phase 2 才加入 Dashboard Strategy Management UI/API；Phase 4 另行核准後才修改 `simulation/continuous_strategy.py`、`simulation/strategy_flow.py`。剩餘策略檔案只在該策略實際遷移與測試時新增，不先建立 speculative 空殼。
+Phase 2 已加入且由 Gate G2 管理的檔案：
+
+```text
+backtest/migrations/006_atomic_strategy_web_management.sql
+backtest/migrations/007_atomic_strategy_audit_contract.sql
+strategy_catalog/web_projection.py
+dashboard/server.py
+dashboard/static/index.html
+dashboard/static/css/dashboard.css
+dashboard/static/js/app.js
+dashboard/static/js/mutation_keys.js
+dashboard/static/js/workspaces/backtest.js
+tests/test_atomic_strategy_web_api.py
+tests/test_atomic_strategy_web_backtest.py
+tests/test_atomic_strategy_web_ui.py
+```
+
+Phase 3 已加入且由 Gate G3 管理的檔案：
+
+```text
+backtest/migrations/008_backtest_qualification.sql
+backtest/migrations/009_backtest_experiment_families.sql
+backtest/migrations/010_backtest_experiment_family_identity.sql
+backtest/comparability.py
+backtest/qualification.py
+backtest/application.py
+backtest/repository.py
+backtest/postgres_repository.py
+features/specifications.py
+backtest/atomic_strategy_adapter.py
+dashboard/server.py
+dashboard/static/index.html
+dashboard/static/css/dashboard.css
+dashboard/static/js/app.js
+dashboard/static/js/workspaces/backtest.js
+README.md
+tests/test_backtest_qualification.py
+tests/test_backtest_qualification_postgres.py
+tests/test_parameterized_feature_requests.py
+tests/test_atomic_strategy_web_api.py
+tests/test_atomic_strategy_web_ui.py
+tests/test_strategy_migrations.py
+tests/test_backtest_sqlite_postgres_migration.py
+```
+
+Phase 4 另行核准後才修改 `simulation/continuous_strategy.py`、`simulation/strategy_flow.py`。剩餘策略檔案只在該策略實際遷移與測試時新增，不先建立 speculative 空殼。
 
 以上 ownership 是 v1 frozen contract。`atomic_strategies/` 是窄範圍 pure-kernel owner，不得成長為重複 catalog/feature/backtest/simulation 的廣泛 runtime package。Feature Specification 固定放在既有頂層 `features/` owner，不建立第三套 calculator；任何 owner 變更都必須先修改本計畫並重新 Review，不能在實作中臨時漂移。
 

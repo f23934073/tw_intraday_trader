@@ -34,6 +34,47 @@ class FeatureRequestSpec:
             }
         )
 
+    def runtime_identity_digest(
+        self,
+        *,
+        adapter_identity: str,
+        cadence: str,
+    ) -> str:
+        """Identity shared by cache and state stores before symbol/session scope."""
+
+        if not adapter_identity.strip() or not cadence.strip():
+            raise ValueError("adapter_identity 與 cadence 不可為空")
+        return canonical_digest(
+            {
+                "request_digest": self.request_digest,
+                "adapter_identity": adapter_identity,
+                "cadence": cadence,
+            }
+        )
+
+    def state_key(
+        self,
+        *,
+        adapter_identity: str,
+        cadence: str,
+        symbol: str,
+        session: str,
+    ) -> str:
+        """Prevent parameter/window and runtime adapter state collisions."""
+
+        if not symbol.strip() or not session.strip():
+            raise ValueError("feature state symbol 與 session 不可為空")
+        return canonical_digest(
+            {
+                "runtime_identity_digest": self.runtime_identity_digest(
+                    adapter_identity=adapter_identity,
+                    cadence=cadence,
+                ),
+                "symbol": symbol,
+                "session": session,
+            }
+        )
+
 
 @dataclass(frozen=True)
 class FeatureSpecification:

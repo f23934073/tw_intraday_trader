@@ -1,6 +1,7 @@
 """Tests for the read-only dashboard snapshot."""
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from config.premarket import PREMARKET_CONTEXT_V0
 from dashboard.service import DashboardService
@@ -35,7 +36,11 @@ def test_dashboard_snapshot_uses_existing_scan_decisions():
 
 
 def test_dashboard_candidate_history_uses_provider_kbars_on_demand():
-    service = DashboardService(MockProvider())
+    history_at = datetime(2026, 8, 21, 13, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    service = DashboardService(
+        MockProvider(history_anchor_date=history_at.date()),
+        now=lambda: history_at,
+    )
 
     history = service.candidate_history("3231", "5d")
 

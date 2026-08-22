@@ -292,6 +292,7 @@ def test_enriched_8039_stream_reaches_accelerating_shadow_projection():
 
     snapshot = runtime.snapshot()
     projection = runtime.projection("8039")
+    read_view = runtime.read_view(("8039",))
 
     assert snapshot.mode == "REALTIME_SHADOW_ALERT_ONLY"
     assert snapshot.covered_symbols == ("8039",)
@@ -320,6 +321,9 @@ def test_enriched_8039_stream_reaches_accelerating_shadow_projection():
     }
     assert projection.entry_opportunity is not None
     assert projection.entry_opportunity.reasons == ("risk_gate_not_passed",)
+    assert read_view.books[0][0] == "8039"
+    assert read_view.books[0][1] is not None
+    assert read_view.books[0][1].best_ask is not None
 
     runtime.close()
 

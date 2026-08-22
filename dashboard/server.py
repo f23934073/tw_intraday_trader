@@ -4,28 +4,35 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import secrets
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
+from ipaddress import ip_address
 from io import StringIO
 from pathlib import Path
 from threading import RLock
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
+from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import (
     FastAPI,
+    Header,
     HTTPException,
+    Request,
     Response,
     WebSocket,
     WebSocketDisconnect,
     status,
 )
-from pydantic import BaseModel, Field
-from fastapi.responses import FileResponse
+from pydantic import BaseModel, ConfigDict, Field
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import build_provider
 from backtest.application import BacktestApplicationService
+from backtest.migrations import apply_migrations
+from backtest.repository import BacktestIdempotencyConflict
 from backtest.scheduler import AfterCloseIncrementalScheduler
 from config import backtest as backtest_settings
 from config import twse_calendar_2026
@@ -45,17 +52,35 @@ from market_data.equity_calendar import ReviewedEquityCalendar
 from market_data.provider import MarketDataProvider
 from runtime.composition import RuntimeComposition
 from simulation.application import LocalPaperCommandService
+from simulation.atomic_runtime import resolve_atomic_paper_entry_set
 from simulation.continuous_strategy import (
     AutomatedStrategyConfig,
     AutomatedStrategyStateError,
     ContinuousPaperStrategyController,
+    LocalPaperKillSwitch,
 )
 from simulation.service import (
     SimulationService,
     SimulationStateError,
     SimulationValidationError,
 )
-from simulation.strategy_flow import StrategyPaperFlowService, StrategyPaperIntent
+from simulation.strategy_flow import StrategyPaperFlowService
+from atomic_strategies.registry import AtomicStrategyRegistry
+from strategy_catalog.application import AtomicStrategyCatalogService, build_atomic_strategy_service
+from strategy_catalog.drafts import PublishStrategyRequest
+from strategy_catalog.domain import StrategyRole
+from strategy_catalog.repository import StrategyCatalogConflict
+from strategy_catalog.parameter_schema import canonical_digest
+from strategy_catalog.sets import (
+    CompositionPolicy,
+    ExactStrategySetSnapshot,
+    StrategySetMemberSnapshot,
+)
+from strategy_catalog.web_projection import (
+    draft_projection,
+    template_projection,
+    version_projection,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 SIMULATION_STREAM_PATH = "/ws/simulation/projection"
@@ -73,9 +98,103 @@ _momentum_service: (
 ) = None
 _momentum_stream_hub: MomentumStreamHub | None = None
 _backtest_service: BacktestApplicationService | None = None
+_atomic_strategy_service: AtomicStrategyCatalogService | None = None
 _incremental_scheduler: AfterCloseIncrementalScheduler | None = None
 _automated_strategy_controller: ContinuousPaperStrategyController | None = None
+_local_paper_kill_switch = LocalPaperKillSwitch()
 _runtime_composition_lock = RLock()
+_atomic_strategy_csrf_token = secrets.token_urlsafe(32)
+_HTTP_DEFAULT_PORTS = {"http": 80, "https": 443}
+_UNTRUSTED_PROXY_HEADERS = frozenset(
+    {
+        "forwarded",
+        "x-forwarded-for",
+        "x-forwarded-host",
+        "x-forwarded-port",
+        "x-forwarded-proto",
+    }
+)
+
+
+def _is_loopback_address(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"localhost", "testclient"}:
+        return True
+    try:
+        return ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _parse_http_authority(value: str) -> tuple[str, int | None]:
+    raw = value.strip()
+    if not raw or any(character.isspace() for character in raw) or "," in raw:
+        raise HTTPException(status_code=403, detail="HTTP Host 不允許")
+    parsed = urlsplit(f"//{raw}")
+    if (
+        not parsed.netloc
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise HTTPException(status_code=403, detail="HTTP Host 不允許")
+    try:
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError as error:
+        raise HTTPException(status_code=403, detail="HTTP Host 不允許") from error
+    if not host or port == 0:
+        raise HTTPException(status_code=403, detail="HTTP Host 不允許")
+    return host, port
+
+
+def _validated_loopback_http_origin(request: Request) -> tuple[str, str, int]:
+    if any(header in request.headers for header in _UNTRUSTED_PROXY_HEADERS):
+        raise HTTPException(status_code=403, detail="本機服務不接受 proxy forwarding headers")
+
+    client_host = request.client.host if request.client is not None else ""
+    if not _is_loopback_address(client_host):
+        raise HTTPException(status_code=403, detail="本機服務只允許 loopback client")
+
+    host, explicit_port = _parse_http_authority(request.headers.get("host", ""))
+    if host == "testserver":
+        if client_host.lower() != "testclient":
+            raise HTTPException(status_code=403, detail="HTTP Host 不允許")
+    elif host != "localhost" and not _is_loopback_address(host):
+        raise HTTPException(status_code=403, detail="HTTP Host 必須是 loopback")
+
+    scheme = str(request.scope.get("scheme", "")).lower()
+    if scheme not in _HTTP_DEFAULT_PORTS:
+        raise HTTPException(status_code=403, detail="HTTP scheme 不允許")
+    return scheme, host, explicit_port or _HTTP_DEFAULT_PORTS[scheme]
+
+
+def _parse_http_origin(value: str) -> tuple[str, str, int]:
+    parsed = urlsplit(value.strip())
+    if (
+        parsed.scheme.lower() not in _HTTP_DEFAULT_PORTS
+        or not parsed.netloc
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise HTTPException(status_code=403, detail="策略 mutation origin 不允許")
+    try:
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError as error:
+        raise HTTPException(
+            status_code=403,
+            detail="策略 mutation origin 不允許",
+        ) from error
+    if not host or port == 0:
+        raise HTTPException(status_code=403, detail="策略 mutation origin 不允許")
+    scheme = parsed.scheme.lower()
+    return scheme, host, port or _HTTP_DEFAULT_PORTS[scheme]
 
 
 @asynccontextmanager
@@ -94,6 +213,8 @@ async def lifespan(_: FastAPI):
             _automated_strategy_controller.close()
         if _backtest_service is not None:
             _backtest_service.close()
+        if _atomic_strategy_service is not None:
+            _atomic_strategy_service.close()
         if _momentum_stream_hub is not None:
             _momentum_stream_hub.close()
         if _momentum_service is not None:
@@ -106,6 +227,19 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="台股盤中雷達", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.middleware("http")
+async def enforce_loopback_http_boundary(request: Request, call_next):
+    """Reject network/proxy exposure before any local-only response is produced."""
+    try:
+        _validated_loopback_http_origin(request)
+    except HTTPException as error:
+        return JSONResponse(
+            status_code=error.status_code,
+            content={"detail": error.detail},
+        )
+    return await call_next(request)
 
 
 StrictPositiveInt = Annotated[int, Field(strict=True, gt=0)]
@@ -129,22 +263,21 @@ class SimulationRetryRequest(BaseModel):
     limit_price: float | None = None
 
 
-class SimulationStrategyIntentRequest(BaseModel):
-    intent_id: str
-    strategy_id: str
-    strategy_version: str
-    symbol: str
-    side: str
-    quantity_shares: StrictPositiveInt | None = None
-    lots: StrictPositiveInt | None = None
-    limit_price: str
-    signaled_at: datetime
-
-
 class AutomatedStrategyStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entry_strategy_set_version_id: str = Field(min_length=1, pattern=r".*\S.*")
     stop_loss_pct: str
     take_profit_pct: str
     max_daily_loss: str
+    actor_id: str = Field(min_length=1, pattern=r".*\S.*")
+    activation_idempotency_key: str = Field(min_length=1, pattern=r".*\S.*")
+
+
+class AutomatedStrategyKillRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, pattern=r".*\S.*")
 
 
 class DatasetSyncRequest(BaseModel):
@@ -177,15 +310,64 @@ class BacktestRunRequest(BaseModel):
     change_note: str = ""
 
 
-class BacktestCloneRequest(BaseModel):
-    idempotency_key: str
-    change_note: str
+class StrictRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class BacktestRetryRequest(StrictRequest):
+    idempotency_key: str = Field(min_length=1)
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
+
+
+class BacktestCancelRequest(StrictRequest):
+    idempotency_key: str = Field(min_length=1)
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
+
+
+class BacktestCloneRequest(StrictRequest):
+    idempotency_key: str = Field(min_length=1)
+    change_note: str = Field(min_length=1, pattern=r".*\S.*")
     overrides: dict[str, Any] = Field(default_factory=dict)
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
 
 
 class BacktestCompareRequest(BaseModel):
     baseline_run_id: str
     challenger_run_id: str
+
+
+class BacktestQualificationWindowRequest(StrictRequest):
+    label: str = Field(min_length=1, pattern=r".*\S.*")
+    train_start: date
+    train_end: date
+    validation_start: date
+    validation_end: date
+    oos_start: date
+    oos_end: date
+
+
+class BacktestQualificationProtocolRequest(StrictRequest):
+    contract_version: Literal["backtest-qualification-request-v2"] = (
+        "backtest-qualification-request-v2"
+    )
+    primary_window: BacktestQualificationWindowRequest
+    walk_forward_windows: list[BacktestQualificationWindowRequest] = Field(
+        default_factory=list,
+        max_length=50,
+    )
+
+
+class BacktestQualificationCreateRequest(StrictRequest):
+    baseline_run_id: str = Field(min_length=1)
+    challenger_run_id: str = Field(min_length=1)
+    hypothesis_id: str = Field(min_length=1, max_length=120, pattern=r".*\S.*")
+    protocol: BacktestQualificationProtocolRequest
+    actor_id: str = Field(
+        default="local-researcher",
+        min_length=1,
+        pattern=r".*\S.*",
+    )
+    change_note: str = Field(min_length=1, pattern=r".*\S.*")
 
 
 class StrategyDefinitionRequest(BaseModel):
@@ -204,6 +386,67 @@ class StrategyDefinitionRequest(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
     code_identity: str = "database-strategy-v1"
+
+
+class AtomicDraftCreateRequest(StrictRequest):
+    strategy_id: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
+    change_note: str = ""
+
+
+class AtomicDraftUpdateRequest(StrictRequest):
+    expected_revision: int = Field(ge=1)
+    parameters: dict[str, Any]
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
+    change_note: str = ""
+
+
+class AtomicDraftPublishRequest(StrictRequest):
+    expected_draft_revision: int = Field(ge=1)
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
+    actor_session_id: str = Field(default="local-dashboard", min_length=1, pattern=r".*\S.*")
+    change_note: str = ""
+
+
+class AtomicVersionCloneRequest(StrictRequest):
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
+    change_note: str = Field(min_length=1, pattern=r".*\S.*")
+
+
+class AtomicStrategySetMemberRequest(StrictRequest):
+    strategy_version_id: str
+    strategy_id: str
+    configuration_digest: str
+    implementation_digest: str
+    member_order: int = Field(ge=0)
+    attribution_priority: int = Field(ge=0)
+
+
+class AtomicStrategySetCreateRequest(StrictRequest):
+    display_name_zh_tw: str
+    stage: str = "ENTRY"
+    policy: str = "ANY"
+    minimum_trigger_count: int = Field(default=1, ge=1)
+    members: list[AtomicStrategySetMemberRequest]
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
+    change_note: str = Field(min_length=1, pattern=r".*\S.*")
+
+
+class AtomicBacktestRunRequest(StrictRequest):
+    dataset_id: str
+    strategy_set_version_id: str
+    starting_cash: str = "10000000"
+    position_fraction: str = "0.10"
+    commission_rate: str = "0.001425"
+    sell_tax_rate: str = "0.003"
+    slippage_bps: str = "5"
+    target_win_rate: str = "0.50"
+    minimum_oos_trades: int = Field(default=30, ge=1)
+    max_drawdown_guardrail: str = "0.20"
+    change_note: str = ""
+    baseline_run_id: str | None = None
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
 
 
 def get_runtime_composition() -> RuntimeComposition:
@@ -276,6 +519,14 @@ def get_automated_strategy_controller() -> ContinuousPaperStrategyController:
                 signal_reader=get_momentum_dashboard_service().snapshot,
                 calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
                 clock=composition.clock,
+                atomic_resolver=lambda strategy_set_version_id: (
+                    resolve_atomic_paper_entry_set(
+                        get_atomic_strategy_service(),
+                        AtomicStrategyRegistry(),
+                        strategy_set_version_id,
+                    )
+                ),
+                kill_switch=_local_paper_kill_switch,
             )
         return _automated_strategy_controller
 
@@ -325,6 +576,43 @@ def get_backtest_service() -> BacktestApplicationService:
         return _backtest_service
 
 
+def get_atomic_strategy_service() -> AtomicStrategyCatalogService:
+    """Build the PostgreSQL-only atomic catalog without simulation capabilities."""
+
+    global _atomic_strategy_service
+    with _runtime_composition_lock:
+        if _atomic_strategy_service is not None:
+            return _atomic_strategy_service
+        if backtest_settings.BACKTEST_DATABASE_BACKEND != "postgresql":
+            raise RuntimeError("原子策略管理只支援 PostgreSQL；禁止 SQLite fallback")
+        try:
+            from psycopg_pool import ConnectionPool  # type: ignore[import-not-found]
+        except ImportError as error:
+            raise RuntimeError(
+                "使用原子策略管理前，請安裝 tw-intraday-trader[postgres]"
+            ) from error
+        pool = ConnectionPool(
+            backtest_settings.BACKTEST_DATABASE_URL,
+            min_size=1,
+            max_size=max(4, backtest_settings.BACKTEST_WORKERS + 2),
+            timeout=5,
+            open=True,
+        )
+        try:
+            with pool.connection() as connection:
+                apply_migrations(connection)
+            _atomic_strategy_service = build_atomic_strategy_service(
+                database_backend="postgresql",
+                pool=pool,
+                owns_pool=True,
+                templates=AtomicStrategyRegistry().templates(),
+            )
+        except Exception:
+            pool.close()
+            raise
+        return _atomic_strategy_service
+
+
 def get_incremental_scheduler() -> AfterCloseIncrementalScheduler:
     """建立一次排程器；排程只呼叫 backtest application service。"""
 
@@ -344,11 +632,109 @@ def get_incremental_scheduler() -> AfterCloseIncrementalScheduler:
 
 
 def _backtest_http_error(error: Exception) -> HTTPException:
+    if isinstance(error, BacktestIdempotencyConflict):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_CONFLICT", "message": str(error)},
+        )
     if isinstance(error, KeyError):
         return HTTPException(status_code=404, detail=str(error))
     if isinstance(error, RuntimeError):
         return HTTPException(status_code=503, detail=str(error))
     return HTTPException(status_code=422, detail=str(error))
+
+
+def _atomic_http_error(error: Exception) -> HTTPException:
+    if isinstance(error, StrategyCatalogConflict):
+        missing = {
+            "DRAFT_NOT_FOUND",
+            "STRATEGY_VERSION_NOT_FOUND",
+            "STRATEGY_SET_VERSION_NOT_FOUND",
+        }
+        return HTTPException(
+            status_code=404 if error.code in missing else 409,
+            detail={"code": error.code, "message": str(error), "details": error.details},
+        )
+    if isinstance(error, RuntimeError):
+        return HTTPException(status_code=503, detail=str(error))
+    return HTTPException(status_code=422, detail=str(error))
+
+
+def _require_atomic_mutation(
+    request: Request,
+    x_strategy_csrf: str | None,
+) -> None:
+    expected_origin = _validated_loopback_http_origin(request)
+    origin = request.headers.get("origin")
+    if origin and _parse_http_origin(origin) != expected_origin:
+        raise HTTPException(status_code=403, detail="策略 mutation origin 不允許")
+    if not x_strategy_csrf or not secrets.compare_digest(
+        x_strategy_csrf,
+        _atomic_strategy_csrf_token,
+    ):
+        raise HTTPException(status_code=403, detail="策略 mutation CSRF token 無效")
+
+
+def _atomic_idempotency_key(value: str | None) -> str:
+    normalized = str(value or "").strip()
+    if not 8 <= len(normalized) <= 200:
+        raise HTTPException(status_code=422, detail="Idempotency-Key 長度必須介於 8 與 200")
+    return normalized
+
+
+def _record_atomic_audit(
+    *,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    actor_id: str,
+    operation_scope: str,
+    idempotency_key: str,
+    outcome: str,
+    request_document: dict[str, Any],
+    change_note: str = "",
+    after_digest: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return get_atomic_strategy_service().record_audit_event(
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        actor_id=actor_id,
+        operation_scope=operation_scope,
+        idempotency_key=idempotency_key,
+        outcome=outcome,
+        request_digest=canonical_digest(request_document),
+        after_digest=after_digest,
+        change_note=change_note,
+        details=details or {},
+    )
+
+
+def _record_catalog_mutation_failure(
+    error: Exception,
+    *,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    actor_id: str,
+    operation_scope: str,
+    idempotency_key: str,
+    request_document: dict[str, Any],
+    change_note: str = "",
+) -> None:
+    _record_atomic_audit(
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        actor_id=actor_id,
+        operation_scope=operation_scope,
+        idempotency_key=idempotency_key,
+        outcome="CONFLICT" if isinstance(error, StrategyCatalogConflict) else "FAILED",
+        request_document=request_document,
+        change_note=change_note,
+        details={"error_type": type(error).__name__, "message": str(error)},
+    )
 
 
 def _dashboard_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -724,25 +1110,6 @@ def retry_simulation_order(
     return {"order": order, "idempotent": idempotent}
 
 
-@app.post("/api/simulation/strategy-intents", status_code=status.HTTP_201_CREATED)
-def submit_simulation_strategy_intent(
-    request: SimulationStrategyIntentRequest,
-    response: Response,
-) -> dict[str, Any]:
-    """Apply one strategy intent to local paper; never call a broker order API."""
-    try:
-        intent = StrategyPaperIntent.create(**request.model_dump())
-        result = get_strategy_paper_flow_service().submit(intent)
-    except SimulationValidationError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    except SimulationStateError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-
-    if result["intent_idempotent"] and result["order_idempotent"]:
-        response.status_code = status.HTTP_200_OK
-    return result
-
-
 @app.get("/api/simulation/automated-strategy")
 def automated_strategy_status() -> dict[str, Any]:
     """Read the process-local automated paper-strategy state."""
@@ -756,8 +1123,11 @@ def automated_strategy_status() -> dict[str, Any]:
 def start_automated_strategy(
     request: AutomatedStrategyStartRequest,
     response: Response,
+    http_request: Request,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
 ) -> dict[str, Any]:
-    """Explicitly start one bounded Momentum local-paper session."""
+    """Explicitly start one exact-version atomic Local Paper session."""
+    _require_atomic_mutation(http_request, x_strategy_csrf)
     try:
         config = AutomatedStrategyConfig.create(**request.model_dump())
         result = get_automated_strategy_controller().start(config)
@@ -770,12 +1140,455 @@ def start_automated_strategy(
 
 
 @app.post("/api/simulation/automated-strategy/stop")
-def stop_automated_strategy() -> dict[str, Any]:
+def stop_automated_strategy(
+    request: Request,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
     """Stop producing new intents; existing local-paper positions are retained."""
+    _require_atomic_mutation(request, x_strategy_csrf)
     try:
         return get_automated_strategy_controller().stop()
     except AutomatedStrategyStateError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@app.post("/api/simulation/automated-strategy/kill-switch")
+def engage_automated_strategy_kill_switch(
+    payload: AutomatedStrategyKillRequest,
+    request: Request,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    """Emergency-stop every process-local automated Local Paper intent."""
+
+    _require_atomic_mutation(request, x_strategy_csrf)
+    return get_automated_strategy_controller().engage_kill_switch(payload.reason)
+
+
+@app.post("/api/simulation/automated-strategy/kill-switch/reset")
+def reset_automated_strategy_kill_switch(
+    request: Request,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    """Explicitly clear the kill switch without restarting a strategy."""
+
+    _require_atomic_mutation(request, x_strategy_csrf)
+    return get_automated_strategy_controller().reset_kill_switch()
+
+
+# ---------------------------------------------------------------------------
+# Atomic strategy Web management — PostgreSQL-only and historical-data-only.
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/atomic-strategies/capabilities")
+def atomic_strategy_capabilities() -> dict[str, Any]:
+    available = True
+    message = "PostgreSQL 原子策略管理可用"
+    try:
+        get_atomic_strategy_service()
+    except Exception as error:
+        available = False
+        message = str(error)
+    return {
+        "available": available,
+        "database": "PostgreSQL only",
+        "mutation_mode": "LOOPBACK_SINGLE_USER",
+        "csrf_token": _atomic_strategy_csrf_token,
+        "message": message,
+        "safety": "只管理歷史回測設定；不會啟動模擬交易或券商委託。",
+    }
+
+
+@app.get("/api/strategy-templates")
+def atomic_strategy_templates() -> dict[str, Any]:
+    try:
+        return {
+            "templates": [
+                template_projection(item)
+                for item in get_atomic_strategy_service().templates()
+            ]
+        }
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-templates/{strategy_id}")
+def atomic_strategy_template(strategy_id: str) -> dict[str, Any]:
+    try:
+        return {"template": template_projection(get_atomic_strategy_service().template(strategy_id))}
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-templates/{strategy_id}/parameter-schema")
+def atomic_strategy_parameter_schema(strategy_id: str) -> dict[str, Any]:
+    try:
+        template = get_atomic_strategy_service().template(strategy_id)
+        return {
+            "strategy_id": template.strategy_id,
+            "parameter_schema": template.parameter_schema.schema_document,
+            "parameter_schema_digest": template.parameter_schema.schema_digest,
+        }
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-versions/drafts")
+def atomic_strategy_drafts(strategy_id: str | None = None) -> dict[str, Any]:
+    try:
+        return {
+            "drafts": [
+                draft_projection(item)
+                for item in get_atomic_strategy_service().list_drafts(strategy_id)
+            ]
+        }
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.post("/api/strategy-versions/drafts", status_code=status.HTTP_201_CREATED)
+def create_atomic_strategy_draft(
+    payload: AtomicDraftCreateRequest,
+    request: Request,
+    response: Response,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    try:
+        draft = get_atomic_strategy_service().create_draft(
+            payload.strategy_id,
+            payload.parameters,
+            actor_id=payload.actor_id,
+            change_note=payload.change_note,
+            idempotency_key=key,
+        )
+        return {"draft": draft_projection(draft)}
+    except Exception as error:
+        _record_catalog_mutation_failure(
+            error,
+            action="STRATEGY_DRAFT_CREATE",
+            resource_type="STRATEGY_TEMPLATE",
+            resource_id=payload.strategy_id,
+            actor_id=payload.actor_id,
+            operation_scope=f"strategy-draft:create:{payload.strategy_id}",
+            idempotency_key=key,
+            request_document=payload.model_dump(),
+            change_note=payload.change_note,
+        )
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-versions/drafts/{draft_id}")
+def atomic_strategy_draft(draft_id: str) -> dict[str, Any]:
+    try:
+        return {"draft": draft_projection(get_atomic_strategy_service().get_draft(draft_id))}
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.put("/api/strategy-versions/drafts/{draft_id}")
+def update_atomic_strategy_draft(
+    draft_id: str,
+    payload: AtomicDraftUpdateRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    try:
+        draft = get_atomic_strategy_service().update_draft(
+            draft_id,
+            payload.parameters,
+            expected_revision=payload.expected_revision,
+            actor_id=payload.actor_id,
+            change_note=payload.change_note,
+            idempotency_key=key,
+        )
+        return {"draft": draft_projection(draft)}
+    except Exception as error:
+        _record_catalog_mutation_failure(
+            error,
+            action="STRATEGY_DRAFT_UPDATE",
+            resource_type="STRATEGY_DRAFT",
+            resource_id=draft_id,
+            actor_id=payload.actor_id,
+            operation_scope=f"strategy-draft:update:{draft_id}",
+            idempotency_key=key,
+            request_document=payload.model_dump(),
+            change_note=payload.change_note,
+        )
+        raise _atomic_http_error(error) from error
+
+
+@app.post("/api/strategy-versions/drafts/{draft_id}/validate")
+def validate_atomic_strategy_draft(
+    draft_id: str,
+    request: Request,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    try:
+        return get_atomic_strategy_service().validate_draft(draft_id)
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.post("/api/strategy-versions/drafts/{draft_id}/publish")
+def publish_atomic_strategy_draft(
+    draft_id: str,
+    payload: AtomicDraftPublishRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    try:
+        result = get_atomic_strategy_service().publish(
+            PublishStrategyRequest(
+                draft_id=draft_id,
+                idempotency_key=key,
+                expected_draft_revision=payload.expected_draft_revision,
+                actor_id=payload.actor_id,
+                actor_session_id=payload.actor_session_id,
+                change_note=payload.change_note,
+            )
+        )
+        return {
+            "publish": {
+                "publish_operation_id": result.publish_operation_id,
+                "draft_id": result.draft_id,
+                "strategy_version_id": result.strategy_version_id,
+                "published_event_id": result.published_event_id,
+                "version_number": result.version_number,
+                "configuration_digest": result.configuration_digest,
+                "result_digest": result.result_digest,
+                "replayed": result.replayed,
+            }
+        }
+    except Exception as error:
+        _record_catalog_mutation_failure(
+            error,
+            action="STRATEGY_VERSION_PUBLISH",
+            resource_type="STRATEGY_DRAFT",
+            resource_id=draft_id,
+            actor_id=payload.actor_id,
+            operation_scope=f"strategy-draft:publish:{draft_id}",
+            idempotency_key=key,
+            request_document=payload.model_dump(),
+            change_note=payload.change_note,
+        )
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-versions")
+def atomic_strategy_versions(strategy_id: str | None = None) -> dict[str, Any]:
+    try:
+        return {
+            "versions": [
+                version_projection(item)
+                for item in get_atomic_strategy_service().list_versions(strategy_id)
+            ]
+        }
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-versions/{left_id}/diff/{right_id}")
+def diff_atomic_strategy_versions(left_id: str, right_id: str) -> dict[str, Any]:
+    try:
+        return {"diff": get_atomic_strategy_service().diff_versions(left_id, right_id)}
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.post("/api/strategy-versions/{strategy_version_id}/clone", status_code=status.HTTP_201_CREATED)
+def clone_atomic_strategy_version(
+    strategy_version_id: str,
+    payload: AtomicVersionCloneRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    try:
+        draft = get_atomic_strategy_service().clone_version(
+            strategy_version_id,
+            actor_id=payload.actor_id,
+            change_note=payload.change_note,
+            idempotency_key=key,
+        )
+        return {"draft": draft_projection(draft)}
+    except Exception as error:
+        _record_catalog_mutation_failure(
+            error,
+            action="STRATEGY_VERSION_CLONE",
+            resource_type="STRATEGY_VERSION",
+            resource_id=strategy_version_id,
+            actor_id=payload.actor_id,
+            operation_scope=f"strategy-version:clone:{strategy_version_id}",
+            idempotency_key=key,
+            request_document=payload.model_dump(),
+            change_note=payload.change_note,
+        )
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-versions/{strategy_version_id}")
+def atomic_strategy_version(strategy_version_id: str) -> dict[str, Any]:
+    try:
+        return {
+            "version": version_projection(
+                get_atomic_strategy_service().get_version(strategy_version_id)
+            )
+        }
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-sets")
+def atomic_strategy_sets() -> dict[str, Any]:
+    try:
+        return {
+            "strategy_sets": [
+                item.to_dict() | {"snapshot_digest": item.snapshot_digest}
+                for item in get_atomic_strategy_service().list_strategy_sets()
+            ]
+        }
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.post("/api/strategy-sets", status_code=status.HTTP_201_CREATED)
+def create_atomic_strategy_set(
+    payload: AtomicStrategySetCreateRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    try:
+        stable_id = uuid5(NAMESPACE_URL, f"tw-intraday-trader:strategy-set:{key}").hex
+        snapshot = ExactStrategySetSnapshot(
+            strategy_set_version_id=f"strategy-set-version-{stable_id}",
+            strategy_set_id=f"strategy-set-{stable_id}",
+            version_number=1,
+            display_name_zh_tw=payload.display_name_zh_tw,
+            stage=StrategyRole(payload.stage.strip().upper()),
+            policy=CompositionPolicy(payload.policy.strip().upper()),
+            members=tuple(
+                StrategySetMemberSnapshot(
+                    strategy_version_id=item.strategy_version_id,
+                    strategy_id=item.strategy_id,
+                    role=StrategyRole(payload.stage.strip().upper()),
+                    configuration_digest=item.configuration_digest,
+                    implementation_digest=item.implementation_digest,
+                    member_order=item.member_order,
+                    attribution_priority=item.attribution_priority,
+                )
+                for item in payload.members
+            ),
+            minimum_trigger_count=payload.minimum_trigger_count,
+        )
+        created = get_atomic_strategy_service().save_strategy_set(
+            snapshot,
+            actor_id=payload.actor_id,
+            idempotency_key=key,
+            change_note=payload.change_note,
+        )
+        return {
+            "strategy_set": snapshot.to_dict() | {"snapshot_digest": snapshot.snapshot_digest},
+            "created": created,
+        }
+    except Exception as error:
+        stable_id = uuid5(NAMESPACE_URL, f"tw-intraday-trader:strategy-set:{key}").hex
+        _record_catalog_mutation_failure(
+            error,
+            action="STRATEGY_SET_CREATE",
+            resource_type="STRATEGY_SET_VERSION",
+            resource_id=f"strategy-set-version-{stable_id}",
+            actor_id=payload.actor_id,
+            operation_scope=f"strategy-set:create:strategy-set-{stable_id}",
+            idempotency_key=key,
+            request_document=payload.model_dump(),
+            change_note=payload.change_note,
+        )
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-sets/{strategy_set_version_id}")
+def atomic_strategy_set(strategy_set_version_id: str) -> dict[str, Any]:
+    try:
+        snapshot = get_atomic_strategy_service().get_strategy_set(strategy_set_version_id)
+        return {
+            "strategy_set": snapshot.to_dict() | {"snapshot_digest": snapshot.snapshot_digest}
+        }
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.get("/api/strategy-audit-events")
+def atomic_strategy_audit_events(limit: int = 100) -> dict[str, Any]:
+    try:
+        return {"audit_events": list(get_atomic_strategy_service().list_audit_events(limit=limit))}
+    except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.post("/api/backtests/runs/atomic", status_code=status.HTTP_201_CREATED)
+def create_atomic_backtest_run(
+    payload: AtomicBacktestRunRequest,
+    request: Request,
+    response: Response,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    request_document = payload.model_dump()
+    try:
+        values = dict(request_document)
+        values.pop("actor_id")
+        run, idempotent = get_backtest_service().create_atomic_run(
+            **values,
+            idempotency_key=key,
+        )
+    except Exception as error:
+        _record_atomic_audit(
+            action="ATOMIC_BACKTEST_RUN_CREATE",
+            resource_type="BACKTEST_RUN",
+            resource_id=payload.strategy_set_version_id,
+            actor_id=payload.actor_id,
+            operation_scope="backtest-run:create:atomic",
+            idempotency_key=key,
+            outcome="CONFLICT" if isinstance(error, (BacktestIdempotencyConflict, StrategyCatalogConflict)) else "FAILED",
+            request_document=request_document,
+            change_note=payload.change_note,
+            details={"error_type": type(error).__name__, "message": str(error)},
+        )
+        if isinstance(error, StrategyCatalogConflict):
+            raise _atomic_http_error(error) from error
+        raise _backtest_http_error(error) from error
+    _record_atomic_audit(
+        action="ATOMIC_BACKTEST_RUN_CREATE",
+        resource_type="BACKTEST_RUN",
+        resource_id=run["run_id"],
+        actor_id=payload.actor_id,
+        operation_scope="backtest-run:create:atomic",
+        idempotency_key=key,
+        outcome="REPLAYED" if idempotent else "SUCCESS",
+        request_document=request_document,
+        change_note=payload.change_note,
+        after_digest=run["config_digest"],
+    )
+    if idempotent:
+        response.status_code = status.HTTP_200_OK
+    return {"run": run, "idempotent": idempotent}
 
 
 # ---------------------------------------------------------------------------
@@ -924,22 +1737,106 @@ def backtest_run(run_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/backtests/runs/{run_id}/cancel")
-def cancel_backtest_run(run_id: str) -> dict[str, Any]:
+def cancel_backtest_run(
+    run_id: str,
+    request: Request,
+    payload: BacktestCancelRequest | None = None,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    atomic = False
     try:
-        return get_backtest_service().cancel_run(run_id)
+        existing = get_backtest_service().get_run(run_id)
+        atomic = existing["config"].get("atomic_strategy_run_snapshot") is not None
+        if atomic:
+            _require_atomic_mutation(request, x_strategy_csrf)
+            if payload is None:
+                raise HTTPException(status_code=422, detail="atomic run cancel 需要 idempotency_key 與 actor_id")
+        if atomic and payload is not None:
+            result, replayed = get_backtest_service().cancel_atomic_run(
+                run_id,
+                idempotency_key=payload.idempotency_key,
+                actor_id=payload.actor_id,
+                request_digest=canonical_digest(payload.model_dump()),
+            )
+            if replayed:
+                _record_atomic_audit(
+                    action="ATOMIC_BACKTEST_RUN_CANCEL",
+                    resource_type="BACKTEST_RUN",
+                    resource_id=run_id,
+                    actor_id=payload.actor_id,
+                    operation_scope=f"backtest-run:cancel:{run_id}",
+                    idempotency_key=payload.idempotency_key,
+                    outcome="REPLAYED",
+                    request_document=payload.model_dump(),
+                    after_digest=result["config_digest"],
+                )
+        else:
+            result = get_backtest_service().cancel_run(run_id)
+        return result
+    except HTTPException:
+        raise
     except Exception as error:
+        if atomic and payload is not None:
+            _record_atomic_audit(
+                action="ATOMIC_BACKTEST_RUN_CANCEL",
+                resource_type="BACKTEST_RUN",
+                resource_id=run_id,
+                actor_id=payload.actor_id,
+                operation_scope=f"backtest-run:cancel:{run_id}",
+                idempotency_key=payload.idempotency_key,
+                outcome="CONFLICT" if isinstance(error, BacktestIdempotencyConflict) else "FAILED",
+                request_document=payload.model_dump(),
+                details={"error_type": type(error).__name__, "message": str(error)},
+            )
         raise _backtest_http_error(error) from error
 
 
 @app.post("/api/backtests/runs/{run_id}/retry", status_code=status.HTTP_201_CREATED)
-def retry_backtest_run(run_id: str, request: SimulationCancelRequest, response: Response) -> dict[str, Any]:
+def retry_backtest_run(
+    run_id: str,
+    payload: BacktestRetryRequest,
+    request: Request,
+    response: Response,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    atomic = False
     try:
+        existing = get_backtest_service().get_run(run_id)
+        atomic = existing["config"].get("atomic_strategy_run_snapshot") is not None
+        if atomic:
+            _require_atomic_mutation(request, x_strategy_csrf)
         run, idempotent = get_backtest_service().retry_run(
             run_id,
-            idempotency_key=request.idempotency_key,
+            idempotency_key=payload.idempotency_key,
         )
+    except HTTPException:
+        raise
     except Exception as error:
+        if atomic:
+            _record_atomic_audit(
+                action="ATOMIC_BACKTEST_RUN_RETRY",
+                resource_type="BACKTEST_RUN",
+                resource_id=run_id,
+                actor_id=payload.actor_id,
+                operation_scope=f"backtest-run:retry:{run_id}",
+                idempotency_key=payload.idempotency_key,
+                outcome="CONFLICT" if isinstance(error, BacktestIdempotencyConflict) else "FAILED",
+                request_document=payload.model_dump(),
+                details={"error_type": type(error).__name__, "message": str(error)},
+            )
         raise _backtest_http_error(error) from error
+    if atomic:
+        _record_atomic_audit(
+            action="ATOMIC_BACKTEST_RUN_RETRY",
+            resource_type="BACKTEST_RUN",
+            resource_id=run["run_id"],
+            actor_id=payload.actor_id,
+            operation_scope=f"backtest-run:retry:{run_id}",
+            idempotency_key=payload.idempotency_key,
+            outcome="REPLAYED" if idempotent else "SUCCESS",
+            request_document=payload.model_dump(),
+            after_digest=run["config_digest"],
+        )
     if idempotent:
         response.status_code = status.HTTP_200_OK
     return {"run": run, "idempotent": idempotent}
@@ -948,18 +1845,53 @@ def retry_backtest_run(run_id: str, request: SimulationCancelRequest, response: 
 @app.post("/api/backtests/runs/{run_id}/clone", status_code=status.HTTP_201_CREATED)
 def clone_backtest_run(
     run_id: str,
-    request: BacktestCloneRequest,
+    payload: BacktestCloneRequest,
+    request: Request,
     response: Response,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
 ) -> dict[str, Any]:
+    atomic = False
     try:
+        existing = get_backtest_service().get_run(run_id)
+        atomic = existing["config"].get("atomic_strategy_run_snapshot") is not None
+        if atomic:
+            _require_atomic_mutation(request, x_strategy_csrf)
         run, idempotent = get_backtest_service().clone_run(
             run_id,
-            overrides=request.overrides,
-            idempotency_key=request.idempotency_key,
-            change_note=request.change_note,
+            overrides=payload.overrides,
+            idempotency_key=payload.idempotency_key,
+            change_note=payload.change_note,
         )
+    except HTTPException:
+        raise
     except Exception as error:
+        if atomic:
+            _record_atomic_audit(
+                action="ATOMIC_BACKTEST_RUN_CLONE",
+                resource_type="BACKTEST_RUN",
+                resource_id=run_id,
+                actor_id=payload.actor_id,
+                operation_scope=f"backtest-run:clone:{run_id}",
+                idempotency_key=payload.idempotency_key,
+                outcome="CONFLICT" if isinstance(error, BacktestIdempotencyConflict) else "FAILED",
+                request_document=payload.model_dump(),
+                change_note=payload.change_note,
+                details={"error_type": type(error).__name__, "message": str(error)},
+            )
         raise _backtest_http_error(error) from error
+    if atomic:
+        _record_atomic_audit(
+            action="ATOMIC_BACKTEST_RUN_CLONE",
+            resource_type="BACKTEST_RUN",
+            resource_id=run["run_id"],
+            actor_id=payload.actor_id,
+            operation_scope=f"backtest-run:clone:{run_id}",
+            idempotency_key=payload.idempotency_key,
+            outcome="REPLAYED" if idempotent else "SUCCESS",
+            request_document=payload.model_dump(),
+            change_note=payload.change_note,
+            after_digest=run["config_digest"],
+        )
     if idempotent:
         response.status_code = status.HTTP_200_OK
     return {"run": run, "idempotent": idempotent}
@@ -1085,5 +2017,79 @@ def create_backtest_comparison(request: BacktestCompareRequest) -> dict[str, Any
 def backtest_comparison(comparison_id: str) -> dict[str, Any]:
     try:
         return get_backtest_service().get_comparison(comparison_id)
+    except Exception as error:
+        raise _backtest_http_error(error) from error
+
+
+@app.post("/api/backtests/qualifications", status_code=status.HTTP_201_CREATED)
+def create_backtest_qualification(
+    payload: BacktestQualificationCreateRequest,
+    request: Request,
+    response: Response,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    request_document = payload.model_dump(mode="json")
+    try:
+        qualification, replayed = get_backtest_service().qualify_runs(
+            baseline_run_id=payload.baseline_run_id,
+            challenger_run_id=payload.challenger_run_id,
+            protocol=request_document["protocol"],
+            hypothesis_id=payload.hypothesis_id,
+            idempotency_key=key,
+            actor_id=payload.actor_id,
+            change_note=payload.change_note,
+        )
+    except Exception as error:
+        _record_atomic_audit(
+            action="BACKTEST_QUALIFICATION_CREATE",
+            resource_type="BACKTEST_QUALIFICATION",
+            resource_id=f"{payload.baseline_run_id}:{payload.challenger_run_id}",
+            actor_id=payload.actor_id,
+            operation_scope="backtest-qualification:create",
+            idempotency_key=key,
+            outcome=(
+                "CONFLICT"
+                if isinstance(error, (BacktestIdempotencyConflict, StrategyCatalogConflict))
+                else "FAILED"
+            ),
+            request_document=request_document,
+            change_note=payload.change_note,
+            details={"error_type": type(error).__name__, "message": str(error)},
+        )
+        raise _backtest_http_error(error) from error
+    _record_atomic_audit(
+        action="BACKTEST_QUALIFICATION_CREATE",
+        resource_type="BACKTEST_QUALIFICATION",
+        resource_id=qualification["qualification_id"],
+        actor_id=payload.actor_id,
+        operation_scope="backtest-qualification:create",
+        idempotency_key=key,
+        outcome="REPLAYED" if replayed else "SUCCESS",
+        request_document=request_document,
+        change_note=payload.change_note,
+        after_digest=qualification["evidence_digest"],
+    )
+    if replayed:
+        response.status_code = status.HTTP_200_OK
+    return {"qualification": qualification, "replayed": replayed}
+
+
+@app.get("/api/backtests/qualifications")
+def backtest_qualifications(limit: int = 100) -> dict[str, Any]:
+    try:
+        return {
+            "qualifications": get_backtest_service().list_qualifications(limit=limit)
+        }
+    except Exception as error:
+        raise _backtest_http_error(error) from error
+
+
+@app.get("/api/backtests/qualifications/{qualification_id}")
+def backtest_qualification(qualification_id: str) -> dict[str, Any]:
+    try:
+        return get_backtest_service().get_qualification(qualification_id)
     except Exception as error:
         raise _backtest_http_error(error) from error

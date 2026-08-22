@@ -127,6 +127,21 @@ class RiskPolicy:
         if not self.fresh_book_sides.issubset(frozenset(CommandSide)):
             raise ValueError("fresh_book_sides contains an unsupported side")
 
+    @property
+    def policy_digest(self) -> str:
+        """Return the immutable identity of the effective Hard Risk policy."""
+
+        encoded = json.dumps(
+            _risk_policy_payload(self),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return _risk_policy_payload(self)
+
 
 @dataclass(frozen=True)
 class RiskSnapshot:
@@ -140,6 +155,7 @@ class RiskSnapshot:
     daily_realized_pnl: Decimal
     same_side_pending_order: bool = False
     book_age_seconds: int | None = None
+    daily_loss: Decimal | None = None
 
     def __post_init__(self) -> None:
         if min(
@@ -148,6 +164,8 @@ class RiskSnapshot:
             self.pending_sell_shares,
         ) < 0:
             raise ValueError("position and pending quantities must not be negative")
+        if self.daily_loss is not None and self.daily_loss < 0:
+            raise ValueError("daily_loss must not be negative")
 
 
 @dataclass(frozen=True)
@@ -157,6 +175,23 @@ class RiskDecision:
     approved_quantity_shares: int
     policy_version: str
     evaluated_at: datetime
+
+
+def _risk_policy_payload(policy: RiskPolicy) -> dict[str, object]:
+    return {
+        "version": policy.version,
+        "allow_strategy_origin": policy.allow_strategy_origin,
+        "max_order_notional": canonical_decimal_string(
+            policy.max_order_notional
+        ),
+        "max_position_notional": canonical_decimal_string(
+            policy.max_position_notional
+        ),
+        "max_daily_loss": canonical_decimal_string(policy.max_daily_loss),
+        "require_fresh_book": policy.require_fresh_book,
+        "max_book_age_seconds": policy.max_book_age_seconds,
+        "fresh_book_sides": sorted(side.value for side in policy.fresh_book_sides),
+    }
 
 
 @dataclass(frozen=True)
@@ -266,24 +301,16 @@ def _eligibility_input_digest(
                 "daily_realized_pnl": canonical_decimal_string(
                     snapshot.daily_realized_pnl
                 ),
+                "daily_loss": (
+                    canonical_decimal_string(snapshot.daily_loss)
+                    if snapshot.daily_loss is not None
+                    else None
+                ),
                 "same_side_pending_order": snapshot.same_side_pending_order,
                 "book_age_seconds": snapshot.book_age_seconds,
             },
         },
-        "policy": {
-            "version": policy.version,
-            "allow_strategy_origin": policy.allow_strategy_origin,
-            "max_order_notional": canonical_decimal_string(
-                policy.max_order_notional
-            ),
-            "max_position_notional": canonical_decimal_string(
-                policy.max_position_notional
-            ),
-            "max_daily_loss": canonical_decimal_string(policy.max_daily_loss),
-            "require_fresh_book": policy.require_fresh_book,
-            "max_book_age_seconds": policy.max_book_age_seconds,
-            "fresh_book_sides": sorted(side.value for side in policy.fresh_book_sides),
-        },
+        "policy": _risk_policy_payload(policy),
     }
     encoded = json.dumps(
         payload,
@@ -318,6 +345,14 @@ class RiskGate:
     def __init__(self, policy: RiskPolicy) -> None:
         self._policy = policy
 
+    @property
+    def policy_digest(self) -> str:
+        return self._policy.policy_digest
+
+    @property
+    def policy_payload(self) -> dict[str, object]:
+        return self._policy.to_dict()
+
     def evaluate(
         self,
         command: OrderCommand,
@@ -342,9 +377,14 @@ class RiskGate:
             blocked.append(RiskReason.MARKET_CLOSED)
         if not snapshot.instrument_tradable:
             blocked.append(RiskReason.INSTRUMENT_NOT_TRADABLE)
+        effective_daily_loss = (
+            snapshot.daily_loss
+            if snapshot.daily_loss is not None
+            else max(Decimal("0"), -snapshot.daily_realized_pnl)
+        )
         if (
             command.side is CommandSide.BUY
-            and snapshot.daily_realized_pnl <= -self._policy.max_daily_loss
+            and effective_daily_loss >= self._policy.max_daily_loss
         ):
             blocked.append(RiskReason.DAILY_LOSS_LIMIT)
         if snapshot.same_side_pending_order:

@@ -22,6 +22,11 @@ def test_backtest_forward_migrations_include_logical_schema_move() -> None:
         "003_resumable_history_download.sql",
         "004_backtest_schema.sql",
         "005_atomic_strategy_platform.sql",
+        "006_atomic_strategy_web_management.sql",
+        "007_atomic_strategy_audit_contract.sql",
+        "008_backtest_qualification.sql",
+        "009_backtest_experiment_families.sql",
+        "010_backtest_experiment_family_identity.sql",
     ]
     assert [spec.name for spec in TABLE_SPECS] == [
         "backtest_datasets",

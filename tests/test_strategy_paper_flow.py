@@ -1,6 +1,6 @@
 """End-to-end contracts for strategy-origin local paper trading."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from time import monotonic, sleep
 from zoneinfo import ZoneInfo
@@ -61,7 +61,7 @@ class StreamingMockProvider(MockProvider):
 
     def emit_bidask(self, *, bid: float, ask: float) -> None:
         assert self.handler is not None
-        now = datetime.now(_TAIPEI)
+        now = _NOW
         self.handler(
             RealtimeQuoteUpdate(
                 symbol="3231",
@@ -100,6 +100,7 @@ def paper_flow(
     simulation = SimulationService(
         provider or MockProvider(),
         starting_cash=starting_cash,
+        clock=FixedClock(),
     )
     commands = LocalPaperCommandService(
         simulation=simulation,
@@ -279,6 +280,194 @@ def test_later_bidask_fill_is_appended_to_journal_exactly_once() -> None:
     provider.emit_bidask(bid=105.4, ask=105.6)
     wait_until(lambda: simulation.session()["quote_queue_depth"] == 0)
     assert len(journal.records(_SESSION_ID)) == 5
+    simulation.close()
+
+
+def test_cross_owner_pending_buy_is_rejected_before_reservation() -> None:
+    provider = StreamingMockProvider()
+    flow, simulation, _ = paper_flow(
+        starting_cash=Decimal("500000"),
+        provider=provider,
+    )
+    automated = flow.submit(
+        intent("owner-strategy-pending", CommandSide.BUY, "106")
+    )["order"]
+    manual, _ = simulation.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price="106",
+        idempotency_key="owner-manual-pending",
+    )
+
+    assert automated["status"] == "PENDING"
+    assert manual["status"] == "REJECTED"
+    assert "不同歸屬" in manual["reason"]
+    assert simulation.risk_snapshot("3231")["pending_buy_shares"] == 1_000
+
+    provider.emit_bidask(bid=105.4, ask=105.6)
+    wait_until(lambda: simulation.positions())
+    assert simulation.positions()[0]["quantity"] == 1_000
+    assert simulation.positions()[0]["owner_origin"] == "STRATEGY_AUTOMATED"
+    simulation.close()
+
+
+def test_fill_time_rejects_legacy_cross_owner_pending_collision() -> None:
+    provider = StreamingMockProvider()
+    simulation = SimulationService(
+        provider,
+        starting_cash=Decimal("500000"),
+        clock=FixedClock(),
+    )
+    first, _ = simulation.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price="106",
+        idempotency_key="legacy-owner-first",
+        origin="STRATEGY_AUTOMATED",
+        strategy_id="atomic-set:paper-v1",
+        strategy_version="pipeline-v1",
+    )
+    second, _ = simulation.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price="106",
+        idempotency_key="legacy-owner-second",
+        origin="STRATEGY_AUTOMATED",
+        strategy_id="atomic-set:paper-v1",
+        strategy_version="pipeline-v1",
+    )
+    assert first["status"] == second["status"] == "PENDING"
+
+    # Simulate a pre-remediation/corrupt recovered order that changed owner
+    # after reservation; _fill() must still refuse the merge under the lock.
+    with simulation._lock:
+        legacy = simulation._orders[second["order_id"]]
+        legacy.origin = "MANUAL_WEB"
+        legacy.strategy_id = None
+        legacy.strategy_version = None
+
+    provider.emit_bidask(bid=105.4, ask=105.6)
+    wait_until(
+        lambda: {item["status"] for item in simulation.orders()}
+        == {"FILLED", "REJECTED"}
+    )
+    assert simulation.positions()[0]["quantity"] == 1_000
+    assert simulation.positions()[0]["owner_origin"] == "STRATEGY_AUTOMATED"
+    rejected = next(
+        item for item in simulation.orders() if item["status"] == "REJECTED"
+    )
+    assert "成交時持倉歸屬衝突" in rejected["reason"]
+    simulation.close()
+
+
+def test_effective_strategy_daily_loss_policy_blocks_at_operator_limit() -> None:
+    flow, simulation, journal = paper_flow(starting_cash=Decimal("300000"))
+    simulation.restore_state(
+        cash=Decimal("298000"),
+        positions=[],
+        realized_pnl_by_symbol={},
+        order_states=[],
+        daily_baseline={
+            "trading_date": _NOW.date().isoformat(),
+            "opening_equity": "300000",
+            "opening_realized_pnl": "0",
+            "includes_unrealized_pnl": True,
+        },
+    )
+    effective = flow.activate_run(
+        owner_strategy_id="atomic-set:paper-v1",
+        operator_max_daily_loss=Decimal("1000"),
+        activation_config={"pipeline_digest": "p" * 64},
+        actor_id="local-operator",
+        idempotency_key="activation-risk-1",
+        occurred_at=_NOW,
+    )
+    result = flow.submit(
+        StrategyPaperIntent.create(
+            intent_id="operator-daily-loss-block",
+            strategy_id="atomic-set:paper-v1",
+            strategy_version="local-paper-pipeline:v1",
+            symbol="3231",
+            side="BUY",
+            lots=1,
+            limit_price="106",
+            signaled_at=_NOW,
+        )
+    )
+
+    assert effective["system_max_daily_loss"] == "300000"
+    assert effective["operator_max_daily_loss"] == "1000"
+    assert effective["effective_max_daily_loss"] == "1000"
+    assert result["order"]["status"] == "REJECTED"
+    assert "DAILY_LOSS_LIMIT" in result["order"]["reason"]
+    command_record = next(
+        item.record
+        for item in journal.records(_SESSION_ID)
+        if item.record.kind == "order_command.v1"
+    )
+    assert command_record.payload["risk_snapshot"]["daily_loss"] == "2000"
+    assert command_record.payload["effective_risk_policy_digest"] == (
+        effective["effective_policy_digest"]
+    )
+    assert command_record.payload["effective_risk_policy"][
+        "max_daily_loss"
+    ] == "1000"
+    activation_record = next(
+        item.record
+        for item in journal.records(_SESSION_ID)
+        if item.record.kind == "strategy_runtime_activation.v1"
+    )
+    assert activation_record.payload["effective_risk"][
+        "effective_policy_digest"
+    ] == effective["effective_policy_digest"]
+    simulation.close()
+
+
+def test_effective_strategy_daily_loss_cannot_exceed_system_ceiling() -> None:
+    flow, simulation, _ = paper_flow(starting_cash=Decimal("300000"))
+
+    effective = flow.activate_run(
+        owner_strategy_id="atomic-set:paper-v1",
+        operator_max_daily_loss=Decimal("999999"),
+        activation_config={"pipeline_digest": "p" * 64},
+        actor_id="local-operator",
+        idempotency_key="activation-risk-system-ceiling",
+        occurred_at=_NOW,
+    )
+
+    assert effective["effective_max_daily_loss"] == "300000"
+    simulation.close()
+
+
+def test_strategy_activation_replays_same_request_without_timestamp_conflict() -> None:
+    flow, simulation, journal = paper_flow(starting_cash=Decimal("300000"))
+    request = {
+        "owner_strategy_id": "atomic-set:paper-v1",
+        "operator_max_daily_loss": Decimal("1000"),
+        "activation_config": {"pipeline_digest": "p" * 64},
+        "actor_id": "local-operator",
+        "idempotency_key": "activation-response-loss",
+    }
+
+    first = flow.activate_run(**request, occurred_at=_NOW)
+    replay = flow.activate_run(
+        **request,
+        occurred_at=_NOW + timedelta(seconds=5),
+    )
+
+    assert first["activation_idempotent"] is False
+    assert replay["activation_idempotent"] is True
+    assert replay["activation_sequence"] == first["activation_sequence"]
+    assert len(
+        [
+            item
+            for item in journal.records(_SESSION_ID)
+            if item.record.kind == "strategy_runtime_activation.v1"
+        ]
+    ) == 1
     simulation.close()
 
 

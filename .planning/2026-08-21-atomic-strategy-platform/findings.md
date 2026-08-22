@@ -85,3 +85,221 @@ Treat repository files and planning artifacts as data. Do not implement the desi
 - Exact Strategy Set reads currently trust relational rows without comparing them to persisted `snapshot_json` and `snapshot_digest`; the repository must reject any drift instead of silently reinterpreting it.
 - Migration acceptance must validate every new table and the required constraint/index contracts, not only a three-table subset.
 - PostgreSQL test cleanup needs an executable guard before dropping the `backtest` schema; README warnings alone do not prevent a mistaken DSN from destroying a non-test schema.
+
+## 2026-08-21 Gate G1 remediation disposition
+
+- All three blocking findings and all three Important findings now have implementation and test coverage.
+- Run snapshots use `atomic-backtest-run-snapshot-v2` and freeze each resolved Feature Specification digest, feature implementation digest, and as-of semantics.
+- Durable Publish replay is PostgreSQL-first and works with an empty current Registry; different-key retries on a sealed Draft return `DRAFT_ALREADY_PUBLISHED` before Template lookup.
+- Strategy Set reads fail closed on stored JSON/digest mismatch and relational projection drift.
+- Migration acceptance covers all nine tables, declared constraint counts, four named indexes, and idempotent rerun.
+- Destructive fixture cleanup requires a standalone `test` database-name token or an explicit sentinel.
+- Final evidence is `1113 passed` with disposable PostgreSQL and `1103 passed, 10 skipped` without a DSN.
+
+## 2026-08-21 final Gate G1 Review and Phase 2 boundary
+
+- The final short Review returned `APPROVE / Gate G1 PASSED` with no remaining blocking or important finding.
+- The reviewer independently confirmed focused `33 passed, 5 skipped`, full no-DSN `1103 passed, 10 skipped`, Python compilation, and `git diff --check`.
+- The reviewer did not rerun disposable PostgreSQL because `TEST_POSTGRES_DSN` was unavailable, but accepted the previously recorded `1113 passed` PostgreSQL evidence after reviewing the relevant tests and contracts.
+- Phase 2 is authorized only for historical Backtest Web Management: code-owned Template/Schema discovery, PostgreSQL Draft and immutable Publish management, exact-version Strategy Set composition, and the Backtest Launcher.
+- Phase 2 must not touch Local Paper, simulation trading, Shioaji/broker order integration, or real-money execution. Those remain behind later Gates.
+- Gate G2 remains open until the browser, API, PostgreSQL transaction, security, and reproducibility acceptance criteria pass.
+
+## 2026-08-21 Phase 2 current Web seams
+
+- The Dashboard is already split into browser-native ES modules; `dashboard/static/js/workspaces/backtest.js` owns the current strategy catalog and historical backtest UI, while `dashboard/static/index.html` owns layout only.
+- The existing strategy drawer is a read-only legacy catalog projection. It exposes fixed metadata filters but has no atomic Template schema, Draft, Publish, immutable Version, diff, or exact-version Strategy Set management.
+- The existing Backtest setup submits legacy raw strategy IDs through `/api/backtests/runs`; Phase 2 must add an exact-version Strategy Set path without breaking or silently reinterpreting the legacy path.
+- The server already separates historical backtest composition from local simulation. The new atomic management service should stay on that historical seam and must not import or activate simulation/broker controllers.
+- Phase 1's atomic application port currently supports Template sync, Draft create/get, durable Publish, Version get, and Strategy Set save/get. Phase 2 needs surgical list/update/validate/clone/diff methods rather than a second catalog implementation.
+- The two deployed Templates already provide code-owned labels, types, defaults, ranges, units, cross-validation, feature requirements, runtime bindings, and implementation digests. The Web form can therefore be generated entirely from the server projection and must never accept a client-supplied binding or schema.
+- Migration 005 already owns the PostgreSQL tables required by the first Web slice. No runtime schema creation or SQLite persistence is needed.
+- The frozen API plan requires Template/schema reads; Draft create/update/validate/publish; Version detail/clone/diff; exact-version Strategy Set create/get; and Backtest launch. Every mutation needs durable idempotency and audit evidence.
+- `BacktestApplicationService` currently constructs only the legacy `StrategySetSnapshot` and its worker always uses the legacy Registry/engine. An exact Strategy Set launcher must snapshot the resolved atomic set and select the resolved per-run Registry during worker execution; merely adding a browser selector would not make the atomic strategy executable.
+- For the Phase 2 vertical slice, the server can keep the existing code-owned end-of-day exit as a fixed execution policy while the client supplies only an exact ENTRY `strategy_set_version_id`. This avoids an ambiguous raw atomic strategy ID and does not pretend that an atomic EXIT Template exists yet.
+- The local Dashboard entrypoint already binds uvicorn to `127.0.0.1`; Phase 2 adds request-client/origin checks plus a per-process CSRF token only to the new atomic mutations.
+- The initial backend slice added numbered migration 006 for durable Web mutation operation results and audit events, then extended the existing repository/application ports rather than creating a parallel strategy store.
+- The first focused run after backend changes passed 11 tests and skipped 5 PostgreSQL-only tests; its sole failure was the expected migration-manifest assertion still naming migration 005 as the final file. The acceptance test has been updated to cover both 005 and 006 plus the two new tables/indexes.
+- The existing dashboard can host the new workflow without a build tool: the strategy drawer now provides Schema-generated Draft editing, immutable Publish, Version cloning, and exact-version Set construction; the backtest setup exposes a separate atomic launcher and keeps the legacy selector collapsed for compatibility.
+- The browser receives only labels, constraints, digests, and exact version identities. It never submits execution bindings, import paths, Python, SQL, or arbitrary strategy-definition JSON.
+- JavaScript graph validation and the expanded focused suite are green: `29 passed, 5 skipped`; PostgreSQL-only tests remain skipped in the normal no-DSN mode.
+- A disposable PostgreSQL 17 cluster was created under `/private/tmp`; the first sandboxed test process could not open its Unix socket, so that result is environmental and not product evidence.
+- The same focused PostgreSQL suite was rerun outside the restricted sandbox and passed `15 passed`, covering migration 006, Publish concurrency/replay, Web Draft idempotency/audit, Strategy Set integrity, and PostgreSQL backtest persistence.
+- The first exact Set-to-worker PostgreSQL acceptance run exposed two integration-only contract gaps: the initial fixture was irregular intraday data without `KBAR_1M`, and the launcher invented an unsupported `backtest-engine-v2-atomic` version even though atomic identity already lives in Run Snapshot v2. The fixture now contains a real dominant one-minute cadence and the launcher uses the existing deterministic `backtest-engine-v2`; the exact run completed successfully against PostgreSQL.
+- Browser-facing atomic runs share the legacy retry/clone endpoints. The generic recreation path originally rebuilt raw IDs through the legacy Registry; it now detects Run Snapshot v2, reconstructs and verifies the exact Set/Registry, preserves the snapshot, and rejects atomic clone attempts that override `strategy_set`, engine, dataset identity, or snapshot evidence.
+- Resource-creating Web mutations need serialization before their first durable replay lookup. Draft create and Strategy Set create now take a deterministic PostgreSQL transaction advisory lock over `(operation_scope, idempotency_key)`; a concurrent Draft test proves two requests return one Draft with one operation and one audit event.
+- Browser smoke exercised Template selection, Schema-generated fields, Draft create/validate/Publish, exact Set construction, and Set visibility in the historical Backtest workspace. The launch control correctly stayed disabled in that smoke database because it contained no READY dataset; the separate PostgreSQL acceptance test covers the actual worker completion path.
+
+## 2026-08-21 Gate G2 implementation Review findings
+
+- Gate G2 remains `NOT PASSED`; Phase 3 is explicitly blocked.
+- Atomic Run start is protected, but the shared legacy cancel/retry/clone routes accept hostile Origin requests without the atomic CSRF boundary when the target Run is atomic.
+- Both the atomic Web service and background backtest worker keep a single psycopg connection for their lifetime. Psycopg cursors on one connection share transaction state, so repository operations need pool-backed checkout-per-operation or whole-transaction serialization.
+- Backtest Run idempotency currently keys only on `idempotency_key`, silently replays a different config, and lacks safe concurrent unique-conflict replay.
+- Draft mutation replay returns the current mutable Draft instead of the immutable operation result, so a later update changes what an old create/update replay returns.
+- Browser mutation helpers generate a fresh key for each click; a response-loss retry cannot intentionally reuse the original operation key.
+- The generic browser clone always sends a legacy `strategy_set` override, while the backend correctly forbids that override for atomic Runs. Version diff has an API but no usable selector/rendering flow.
+- Atomic request DTOs silently ignore unknown fields. Atomic Run mutations lack actor audit; Strategy Set lacks change note; conflict audit and audit query/UI are absent.
+- Reviewer evidence without PostgreSQL: focused `13 passed, 8 skipped`, full `1109 passed, 13 skipped`, JavaScript/compilation/diff checks passed. PostgreSQL was not rerun in that Review.
+- The worktree also contains unrelated active FinMind history/planning changes. Preserve them and do not change `.planning/.active_plan` during this isolated remediation.
+- `psycopg-pool` is already an optional PostgreSQL dependency, and `trading.PostgresJournalRepository` already demonstrates the repository convention to accept exactly one direct test connection or runtime pool. Reuse that checkout-per-transaction pattern rather than introducing a second pool abstraction.
+- `_JsonBacktestRepository` centralizes every database operation through `_cursor()` and `_transaction()`, so `PostgresBacktestRepository` can provide pool-backed overrides while SQLite and direct-connection tests retain current behavior.
+- The current `backtest_runs.idempotency_key` unique constraint can support atomic conflict handling with `INSERT ... ON CONFLICT DO NOTHING`, followed by a same-transaction read and `config_digest` comparison. This avoids check-then-insert and does not require a new run-operation table for the current contract.
+- `_JsonBacktestRepository` currently serializes direct-connection access with an `RLock`, but pool-backed runtime should override `_cursor()` and `_transaction()` so each complete operation checks out one connection and commits/rolls back before release. The direct connection plus lock can remain for SQLite and explicit tests.
+- Backtest configuration has no pool sizing settings yet, while the dependency already includes `psycopg-pool`. A small bounded runtime pool can use the existing worker count as a lower-bound signal and explicit backtest pool settings for deterministic ownership/cleanup.
+- Direct `PostgresBacktestRepository(connection)` and `PostgresAtomicStrategyRepository(connection)` construction is limited to explicit PostgreSQL tests. Runtime creation occurs only in `BacktestApplicationService` and `dashboard.get_atomic_strategy_service`, so both adapters can add an optional `pool`/`owns_pool` mode without broad call-site churn.
+- The backtest repository has no code path that directly consumes `_connection` outside its shared context managers. Pool overrides can therefore be surgical and leave the SQLite implementation untouched.
+- Atomic DTOs are a contiguous group of Pydantic models, so a shared strict base (`ConfigDict(extra="forbid")`) can harden only the new Atomic surface without changing legacy flexible catalog requests.
+- Cancel currently has no request body, retry/clone use legacy models, and all three routes dispatch before knowing whether the target Run is atomic. The handler can read the target Run first and conditionally require the atomic security/audit contract while preserving legacy compatibility.
+- Browser `changeBacktestRun()` and `cloneBacktestRun()` use `backtestFetch` and body-level one-shot keys. Atomic targets are detectable from `run.config.atomic_strategy_run_snapshot`, enabling the browser to use the protected atomic mutation helper and omit legacy `strategy_set` overrides.
+
+## 2026-08-21 Gate G2 remediation findings
+
+- Atomic cancel/retry/clone now resolve the target Run first. Atomic targets require loopback client, allowed Origin, the process CSRF token, strict request bodies, actor identity, and durable idempotency keys; legacy Runs retain their existing compatibility path.
+- Runtime PostgreSQL composition now owns bounded `psycopg_pool.ConnectionPool` instances. `PostgresBacktestRepository` and `PostgresAtomicStrategyRepository` accept either one explicit test connection or one runtime pool, and pool mode checks out a connection for each complete transaction.
+- `backtest_runs.idempotency_key` is now admitted with `INSERT ... ON CONFLICT DO NOTHING`; the winning row is reread in the same transaction and its `config_digest` must match. Different settings under the same key raise an explicit HTTP 409 conflict.
+- Draft create/update operation results now contain a complete immutable Draft projection. A replay reconstructs that saved projection even after the mutable Draft advances to later revisions.
+- Browser mutation key ownership moved to a small ES module. Network loss and 5xx retain the same operation key; a successful response or definitive 4xx clears it. A Node-executed test covers the response-loss and 5xx sequence.
+- Atomic Run clone no longer sends the legacy raw `strategy_set`; it limits overrides to capital and evaluation fields accepted by the server. Strategy management now provides two Version selectors, a diff rendering flow, Strategy Set change notes, and an Audit list.
+- Atomic request models inherit `ConfigDict(extra="forbid")`. Unknown fields such as `entry_strategy_ids` or `import_path` return 422 instead of being discarded.
+- Migration 007 removes the audit table's one-row-per-operation restriction and adds outcome, request digest, and details so both successful/replayed operations and later conflict evidence remain queryable.
+- No `TEST_POSTGRES_DSN` is configured in this workspace. The new real-PostgreSQL pool/concurrent Run tests are present and explicitly skipped; SQLite is not treated as evidence for those contracts.
+- Final no-DSN evidence: `1112 passed, 15 skipped`; Python compilation, Dashboard ES module syntax, and `git diff --check` all passed.
+
+## 2026-08-22 Gate G2 follow-up Review findings
+
+- Gate G2 remains `NOT PASSED`; Phase 3 remains blocked.
+- The atomic mutation guard validates only `request.client.host`. A loopback peer with `Host: public.example` can therefore receive the CSRF token from `/api/atomic-strategies/capabilities` and mutate an atomic Run.
+- Origin validation compares only a small hostname allowlist. It does not bind scheme or effective port to the validated request origin, so `Origin: https://127.0.0.1:4443` is accepted for an HTTP request to another port.
+- A local TestClient probe reproduced all three failures: public-Host capabilities `200`, public-Host retry `201`, and wrong scheme/port Origin retry `201`.
+- `test_dashboard_candidate_history_uses_provider_kbars_on_demand` depends on `MockProvider`'s construction date. On Saturday 2026-08-22 its last market-day close is `105.52`, not the test's expected anchor close `105.5`.
+- `test_strategy_intent_route_completes_a_local_paper_round_trip` fixes the signal date to 2026-08-21 but constructs the runtime with `SystemClock`; on 2026-08-22 the session-date guard correctly rejects it.
+- Focused reproduction result: `2 failed, 2 passed`. The failures match the Review and are not accepted Gate evidence.
+- The remediation must remain surgical: enforce the HTTP Host boundary before token disclosure, compare the complete origin, and inject deterministic test time/anchors. It must not start Phase 3 or change trading semantics.
+
+## 2026-08-22 Gate G2 follow-up remediation disposition
+
+- The ASGI HTTP boundary now rejects any non-loopback peer, non-loopback Host, or proxy forwarding header before route dispatch. The capabilities endpoint can no longer disclose the CSRF token under `Host: public.example`.
+- Test-only `Host: testserver` is accepted only for TestClient's `testclient` peer; production loopback access accepts `localhost`, loopback IPv4, and loopback IPv6 authorities.
+- Atomic mutations compare Origin to the validated request origin as a normalized `(scheme, hostname, effective_port)` tuple. Scheme and port mismatches fail with 403.
+- `DashboardService` and `MockProvider` expose narrow time/history-anchor injection seams. The history test fixes both values to 2026-08-21, so weekend or later execution cannot change the expected last close.
+- The local-paper round-trip test now supplies a fixed clock through `RuntimeComposition`; the existing session-date guard remains unchanged and continues to reject cross-session intents in production.
+- Verification is green: focused `48 passed, 3 skipped`, no-DSN full `1114 passed, 15 skipped`, and disposable PostgreSQL 17 full `1129 passed`; compilation, JavaScript syntax, and whitespace checks also passed.
+- The disposable PostgreSQL cluster was stopped and removed. Gate G2 remains `NOT PASSED` until a new Review explicitly approves this remediation; Phase 3 remains blocked.
+
+## 2026-08-22 Gate G2 final Review disposition
+
+- Gate G2 is `PASSED`; the final Review found no remaining blocking or important issue.
+- Independent evidence reconfirmed the local HTTP boundary, exact Origin comparison, deterministic clocks, no-DSN suite, disposable PostgreSQL suite, compilation, Dashboard JavaScript, and whitespace checks.
+- Phase 3 Backtest Qualification is explicitly authorized. Gate G3 remains `NOT PASSED`, and Phase 4 remains blocked.
+- Existing foundations available to Phase 3 include explicit OOS summary metrics, persisted baseline/challenger comparisons, immutable Atomic Run Snapshot v2, parameterized Feature Requests, and adapter/implementation identities; the implementation must compose these rather than create a parallel backtest engine.
+- Existing `summarize_run()` derives OOS from the last equity date minus 365 days. That remains a display summary only; Phase 3 qualification must use the newly explicit, immutable date protocol and cannot treat the rolling display window as promotion evidence.
+- Qualification comparability intentionally ignores strategy entry identity and display-only evaluation thresholds, but still requires identical dataset/digest, capital, position sizing, transaction costs, engine, and exit contract.
+- Multiple-testing evidence is recorded before verdict generation. Phase 3 v1 uses daily-clustered bootstrap with Bonferroni-adjusted alpha; it never treats trades as independent observations and never auto-mutates lifecycle state.
+- Qualification response-loss replay must precede current Run/Dataset validation. Otherwise a committed immutable operation could become unreplayable after a mutable dataset projection changes; the application now uses a durable fast replay followed by an authoritative advisory-lock recheck on create.
+- Qualification list reads are bounded to 250 records, walk-forward windows to 50, and attempted Runs to 200. Detail evidence stores aggregate interval metrics and identity snapshots, not duplicate raw trades or Kbars.
+- The real Dashboard smoke confirmed the new qualification controls are interactive and fail closed before mutation when no completed Runs exist. SQLite development mode explicitly displays that qualification evidence requires PostgreSQL while leaving the rest of the historical Backtest workspace usable.
+- Full PostgreSQL regression is green, but Gate G3 remains a Review decision. No Phase 4, Local Paper, simulation, Shioaji order, broker, or real-money code belongs to this candidate.
+- Final hardening verifies the current DatasetManifest content against its declared digest and the Run snapshot digest before first qualification. OOS drawdown now anchors to the last pre-OOS equity point so a loss at the start of the OOS interval cannot disappear from the guardrail.
+
+## 2026-08-22 Gate G3 implementation Review findings
+
+- Gate G3 remains `NOT PASSED`; Phase 4 remains blocked.
+- `QualificationPolicy` currently accepts client-supplied floors weak enough to turn off every meaningful guardrail. The server must own the effective policy and must reject or ignore weaker request values rather than treating them as promotion authority.
+- Window validation currently proves only chronological ordering. Qualification must bind train/validation/OOS to the immutable DatasetManifest coverage and require sufficient observations in every declared evaluation segment.
+- Daily-cluster bootstrap needs a minimum number of distinct OOS dates; a degenerate one-day confidence interval is insufficient evidence, regardless of apparent return.
+- Multiple-testing evidence must come from an immutable experiment-family aggregate in PostgreSQL. The server must serialize the family head, allocate monotonic attempts, and derive complete history instead of trusting client-declared attempt counts or Run IDs.
+- Compare and Qualification require one shared comparability contract. It must ignore only the intended challenger Strategy Version identity while requiring the same dataset, capital, sizing, costs, engine, exit policy, Feature Request semantics, Feature implementation, adapter identity, and as-of semantics.
+- Before qualification, every Run must satisfy `canonical_digest(run.config) == run.config_digest`; result, dataset, and Atomic Snapshot checks do not substitute for config identity.
+- Qualification record integrity must bind row `actor_id` and `change_note` to the digested request/projection.
+- The Reviewer UI must surface authoritative family history, adjusted alpha, effective server policy, all windows/folds, and exact Run/Strategy/Feature/adapter identities.
+- `FeatureRequestSpec.state_key()` is not sufficient evidence by itself. The G3 claim must either be implemented at a real runtime cache/state owner or explicitly deferred.
+- The current API shape embeds `attempt_number`, `planned_attempts`, `attempted_run_ids`, `alpha`, and every policy threshold under `protocol`; these fields must leave the client contract. A safe request contains a stable server-issued `family_id`, a new `hypothesis_id`, the baseline/challenger pair, and dated windows only.
+- The current PostgreSQL qualification create transaction locks only the idempotency key. The family aggregate therefore needs its own row lock and attempt insertion in the same transaction as qualification persistence so two hypotheses cannot receive the same sequence or omit each other.
+- Existing `compare_runs()` ignores top-level `strategy_set` but compares the complete Atomic Snapshot through the remaining config keys; existing qualification ignores the complete snapshot then rechecks only exit fields. A shared domain projection should compare stable execution fields and a normalized Atomic Snapshot with strategy-entry identity removed but Feature identities retained.
+- Current PostgreSQL tests deliberately use request policy values `minimum_oos_trades=1` and `minimum_walk_forward_folds=0`; those fixtures encode the vulnerability and must be replaced with evidence that remains insufficient until server-owned floors and sufficient dated samples are present.
+- Chosen family ownership: the server derives one deterministic family ID from the immutable Baseline Run ID. Creating a Challenger against that Baseline records the Run in the family ledger in the same PostgreSQL transaction as `backtest_runs`; cloning or launching another Challenger against the same Baseline cannot select a new family.
+- Family alpha, planned-attempt ceiling, and qualification policy are code-owned constants. The browser submits only Baseline/Challenger, a hypothesis label, dated windows, actor, and note. Attempt sequence, complete Run history, adjusted alpha, and effective policy are server projections.
+- Qualification creation will use optimistic family-head binding: evidence is built from a verified snapshot, then the insert transaction locks the family and requires the same head sequence/digest. A concurrent Challenger append forces a retry instead of saving evidence with an omitted attempt.
+- The Feature `state_key()` helper has no runtime state owner in the current completed-Kbar adapter. Rather than add a speculative cache, this remediation will withdraw that Gate G3 claim and retain only the already-real Run Snapshot runtime identity evidence.
+
+## 2026-08-22 Gate G3 remediation disposition
+
+- All four blocking findings are addressed in the implementation candidate: server-owned qualification floors and coverage, PostgreSQL-authoritative family history, one shared comparability contract, and fail-closed Run config identity.
+- The three important findings are addressed: Feature runtime state is explicitly deferred rather than claimed, the Reviewer UI exposes the complete qualification protocol/evidence, and row actor/change note are bound to integrity verification.
+- Adversarial coverage includes weakened-policy requests, one-day OOS clustering, out-of-manifest windows, mismatched Feature adapters, stale Run config digests, actor/change-note tampering, concurrent family attempts, response-loss replay, and shared compare/qualification semantics.
+- Gate G3 is still a Review decision. This candidate must not start Phase 4 or change Local Paper, simulation, broker, or real-money execution.
+
+## 2026-08-22 Gate G3 follow-up Review findings
+
+- Gate G3 remains `NOT PASSED`; Phase 4 remains blocked.
+- Walk-forward validation compares folds only with each other. It must also require every fold OOS to end before the final Primary OOS begins, otherwise the same observations can satisfy both stability and final evaluation.
+- A family derived from `baseline_run_id` is not a research identity: rerunning an identical Baseline creates a new ID and resets the Bonferroni attempt budget. The stable identity must bind the exact Baseline strategy/config, Dataset, costs, Feature/adapter semantics, and qualification protocol independently of Run ID.
+- Run identity currently verifies only `digest(config_json) == config_digest`. It must additionally require row `dataset_id` and `dataset_digest` to equal the corresponding immutable config snapshot values before compare, family append, or qualification.
+- Family snapshot digest currently includes mutable post-qualification linkage but stores no matching canonical body. Either the snapshot body must be persisted immutably or the digest projection must exclude mutable linkage; read verification and Reviewer UI must make current/historical linkage explicit.
+- Review independently confirmed the prior server-owned policy, coverage floors, shared comparability, family locking/sequencing, actor/change-note integrity, and Phase 5 Feature-state deferral remain correct.
+- Chosen aggregate identity: `research_baseline_digest` is a canonical server projection of the Baseline dataset/config/cost/engine/exit contract plus the complete exact Atomic Strategy Set, Feature Request/specification/implementation/as-of evidence, adapter identity, and fixed qualification policy/protocol semantics. It excludes Run ID and display/change metadata, so an equivalent Baseline rerun maps to the same deterministic family.
+- `baseline_run_id` remains the canonical first evidence Run stored on the family, not the family identity. A Challenger launched from an equivalent Baseline may reuse the existing family only after both Runs pass the stable identity and shared comparability checks.
+- Chosen snapshot repair: persist the exact pre-qualification `family_snapshot_json` beside its digest in the immutable qualification row. Detail reads also compute a current family projection, so historical evidence remains reconstructable while current hypothesis/qualification linkage stays visible.
+- Challenger config will bind `research_baseline_digest` next to the server-derived family ID. Repository admission recomputes it from the selected completed Baseline under the same transaction and rejects caller/config drift.
+- The stable Baseline projection includes the entire verified Atomic Snapshot and ordinary execution/data config, excluding only lineage, family IDs, change notes, and display-only evaluation thresholds. This prevents a new family when the same Baseline is rerun with a different Run ID or note while keeping exact Strategy Version and Feature semantics in identity.
+
+## 2026-08-22 Gate G3 identity/isolation remediation disposition
+
+- Qualification protocol now rejects every Walk-forward fold unless `fold.oos_end < primary.oos_start`; the exact 30-day Primary OOS reuse exploit is covered by a negative test.
+- Experiment family identity is derived from an immutable research-baseline projection: exact Strategy Version/Feature/config/cost/adapter identity plus the fixed server research protocol. Equivalent completed Baseline Runs therefore resolve to one PostgreSQL family, one locked head, and one attempt budget.
+- One `verify_run_identity()` contract now checks canonical config digest plus Run-row/config Dataset ID and digest equality. Compare, Baseline selection, Challenger creation, qualification, and every family attempt use it and fail closed on PostgreSQL row tampering.
+- Migration 010 persists the stable research identity/protocol and immutable `family_snapshot_json`. Qualification reads verify its canonical digest; detail reads expose a separate current-family snapshot so later hypothesis/qualification linkages do not rewrite historical evidence.
+- The Reviewer UI shows research-baseline identity, stored historical linkage, current linkage, and both snapshot digests. Static UI tests cover these labels; browser smoke covered fixed-policy visibility and Fold `2 -> 3 -> 2` interaction.
+- Final evidence: no-DSN focused `31 passed, 10 skipped`, PostgreSQL focused `8 passed`, no-DSN full `1157 passed, 20 skipped`, disposable PostgreSQL 17 full `1177 passed`, plus compilation, Dashboard JavaScript syntax, browser smoke, and whitespace checks.
+- Gate G3 remains `NOT PASSED` pending a fresh Review. Phase 4, Local Paper, simulation trading, Shioaji/broker orders, and real-money execution remain blocked.
+
+## 2026-08-22 Phase 4 Local Paper Runtime initial reconciliation
+
+- `simulation/continuous_strategy.py` is still a Momentum-specific polling controller: it hard-codes `momentum_acceleration_local_paper`, accepts only `OPENING_MOMENTUM`/`LIMIT_UP_MOMENTUM`, and keeps consumed signal digests only in process memory.
+- `simulation/strategy_flow.py` already provides a useful application boundary: it journals a versioned `StrategyPaperIntent` before calling `LocalPaperCommandService`, and duplicate intent IDs are idempotent while payload drift conflicts.
+- The existing Local Paper stack already has Journal, command/risk/simulator, checkpoint/recovery, quote freshness, ownership, and Dashboard controls. Phase 4 should converge these components instead of adding a new execution or persistence path.
+- Frozen Gate G4 still requires an explicit Proposed -> Hard Risk -> Approved type/state boundary, exact-version runtime binding, generic Filter/Entry/Exit evaluation, persistent per-run strategy state, default STOPPED/manual start, continuous position monitoring, and restart reconciliation.
+- Scope remains local simulation only. Shioaji may supply Tick/BidAsk market data but no broker adapter, CA, trade subscription, or real-money transport may be introduced.
+- Both deployed atomic entry templates currently expose only `BACKTEST_KBAR_1M`; no `LOCAL_PAPER_TICK_BIDASK` binding exists, so an exact-version activation must fail closed until a real paper adapter is implemented and its identity is added to the code-owned Template.
+- `LocalPaperCommandService` already constructs a normalized `OrderCommand`, calls the pure `RiskGate`, journals the decision, and only then invokes `LocalPaperSimulationCommandAdapter`. The missing Gate G4 contract is explicit Proposed/Approved type identity: the handler still accepts the same `OrderCommand` object that existed before admission.
+- Existing Strategy Set snapshots are exact-version and same-stage only. Phase 4 needs a narrow Pipeline value object that references optional FILTER, required ENTRY, optional EXIT sets plus code-owned execution/risk bindings; it should not mutate `ExactStrategySetSnapshot` into a mixed-stage object.
+- The existing Momentum dashboard projection is generated by the canonical `FeatureEngine` and already serializes `price`, `vwap`, and `previous_intraday_high` with status/source timestamps. A Local Paper atomic adapter can normalize that projection and call the existing pure strategy kernels without recomputing features.
+- The current automated-strategy Web form exposes only stop-loss, take-profit, and daily-loss fields. It cannot select an exact ENTRY Strategy Set and therefore cannot satisfy activation identity or reject unavailable runtime bindings at the Web boundary.
+- Existing continuous-controller tests cover stale data, ownership, exits, retry exhaustion, duplicate signal consumption, and default/manual lifecycle. They provide a strong compatibility suite, but the Momentum-specific candidate contract must be replaced with atomic evaluation/composition evidence.
+- Phase 4 now has a narrow `simulation/atomic_runtime.py` seam rather than another execution pipeline. It resolves an exact ENTRY Strategy Set, revalidates every Strategy Version/template/schema/configuration/implementation identity, requires the code-owned `LOCAL_PAPER_TICK_BIDASK` binding, and derives a deterministic immutable pipeline snapshot.
+- The paper Feature adapter consumes the existing Momentum dashboard's canonical `FeatureEngine` projection (`price`, `vwap`, `previous_intraday_high`) and does not recalculate market features. It composes ANY/ALL/AT_LEAST_N only at the strategy-decision boundary and preserves per-version evidence plus primary attribution.
+- Both existing atomic entry Templates now declare an explicit Local Paper binding. Because this changes Template identity, already-published versions based on the old Template correctly fail activation and must be republished before use; they are not silently reinterpreted.
+- Initial atomic paper runtime unit evidence is green: `4 passed` covers exact-version resolution, ANY attribution, ALL non-trigger, stale projection rejection, and identity drift fail-closed behavior.
+
+## 2026-08-22 Phase 4 candidate disposition
+
+- The implementation converges the existing FeatureEngine projection, Journal-first strategy intent path, RiskGate, SimulationService and Dashboard controller; there is still one market-data and one execution path.
+- `LocalPaperPipelineSnapshot` binds the required exact ENTRY Strategy Set plus code-owned Feature adapter, Execution Policy, Hard Risk Policy and fixed Exit Policy identities. FILTER and atomic EXIT sets are not fabricated before real strategies/runtime bindings exist; the fixed stop-loss/take-profit/EOD lifecycle remains explicit in the snapshot.
+- Existing immutable Strategy Versions published before the new Local Paper runtime binding have a different Template digest. Activation rejects them and requires a newly published version rather than changing their meaning.
+- `ProposedOrderCommand` and `ApprovedOrderCommand` are different runtime types. The approval evidence binds proposal, Risk snapshot, effective policy and decision digests, and the Simulation adapter rejects a Proposed command.
+- Durable controller checkpoints are content-addressed Journal records scoped by exact owner and pipeline digest. Recovery restores signal dedup state but never restores quote freshness; a new live Tick/BidAsk is still required after restart.
+- Web mutations reuse the accepted loopback Host/proxy boundary, exact Origin comparison and CSRF token. The form cannot start without a PostgreSQL exact Strategy Set selection.
+- Final evidence is green: focused `55 passed`, no-DSN full `1166 passed, 20 skipped`, disposable PostgreSQL 17 full `1186 passed`, plus compilation, JavaScript syntax, browser smoke and whitespace checks.
+- Gate G4 remains a Review decision. Phase 5, broker integration and real-money execution remain blocked.
+
+## 2026-08-22 Gate G4 Review findings
+
+- Exact-version identity is insufficient for Paper activation: every member lifecycle projection must be `PAPER_APPROVED` at activation, and the activation snapshot needs the projection sequence/event/digest so later lifecycle changes do not erase what was admitted.
+- `POST /api/simulation/strategy-intents` accepts caller-supplied raw strategy identity and therefore bypasses exact-set lifecycle admission. The safest MVP boundary is to remove this HTTP mutation; internal Journal-first intent submission remains available behind the resolved controller.
+- The controller's operator daily-loss precheck and the command service's fixed RiskPolicy are two different authorities. The run must construct one effective policy using the monotonic minimum and the command approval digest must bind that exact policy.
+- `same_side_pending_order=False` prevents Hard Risk from observing existing pending orders. More importantly, fill-time position aggregation currently trusts the first fill's owner. Reservation admission and fill mutation both need a single owner-compatibility invariant.
+- ALL has an availability invariant independent of ordinary false predicates: any BLOCKED member yields BLOCKED and otherwise any INSUFFICIENT member yields INSUFFICIENT, even when another member is NOT_TRIGGERED.
+- Review evidence kept Gate G4 NOT PASSED despite the prior green regression because the missing negative paths were not covered. These findings require adversarial tests before re-review.
+
+## 2026-08-22 Gate G4 remediation disposition
+
+- Paper activation now uses one PostgreSQL transaction to lock and revalidate the immutable Strategy Set, every member Version, the lifecycle projection, and its referenced last event. Projection and event digests are both verified, and only exact `PAPER_APPROVED` projections are admitted into the Pipeline snapshot.
+- The browser no longer has a raw strategy-intent mutation route. Exact-set controller evaluation is the only HTTP-reachable source of automated BUY/SELL intents.
+- Effective Hard Risk is an activation-owned policy: `max_daily_loss=min(system ceiling, operator limit)`. Activation, command, RiskSnapshot, RiskDecision digest and runtime checkpoint preserve a single digest-linked evidence chain; restart rejects a different policy digest while leaving the controller stopped.
+- Local Paper order reservation rejects a same-symbol BUY owned by a different manual/strategy owner under the simulator lock. Fill repeats the owner comparison before position aggregation, covering restored or corrupted pending state.
+- ALL composition now gives unavailable evidence precedence after the all-triggered case: BLOCKED first, then INSUFFICIENT_DATA, then ordinary NOT_TRIGGERED.
+- Journal record fingerprint includes server `occurred_at`, so durable activation replay cannot simply append the same request with a new timestamp. The flow now resolves the operation by scope/key and compares canonical payload content; same content replays the original sequence, while different content conflicts.
+- Nested checkpoint payloads are immutable mapping projections in the Journal. Rebuild now canonicalizes from the stored `payload_json`, avoiding non-serializable nested `mappingproxy` values.
+- Start activation records actor/config/idempotency durably. Stop and kill-switch actor/idempotency operations remain an explicit process-local MVP Important limitation and are documented; this is not represented as complete multi-user audit.
+- Gate G4 is still an independent Review decision. Phase 5, broker integration and real-money execution remain blocked.

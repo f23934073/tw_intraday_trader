@@ -8,7 +8,7 @@ from time import sleep
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from fastapi import Response
+from fastapi import Request, Response
 from fastapi.testclient import TestClient
 
 import dashboard.server as server
@@ -90,6 +90,20 @@ class FakeAutomatedStrategyController:
 
     def status(self) -> dict:
         return {"state": "RUNNING", "decision": "WAITING_SIGNAL"}
+
+    def engage_kill_switch(self, reason: str) -> dict:
+        return {
+            "state": "KILLED",
+            "decision": "KILL_SWITCH_ENGAGED",
+            "kill_switch": {"engaged": True, "reason": reason},
+        }
+
+    def reset_kill_switch(self) -> dict:
+        return {
+            "state": "STOPPED",
+            "decision": "STOPPED",
+            "kill_switch": {"engaged": False, "reason": None},
+        }
 
 
 class ExhaustedUsageProvider(MockProvider):
@@ -209,7 +223,7 @@ def test_submit_simulation_order_http_rejects_boolean_share_quantity(
     )
 
 
-def test_strategy_intent_http_rejects_boolean_share_quantity(monkeypatch) -> None:
+def test_raw_strategy_intent_http_route_is_not_exposed(monkeypatch) -> None:
     monkeypatch.setattr(server, "_composition", None)
     monkeypatch.setattr(server, "_provider", MockProvider())
     monkeypatch.setattr(server, "_service", None)
@@ -235,12 +249,7 @@ def test_strategy_intent_http_rejects_boolean_share_quantity(monkeypatch) -> Non
             },
         )
 
-    assert response.status_code == 422
-    assert any(
-        error["loc"] == ["body", "quantity_shares"]
-        and error["type"] == "int_type"
-        for error in response.json()["detail"]
-    )
+    assert response.status_code == 404
 
 
 def test_cancelled_simulation_order_route_can_create_bounded_retry(monkeypatch):
@@ -393,51 +402,7 @@ def test_health_routes_report_local_simulation_without_account_access(monkeypatc
     assert readiness["quote_queue_capacity"] == 1_024
 
 
-def test_strategy_intent_route_completes_a_local_paper_round_trip(monkeypatch):
-    clock = FixedClock(datetime.fromisoformat("2026-08-21T10:32:00+08:00"))
-    composition = RuntimeComposition.create(MockProvider(), clock=clock)
-    monkeypatch.setattr(server, "_composition", composition)
-    monkeypatch.setattr(server, "_provider", composition.provider)
-    monkeypatch.setattr(server, "_service", composition.dashboard_service)
-    monkeypatch.setattr(server, "_simulation_service", composition.simulation_service)
-
-    try:
-        buy = server.submit_simulation_strategy_intent(
-            server.SimulationStrategyIntentRequest(
-                intent_id="api-orb-entry-3231",
-                strategy_id="opening_range_breakout",
-                strategy_version="opening_range_breakout_entry_v1",
-                symbol="3231",
-                side="BUY",
-                lots=1,
-                limit_price="106",
-                signaled_at=datetime.fromisoformat("2026-08-21T10:30:00+08:00"),
-            ),
-            Response(),
-        )
-        sell = server.submit_simulation_strategy_intent(
-            server.SimulationStrategyIntentRequest(
-                intent_id="api-orb-exit-3231",
-                strategy_id="opening_range_breakout",
-                strategy_version="opening_range_breakout_exit_v1",
-                symbol="3231",
-                side="SELL",
-                lots=1,
-                limit_price="105",
-                signaled_at=datetime.fromisoformat("2026-08-21T10:31:00+08:00"),
-            ),
-            Response(),
-        )
-
-        assert buy["order"]["status"] == "FILLED"
-        assert sell["order"]["status"] == "FILLED"
-        assert buy["order"]["origin"] == "STRATEGY_AUTOMATED"
-        assert server.simulation_positions()["positions"] == []
-    finally:
-        composition.close()
-
-
-def test_strategy_intent_http_round_trip_and_retry(monkeypatch):
+def test_raw_strategy_intent_http_cannot_bypass_exact_set_activation(monkeypatch):
     monkeypatch.setattr(server, "_composition", None)
     monkeypatch.setattr(server, "_provider", MockProvider())
     monkeypatch.setattr(server, "_service", None)
@@ -458,57 +423,103 @@ def test_strategy_intent_http_round_trip_and_retry(monkeypatch):
         "limit_price": "106",
         "signaled_at": signal_at,
     }
-    exit_payload = {
-        **payload,
-        "intent_id": "http-orb-exit-3231",
-        "strategy_version": "opening_range_breakout_exit_v1",
-        "side": "SELL",
-        "limit_price": "105",
-    }
-
     with TestClient(server.app) as client:
         first = client.post("/api/simulation/strategy-intents", json=payload)
         repeated = client.post("/api/simulation/strategy-intents", json=payload)
-        sold = client.post(
-            "/api/simulation/strategy-intents",
-            json=exit_payload,
-        )
         projection = client.get("/api/simulation/projection")
 
-    assert first.status_code == 201
-    assert repeated.status_code == 200
-    assert sold.status_code == 201
+    assert first.status_code == 404
+    assert repeated.status_code == 404
     assert projection.status_code == 200
-    assert repeated.json()["order_idempotent"] is True
-    assert repeated.json()["order"]["order_id"] == first.json()["order"]["order_id"]
-    assert sold.json()["order"]["status"] == "FILLED"
-    assert sold.json()["order"]["origin"] == "STRATEGY_AUTOMATED"
     assert projection.json()["positions"] == []
-    assert len(projection.json()["orders"]) == 2
+    assert projection.json()["orders"] == []
 
 
 def test_automated_strategy_control_routes_require_explicit_risk_parameters(monkeypatch):
     controller = FakeAutomatedStrategyController()
     monkeypatch.setattr(server, "get_automated_strategy_controller", lambda: controller)
     response = Response()
+    http_request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("testclient", 50000),
+            "headers": [(b"host", b"testserver")],
+        }
+    )
 
     started = server.start_automated_strategy(
         server.AutomatedStrategyStartRequest(
+            entry_strategy_set_version_id="paper-entry-set-v1",
             stop_loss_pct="1.5",
             take_profit_pct="3",
             max_daily_loss="50000",
+            actor_id="local-operator",
+            activation_idempotency_key="api-start-1",
         ),
         response,
+        http_request,
+        server._atomic_strategy_csrf_token,
     )
     status_payload = server.automated_strategy_status()
-    stopped = server.stop_automated_strategy()
+    stopped = server.stop_automated_strategy(
+        http_request,
+        server._atomic_strategy_csrf_token,
+    )
 
     assert started == {"state": "RUNNING", "decision": "STARTED"}
     assert response.status_code == 201
     assert controller.received is not None
+    assert controller.received.entry_strategy_set_version_id == "paper-entry-set-v1"
     assert controller.received.stop_loss_pct == Decimal("1.5")
     assert controller.received.take_profit_pct == Decimal("3")
     assert controller.received.max_daily_loss == Decimal("50000")
     assert status_payload["decision"] == "WAITING_SIGNAL"
     assert stopped["state"] == "STOPPED"
     assert controller.stopped is True
+
+
+def test_automated_strategy_mutations_require_csrf_and_exact_origin(monkeypatch):
+    controller = FakeAutomatedStrategyController()
+    monkeypatch.setattr(server, "get_automated_strategy_controller", lambda: controller)
+    client = TestClient(server.app)
+    token = client.get("/api/atomic-strategies/capabilities").json()["csrf_token"]
+    payload = {
+        "entry_strategy_set_version_id": "paper-entry-set-v1",
+        "stop_loss_pct": "1.5",
+        "take_profit_pct": "3",
+        "max_daily_loss": "50000",
+        "actor_id": "local-operator",
+        "activation_idempotency_key": "api-start-csrf-1",
+    }
+
+    assert client.post(
+        "/api/simulation/automated-strategy/start", json=payload
+    ).status_code == 403
+    assert client.post(
+        "/api/simulation/automated-strategy/start",
+        headers={
+            "X-Strategy-CSRF": token,
+            "Origin": "https://testserver:4443",
+        },
+        json=payload,
+    ).status_code == 403
+    assert client.post(
+        "/api/simulation/automated-strategy/start",
+        headers={"X-Strategy-CSRF": token},
+        json=payload,
+    ).status_code == 201
+    assert client.post(
+        "/api/simulation/automated-strategy/stop"
+    ).status_code == 403
+    assert client.post(
+        "/api/simulation/automated-strategy/kill-switch",
+        headers={"X-Strategy-CSRF": token},
+        json={"reason": "operator test"},
+    ).json()["state"] == "KILLED"
+    assert client.post(
+        "/api/simulation/automated-strategy/kill-switch/reset",
+        headers={"X-Strategy-CSRF": token},
+    ).json()["state"] == "STOPPED"

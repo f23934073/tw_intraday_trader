@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from simulation.service import SimulationService
-from trading.risk import OrderCommand
+from trading.application import ApprovedOrderCommand
 
 
 class LocalPaperSimulationCommandAdapter:
@@ -14,7 +14,10 @@ class LocalPaperSimulationCommandAdapter:
     def __init__(self, service: SimulationService) -> None:
         self._service = service
 
-    def submit(self, command: OrderCommand) -> dict[str, Any]:
+    def submit(self, approved: ApprovedOrderCommand) -> dict[str, Any]:
+        if not isinstance(approved, ApprovedOrderCommand):
+            raise TypeError("Local Paper adapter 只接受 ApprovedOrderCommand")
+        command = approved.command
         order, _ = self._service.submit_order(
             symbol=command.symbol,
             side=command.side.value,
