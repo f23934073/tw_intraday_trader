@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from backtest.finmind_history import (
+    FinMindApiClient,
     FinMindHistoryStore,
+    FinMindQuotaReached,
+    FinMindRequestError,
     FinMindResponse,
     FinMindSponsorDownloader,
     FinMindUsage,
@@ -63,6 +67,19 @@ class _FakeClient:
         return _response([_kbar(data_id, start_date)])
 
 
+class _TimeoutResponse:
+    status = 200
+
+    def __enter__(self) -> _TimeoutResponse:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        raise TimeoutError("read timed out")
+
+
 def _job(store: FinMindHistoryStore) -> str:
     return store.ensure_job(
         symbols=("2330", "2317"),
@@ -88,6 +105,24 @@ def test_normalization_uses_observable_end_labels_and_preserves_close() -> None:
         "2026-08-18T13:30:00+08:00",
     ]
     assert [bar.volume for bar in bars] == [7, 7]
+
+
+def test_api_client_wraps_response_read_timeout(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "backtest.finmind_history.urlopen",
+        lambda *_args, **_kwargs: _TimeoutResponse(),
+    )
+
+    try:
+        FinMindApiClient("test-token").data(
+            dataset="TaiwanStockKBar",
+            data_id="2360",
+            start_date=date(2024, 1, 5),
+        )
+    except FinMindRequestError as error:
+        assert str(error) == "FinMind transport timed out"
+    else:
+        raise AssertionError("response read timeout must be wrapped")
 
 
 def test_delayed_closing_auction_uses_1333_as_observable_close() -> None:
@@ -200,6 +235,96 @@ def test_reserve_margin_can_prevent_all_data_requests(tmp_path: Path) -> None:
         assert result["batch_requests_spent"] == 0
         assert result["status"] == "PAUSED"
         assert client.calls == []
+    finally:
+        store.close()
+
+
+def test_direct_quota_probe_skips_slow_usage_endpoint(tmp_path: Path) -> None:
+    store = FinMindHistoryStore(tmp_path / "history.sqlite3")
+    client = _FakeClient()
+
+    def unexpected_usage_call() -> FinMindUsage:
+        raise AssertionError("direct quota probe must not call usage endpoint")
+
+    client.usage = unexpected_usage_call  # type: ignore[method-assign]
+    downloader = FinMindSponsorDownloader(client=client, store=store)
+    try:
+        job_id = _job(store)
+        result = downloader.run(
+            job_id,
+            max_requests=1,
+            reserve_requests=0,
+            pace_seconds=0,
+            check_usage=False,
+        )
+
+        assert result["batch_requests_spent"] == 1
+        assert result["quota_before"] is None
+        assert client.calls == [
+            (
+                "TaiwanStockPrice",
+                "2330",
+                date(2026, 8, 17),
+                date(2026, 8, 18),
+            )
+        ]
+    finally:
+        store.close()
+
+
+def test_expected_quota_probe_is_not_persisted_as_provider_failure(
+    tmp_path: Path,
+) -> None:
+    store = FinMindHistoryStore(tmp_path / "history.sqlite3")
+    client = _FakeClient()
+    downloader = FinMindSponsorDownloader(client=client, store=store)
+    try:
+        job_id = _job(store)
+        downloader.run(
+            job_id,
+            max_requests=1,
+            reserve_requests=0,
+            pace_seconds=0,
+        )
+
+        def quota_reached(**_kwargs: object) -> FinMindResponse:
+            raise FinMindQuotaReached("quota reached")
+
+        client.data = quota_reached  # type: ignore[method-assign]
+        result = downloader.run(
+            job_id,
+            max_requests=1,
+            reserve_requests=0,
+            pace_seconds=0,
+            check_usage=False,
+        )
+
+        assert result["stop_kind"] == "QUOTA"
+        assert result["recorded_data_requests"] == 1
+    finally:
+        store.close()
+
+
+def test_next_release_delay_uses_oldest_successful_recorded_request(
+    tmp_path: Path,
+) -> None:
+    store = FinMindHistoryStore(tmp_path / "history.sqlite3")
+    client = _FakeClient()
+    downloader = FinMindSponsorDownloader(client=client, store=store)
+    try:
+        job_id = _job(store)
+        downloader.run(
+            job_id,
+            max_requests=1,
+            reserve_requests=0,
+            pace_seconds=0,
+        )
+        current = datetime.now(ZoneInfo("Asia/Taipei"))
+
+        delay = store.seconds_until_next_recorded_release(now=current)
+
+        assert timedelta(minutes=59).total_seconds() < delay
+        assert delay <= timedelta(hours=1, seconds=1).total_seconds()
     finally:
         store.close()
 

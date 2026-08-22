@@ -169,6 +169,8 @@ class FinMindApiClient:
         except HTTPError as error:
             status = int(error.code)
             body = error.read()
+        except TimeoutError as error:
+            raise FinMindRequestError("FinMind transport timed out") from error
         except URLError as error:
             raise FinMindRequestError(
                 f"FinMind transport failed: {error.reason}"
@@ -689,6 +691,39 @@ class FinMindHistoryStore:
             ),
         }
 
+    def seconds_until_next_recorded_release(
+        self,
+        *,
+        now: datetime | None = None,
+        window_seconds: float = 3600.0,
+        safety_seconds: float = 0.75,
+    ) -> float:
+        """Estimate when the oldest successful account request leaves the window."""
+        if window_seconds <= 0:
+            raise ValueError("window_seconds must be positive")
+        if safety_seconds < 0:
+            raise ValueError("safety_seconds cannot be negative")
+        current = now or datetime.now(TAIPEI)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise ValueError("now must be timezone-aware")
+        cutoff = (current - timedelta(seconds=window_seconds)).isoformat()
+        row = self._connection.execute(
+            """
+            SELECT MIN(requested_at) AS requested_at
+            FROM finmind_history_attempts
+            WHERE http_status = 200
+              AND outcome IN ('READY', 'EMPTY', 'INVALID')
+              AND requested_at > ?
+            """,
+            (cutoff,),
+        ).fetchone()
+        if row is None or row["requested_at"] is None:
+            return 0.0
+        release_at = datetime.fromisoformat(row["requested_at"]) + timedelta(
+            seconds=window_seconds + safety_seconds
+        )
+        return max(0.0, (release_at - current).total_seconds())
+
     def reconcile_completion(self, job_id: str) -> dict[str, Any]:
         """Derive the terminal job state from durable partition counts."""
 
@@ -914,6 +949,7 @@ class FinMindSponsorDownloader:
         max_requests: int,
         reserve_requests: int,
         pace_seconds: float,
+        check_usage: bool = True,
     ) -> dict[str, Any]:
         if max_requests <= 0:
             raise ValueError("max_requests must be positive")
@@ -921,9 +957,15 @@ class FinMindSponsorDownloader:
             raise ValueError("reserve_requests cannot be negative")
         if pace_seconds < 0:
             raise ValueError("pace_seconds cannot be negative")
+        if not check_usage and reserve_requests:
+            raise ValueError("reserve_requests requires a FinMind usage check")
         job = self._store.get_job(job_id)
-        usage = self._client.usage()
-        allowance = min(max_requests, max(0, usage.remaining - reserve_requests))
+        usage = self._client.usage() if check_usage else None
+        allowance = (
+            min(max_requests, max(0, usage.remaining - reserve_requests))
+            if usage is not None
+            else max_requests
+        )
         if allowance == 0:
             self._store.set_status(job_id, "PAUSED", "FinMind allowance reserve reached")
             return self._with_usage(self._store.summary(job_id), usage, 0)
@@ -1008,13 +1050,20 @@ class FinMindSponsorDownloader:
                     self._sleeper(pace_seconds)
         except FinMindRequestError as error:
             pending = self._store.next_pending(job_id)
-            self._store.save_failed_attempt(
-                job_id,
-                request_kind="KBAR" if self._store.calendar_dates(job_id) else "CALENDAR",
-                symbol=pending[0] if pending is not None else str(job["calendar_symbol"]),
-                session_date=pending[1] if pending is not None else None,
-                error=error,
-            )
+            if not isinstance(error, FinMindQuotaReached):
+                self._store.save_failed_attempt(
+                    job_id,
+                    request_kind=(
+                        "KBAR" if self._store.calendar_dates(job_id) else "CALENDAR"
+                    ),
+                    symbol=(
+                        pending[0]
+                        if pending is not None
+                        else str(job["calendar_symbol"])
+                    ),
+                    session_date=pending[1] if pending is not None else None,
+                    error=error,
+                )
             self._store.set_status(job_id, "PAUSED", str(error))
             summary = self._with_usage(self._store.summary(job_id), usage, spent)
             summary["stop_reason"] = str(error)
@@ -1031,16 +1080,20 @@ class FinMindSponsorDownloader:
 
     @staticmethod
     def _with_usage(
-        summary: dict[str, Any], usage: FinMindUsage, spent: int
+        summary: dict[str, Any], usage: FinMindUsage | None, spent: int
     ) -> dict[str, Any]:
         return {
             **summary,
             "batch_requests_spent": spent,
-            "quota_before": {
-                "user_count": usage.user_count,
-                "api_request_limit": usage.api_request_limit,
-                "remaining": usage.remaining,
-            },
+            "quota_before": (
+                {
+                    "user_count": usage.user_count,
+                    "api_request_limit": usage.api_request_limit,
+                    "remaining": usage.remaining,
+                }
+                if usage is not None
+                else None
+            ),
         }
 
 

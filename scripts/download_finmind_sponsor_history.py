@@ -96,13 +96,24 @@ def main() -> None:
                 report=lambda message: print(message, flush=True),
             )
             remaining_budget = args.max_requests
-            zero_allowance_polls = 0
+            direct_quota_probe = False
+            wait_before_direct_probe = False
             while True:
+                if wait_before_direct_probe:
+                    release_delay = store.seconds_until_next_recorded_release()
+                    wait_seconds = max(args.quota_poll_seconds, release_delay)
+                    print(
+                        f"FinMind 額度已滿；{wait_seconds:.2f} 秒後重查",
+                        flush=True,
+                    )
+                    sleep(wait_seconds)
+                    wait_before_direct_probe = False
                 result = downloader.run(
                     job_id,
                     max_requests=remaining_budget,
                     reserve_requests=args.reserve_requests,
                     pace_seconds=args.pace_seconds,
+                    check_usage=not direct_quota_probe,
                 )
                 spent = int(result.get("batch_requests_spent", 0))
                 remaining_budget -= spent
@@ -114,22 +125,18 @@ def main() -> None:
                     break
                 if result.get("stop_kind") == "PROVIDER":
                     break
+                if args.reserve_requests == 0:
+                    direct_quota_probe = True
                 if spent:
-                    zero_allowance_polls = 0
                     print(
                         "滾動額度批次完成："
                         f"{spent} requests；尚餘 {result['remaining_symbol_days']} "
                         "symbol-days",
                         flush=True,
                     )
+                if result.get("stop_kind") == "QUOTA" or not spent:
+                    wait_before_direct_probe = True
                     continue
-                zero_allowance_polls += 1
-                if zero_allowance_polls == 1 or zero_allowance_polls % 6 == 0:
-                    print(
-                        f"FinMind 額度已滿；{args.quota_poll_seconds:g} 秒後重查",
-                        flush=True,
-                    )
-                sleep(args.quota_poll_seconds)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
     finally:
         store.close()
