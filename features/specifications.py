@@ -330,6 +330,33 @@ class FeatureSpecificationRegistry:
                     cross_validators=(_validate_ema_parameters,),
                 ),
             ),
+            FeatureSpecification(
+                feature_id="wilder_rsi_v1",
+                unit="INDEX_0_100",
+                cadence="COMPLETED_KBAR_1M",
+                completed_data_only=True,
+                session_reset=True,
+                warmup_bars=15,
+                missing_semantics=(
+                    "INSUFFICIENT_DATA_UNLESS_CONTIGUOUS_SESSION_OPEN_PREFIX"
+                ),
+                as_of_semantics="CURRENT_COMPLETED_BAR_CLOSE_INCLUSIVE",
+                implementation_digest=hashlib.sha256(
+                    b"completed-kbar-wilder-rsi-feature-implementation-v1"
+                ).hexdigest(),
+                warmup_semantics="RSI_PERIOD_PLUS_ONE_CONTIGUOUS_BARS_FROM_09_00",
+                request_parameter_schema=ParameterSchema(
+                    version="wilder-rsi-feature-request-v1",
+                    fields={
+                        "rsi_period": {
+                            "type": "integer",
+                            "minimum": 2,
+                            "maximum": 120,
+                            "default": 14,
+                        }
+                    },
+                ),
+            ),
         )
         self._specifications = {item.feature_id: item for item in specifications}
 

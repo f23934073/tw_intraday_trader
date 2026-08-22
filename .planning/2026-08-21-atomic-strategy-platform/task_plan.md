@@ -447,6 +447,8 @@ Gate rules:
 | First EMA product collection used a non-existent `SessionPhase.CONTINUOUS` enum | 1 | Collection caught the metadata mismatch; align the new Template with the existing `SessionPhase.INTRADAY` value before accepting any test evidence. |
 | Combined EMA runtime/specification/README patch expected the wrong import context | 1 | No file changed; inspect the exact import order and split the additions into context-accurate hunks. |
 | Scoped EMA `git add` could not create `.git/index.lock` inside the filesystem sandbox | 1 | No file was staged; retry the same explicit file list with repository-local Git metadata permission, then recheck the complete staged payload. |
+| Initial Phase 30 RSI golden suite could not import the not-yet-created strategy module | 1 | Expected test-first failure; implement the independent RSI strategy and shared Feature formula, then rerun the same suite. |
+| Non-default RSI golden test required exact equality for two equivalent repeating-Decimal evaluation orders | 1 | Production result differed only by `2e-26`; keep deterministic Decimal code and assert the hand-calculated 500/9 result within a much tighter `1e-24` tolerance. |
 
 ## Non-goals
 
@@ -470,3 +472,16 @@ Gate rules:
 - [x] Run focused/full no-DSN/static checks and prepare Gate G8 evidence.
 
 Gate G8: **PASSED / MVP SCOPED GO**. EMA implementation is approved; broker, CA, trade subscription, Shioaji order submission, real-money execution, push, and the next strategy batch are not included in this approval.
+
+## Phase 30: Atomic RSI oversold strategy
+
+- [x] Reconcile the legacy combined RSI/Bollinger hypothesis with the user's atomic-strategy granularity.
+- [x] Select RSI oversold as one independent condition; defer Bollinger lower-band re-entry to its own future strategy file.
+- [x] Add one code-owned `rsi_oversold_entry` strategy with `rsi_period`, oversold threshold, and entry window parameters.
+- [x] Add parameterized `wilder_rsi_v1` Feature Specification and one runtime-neutral completed-Kbar formula.
+- [x] Connect the exact request to existing Backtest and Local Paper owners without another data/state pipeline.
+- [x] Preserve exact request/specification/implementation/session identity and Decimal RSI evidence.
+- [x] Add period/threshold validation, warm-up, gap, all-up/all-down/flat, non-default-period, exact snapshot, Web, and Local Paper regressions.
+- [x] Run focused/full no-DSN/static checks and prepare Gate G9 evidence.
+
+Gate G9: **PASSED / MVP SCOPED GO**. RSI implementation is approved. Reviewer verification is green at RSI focused `45 passed`, full no-DSN `1233 passed, 22 skipped`, Python compilation, and `git diff --check`; Bollinger, Exit, broker, CA, trade subscription, Shioaji order submission, real-money execution, and push remain outside this approval.

@@ -10,6 +10,7 @@ from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
 from atomic_strategies.entries.opening_range_breakout import (
     OpeningRangeBreakoutEntryStrategy,
 )
+from atomic_strategies.entries.rsi_oversold import RsiOversoldEntryStrategy
 from atomic_strategies.entries.volume_acceleration import (
     VolumeAccelerationEntryStrategy,
 )
@@ -175,3 +176,22 @@ def test_ema_feature_specification_freezes_cross_and_session_prefix() -> None:
                 ),
             )
         )
+
+
+def test_rsi_feature_specification_freezes_wilder_session_prefix() -> None:
+    requests = resolve_feature_requests(
+        RsiOversoldEntryStrategy.template,
+        {"rsi_period": 9, "oversold_threshold": "25"},
+    )
+    registry = FeatureSpecificationRegistry()
+    registry.validate_requests(requests)
+    specification = registry.get("wilder_rsi_v1")
+
+    assert requests[0].parameters == {"rsi_period": 9}
+    assert specification.unit == "INDEX_0_100"
+    assert specification.missing_semantics == (
+        "INSUFFICIENT_DATA_UNLESS_CONTIGUOUS_SESSION_OPEN_PREFIX"
+    )
+    assert specification.warmup_semantics == (
+        "RSI_PERIOD_PLUS_ONE_CONTIGUOUS_BARS_FROM_09_00"
+    )

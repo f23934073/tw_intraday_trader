@@ -407,3 +407,23 @@
 - Independent Review returned `APPROVE`; Gate G8 is `PASSED / MVP SCOPED GO` and EMA implementation is approved.
 - Reviewer verification: EMA focused `41 passed`, full no-DSN `1222 passed, 22 skipped`, and `git diff --check` passed. PostgreSQL was correctly not rerun for this non-persistence slice.
 - Scoped commit preparation continues to exclude `.planning/.active_plan`, FinMind, live-trading, and odd-lot changes. No push, broker, or real-money action is authorized.
+
+## 2026-08-22 — G8 committed and Phase 30 started
+
+- Created scoped commit `333f278 feat(strategy): add atomic EMA crossover`; it was not pushed and unrelated worktree changes remain untouched.
+- Completion report: all six currently registered ENTRY strategies are 100% complete for their approved Backtest/Local Paper scope. Remaining platform work is additional strategies, independent Exit strategies, market-hours smoke, and Dashboard cross-day rollover; broker/real-money remains prohibited.
+- Selected `rsi_oversold_entry` as the seventh Atomic ENTRY strategy. The legacy RSI/Bollinger combination will not be copied as one strategy; Bollinger re-entry remains an independently testable future file.
+- Gate G9 remains `NOT PASSED` until implementation, regression evidence, and independent Review are complete.
+- Added the Phase 30 golden suite before product code. Initial collection fails with the expected missing `atomic_strategies.entries.rsi_oversold` module, proving the new atomic condition is not accidentally satisfied by the legacy combined RSI/Bollinger strategy.
+- Implemented the independent RSI Template/kernel, shared Wilder formula, Feature Specification, both request adapters, Local Paper admission, Registry, and Web allowlist. The first product run reached only the non-default repeating-Decimal assertion; the computed value differed from the hand reduction by `2e-26`, so the golden check now uses a bounded `1e-24` tolerance rather than false exact equality.
+- Core RSI/Web targeted tests are green at `15 passed`. Added exact Local Paper normalization, parameter/specification identity, and README semantics before expanding the regression scope.
+- Self-review added an explicit `period + 1` warm-up boundary and a non-default period parity assertion against the existing legacy Wilder RSI formula; the hand-calculated 500/9 check remains as an independent bounded sanity check.
+- Final focused RSI plus Atomic/Web/Local Paper regression is green at `72 passed`.
+- Full no-DSN regression is green at `1233 passed, 22 skipped`; Python compilation and `git diff --check` pass.
+- **Status:** Phase 30 RSI implementation candidate complete; Gate G9 remains `NOT PASSED` pending independent Review. No PostgreSQL migration/repository change, Bollinger, Exit, broker, CA, trade subscription, Shioaji order, or real-money capability was added.
+
+## 2026-08-22 — Gate G9 approved
+
+- Independent Review returned `APPROVE`; Gate G9 is `PASSED / MVP SCOPED GO` and RSI implementation is approved.
+- Reviewer verification: RSI focused `45 passed`, full no-DSN `1233 passed, 22 skipped`, Python compilation, and `git diff --check` passed. PostgreSQL was correctly not rerun for this non-persistence slice.
+- Scoped commit preparation continues to exclude `.planning/.active_plan`, FinMind, live-trading, and odd-lot changes. No push, Bollinger, Exit, broker, or real-money action is included in the G9 approval.

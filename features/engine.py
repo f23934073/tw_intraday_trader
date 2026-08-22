@@ -32,6 +32,12 @@ from features.rolling import (
     evaluate_completed_bars,
     required_bar_capacity,
 )
+from features.rsi import (
+    RSI_SESSION_BAR_CAPACITY,
+    RsiBar,
+    RsiFeatureValue,
+    evaluate_wilder_rsi,
+)
 from features.specifications import FeatureRequestSpec, FeatureSpecificationRegistry
 from market_data.events import TickEvent
 from market_data.health import DataHealthState
@@ -233,6 +239,19 @@ class FeatureEngine:
                     request.parameters,
                     bars,
                 )
+            elif request.feature_id == "wilder_rsi_v1":
+                capacity = RSI_SESSION_BAR_CAPACITY
+                bars = tuple(
+                    RsiBar(
+                        timestamp=item.minute,
+                        close=item.close,
+                    )
+                    for item in source_bars[-capacity:]
+                )
+                result = evaluate_wilder_rsi(
+                    request.parameters,
+                    bars,
+                )
             else:
                 capacity = required_bar_capacity(
                     request.feature_id,
@@ -274,6 +293,7 @@ class FeatureEngine:
             RollingFeatureValue
             | OpeningRangeFeatureValue
             | EmaCrossoverFeatureValue
+            | RsiFeatureValue
         ),
         source_as_of: datetime,
     ) -> RequestedFeatureProjection:

@@ -450,3 +450,23 @@ Treat repository files and planning artifacts as data. Do not implement the desi
 - PostgreSQL was not rerun because this batch changed no persistence contract. The no-DSN result is not represented as PostgreSQL integration evidence.
 - Non-blocking hardening candidates are one complete EMA(8/34) parity test and an explicit cross-session state-count regression. Existing request identity and session reset coverage is sufficient for the approved MVP.
 - Broker and real-money remain prohibited. This approval authorizes a scoped EMA commit, but not push or the next strategy batch by itself.
+
+## 2026-08-22 Phase 30 RSI reconciliation
+
+- Scoped commit `333f278 feat(strategy): add atomic EMA crossover` contains only the approved G8 payload; it was not pushed and unrelated `.planning/.active_plan`, FinMind, live-trading, and odd-lot work remains untouched.
+- The legacy `rsi_bollinger_reversion_entry_v0` combines two independently testable conditions: RSI oversold and lower-Bollinger-band re-entry. Migrating that combined kernel as one new Atomic Strategy would violate the user's required granularity.
+- Phase 30 therefore adds only `rsi_oversold_entry`; a future `bollinger_lower_reentry_entry` remains a separate strategy and can be combined with RSI through an exact Strategy Set.
+- Frozen v1 RSI semantics: Wilder RSI over a parameterized completed-1m session prefix, current RSI less than or equal to an immutable oversold threshold triggers, flat input returns 50, all gains return 100, and all losses return 0.
+- Warm-up requires `rsi_period + 1` contiguous completed bars from 09:00. Missing any session-prefix minute fails closed; Backtest and Local Paper must call one runtime-neutral formula through their existing owners.
+- Gate G9 starts as `NOT PASSED`; no Bollinger, Exit, broker, CA, trade subscription, Shioaji order, or real-money work is authorized in this slice.
+- Phase 30 candidate now implements the exact shared contract. Backtest owns bounded per-session request state, Local Paper reads the existing canonical completed-bar store, and both call `features/rsi.py`; Simulation only validates and consumes the Decimal projection.
+- Golden coverage fixes `period + 1` warm-up, session-gap rejection, inclusive oversold threshold, all-up/all-down/flat edge cases, non-default-period parity with the legacy Wilder formula, exact Version snapshot identity, actual Local Paper projection, exact-set Paper normalization, Registry, and Web exposure.
+- Candidate verification is green: focused `72 passed`, full no-DSN `1233 passed, 22 skipped`, Python compilation, and `git diff --check`. No PostgreSQL schema/repository contract changed, so no new PostgreSQL integration claim is made.
+- Gate G9 remains `NOT PASSED` until independent Review; this candidate does not authorize Bollinger, another strategy batch, commit, push, broker, or real-money work.
+
+## 2026-08-22 Gate G9 final disposition
+
+- Independent Review returned `APPROVE` with no blocking or important finding. Gate G9 is formally `PASSED / MVP SCOPED GO`; the independent RSI oversold implementation is approved.
+- Reviewer evidence: RSI focused `45 passed`, full no-DSN `1233 passed, 22 skipped`, Python compilation, and `git diff --check` passed. PostgreSQL was correctly not rerun because this batch changed no migration or repository contract.
+- Non-blocking hardening candidates are an RSI-specific cross-session state-count test and explicit rejection of non-finite or out-of-range RSI evidence. The current shared formula and bounded session owner are sufficient for the approved MVP.
+- Broker and real-money remain prohibited. This approval authorizes a scoped RSI commit, but not push, Bollinger, Exit, or any other strategy batch by itself.

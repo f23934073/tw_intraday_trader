@@ -475,6 +475,48 @@ def test_parameterized_ema_uses_exact_boolean_request_projection() -> None:
     assert not_triggered.candidates[0].status is PaperSetStatus.NOT_TRIGGERED
 
 
+def test_parameterized_rsi_uses_exact_request_projection() -> None:
+    rsi = version(
+        "rsi_oversold_entry",
+        1,
+        {
+            "rsi_period": 14,
+            "oversold_threshold": "30",
+            "entry_window_start": "09:15",
+            "entry_window_end": "12:45",
+        },
+    )
+    snapshot = entry_set((rsi,))
+    runtime = resolve_atomic_paper_entry_set(
+        FakeCatalog(snapshot, (rsi,)),
+        AtomicStrategyRegistry(),
+        snapshot.strategy_set_version_id,
+    )
+    request = runtime.projection_requests[0]
+
+    triggered = runtime.evaluate_projection(
+        projection(
+            price="95",
+            requested_features=[requested_feature(request, value="25")],
+        ),
+        evaluated_at=AT,
+        max_age_seconds=5,
+    )
+    not_triggered = runtime.evaluate_projection(
+        projection(
+            price="101",
+            requested_features=[requested_feature(request, value="31")],
+        ),
+        evaluated_at=AT,
+        max_age_seconds=5,
+    )
+
+    assert request.feature_id == "wilder_rsi_v1"
+    assert request.parameters == {"rsi_period": 14}
+    assert triggered.candidates[0].status is PaperSetStatus.TRIGGERED
+    assert not_triggered.candidates[0].status is PaperSetStatus.NOT_TRIGGERED
+
+
 def test_pre_g6_backtest_only_version_does_not_gain_paper_admission() -> None:
     rolling = version(
         "rolling_return_entry",

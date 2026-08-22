@@ -16,6 +16,7 @@ from features.opening_range import (
     OPENING_RANGE_SESSION_BAR_CAPACITY,
     evaluate_opening_range_high,
 )
+from features.rsi import RSI_SESSION_BAR_CAPACITY, evaluate_wilder_rsi
 
 
 FEATURE_VERSION = "historical-features-v1"
@@ -127,6 +128,8 @@ class CompletedKbarFeatureState:
             feature = evaluate_opening_range_high(parameters, tuple(series.bars))
         elif feature_id == "ema_cross_up_v1":
             feature = evaluate_ema_cross_up(parameters, tuple(series.bars))
+        elif feature_id == "wilder_rsi_v1":
+            feature = evaluate_wilder_rsi(parameters, tuple(series.bars))
         else:
             feature = evaluate_completed_bars(
                 feature_id,
@@ -146,6 +149,8 @@ class CompletedKbarFeatureState:
             return OPENING_RANGE_SESSION_BAR_CAPACITY
         if feature_id == "ema_cross_up_v1":
             return EMA_SESSION_BAR_CAPACITY
+        if feature_id == "wilder_rsi_v1":
+            return RSI_SESSION_BAR_CAPACITY
         return required_bar_capacity(feature_id, parameters)
 
 

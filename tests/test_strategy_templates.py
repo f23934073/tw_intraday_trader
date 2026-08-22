@@ -10,6 +10,7 @@ from atomic_strategies.entries.ema_crossover import EmaCrossoverEntryStrategy
 from atomic_strategies.entries.opening_range_breakout import (
     OpeningRangeBreakoutEntryStrategy,
 )
+from atomic_strategies.entries.rsi_oversold import RsiOversoldEntryStrategy
 from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
 from atomic_strategies.entries.volume_acceleration import (
     VolumeAccelerationEntryStrategy,
@@ -28,6 +29,7 @@ def test_first_atomic_templates_are_separate_allowlisted_implementations() -> No
         "volume_acceleration_entry",
         "opening_range_breakout_entry",
         "ema_crossover_entry",
+        "rsi_oversold_entry",
     }
     assert isinstance(registry.strategy("above_vwap_entry"), AboveVwapEntryStrategy)
     assert isinstance(
@@ -49,6 +51,10 @@ def test_first_atomic_templates_are_separate_allowlisted_implementations() -> No
     assert isinstance(
         registry.strategy("ema_crossover_entry"),
         EmaCrossoverEntryStrategy,
+    )
+    assert isinstance(
+        registry.strategy("rsi_oversold_entry"),
+        RsiOversoldEntryStrategy,
     )
     assert templates["above_vwap_entry"].template_digest != templates[
         "breakout_previous_high_entry"

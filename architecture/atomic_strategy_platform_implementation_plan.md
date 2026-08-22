@@ -6,7 +6,7 @@
 
 ### 1.1 實作前 Review Gate
 
-**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4/G6 均核准為 `PASSED / MVP CONDITIONAL GO`；Gates G5/G7/G8 為 `PASSED / MVP SCOPED GO`。** B1–B5 契約維持 `REVIEWED / CLOSED`。所有 MVP Gate 只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper／Backtest scope；券商委託與真實交易仍不得開始：
+**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4/G6 均核准為 `PASSED / MVP CONDITIONAL GO`；Gates G5/G7/G8/G9 為 `PASSED / MVP SCOPED GO`。** B1–B5 契約維持 `REVIEWED / CLOSED`。所有 MVP Gate 只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper／Backtest scope；券商委託與真實交易仍不得開始：
 
 | ID | Blocking contract | 本文件的處理方向 | Gate 狀態 |
 |---|---|---|---|
@@ -899,6 +899,17 @@ Gate G7：**PASSED / MVP SCOPED GO**。Atomic ORB Strategy 已核准；broker／
 - Feature evidence 保存 crossover boolean 與 previous/current fast/slow EMA；request、parameters、Specification、implementation、adapter、cadence、session identity 漂移一律 fail closed。
 
 Gate G8：**PASSED / MVP SCOPED GO**。EMA implementation 已核准。候選驗證為 focused `61 passed`、full no-DSN `1222 passed, 22 skipped`、Python compilation 與 `git diff --check` 通過；獨立 Reviewer 另驗證 EMA focused `41 passed`、full no-DSN `1222 passed, 22 skipped` 與 `git diff --check`。第一次 full run 只因 sandbox artifact 寫入限制失敗，改用獨立 `/tmp` 目錄後同套測試通過。本批沒有 migration/repository contract 變更，因此沒有新增 PostgreSQL integration evidence。此核准不包含 RSI/Bollinger、distance-to-limit、external-ratio、Exit、broker、CA、trade subscription、Shioaji 委託、real-money execution 或 push。
+
+### Phase 9 — Atomic RSI Oversold Strategy（Completed）
+
+- 下一個最小完整切片只加入 `rsi_oversold_entry`。既有 `rsi_bollinger_reversion_entry_v0` 不直接遷移，因 RSI 超賣與 Bollinger 下軌重返是兩個應獨立回測的原子條件。
+- Web／PostgreSQL immutable Version 保存 `rsi_period`、`oversold_threshold`、最早／最晚進場時間，並解析成 exact `wilder_rsi_v1` Feature Request。
+- Backtest 與 Local Paper 共用 completed 1-minute Kbar 的 Wilder gain/loss recurrence。當目前 RSI 小於或等於 oversold threshold 時觸發；flat input 固定為 50、全漲為 100、全跌為 0。
+- RSI 使用從 09:00 到目前完整 bar 的有序 session prefix；暖機需要 `rsi_period + 1` 根，任何中間分鐘缺失均 fail closed，history/state 維持 bounded one-session retention。
+- Local Paper 沿用既有 `MomentumShadowRuntime -> FeatureEngine -> IntradayBarStore` request projection；Simulation 只驗證 exact evidence，不建立第二個 RSI calculator 或第三套行情 pipeline。
+- Bollinger lower-band re-entry 延後為獨立 Atomic Strategy，之後才能透過 Strategy Set 與 RSI 自由組合及分別比較回測效果。
+
+Gate G9：**PASSED / MVP SCOPED GO**。RSI implementation 已核准。候選驗證為 focused `72 passed`、full no-DSN `1233 passed, 22 skipped`、Python compilation 與 `git diff --check` 通過；獨立 Reviewer 另驗證 RSI focused `45 passed`、full no-DSN `1233 passed, 22 skipped`、Python compilation 與 `git diff --check`。本批沒有 migration/repository contract 變更，因此沒有新增 PostgreSQL integration evidence。RSI 專屬跨 session state-count 與非有限／超出 0–100 evidence 的 fail-closed regression 列為非阻擋 hardening。此核准不含 Bollinger、Exit、distance-to-limit、external-ratio、broker、CA、trade subscription、Shioaji 委託、real-money execution 或 push。
 
 ## 19. Test Matrix
 

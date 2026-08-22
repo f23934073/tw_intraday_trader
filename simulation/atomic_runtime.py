@@ -41,6 +41,7 @@ REQUESTED_PROJECTION_FEATURE_IDS = frozenset(
         "rolling_volume_ratio_v1",
         "opening_range_high_v1",
         "ema_cross_up_v1",
+        "wilder_rsi_v1",
     }
 )
 

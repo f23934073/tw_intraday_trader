@@ -11,6 +11,7 @@ from atomic_strategies.entries.opening_range_breakout import (
     OpeningRangeBreakoutEntryStrategy,
 )
 from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
+from atomic_strategies.entries.rsi_oversold import RsiOversoldEntryStrategy
 from atomic_strategies.entries.volume_acceleration import (
     VolumeAccelerationEntryStrategy,
 )
@@ -28,6 +29,7 @@ class AtomicStrategyRegistry:
                 VolumeAccelerationEntryStrategy(),
                 OpeningRangeBreakoutEntryStrategy(),
                 EmaCrossoverEntryStrategy(),
+                RsiOversoldEntryStrategy(),
             )
         )
         self._strategies = {item.template.strategy_id: item for item in items}
