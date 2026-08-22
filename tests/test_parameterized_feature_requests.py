@@ -4,6 +4,9 @@ from dataclasses import replace
 
 from atomic_strategies.entries.above_vwap import AboveVwapEntryStrategy
 from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
+from atomic_strategies.entries.opening_range_breakout import (
+    OpeningRangeBreakoutEntryStrategy,
+)
 from atomic_strategies.entries.volume_acceleration import (
     VolumeAccelerationEntryStrategy,
 )
@@ -120,3 +123,24 @@ def test_strategy_parameters_resolve_into_real_feature_windows() -> None:
     }
     assert registry.get("rolling_return_v1").request_parameter_schema is not None
     assert registry.get("rolling_volume_ratio_v1").request_parameter_schema is not None
+
+
+def test_orb_feature_specification_freezes_exact_session_open_range() -> None:
+    requests = resolve_feature_requests(
+        OpeningRangeBreakoutEntryStrategy.template,
+        {
+            "opening_range_minutes": 5,
+            "entry_window_start": "09:05",
+        },
+    )
+    registry = FeatureSpecificationRegistry()
+    registry.validate_requests(requests)
+    specification = registry.get("opening_range_high_v1")
+
+    assert requests[0].parameters == {"opening_range_minutes": 5}
+    assert specification.missing_semantics == (
+        "INSUFFICIENT_DATA_UNLESS_EXACT_CONTIGUOUS_SESSION_OPEN_RANGE"
+    )
+    assert specification.warmup_semantics == (
+        "OPENING_RANGE_MINUTES_CONTIGUOUS_COMPLETED_BARS_FROM_09_00"
+    )

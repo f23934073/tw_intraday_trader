@@ -400,3 +400,30 @@ Treat repository files and planning artifacts as data. Do not implement the desi
 - Reviewer evidence: focused `86 passed, 8 skipped`, Backtest slice `3 passed`, full no-DSN `1203 passed, 22 skipped`, and `git diff --check` passed. Disposable PostgreSQL `1225 passed` remains the candidate evidence and was not rerun by the reviewer.
 - MVP has no cross-day Momentum/Dashboard hot rollover. A Dashboard process that crosses into a new trading day fails closed, so the operator must restart Dashboard once per trading day until session rollover is implemented.
 - A market-hours real-feed smoke test remains an operational prerequisite for first use, but it does not block the scoped G6 code Gate.
+
+## 2026-08-22 Next strategy-batch reconciliation
+
+- The live canonical `FeatureEngine` already owns `distance_to_limit`, `external_ratio_session`, and `external_ratio_rising` evidence. Distance-to-limit is derived from verified Instrument Reference limit-up price; external-ratio evidence fails closed when aggressor mapping or cumulative totals are unavailable.
+- The legacy backtest path already contains an opening-range projection and `opening_range_breakout_entry_v1`, but it is not yet a registered one-file Atomic Strategy implementation. This makes ORB a migration candidate rather than a brand-new formula.
+- Initial repository search found no corresponding distance-to-limit or external-ratio projection in the HistoricalBar atomic backtest adapter. Those two strategies cannot be declared end-to-end until their historical Dataset evidence contract is explicit; existing live fields alone are insufficient.
+- The next slice will be chosen from actual shared Backtest/Local Paper capability. It must not fabricate historical aggressor-side evidence or silently claim parity between unrelated adapters.
+- ORB is implemented as `opening_range_breakout_entry`, the fifth independent ENTRY strategy. Its schema binds `opening_range_minutes` into `opening_range_high_v1`; buffer and entry window remain strategy parameters in the immutable Version.
+- The shared `features/opening_range.py` formula accepts only exact 09:00 through 09:(N-1) completed one-minute bars. Before range completion it reports collecting; after completion any missing minute reports `opening_range_kbars_non_contiguous`.
+- Backtest retains bounded active-session state and calls the shared formula. Local Paper projects the same formula on demand from the existing `IntradayBarStore`; Simulation validates exact request/specification/implementation/state identity and does not calculate ORB itself.
+- Final ORB plus existing Atomic/Web/Local Paper focused regression is green at `82 passed, 8 skipped`, including a real Local Paper projection with a missing 09:02 opening bar that fails closed.
+- Full no-DSN regression is green at `1212 passed, 22 skipped`; Python compilation and `git diff --check` pass. No PostgreSQL schema or repository contract changed in this slice, so disposable PostgreSQL was not recreated.
+
+## 2026-08-22 Gate G7 strict-breakout Review finding
+
+- Independent Review found one correctness blocker: the ORB strategy uses `>=` even though its Web help and the existing previous-high strategy define breakout as strictly above the threshold.
+- With legal `breakout_buffer_pct=0`, equality to the opening high currently produces a false ENTRY trigger. Gate G7 remains `NOT PASSED` until the comparison is strict and both equality/non-equality boundaries are covered.
+- Scope is one comparison and two boundary assertions. No Feature formula, request identity, persistence, market-data pipeline, broker, or real-money behavior needs to change.
+- The new boundary test failed before the kernel change with equality returning `TRIGGERED`, then passed after changing the single comparison to strict `>`.
+- Remediation verification is green: focused `83 passed, 8 skipped`, full no-DSN `1213 passed, 22 skipped`, Python compilation, and `git diff --check`. Gate G7 still requires the requested short re-review.
+
+## 2026-08-22 Gate G7 final disposition
+
+- Independent Review returned `APPROVE` with no blocking or important finding. Gate G7 is formally `PASSED / MVP SCOPED GO`; Atomic ORB Strategy is approved.
+- Reviewer evidence: ORB suite `8 passed`, full no-DSN `1213 passed, 22 skipped`, and `git diff --check` passed.
+- No PostgreSQL test was rerun because this batch changed no migration or repository contract. The no-DSN result is not represented as PostgreSQL integration evidence.
+- Broker and real-money remain prohibited. The approval does not authorize another strategy batch or push.

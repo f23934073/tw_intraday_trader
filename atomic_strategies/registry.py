@@ -6,6 +6,9 @@ from typing import Iterable
 
 from atomic_strategies.entries.above_vwap import AboveVwapEntryStrategy
 from atomic_strategies.entries.breakout_previous_high import BreakoutPreviousHighEntryStrategy
+from atomic_strategies.entries.opening_range_breakout import (
+    OpeningRangeBreakoutEntryStrategy,
+)
 from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
 from atomic_strategies.entries.volume_acceleration import (
     VolumeAccelerationEntryStrategy,
@@ -22,6 +25,7 @@ class AtomicStrategyRegistry:
                 BreakoutPreviousHighEntryStrategy(),
                 RollingReturnEntryStrategy(),
                 VolumeAccelerationEntryStrategy(),
+                OpeningRangeBreakoutEntryStrategy(),
             )
         )
         self._strategies = {item.template.strategy_id: item for item in items}

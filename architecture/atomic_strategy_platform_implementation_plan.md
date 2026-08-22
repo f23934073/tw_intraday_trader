@@ -879,6 +879,16 @@ Gate G6：**PASSED / MVP CONDITIONAL GO**。Parameterized Local Paper 已核准�
 
 MVP 操作限制：Momentum runtime 與 Dashboard singleton 綁定 process 啟動日，目前沒有跨交易日 hot rollover。Dashboard 若跨日持續執行，新交易日行情會 fail closed；正式加入 session rollover 前，操作者必須在每個交易日開始前重啟 Dashboard。首次實際使用仍須完成盤中真實行情 smoke test。此 Gate 不包含後續策略、Parameterized broker adapter、CA、trade subscription、Shioaji 委託或 real-money execution。
 
+### Phase 7 — Atomic ORB Strategy（Implementation Candidate）
+
+- 下一個最小完整切片只加入 `opening_range_breakout_entry`；它是獨立 ENTRY 策略，不隸屬任何「漲停加速」群組。
+- Web／PostgreSQL 參數至少包含開盤區間分鐘數、突破 buffer、最早／最晚進場時間；immutable Version 解析成 exact opening-range Feature Request。
+- Backtest 與 Local Paper 共用 completed 1-minute Kbar 的開盤區間公式：從 09:00 起必須存在精確、連續的 N 根完整 Kbar；缺少任一分鐘一律 fail closed，不使用較晚或較舊 Kbar 補足。
+- Backtest 仍由 completed-Kbar adapter 擁有 session state；Local Paper 仍由既有 `MomentumShadowRuntime -> FeatureEngine -> IntradayBarStore` 投影 request evidence。不得在 Simulation 建立第二個 ORB calculator 或第三套行情 pipeline。
+- `distance_to_limit` 雖已有 live Feature，但 HistoricalBar Dataset 尚未保存當日 verified limit-up reference；external ratio 也缺少可信歷史 aggressor cumulative totals。兩者延後，不得以 live-only 欄位假裝可比較回測。
+
+Gate G7：**PASSED / MVP SCOPED GO**。Atomic ORB Strategy 已核准；broker／real-money 明確禁止。ORB 具備 code-owned Template/Schema、Feature Specification、Backtest/Local Paper bindings、exact request/snapshot identities 與連續區間 golden tests。Equality blocker 已改為嚴格 `current_price > breakout_price`；buffer `0` 且價格等於 opening high 時固定為 `NOT_TRIGGERED`，只有嚴格高於含 buffer 的門檻才會 `TRIGGERED`。候選驗證為 focused `83 passed, 8 skipped`、full no-DSN `1213 passed, 22 skipped`；獨立 Reviewer 另驗證 ORB suite `8 passed`、full no-DSN `1213 passed, 22 skipped` 與 `git diff --check`。本批沒有 migration/repository contract 變更，因此未重建 disposable PostgreSQL；no-DSN 不代表 PostgreSQL integration evidence，但不阻擋此 scoped Gate。此核准不自動授權下一批策略或 push。
+
 ## 19. Test Matrix
 
 - Parameter Schema unit/cross-field/canonicalization tests。

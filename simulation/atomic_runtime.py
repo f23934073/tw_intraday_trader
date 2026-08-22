@@ -36,7 +36,11 @@ LOCAL_PAPER_FEATURE_ADAPTER_IDENTITY = (
     "momentum-feature-engine-projection.local-paper-tick-bidask-v2"
 )
 REQUESTED_PROJECTION_FEATURE_IDS = frozenset(
-    {"rolling_return_v1", "rolling_volume_ratio_v1"}
+    {
+        "rolling_return_v1",
+        "rolling_volume_ratio_v1",
+        "opening_range_high_v1",
+    }
 )
 
 

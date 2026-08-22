@@ -357,3 +357,31 @@
 - Updated the Implementation Plan and README to list all four Local Paper ENTRY strategies and to require a daily Dashboard restart until cross-day hot rollover exists.
 - Recorded reviewer evidence: focused `86 passed, 8 skipped`, Backtest slice `3 passed`, full no-DSN `1203 passed, 22 skipped`, and `git diff --check` passed. Candidate disposable PostgreSQL evidence remains `1225 passed`.
 - The first market-hours real-feed smoke remains an operational task. No broker, CA, trade subscription, Shioaji order, or real-money capability was authorized or added.
+
+## 2026-08-22 — Phase 28 Atomic ORB started
+
+- Created scoped commit `b402775 feat(simulation): support parameterized local paper features`; staged payload contained only G6 code/docs/tests and was not pushed.
+- Commit verification: full no-DSN `1203 passed, 22 skipped`, focused G6 `74 passed, 8 skipped`, Python compilation, and `git diff --check` passed.
+- Completion report: Parameterized Local Paper is 100% for the four registered ENTRY strategies. Remaining first-use operations are a market-hours real-feed smoke and daily Dashboard restart until cross-day rollover exists.
+- Selected ORB as the next atomic strategy because both Backtest and Local Paper have canonical completed 1-minute bars. Distance-to-limit and external-ratio remain deferred due missing truthful historical evidence contracts.
+- Phase 28 is implementation-authorized but Gate G7 remains `NOT PASSED`; no broker or real-money scope is allowed.
+- Added six ORB golden tests before product changes. Initial collection fails with the expected missing `atomic_strategies.entries.opening_range_breakout` module, proving the new slice is not accidentally satisfied by the legacy backtest strategy.
+- Implemented the fifth independent ENTRY file, parameter schema/request binding, shared opening-range formula, Feature Specification, Backtest adapter dispatch, Local Paper request projection, and exact runtime admission.
+- Initial focused ORB/Atomic/Local Paper suite was green at `77 passed, 8 skipped`; the final focused set including Web API and Local Paper missing-minute coverage is `82 passed, 8 skipped`.
+- First full no-DSN run reached `1210 passed, 22 skipped` with one stale Web API assertion that still expected four Templates. The API correctly returned ORB; updated the contract assertion before rerunning.
+- Final full no-DSN regression is green: `1212 passed, 22 skipped`. Python compilation and `git diff --check` pass.
+- **Status:** Phase 28 implementation candidate complete; Gate G7 remains `NOT PASSED` pending independent Review. Distance-to-limit, external-ratio, broker, CA, trade subscription, and real-money scope were not added.
+
+## 2026-08-22 — Gate G7 strict-breakout remediation started
+
+- Recorded the single blocking Review finding: equality at zero buffer must remain `NOT_TRIGGERED`; only a price strictly above the computed threshold may trigger.
+- Added both requested boundary assertions before changing the kernel. Gate G7 remains `NOT PASSED`.
+- Pre-fix boundary probe failed exactly as reported: equality at opening high returned `TRIGGERED`. Changed only the kernel comparison from `>=` to strict `>`.
+- Post-fix boundary probe: `1 passed, 7 deselected`. Final focused suite: `83 passed, 8 skipped`; full no-DSN: `1213 passed, 22 skipped`; compilation and `git diff --check` passed.
+- **Status:** strict-breakout remediation candidate complete. Gate G7 remains `NOT PASSED` until the short re-review approves it.
+
+## 2026-08-22 — Gate G7 approved
+
+- Independent Review returned `APPROVE`; Gate G7 is `PASSED / MVP SCOPED GO` and Atomic ORB Strategy is approved.
+- Reviewer verification: ORB suite `8 passed`, full no-DSN `1213 passed, 22 skipped`, and `git diff --check` passed; no PostgreSQL rerun was required for this non-persistence slice.
+- Scoped commit preparation continues to exclude `.planning/.active_plan`, FinMind, live-trading, and odd-lot changes. No push, broker, or real-money action is authorized.

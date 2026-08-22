@@ -258,6 +258,37 @@ class FeatureSpecificationRegistry:
                     cross_validators=(_validate_volume_window_parameters,),
                 ),
             ),
+            FeatureSpecification(
+                feature_id="opening_range_high_v1",
+                unit="TWD_PER_SHARE",
+                cadence="COMPLETED_KBAR_1M",
+                completed_data_only=True,
+                session_reset=True,
+                warmup_bars=5,
+                missing_semantics=(
+                    "INSUFFICIENT_DATA_UNLESS_EXACT_CONTIGUOUS_SESSION_OPEN_RANGE"
+                ),
+                as_of_semantics=(
+                    "FIXED_SESSION_OPEN_09_00_THROUGH_N_COMPLETED_ONE_MINUTE_BARS"
+                ),
+                implementation_digest=hashlib.sha256(
+                    b"completed-kbar-opening-range-high-feature-implementation-v1"
+                ).hexdigest(),
+                warmup_semantics=(
+                    "OPENING_RANGE_MINUTES_CONTIGUOUS_COMPLETED_BARS_FROM_09_00"
+                ),
+                request_parameter_schema=ParameterSchema(
+                    version="opening-range-high-feature-request-v1",
+                    fields={
+                        "opening_range_minutes": {
+                            "type": "integer",
+                            "minimum": 5,
+                            "maximum": 30,
+                            "default": 15,
+                        }
+                    },
+                ),
+            ),
         )
         self._specifications = {item.feature_id: item for item in specifications}
 

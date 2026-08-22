@@ -14,6 +14,12 @@ from features.models import (
     IntradayFeatureSnapshot,
     RequestedFeatureProjection,
 )
+from features.opening_range import (
+    OPENING_RANGE_SESSION_BAR_CAPACITY,
+    OpeningRangeBar,
+    OpeningRangeFeatureValue,
+    evaluate_opening_range_high,
+)
 from features.rolling import (
     RollingBar,
     RollingFeatureValue,
@@ -194,23 +200,38 @@ class FeatureEngine:
                 raise ValueError(
                     f"Local Paper request cadence 不支援：{specification.cadence}"
                 )
-            capacity = required_bar_capacity(
-                request.feature_id,
-                request.parameters,
-            )
-            bars = tuple(
-                RollingBar(
-                    timestamp=item.minute,
-                    close=item.close,
-                    volume=item.volume_lots,
+            if request.feature_id == "opening_range_high_v1":
+                capacity = OPENING_RANGE_SESSION_BAR_CAPACITY
+                bars = tuple(
+                    OpeningRangeBar(
+                        timestamp=item.minute,
+                        high=item.high,
+                        low=item.low,
+                    )
+                    for item in source_bars[-capacity:]
                 )
-                for item in source_bars[-capacity:]
-            )
-            result = evaluate_completed_bars(
-                request.feature_id,
-                request.parameters,
-                bars,
-            )
+                result = evaluate_opening_range_high(
+                    request.parameters,
+                    bars,
+                )
+            else:
+                capacity = required_bar_capacity(
+                    request.feature_id,
+                    request.parameters,
+                )
+                bars = tuple(
+                    RollingBar(
+                        timestamp=item.minute,
+                        close=item.close,
+                        volume=item.volume_lots,
+                    )
+                    for item in source_bars[-capacity:]
+                )
+                result = evaluate_completed_bars(
+                    request.feature_id,
+                    request.parameters,
+                    bars,
+                )
             projections.append(
                 self._requested_projection(
                     current_tick=current_tick,
@@ -230,7 +251,7 @@ class FeatureEngine:
         current_tick: TickEvent,
         request: FeatureRequestSpec,
         specification,
-        result: RollingFeatureValue,
+        result: RollingFeatureValue | OpeningRangeFeatureValue,
         source_as_of: datetime,
     ) -> RequestedFeatureProjection:
         value = FeatureValue(

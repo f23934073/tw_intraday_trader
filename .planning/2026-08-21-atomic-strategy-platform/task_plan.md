@@ -6,7 +6,7 @@ Produce a repository-grounded, implementation-ready plan for a PostgreSQL-only, 
 
 ## Current Phase
 
-Phase 27 parameterized Local Paper Tick approved; Gate G6 PASSED / MVP CONDITIONAL GO
+Phase 28 Atomic ORB approved; Gate G7 PASSED / MVP SCOPED GO
 
 ## Implementation Gate
 
@@ -26,6 +26,7 @@ Gate rules:
 - Closed blockers are not reopened without new contradictory evidence.
 - Gate G4 is `PASSED / MVP CONDITIONAL GO`; Phase 5 first slice is `APPROVED` and Gate G5 is `PASSED / MVP SCOPED GO`.
 - Gate G6 is `PASSED / MVP CONDITIONAL GO`; Parameterized Local Paper is approved for the four registered ENTRY strategies. Dashboard/Momentum runtime has no cross-day hot rollover, so the single-user MVP must restart Dashboard once per trading day. Broker transport, CA, trade subscription, Shioaji orders, and real-money execution remain prohibited.
+- Gate G7 is `PASSED / MVP SCOPED GO`; Atomic ORB Strategy is approved as the fifth independent ENTRY strategy. This approval does not authorize another strategy batch, push, broker transport, or real-money execution.
 
 ## Phases
 
@@ -320,6 +321,20 @@ Gate rules:
 - [x] Record independent Review approval, document the daily Dashboard restart limitation, and update the Local Paper strategy list to all four ENTRY strategies.
 - **Status:** complete — Gate G6 PASSED / MVP CONDITIONAL GO; Parameterized Local Paper approved, broker/real-money execution prohibited
 
+### Phase 28: Atomic opening-range breakout strategy
+
+- [x] Reconcile distance-to-limit, external-ratio, ORB, and indicator candidates against actual Backtest plus Local Paper data capabilities.
+- [x] Select ORB as the next complete slice because both runtimes have canonical completed 1-minute Kbars; defer distance-to-limit and external-ratio until truthful historical evidence exists.
+- [x] Add one `opening_range_breakout_entry` implementation file with code-owned Web schema and parameter-derived Feature Request.
+- [x] Add a shared completed-Kbar opening-range formula and Feature Specification with exact 09:00 continuity, warm-up, as-of, and implementation identity.
+- [x] Connect the exact request to the existing Backtest adapter and existing Local Paper FeatureEngine projection without another market-data/state pipeline.
+- [x] Add golden tests for parameter validation, exact range continuity, breakout/no-breakout, Backtest snapshot identity, Local Paper request evidence, and registry/Web exposure.
+- [x] Run focused/full/static verification and submit a Gate G7 implementation candidate; do not add distance-to-limit, external-ratio, broker, CA, trade subscription, or real-money work.
+- [x] Change the ORB boundary from `>=` to strict `>` so equality at zero buffer cannot create an ENTRY signal.
+- [x] Add equality and strictly-above threshold regressions, then rerun focused/full/static verification.
+- [x] Record independent Review approval and preserve the G7 scope boundary.
+- **Status:** complete — Gate G7 PASSED / MVP SCOPED GO; Atomic ORB approved, broker/real-money prohibited
+
 ## Decisions Made
 
 | Decision | Rationale |
@@ -424,6 +439,10 @@ Gate rules:
 | Phase 4 source search assumed a top-level `momentum/` package | 1 | No file changed; the live Momentum projection and canonical FeatureEngine integration are owned by `dashboard/momentum.py`. |
 | Initial Phase 5 inspection requested non-existent `atomic_strategies/contracts.py` and top-level strategy modules | 1 | No file changed; corrected the inspection to `atomic_strategies/protocol.py` and `atomic_strategies/entries/*.py`. |
 | Combined G6 documentation patch targeted README twice, which `apply_patch` rejected | 1 | No file changed; split the documentation update so each file is targeted once. |
+| Initial Phase 28 ORB golden suite could not import the not-yet-created strategy module | 1 | Expected test-first failure; implement the one-file ORB strategy and shared Feature path, then rerun the same suite. |
+| First ORB product run reached the live projection test but its new fixture omitted required store retention | 1 | Production code was not implicated; configure the test stores with the same bounded Tick/bar retention contract as the runtime and rerun. |
+| Focused Atomic regression still asserted the pre-ORB four-strategy allowlist | 1 | Update the allowlist regression to require the fifth independent ORB implementation and its concrete class. |
+| First full Phase 28 regression found the Web API contract still fixed to four Templates | 1 | Product output correctly exposed ORB; update the API regression to require all five code-owned Templates, then rerun the full suite. |
 
 ## Non-goals
 

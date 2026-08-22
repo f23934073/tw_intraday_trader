@@ -11,6 +11,10 @@ from typing import Any, Mapping
 from backtest.domain import HistoricalBar, digest
 from backtest.indicators import bollinger_bands, rsi_from_averages, true_range
 from features.rolling import evaluate_completed_bars, required_bar_capacity
+from features.opening_range import (
+    OPENING_RANGE_SESSION_BAR_CAPACITY,
+    evaluate_opening_range_high,
+)
 
 
 FEATURE_VERSION = "historical-features-v1"
@@ -118,10 +122,14 @@ class CompletedKbarFeatureState:
             series.bars.append(bar)
             series.last_timestamp = bar.timestamp
 
-        feature = evaluate_completed_bars(
-            feature_id,
-            parameters,
-            tuple(series.bars),
+        feature = (
+            evaluate_opening_range_high(parameters, tuple(series.bars))
+            if feature_id == "opening_range_high_v1"
+            else evaluate_completed_bars(
+                feature_id,
+                parameters,
+                tuple(series.bars),
+            )
         )
         return RequestedKbarFeatureValue(
             value=feature.value,
@@ -132,6 +140,8 @@ class CompletedKbarFeatureState:
 
     @staticmethod
     def _maximum_bars(feature_id: str, parameters: Mapping[str, Any]) -> int:
+        if feature_id == "opening_range_high_v1":
+            return OPENING_RANGE_SESSION_BAR_CAPACITY
         return required_bar_capacity(feature_id, parameters)
 
 

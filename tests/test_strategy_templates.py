@@ -6,6 +6,9 @@ from atomic_strategies.entries.above_vwap import AboveVwapEntryStrategy
 from atomic_strategies.entries.breakout_previous_high import (
     BreakoutPreviousHighEntryStrategy,
 )
+from atomic_strategies.entries.opening_range_breakout import (
+    OpeningRangeBreakoutEntryStrategy,
+)
 from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
 from atomic_strategies.entries.volume_acceleration import (
     VolumeAccelerationEntryStrategy,
@@ -22,6 +25,7 @@ def test_first_atomic_templates_are_separate_allowlisted_implementations() -> No
         "breakout_previous_high_entry",
         "rolling_return_entry",
         "volume_acceleration_entry",
+        "opening_range_breakout_entry",
     }
     assert isinstance(registry.strategy("above_vwap_entry"), AboveVwapEntryStrategy)
     assert isinstance(
@@ -35,6 +39,10 @@ def test_first_atomic_templates_are_separate_allowlisted_implementations() -> No
     assert isinstance(
         registry.strategy("volume_acceleration_entry"),
         VolumeAccelerationEntryStrategy,
+    )
+    assert isinstance(
+        registry.strategy("opening_range_breakout_entry"),
+        OpeningRangeBreakoutEntryStrategy,
     )
     assert templates["above_vwap_entry"].template_digest != templates[
         "breakout_previous_high_entry"

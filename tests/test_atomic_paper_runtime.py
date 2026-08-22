@@ -397,6 +397,42 @@ def test_parameterized_rolling_strategy_uses_exact_request_projection() -> None:
     ] == 3
 
 
+def test_parameterized_orb_uses_exact_request_projection() -> None:
+    orb = version(
+        "opening_range_breakout_entry",
+        1,
+        {
+            "opening_range_minutes": 15,
+            "breakout_buffer_pct": "0.5",
+            "entry_window_start": "09:15",
+            "entry_window_end": "11:00",
+        },
+    )
+    snapshot = entry_set((orb,))
+    runtime = resolve_atomic_paper_entry_set(
+        FakeCatalog(snapshot, (orb,)),
+        AtomicStrategyRegistry(),
+        snapshot.strategy_set_version_id,
+    )
+    request = runtime.projection_requests[0]
+
+    result = runtime.evaluate_projection(
+        projection(
+            price="101",
+            requested_features=[requested_feature(request, value="100")],
+        ),
+        evaluated_at=AT,
+        max_age_seconds=5,
+    )
+
+    assert request.feature_id == "opening_range_high_v1"
+    assert request.parameters == {"opening_range_minutes": 15}
+    assert result.candidates[0].status is PaperSetStatus.TRIGGERED
+    assert result.candidates[0].evaluations[0].threshold[
+        "breakout_price"
+    ] == "100.500"
+
+
 def test_pre_g6_backtest_only_version_does_not_gain_paper_admission() -> None:
     rolling = version(
         "rolling_return_entry",

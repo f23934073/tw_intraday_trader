@@ -139,10 +139,12 @@ SimulationService。瀏覽器不能直接製造任意策略 BUY／SELL 意圖。
 「模擬下單」工作區提供必須人工啟動的 Atomic Local Paper 控制器。啟動前必須選擇一個
 PostgreSQL 保存的 immutable `ENTRY` Strategy Set Version，並明確輸入停損百分比、停利
 百分比與每日最大虧損金額；系統不提供未經校準的預設風險值。目前已接上 Local Paper
-runtime binding 的原子進場策略是「站上 VWAP」、「突破盤中前高」、「區間報酬門檻」與
-「成交量加速」，可用 `ANY`、`ALL` 或 `AT_LEAST_N` 組合。後兩者的分鐘視窗與門檻由
-immutable Strategy Version 參數決定；2 分鐘與 3 分鐘會使用不同 Feature Request／state
-identity，不會共用計算結果。每次啟動會重新核對 Strategy Version、參數、Template、Schema、
+runtime binding 的原子進場策略是「站上 VWAP」、「突破盤中前高」、「區間報酬門檻」、
+「成交量加速」與「開盤區間突破 ORB」，可用 `ANY`、`ALL` 或 `AT_LEAST_N` 組合。滾動
+策略的分鐘視窗與門檻由 immutable Strategy Version 參數決定；2 分鐘與 3 分鐘會使用不同
+Feature Request／state identity，不會共用計算結果。ORB 的開盤區間分鐘數、突破 buffer 與
+進場時間也由 Version 保存；從 09:00 起缺少任何一根必要的一分鐘 Kbar 時會 fail closed。
+每次啟動會重新核對 Strategy Version、參數、Template、Schema、
 implementation 與 runtime binding digest；任一身分漂移都會 fail closed。
 Strategy Set 內每個 Version 的 PostgreSQL lifecycle projection 還必須正好是
 `PAPER_APPROVED`；activation 會在同一個 transaction 鎖定 Set、Version、projection 與
