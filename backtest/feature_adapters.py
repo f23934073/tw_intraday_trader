@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from backtest.features import CompletedKbarFeatureState
 from features.specifications import (
     FeatureRequestSpec,
@@ -77,7 +79,9 @@ class CompletedOneMinuteKbarFeatureAdapter:
                 bar=context.bar,
             )
             values[request.feature_id] = (
-                str(feature.value) if feature.value is not None else None
+                str(feature.value)
+                if isinstance(feature.value, Decimal)
+                else feature.value
             )
             state_keys[request.feature_id] = state_key
             rolling_evidence[request.feature_id] = dict(feature.evidence)

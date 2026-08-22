@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from atomic_strategies.entries.above_vwap import AboveVwapEntryStrategy
+from atomic_strategies.entries.ema_crossover import EmaCrossoverEntryStrategy
 from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
 from atomic_strategies.entries.opening_range_breakout import (
     OpeningRangeBreakoutEntryStrategy,
@@ -144,3 +147,31 @@ def test_orb_feature_specification_freezes_exact_session_open_range() -> None:
     assert specification.warmup_semantics == (
         "OPENING_RANGE_MINUTES_CONTIGUOUS_COMPLETED_BARS_FROM_09_00"
     )
+
+
+def test_ema_feature_specification_freezes_cross_and_session_prefix() -> None:
+    requests = resolve_feature_requests(
+        EmaCrossoverEntryStrategy.template,
+        {"fast_period": 8, "slow_period": 34},
+    )
+    registry = FeatureSpecificationRegistry()
+    registry.validate_requests(requests)
+    specification = registry.get("ema_cross_up_v1")
+
+    assert requests[0].parameters == {"fast_period": 8, "slow_period": 34}
+    assert specification.unit == "BOOLEAN"
+    assert specification.missing_semantics == (
+        "INSUFFICIENT_DATA_UNLESS_CONTIGUOUS_SESSION_OPEN_PREFIX"
+    )
+    assert specification.warmup_semantics == (
+        "SLOW_PERIOD_PLUS_ONE_CONTIGUOUS_BARS_FROM_09_00"
+    )
+    with pytest.raises(ValueError, match="fast_period 必須小於 slow_period"):
+        registry.validate_requests(
+            (
+                FeatureRequestSpec(
+                    "ema_cross_up_v1",
+                    {"fast_period": 20, "slow_period": 20},
+                ),
+            )
+        )

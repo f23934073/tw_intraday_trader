@@ -19,6 +19,11 @@ def _validate_volume_window_parameters(parameters: Mapping[str, Any]) -> None:
         )
 
 
+def _validate_ema_parameters(parameters: Mapping[str, Any]) -> None:
+    if int(parameters["fast_period"]) >= int(parameters["slow_period"]):
+        raise ValueError("fast_period 必須小於 slow_period")
+
+
 @dataclass(frozen=True)
 class FeatureRequestSpec:
     feature_id: str
@@ -287,6 +292,42 @@ class FeatureSpecificationRegistry:
                             "default": 15,
                         }
                     },
+                ),
+            ),
+            FeatureSpecification(
+                feature_id="ema_cross_up_v1",
+                unit="BOOLEAN",
+                cadence="COMPLETED_KBAR_1M",
+                completed_data_only=True,
+                session_reset=True,
+                warmup_bars=21,
+                missing_semantics=(
+                    "INSUFFICIENT_DATA_UNLESS_CONTIGUOUS_SESSION_OPEN_PREFIX"
+                ),
+                as_of_semantics=(
+                    "CURRENT_AND_PREVIOUS_COMPLETED_BAR_EMA_FROM_SESSION_OPEN_PREFIX"
+                ),
+                implementation_digest=hashlib.sha256(
+                    b"completed-kbar-ema-cross-up-feature-implementation-v1"
+                ).hexdigest(),
+                warmup_semantics="SLOW_PERIOD_PLUS_ONE_CONTIGUOUS_BARS_FROM_09_00",
+                request_parameter_schema=ParameterSchema(
+                    version="ema-cross-up-feature-request-v1",
+                    fields={
+                        "fast_period": {
+                            "type": "integer",
+                            "minimum": 2,
+                            "maximum": 60,
+                            "default": 5,
+                        },
+                        "slow_period": {
+                            "type": "integer",
+                            "minimum": 3,
+                            "maximum": 120,
+                            "default": 20,
+                        },
+                    },
+                    cross_validators=(_validate_ema_parameters,),
                 ),
             ),
         )

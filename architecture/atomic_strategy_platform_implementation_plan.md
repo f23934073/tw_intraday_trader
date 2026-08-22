@@ -6,7 +6,7 @@
 
 ### 1.1 實作前 Review Gate
 
-**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4 均核准為 `PASSED / MVP CONDITIONAL GO`；Phase 5 首批已核准為 `G5 PASSED / MVP SCOPED GO`；parameterized Local Paper 為 G6 implementation candidate，尚未通過 Review。** B1–B5 契約維持 `REVIEWED / CLOSED`。G4/G5 核准只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper／Backtest scoped MVP；券商委託與真實交易仍不得開始：
+**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4/G6 均核准為 `PASSED / MVP CONDITIONAL GO`；Gates G5/G7/G8 為 `PASSED / MVP SCOPED GO`。** B1–B5 契約維持 `REVIEWED / CLOSED`。所有 MVP Gate 只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper／Backtest scope；券商委託與真實交易仍不得開始：
 
 | ID | Blocking contract | 本文件的處理方向 | Gate 狀態 |
 |---|---|---|---|
@@ -888,6 +888,17 @@ MVP 操作限制：Momentum runtime 與 Dashboard singleton 綁定 process 啟�
 - `distance_to_limit` 雖已有 live Feature，但 HistoricalBar Dataset 尚未保存當日 verified limit-up reference；external ratio 也缺少可信歷史 aggressor cumulative totals。兩者延後，不得以 live-only 欄位假裝可比較回測。
 
 Gate G7：**PASSED / MVP SCOPED GO**。Atomic ORB Strategy 已核准；broker／real-money 明確禁止。ORB 具備 code-owned Template/Schema、Feature Specification、Backtest/Local Paper bindings、exact request/snapshot identities 與連續區間 golden tests。Equality blocker 已改為嚴格 `current_price > breakout_price`；buffer `0` 且價格等於 opening high 時固定為 `NOT_TRIGGERED`，只有嚴格高於含 buffer 的門檻才會 `TRIGGERED`。候選驗證為 focused `83 passed, 8 skipped`、full no-DSN `1213 passed, 22 skipped`；獨立 Reviewer 另驗證 ORB suite `8 passed`、full no-DSN `1213 passed, 22 skipped` 與 `git diff --check`。本批沒有 migration/repository contract 變更，因此未重建 disposable PostgreSQL；no-DSN 不代表 PostgreSQL integration evidence，但不阻擋此 scoped Gate。此核准不自動授權下一批策略或 push。
+
+### Phase 8 — Atomic EMA Crossover Strategy（完成；MVP Scoped Go）
+
+- 下一個最小完整切片只加入 `ema_crossover_entry`；它是獨立 ENTRY 策略，預設語意為 EMA(5) 由下往上穿越 EMA(20)。
+- Web／PostgreSQL immutable Version 保存 `fast_period`、`slow_period`、最早／最晚進場時間；必須驗證 `fast_period < slow_period`，並解析成 exact `ema_cross_up_v1` Feature Request。
+- Backtest 與 Local Paper 共用 completed 1-minute Kbar 的 SMA-seeded EMA recurrence。觸發邊界固定為 previous fast `<=` previous slow 且 current fast `>` current slow；不是只要 fast 位於 slow 上方就重複觸發。
+- EMA 使用從 09:00 到目前完整 bar 的有序 session prefix；暖機不足或任一中間分鐘缺失均 fail closed。Runtime state／history 必須維持 bounded one-session retention。
+- Local Paper 沿用既有 `MomentumShadowRuntime -> FeatureEngine -> IntradayBarStore` request projection；Simulation 只驗證 exact evidence，不建立第二個 EMA calculator 或第三套行情 pipeline。
+- Feature evidence 保存 crossover boolean 與 previous/current fast/slow EMA；request、parameters、Specification、implementation、adapter、cadence、session identity 漂移一律 fail closed。
+
+Gate G8：**PASSED / MVP SCOPED GO**。EMA implementation 已核准。候選驗證為 focused `61 passed`、full no-DSN `1222 passed, 22 skipped`、Python compilation 與 `git diff --check` 通過；獨立 Reviewer 另驗證 EMA focused `41 passed`、full no-DSN `1222 passed, 22 skipped` 與 `git diff --check`。第一次 full run 只因 sandbox artifact 寫入限制失敗，改用獨立 `/tmp` 目錄後同套測試通過。本批沒有 migration/repository contract 變更，因此沒有新增 PostgreSQL integration evidence。此核准不包含 RSI/Bollinger、distance-to-limit、external-ratio、Exit、broker、CA、trade subscription、Shioaji 委託、real-money execution 或 push。
 
 ## 19. Test Matrix
 

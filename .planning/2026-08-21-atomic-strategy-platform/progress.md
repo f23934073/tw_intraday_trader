@@ -385,3 +385,25 @@
 - Independent Review returned `APPROVE`; Gate G7 is `PASSED / MVP SCOPED GO` and Atomic ORB Strategy is approved.
 - Reviewer verification: ORB suite `8 passed`, full no-DSN `1213 passed, 22 skipped`, and `git diff --check` passed; no PostgreSQL rerun was required for this non-persistence slice.
 - Scoped commit preparation continues to exclude `.planning/.active_plan`, FinMind, live-trading, and odd-lot changes. No push, broker, or real-money action is authorized.
+
+## 2026-08-22 — G7 committed and Phase 29 started
+
+- Created scoped commit `dcffc11 feat(strategy): add atomic ORB strategy`; the commit was not pushed and unrelated planning/worktree changes remain untouched.
+- Atomic ORB is 100% complete for its approved scope. The platform now has five independent ENTRY strategies: above VWAP, previous-high breakout, rolling return, volume acceleration, and ORB.
+- Selected parameterized EMA crossover as the next atomic strategy because it can reuse the existing completed-1m Kbar path in both Backtest and Local Paper.
+- Phase 29 will introduce no migration and no new market-data pipeline. Gate G8 remains `NOT PASSED` until implementation, regression evidence, and independent Review are complete.
+- Completed the source-owner reconciliation: Backtest will delegate from `CompletedKbarFeatureState`, Local Paper from `FeatureEngine.evaluate_requests()`, and both will call one new runtime-neutral EMA formula.
+- Added the Phase 29 golden suite before product code. Initial collection fails with the expected missing `atomic_strategies.entries.ema_crossover` module, proving the new strategy is not accidentally satisfied by the legacy fixed EMA snapshot.
+- First product collection then caught an invalid session enum before tests ran; the new Template now uses the same `INTRADAY` phase as the legacy EMA strategy and other intraday Atomic entries.
+- Implemented the independent EMA Template/kernel, shared session-prefix formula, Feature Specification, both request adapters, Local Paper admission, Registry, and Web allowlist. Initial targeted suite is green at `14 passed`.
+- EMA evidence now canonicalizes Decimal text to stable non-exponent strings while preserving the crossover result as a boolean; existing Decimal Feature projections remain unchanged.
+- Expanded the focused scope through exact Local Paper boolean normalization, parameter/specification identity, ORB/rolling regressions, Registry, and Web API: `61 passed`.
+- Python compilation and `git diff --check` pass. Scope inspection confirms the EMA candidate is separable from `.planning/.active_plan`, FinMind, live-trading, and odd-lot changes, which remain untouched user work.
+- Full no-DSN regression is green at `1222 passed, 22 skipped`.
+- **Status:** Phase 29 EMA implementation candidate complete; Gate G8 remains `NOT PASSED` pending independent Review. No PostgreSQL migration/repository change, broker, CA, trade subscription, Shioaji order, or real-money capability was added.
+
+## 2026-08-22 — Gate G8 approved
+
+- Independent Review returned `APPROVE`; Gate G8 is `PASSED / MVP SCOPED GO` and EMA implementation is approved.
+- Reviewer verification: EMA focused `41 passed`, full no-DSN `1222 passed, 22 skipped`, and `git diff --check` passed. PostgreSQL was correctly not rerun for this non-persistence slice.
+- Scoped commit preparation continues to exclude `.planning/.active_plan`, FinMind, live-trading, and odd-lot changes. No push, broker, or real-money action is authorized.

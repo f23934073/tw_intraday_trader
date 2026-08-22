@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 from backtest.domain import HistoricalBar, digest
 from backtest.indicators import bollinger_bands, rsi_from_averages, true_range
+from features.ema import EMA_SESSION_BAR_CAPACITY, evaluate_ema_cross_up
 from features.rolling import evaluate_completed_bars, required_bar_capacity
 from features.opening_range import (
     OPENING_RANGE_SESSION_BAR_CAPACITY,
@@ -57,7 +58,7 @@ class PositionStrategyContext:
 
 @dataclass(frozen=True)
 class RequestedKbarFeatureValue:
-    value: Decimal | None
+    value: Decimal | bool | None
     state_key: str
     missing_reason: str | None
     evidence: Mapping[str, Any]
@@ -122,15 +123,16 @@ class CompletedKbarFeatureState:
             series.bars.append(bar)
             series.last_timestamp = bar.timestamp
 
-        feature = (
-            evaluate_opening_range_high(parameters, tuple(series.bars))
-            if feature_id == "opening_range_high_v1"
-            else evaluate_completed_bars(
+        if feature_id == "opening_range_high_v1":
+            feature = evaluate_opening_range_high(parameters, tuple(series.bars))
+        elif feature_id == "ema_cross_up_v1":
+            feature = evaluate_ema_cross_up(parameters, tuple(series.bars))
+        else:
+            feature = evaluate_completed_bars(
                 feature_id,
                 parameters,
                 tuple(series.bars),
             )
-        )
         return RequestedKbarFeatureValue(
             value=feature.value,
             state_key=state_key,
@@ -142,6 +144,8 @@ class CompletedKbarFeatureState:
     def _maximum_bars(feature_id: str, parameters: Mapping[str, Any]) -> int:
         if feature_id == "opening_range_high_v1":
             return OPENING_RANGE_SESSION_BAR_CAPACITY
+        if feature_id == "ema_cross_up_v1":
+            return EMA_SESSION_BAR_CAPACITY
         return required_bar_capacity(feature_id, parameters)
 
 

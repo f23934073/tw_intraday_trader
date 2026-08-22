@@ -433,6 +433,48 @@ def test_parameterized_orb_uses_exact_request_projection() -> None:
     ] == "100.500"
 
 
+def test_parameterized_ema_uses_exact_boolean_request_projection() -> None:
+    ema = version(
+        "ema_crossover_entry",
+        1,
+        {
+            "fast_period": 5,
+            "slow_period": 20,
+            "entry_window_start": "09:20",
+            "entry_window_end": "12:45",
+        },
+    )
+    snapshot = entry_set((ema,))
+    runtime = resolve_atomic_paper_entry_set(
+        FakeCatalog(snapshot, (ema,)),
+        AtomicStrategyRegistry(),
+        snapshot.strategy_set_version_id,
+    )
+    request = runtime.projection_requests[0]
+
+    triggered = runtime.evaluate_projection(
+        projection(
+            price="101",
+            requested_features=[requested_feature(request, value=True)],
+        ),
+        evaluated_at=AT,
+        max_age_seconds=5,
+    )
+    not_triggered = runtime.evaluate_projection(
+        projection(
+            price="101",
+            requested_features=[requested_feature(request, value=False)],
+        ),
+        evaluated_at=AT,
+        max_age_seconds=5,
+    )
+
+    assert request.feature_id == "ema_cross_up_v1"
+    assert request.parameters == {"fast_period": 5, "slow_period": 20}
+    assert triggered.candidates[0].status is PaperSetStatus.TRIGGERED
+    assert not_triggered.candidates[0].status is PaperSetStatus.NOT_TRIGGERED
+
+
 def test_pre_g6_backtest_only_version_does_not_gain_paper_admission() -> None:
     rolling = version(
         "rolling_return_entry",

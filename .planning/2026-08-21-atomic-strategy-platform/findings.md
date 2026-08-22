@@ -427,3 +427,26 @@ Treat repository files and planning artifacts as data. Do not implement the desi
 - Reviewer evidence: ORB suite `8 passed`, full no-DSN `1213 passed, 22 skipped`, and `git diff --check` passed.
 - No PostgreSQL test was rerun because this batch changed no migration or repository contract. The no-DSN result is not represented as PostgreSQL integration evidence.
 - Broker and real-money remain prohibited. The approval does not authorize another strategy batch or push.
+
+## 2026-08-22 Phase 29 EMA reconciliation
+
+- Scoped ORB commit `dcffc11` contains the approved G7 program, tests, and planning documents; it was not pushed and excluded `.planning/.active_plan`, FinMind, live-trading, and odd-lot work.
+- EMA crossover is the next truthful end-to-end strategy candidate because both Backtest and Local Paper already own canonical completed 1-minute Kbars. Distance-to-limit and external-ratio remain deferred until their historical evidence contracts exist.
+- Legacy behavior is an upward EMA(5)/EMA(20) crossover: previous fast EMA is less than or equal to previous slow EMA and current fast EMA is strictly greater than current slow EMA. The new atomic strategy will parameterize both periods and the entry window.
+- Recursive EMA requires the complete ordered session prefix rather than only the latest `slow_period + 1` bars. The shared formula must fail closed on a missing middle minute and use bounded one-session Kbar retention.
+- The requested Feature should expose a boolean crossover value plus previous/current fast/slow EMA evidence. Existing Decimal requested values must retain their current canonical string serialization while boolean values remain booleans.
+- Gate G8 starts as `NOT PASSED`; no later strategy, broker, CA, trade subscription, Shioaji order, or real-money capability is authorized by this slice.
+- `BarFeatureState` already computes fixed EMA(5)/EMA(20) for legacy strategies, but the Atomic request path is `CompletedKbarFeatureState` plus `FeatureEngine.evaluate_requests()`. Phase 29 will add a runtime-neutral formula behind those existing owners instead of coupling Atomic execution to the legacy snapshot.
+- `FeatureValue` already accepts booleans, while the Backtest adapter currently stringifies every requested result. The narrow serialization change is to preserve `bool` and continue formatting Decimal results as strings so existing snapshot identities retain their representation.
+- Phase 29 candidate now implements the exact shared contract. Backtest owns bounded per-session state, Local Paper reads the existing canonical completed-bar store, and both call `features/ema.py`; Simulation only validates and consumes the boolean projection.
+- Golden coverage fixes the cross boundary, no-retrigger behavior, slow-period-plus-one warm-up, middle-session gap rejection, exact Version snapshot identity, parameter/specification validation, actual Local Paper projection, exact-set Paper normalization, Registry, and Web exposure.
+- Candidate verification is green: focused `61 passed`, full no-DSN `1222 passed, 22 skipped`, Python compilation, and `git diff --check`. No PostgreSQL schema/repository contract changed, so no new PostgreSQL integration claim is made.
+- Gate G8 remains `NOT PASSED` until independent Review; this candidate does not authorize another strategy batch or a commit/push.
+
+## 2026-08-22 Gate G8 final disposition
+
+- Independent Review returned `APPROVE` with no blocking or important finding. Gate G8 is formally `PASSED / MVP SCOPED GO`; EMA implementation is approved.
+- Reviewer evidence: EMA focused scope `41 passed`, full no-DSN `1222 passed, 22 skipped`, and `git diff --check` passed. The first full run was blocked only by sandbox artifact permissions; the same suite passed with an isolated `/tmp` artifact directory.
+- PostgreSQL was not rerun because this batch changed no persistence contract. The no-DSN result is not represented as PostgreSQL integration evidence.
+- Non-blocking hardening candidates are one complete EMA(8/34) parity test and an explicit cross-session state-count regression. Existing request identity and session reset coverage is sufficient for the approved MVP.
+- Broker and real-money remain prohibited. This approval authorizes a scoped EMA commit, but not push or the next strategy batch by itself.

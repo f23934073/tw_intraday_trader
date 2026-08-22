@@ -443,6 +443,10 @@ Gate rules:
 | First ORB product run reached the live projection test but its new fixture omitted required store retention | 1 | Production code was not implicated; configure the test stores with the same bounded Tick/bar retention contract as the runtime and rerun. |
 | Focused Atomic regression still asserted the pre-ORB four-strategy allowlist | 1 | Update the allowlist regression to require the fifth independent ORB implementation and its concrete class. |
 | First full Phase 28 regression found the Web API contract still fixed to four Templates | 1 | Product output correctly exposed ORB; update the API regression to require all five code-owned Templates, then rerun the full suite. |
+| Initial Phase 29 EMA golden suite could not import the not-yet-created strategy module | 1 | Expected test-first failure; implement the independent EMA strategy and shared Feature formula, then rerun the same suite. |
+| First EMA product collection used a non-existent `SessionPhase.CONTINUOUS` enum | 1 | Collection caught the metadata mismatch; align the new Template with the existing `SessionPhase.INTRADAY` value before accepting any test evidence. |
+| Combined EMA runtime/specification/README patch expected the wrong import context | 1 | No file changed; inspect the exact import order and split the additions into context-accurate hunks. |
+| Scoped EMA `git add` could not create `.git/index.lock` inside the filesystem sandbox | 1 | No file was staged; retry the same explicit file list with repository-local Git metadata permission, then recheck the complete staged payload. |
 
 ## Non-goals
 
@@ -453,3 +457,16 @@ Gate rules:
 - No claim that backtest strategies already have live Tick/BidAsk parity.
 - No network-exposed unauthenticated strategy-management mutation API.
 - No unbounded per-evaluation database persistence.
+
+## Phase 29: Atomic EMA crossover strategy
+
+- [x] Reconcile the legacy EMA(5)/EMA(20) cross-up semantics with the current Atomic Strategy boundaries.
+- [x] Select EMA as the next slice because Backtest and Local Paper already share canonical completed 1-minute Kbars.
+- [x] Add one code-owned `ema_crossover_entry` strategy file with schema-driven fast/slow periods and entry window.
+- [x] Add parameterized `ema_cross_up_v1` Feature Specification and one runtime-neutral completed-Kbar formula.
+- [x] Preserve boolean Feature evidence and exact request/specification/implementation/session identities in both adapters.
+- [x] Connect the exact request to existing Backtest and Local Paper paths without another market-data or state pipeline.
+- [x] Add warm-up, continuity, boundary, parameter-isolation, snapshot, Web registry, and Local Paper regressions.
+- [x] Run focused/full no-DSN/static checks and prepare Gate G8 evidence.
+
+Gate G8: **PASSED / MVP SCOPED GO**. EMA implementation is approved; broker, CA, trade subscription, Shioaji order submission, real-money execution, push, and the next strategy batch are not included in this approval.

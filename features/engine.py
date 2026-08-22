@@ -14,6 +14,12 @@ from features.models import (
     IntradayFeatureSnapshot,
     RequestedFeatureProjection,
 )
+from features.ema import (
+    EMA_SESSION_BAR_CAPACITY,
+    EmaBar,
+    EmaCrossoverFeatureValue,
+    evaluate_ema_cross_up,
+)
 from features.opening_range import (
     OPENING_RANGE_SESSION_BAR_CAPACITY,
     OpeningRangeBar,
@@ -214,6 +220,19 @@ class FeatureEngine:
                     request.parameters,
                     bars,
                 )
+            elif request.feature_id == "ema_cross_up_v1":
+                capacity = EMA_SESSION_BAR_CAPACITY
+                bars = tuple(
+                    EmaBar(
+                        timestamp=item.minute,
+                        close=item.close,
+                    )
+                    for item in source_bars[-capacity:]
+                )
+                result = evaluate_ema_cross_up(
+                    request.parameters,
+                    bars,
+                )
             else:
                 capacity = required_bar_capacity(
                     request.feature_id,
@@ -251,7 +270,11 @@ class FeatureEngine:
         current_tick: TickEvent,
         request: FeatureRequestSpec,
         specification,
-        result: RollingFeatureValue | OpeningRangeFeatureValue,
+        result: (
+            RollingFeatureValue
+            | OpeningRangeFeatureValue
+            | EmaCrossoverFeatureValue
+        ),
         source_as_of: datetime,
     ) -> RequestedFeatureProjection:
         value = FeatureValue(
