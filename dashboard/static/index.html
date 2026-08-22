@@ -224,10 +224,11 @@
           <div class="order-fields">
             <div class="order-field"><label for="order-symbol">股票代碼</label><input id="order-symbol" name="symbol" inputmode="numeric" required></div>
             <div class="order-field"><label for="order-side">方向</label><select id="order-side" name="side"><option value="BUY">買進</option><option value="SELL">賣出</option></select></div>
-            <div class="order-field"><label for="order-lots">張數（1 張＝1,000 股）</label><input id="order-lots" name="lots" min="1" step="1" type="number" value="1" required></div>
+            <div class="order-field"><label for="order-shares">股數（1～999 股為零股）</label><input id="order-shares" name="quantity_shares" min="1" step="1" type="number" value="1" required></div>
             <div class="order-field"><label for="order-price">限價</label><input id="order-price" name="limit_price" min="0.01" step="0.01" type="number" required></div>
           </div>
-          <p class="order-note" id="order-preview">買進以賣一、賣出以買一判斷模擬成交；未達限價則保留在委託清單。</p>
+          <p class="order-note" id="order-preview">正在讀取可用虛擬現金與委託狀態…</p>
+          <p class="order-note" id="order-simulation-boundary">整股與零股都只做本機模擬，沿用現有買一／賣一作為參考撮合；不代表證交所零股五檔或券商成交。</p>
           <p class="order-message" id="order-message" role="status"></p>
           <p class="error" id="order-error" role="alert"></p>
           <button class="order-submit" id="order-submit" type="submit">送出本機模擬委託</button>
@@ -348,6 +349,6 @@
       </aside>
     </div>
 
-    <script type="module" src="/static/js/app.js?v=20260821-shioaji-quota-v1"></script>
+    <script type="module" src="/static/js/app.js?v=20260821-atomic-strategy-v2"></script>
   </body>
 </html>

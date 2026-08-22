@@ -15,12 +15,10 @@ class LocalPaperSimulationCommandAdapter:
         self._service = service
 
     def submit(self, command: OrderCommand) -> dict[str, Any]:
-        if command.quantity_shares % 1_000 != 0:
-            raise ValueError("local-paper adapter only supports common-lot quantities")
         order, _ = self._service.submit_order(
             symbol=command.symbol,
             side=command.side.value,
-            lots=command.quantity_shares // 1_000,
+            quantity_shares=command.quantity_shares,
             limit_price=command.limit_price,
             idempotency_key=command.idempotency_key,
             origin=command.origin.value,

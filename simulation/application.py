@@ -126,14 +126,16 @@ class LocalPaperCommandService:
         *,
         symbol: str,
         side: str,
-        lots: int,
         limit_price: Decimal | float | int | str,
         idempotency_key: str,
+        quantity_shares: int | None = None,
+        lots: int | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Record, risk-check, and apply one manual local-paper limit order."""
         return self._submit_order(
             symbol=symbol,
             side=side,
+            quantity_shares=quantity_shares,
             lots=lots,
             limit_price=limit_price,
             idempotency_key=idempotency_key,
@@ -151,14 +153,16 @@ class LocalPaperCommandService:
         strategy_version: str,
         symbol: str,
         side: str,
-        lots: int,
         limit_price: Decimal | float | int | str,
+        quantity_shares: int | None = None,
+        lots: int | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Apply one explicit strategy intent through the local-only path."""
         normalized_intent_id = self._normalize_key(intent_id)
         return self._submit_order(
             symbol=symbol,
             side=side,
+            quantity_shares=quantity_shares,
             lots=lots,
             limit_price=limit_price,
             idempotency_key=f"strategy-paper:{normalized_intent_id}",
@@ -173,7 +177,8 @@ class LocalPaperCommandService:
         *,
         symbol: str,
         side: str,
-        lots: int,
+        quantity_shares: int | None,
+        lots: int | None,
         limit_price: Decimal | float | int | str,
         idempotency_key: str,
         command_id: str,
@@ -185,7 +190,10 @@ class LocalPaperCommandService:
     ) -> tuple[dict[str, Any], bool]:
         normalized_symbol = self._normalize_symbol(symbol)
         normalized_side = self._normalize_side(side)
-        normalized_lots = self._normalize_lots(lots)
+        normalized_quantity_shares = self._resolve_quantity_shares(
+            quantity_shares=quantity_shares,
+            lots=lots,
+        )
         normalized_price = self._normalize_price(limit_price)
         normalized_key = self._normalize_key(idempotency_key)
 
@@ -201,7 +209,7 @@ class LocalPaperCommandService:
                 origin=origin,
                 symbol=normalized_symbol,
                 side=normalized_side,
-                quantity_shares=normalized_lots * 1_000,
+                quantity_shares=normalized_quantity_shares,
                 limit_price=normalized_price,
                 idempotency_key=normalized_key,
                 requested_at=now,
@@ -225,7 +233,7 @@ class LocalPaperCommandService:
                 order = self._simulation.record_risk_rejection(
                     symbol=normalized_symbol,
                     side=normalized_side.value,
-                    lots=normalized_lots,
+                    quantity_shares=normalized_quantity_shares,
                     limit_price=normalized_price,
                     idempotency_key=normalized_key,
                     reason=f"風控拒絕：{reason}",
@@ -258,13 +266,14 @@ class LocalPaperCommandService:
             if attempt > self._simulation.max_retry_attempts:
                 raise SimulationStateError("委託重試次數已達上限")
             remaining = int(source.get("remaining_quantity") or 0)
-            if remaining <= 0 or remaining % 1_000 != 0:
-                raise SimulationStateError("委託沒有可安全重試的整股餘量")
+            if remaining <= 0:
+                raise SimulationStateError("委託沒有可安全重試的未成交餘量")
             normalized_key = self._normalize_key(idempotency_key)
             return self._submit_order(
                 symbol=str(source["symbol"]),
                 side=str(source["side"]),
-                lots=remaining // 1_000,
+                quantity_shares=remaining,
+                lots=None,
                 limit_price=(source["limit_price"] if limit_price is None else limit_price),
                 idempotency_key=normalized_key,
                 command_id=f"local-paper-retry:{order_id}:{attempt}:{normalized_key}",
@@ -466,6 +475,31 @@ class LocalPaperCommandService:
         if isinstance(lots, bool) or not isinstance(lots, int) or lots <= 0:
             raise SimulationValidationError("張數必須是大於 0 的整數")
         return lots
+
+    @staticmethod
+    def _normalize_quantity_shares(quantity_shares: int) -> int:
+        if (
+            isinstance(quantity_shares, bool)
+            or not isinstance(quantity_shares, int)
+            or quantity_shares <= 0
+        ):
+            raise SimulationValidationError("股數必須是大於 0 的整數")
+        return quantity_shares
+
+    @classmethod
+    def _resolve_quantity_shares(
+        cls,
+        *,
+        quantity_shares: int | None,
+        lots: int | None,
+    ) -> int:
+        if quantity_shares is not None and lots is not None:
+            raise SimulationValidationError("股數與張數不可同時提供")
+        if quantity_shares is not None:
+            return cls._normalize_quantity_shares(quantity_shares)
+        if lots is not None:
+            return cls._normalize_lots(lots) * 1_000
+        raise SimulationValidationError("請輸入股數")
 
     @staticmethod
     def _normalize_price(limit_price: Decimal | float | int | str) -> Decimal:

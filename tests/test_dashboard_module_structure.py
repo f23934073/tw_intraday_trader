@@ -13,7 +13,7 @@ def test_dashboard_layout_loads_external_css_and_one_module_entrypoint() -> None
     assert '<link rel="stylesheet" href="/static/css/dashboard.css">' in HTML
     assert (
         '<script type="module" '
-        'src="/static/js/app.js?v=20260821-shioaji-quota-v1"></script>'
+        'src="/static/js/app.js?v=20260821-atomic-strategy-v2"></script>'
     ) in HTML
     assert "<style>" not in HTML
     assert "<script>" not in HTML
@@ -67,9 +67,23 @@ def test_simulation_workspace_exposes_explicit_automated_strategy_controls() -> 
     assert "stopAutomatedStrategy" in simulation
     assert "pollAutomatedStrategyStatus" in APP
     assert (
-        './workspaces/simulation.js?v=20260821-continuous-paper-v1'
+        './workspaces/simulation.js?v=20260822-share-native-v1'
         in APP
     )
+
+
+def test_simulation_order_ticket_uses_exact_share_quantity() -> None:
+    simulation = (WORKSPACES / "simulation.js").read_text(encoding="utf-8")
+    candidates = (WORKSPACES / "candidates.js").read_text(encoding="utf-8")
+
+    assert 'for="order-shares">股數（1～999 股為零股）' in HTML
+    assert 'id="order-shares"' in HTML
+    assert 'id="order-simulation-boundary"' in HTML
+    assert "不代表證交所零股五檔或券商成交" in HTML
+    assert "order-simulation-boundary" not in simulation
+    assert "order-simulation-boundary" not in candidates
+    assert "quantity_shares" in simulation
+    assert "order.quantity_shares" in simulation
 
 
 def test_topbar_exposes_exhausted_shioaji_usage_status() -> None:

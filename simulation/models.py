@@ -30,7 +30,7 @@ class SimulationOrder:
     symbol: str
     name: str
     side: OrderSide
-    lots: int
+    quantity_shares: int
     limit_price: Decimal
     status: OrderStatus
     submitted_at: datetime
@@ -52,7 +52,14 @@ class SimulationOrder:
     @property
     def quantity(self) -> int:
         """內部以股數表示成交與持倉數量。"""
-        return self.lots * 1_000
+        return self.quantity_shares
+
+    @property
+    def lots(self) -> int | None:
+        """Legacy whole-lot projection; odd-lot orders have no exact lot value."""
+        if self.quantity_shares % 1_000 != 0:
+            return None
+        return self.quantity_shares // 1_000
 
     @property
     def remaining_quantity(self) -> int:

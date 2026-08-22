@@ -9,7 +9,7 @@ export function createSimulationWorkspace(context) {
   const ordersPanel = document.getElementById("orders-panel");
   const orderSymbol = document.getElementById("order-symbol");
   const orderSide = document.getElementById("order-side");
-  const orderLots = document.getElementById("order-lots");
+  const orderShares = document.getElementById("order-shares");
   const orderPrice = document.getElementById("order-price");
   const orderSubmit = document.getElementById("order-submit");
   const orderError = document.getElementById("order-error");
@@ -210,6 +210,7 @@ export function createSimulationWorkspace(context) {
         list.innerHTML = orders.map((order) => {
           const side = order.side === "BUY" ? "買進" : "賣出";
           const filled = order.status === "FILLED";
+          const quantityShares = Number(order.quantity_shares ?? order.quantity ?? 0);
           const quoteSummary = order.bid_price === null || order.bid_price === undefined
             || order.ask_price === null || order.ask_price === undefined
             ? ""
@@ -232,7 +233,7 @@ export function createSimulationWorkspace(context) {
           return `
             <article class="order-card">
               <div class="order-card-top">
-                <div class="order-card-title">${escapeHtml(order.symbol)} <span>${escapeHtml(order.name)} · ${side} ${order.lots} 張</span></div>
+                <div class="order-card-title">${escapeHtml(order.symbol)} <span>${escapeHtml(order.name)} · ${side} ${formatNumber(quantityShares, 0)} 股</span></div>
                 <span class="order-status ${orderStatusClass(order.status)}">${escapeHtml(orderStatusLabel(order.status))}</span>
               </div>
               <div class="order-card-meta">${formatOrderTime(order.updated_at)} · ${escapeHtml(order.origin === "MANUAL_WEB" ? "網頁手動" : order.origin === "STRATEGY_AUTOMATED" ? "策略模擬" : order.origin)}${quoteTime}</div>
@@ -408,13 +409,13 @@ export function createSimulationWorkspace(context) {
       async function submitSimulationOrder(event) {
         event.preventDefault();
         const symbol = orderSymbol.value.trim();
-        const lots = Number(orderLots.value);
+        const quantityShares = Number(orderShares.value);
         const limitPrice = Number(orderPrice.value);
         orderError.style.display = "none";
         orderMessage.classList.remove("visible");
 
-        if (!symbol || !Number.isInteger(lots) || lots <= 0 || !Number.isFinite(limitPrice) || limitPrice <= 0) {
-          orderError.textContent = "請輸入股票代碼、正確張數與大於 0 的限價。";
+        if (!symbol || !Number.isInteger(quantityShares) || quantityShares <= 0 || !Number.isFinite(limitPrice) || limitPrice <= 0) {
+          orderError.textContent = "請輸入股票代碼、正整數股數與大於 0 的限價。";
           orderError.style.display = "block";
           return;
         }
@@ -428,7 +429,7 @@ export function createSimulationWorkspace(context) {
             body: JSON.stringify({
               symbol,
               side: orderSide.value,
-              lots,
+              quantity_shares: quantityShares,
               limit_price: limitPrice,
               idempotency_key: newIdempotencyKey("manual")
             })

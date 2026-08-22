@@ -4,10 +4,12 @@ from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from market_data.provider import MockProvider
 from runtime.in_memory import InMemoryJournalRepository
 from simulation.application import LocalPaperCommandService
-from simulation.service import SimulationService
+from simulation.service import SimulationService, SimulationValidationError
 from trading.journal import JournalSession
 
 
@@ -75,6 +77,59 @@ def test_submit_uses_journal_risk_gate_and_records_local_fill_once():
         "local_paper_order_state.v1",
     ]
     assert simulation.positions()[0]["quantity"] == 1_000
+
+
+@pytest.mark.parametrize("quantity_shares", [1, 125, 999, 1_000, 1_500])
+def test_submit_accepts_exact_share_quantity(quantity_shares: int) -> None:
+    service, simulation, journal = command_service()
+
+    order, idempotent = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        quantity_shares=quantity_shares,
+        limit_price="106",
+        idempotency_key=f"journaled-{quantity_shares}-share-buy",
+    )
+
+    assert idempotent is False
+    assert order["status"] == "FILLED"
+    assert order["quantity_shares"] == quantity_shares
+    assert order["quantity"] == quantity_shares
+    assert order["filled_quantity"] == quantity_shares
+    assert simulation.positions()[0]["quantity"] == quantity_shares
+    command = journal.records(_SESSION_ID)[0].record
+    assert command.kind == "order_command.v1"
+    assert command.payload["quantity_shares"] == quantity_shares
+
+
+def test_odd_lot_risk_rejection_preserves_exact_share_quantity() -> None:
+    service, _, _ = command_service(starting_cash=Decimal("100"))
+
+    order, _ = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        quantity_shares=125,
+        limit_price="106",
+        idempotency_key="rejected-odd-lot-buy",
+    )
+
+    assert order["status"] == "REJECTED"
+    assert order["quantity_shares"] == 125
+    assert order["quantity"] == 125
+
+
+def test_submit_rejects_ambiguous_share_and_legacy_lot_quantity() -> None:
+    service, _, _ = command_service()
+
+    with pytest.raises(SimulationValidationError, match="不可同時提供"):
+        service.submit_order(
+            symbol="3231",
+            side="BUY",
+            quantity_shares=125,
+            lots=1,
+            limit_price="106",
+            idempotency_key="ambiguous-quantity-buy",
+        )
 
 
 def test_facade_rejects_reserved_cash_overcommit_and_journals_cancellation():

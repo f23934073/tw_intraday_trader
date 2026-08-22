@@ -1,5 +1,5 @@
 import { createCandidateWorkspace } from "./workspaces/candidates.js";
-import { createSimulationWorkspace } from "./workspaces/simulation.js?v=20260821-continuous-paper-v1";
+import { createSimulationWorkspace } from "./workspaces/simulation.js?v=20260822-share-native-v1";
 import { createMomentumWorkspace } from "./workspaces/momentum.js";
 import { createBacktestWorkspace } from "./workspaces/backtest.js";
 
@@ -110,7 +110,6 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js";
       const orderForm = document.getElementById("order-form");
       const orderSymbol = document.getElementById("order-symbol");
       const orderSide = document.getElementById("order-side");
-      const orderLots = document.getElementById("order-lots");
       const orderPrice = document.getElementById("order-price");
       const orderSubmit = document.getElementById("order-submit");
       const orderError = document.getElementById("order-error");

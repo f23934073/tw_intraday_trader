@@ -174,6 +174,63 @@ def test_best_level_volume_drives_two_partial_fill_events() -> None:
     service.close()
 
 
+def test_odd_lot_remainder_can_be_cancelled_retried_and_filled_exactly() -> None:
+    clock = MutableClock()
+    provider = StreamingProvider()
+    service = SimulationService(provider, starting_cash=Decimal("500000"), clock=clock)
+    commands, _ = command_service(service, clock)
+
+    source, _ = commands.submit_order(
+        symbol="3231",
+        side="BUY",
+        quantity_shares=1_500,
+        limit_price="106",
+        idempotency_key="odd-lot-partial-buy",
+    )
+    provider.emit_book(
+        at=clock.now(),
+        bid=105.4,
+        ask=105.5,
+        bid_volume_lots=1,
+        ask_volume_lots=1,
+    )
+    wait_until(lambda: service.orders()[0]["status"] == "PARTIALLY_FILLED")
+
+    partial = service.orders()[0]
+    assert partial["filled_quantity"] == 1_000
+    assert partial["remaining_quantity"] == 500
+    cancelled, _ = commands.cancel_order(source["order_id"], "cancel-odd-lot-remainder")
+    retried, idempotent = commands.retry_order(
+        cancelled["order_id"],
+        "retry-odd-lot-remainder",
+    )
+
+    assert idempotent is False
+    assert retried["quantity_shares"] == 500
+    assert retried["remaining_quantity"] == 500
+    assert retried["status"] == "PENDING"
+
+    clock.value += timedelta(seconds=1)
+    provider.emit_book(
+        at=clock.now(),
+        bid=105.4,
+        ask=105.5,
+        bid_volume_lots=1,
+        ask_volume_lots=1,
+    )
+    wait_until(
+        lambda: next(
+            order
+            for order in service.orders()
+            if order["order_id"] == retried["order_id"]
+        )["status"]
+        == "FILLED"
+    )
+
+    assert service.positions()[0]["quantity"] == 1_500
+    service.close()
+
+
 def test_zero_book_volume_does_not_report_or_apply_a_fill() -> None:
     clock = MutableClock()
     provider = StreamingProvider()
@@ -519,6 +576,28 @@ def test_restart_marks_approved_command_without_acknowledgement_for_recovery() -
         "COMMAND_ACKNOWLEDGEMENT_MISSING"
     )
     assert restored.simulation_service.alerts()[0]["code"] == "RECOVERY_REQUIRED"
+
+
+def test_restart_restores_exact_odd_lot_order_and_position_quantity() -> None:
+    clock = MutableClock()
+    journal = InMemoryJournalRepository()
+    first = RuntimeComposition.create(MockProvider(), clock=clock, journal=journal)
+
+    order, _ = first.local_paper_commands.submit_order(
+        symbol="3231",
+        side="BUY",
+        quantity_shares=75,
+        limit_price="106",
+        idempotency_key="restart-odd-lot-buy",
+    )
+    assert order["status"] == "FILLED"
+    first.close()
+
+    restored = RuntimeComposition.create(MockProvider(), clock=clock, journal=journal)
+
+    assert restored.simulation_service.orders()[0]["quantity_shares"] == 75
+    assert restored.simulation_service.positions()[0]["quantity"] == 75
+    restored.close()
 
 
 def test_cross_day_opening_equity_includes_unrealized_position_value() -> None:

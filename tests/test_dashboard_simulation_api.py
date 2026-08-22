@@ -1,7 +1,7 @@
 """Focused tests for the dashboard's local paper-simulation route contracts."""
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from threading import Barrier, Lock
 from time import sleep
@@ -14,7 +14,19 @@ from fastapi.testclient import TestClient
 import dashboard.server as server
 from dashboard.service import DashboardService
 from market_data.provider import MarketDataUsage, MockProvider
+from runtime.composition import RuntimeComposition
 from simulation.continuous_strategy import AutomatedStrategyConfig
+
+
+class FixedClock:
+    def __init__(self, now: datetime) -> None:
+        self._now = now
+
+    def now(self) -> datetime:
+        return self._now
+
+    def session_date(self) -> date:
+        return self._now.date()
 
 
 class FakeChangingSimulationProjection:
@@ -141,6 +153,94 @@ def test_submit_simulation_order_route_returns_local_filled_order(monkeypatch):
     assert payload["idempotent"] is False
     assert payload["order"]["status"] == "FILLED"
     assert server.simulation_positions()["positions"][0]["symbol"] == "3231"
+
+
+def test_submit_simulation_order_route_accepts_odd_lot_shares(monkeypatch) -> None:
+    monkeypatch.setattr(server, "_provider", MockProvider())
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+
+    payload = server.submit_simulation_order(
+        server.SimulationOrderRequest(
+            symbol="3231",
+            side="BUY",
+            quantity_shares=125,
+            limit_price=106.0,
+            idempotency_key="route-odd-lot-buy",
+        ),
+        Response(),
+    )
+
+    assert payload["order"]["status"] == "FILLED"
+    assert payload["order"]["quantity_shares"] == 125
+    assert server.simulation_positions()["positions"][0]["quantity"] == 125
+
+
+def test_submit_simulation_order_http_rejects_boolean_share_quantity(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", MockProvider())
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+    monkeypatch.setattr(
+        server.backtest_settings,
+        "BACKTEST_INCREMENTAL_SYNC_ENABLED",
+        False,
+    )
+
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/api/simulation/orders",
+            json={
+                "symbol": "3231",
+                "side": "BUY",
+                "quantity_shares": True,
+                "limit_price": 106,
+                "idempotency_key": "reject-boolean-share-quantity",
+            },
+        )
+
+    assert response.status_code == 422
+    assert any(
+        error["loc"] == ["body", "quantity_shares"]
+        and error["type"] == "int_type"
+        for error in response.json()["detail"]
+    )
+
+
+def test_strategy_intent_http_rejects_boolean_share_quantity(monkeypatch) -> None:
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", MockProvider())
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+    monkeypatch.setattr(
+        server.backtest_settings,
+        "BACKTEST_INCREMENTAL_SYNC_ENABLED",
+        False,
+    )
+
+    with TestClient(server.app) as client:
+        response = client.post(
+            "/api/simulation/strategy-intents",
+            json={
+                "intent_id": "reject-boolean-strategy-share-quantity",
+                "strategy_id": "opening_range_breakout",
+                "strategy_version": "opening_range_breakout_entry_v1",
+                "symbol": "3231",
+                "side": "BUY",
+                "quantity_shares": True,
+                "limit_price": "106",
+                "signaled_at": "2026-08-22T10:00:00+08:00",
+            },
+        )
+
+    assert response.status_code == 422
+    assert any(
+        error["loc"] == ["body", "quantity_shares"]
+        and error["type"] == "int_type"
+        for error in response.json()["detail"]
+    )
 
 
 def test_cancelled_simulation_order_route_can_create_bounded_retry(monkeypatch):
@@ -294,42 +394,47 @@ def test_health_routes_report_local_simulation_without_account_access(monkeypatc
 
 
 def test_strategy_intent_route_completes_a_local_paper_round_trip(monkeypatch):
-    monkeypatch.setattr(server, "_composition", None)
-    monkeypatch.setattr(server, "_provider", MockProvider())
-    monkeypatch.setattr(server, "_service", None)
-    monkeypatch.setattr(server, "_simulation_service", None)
+    clock = FixedClock(datetime.fromisoformat("2026-08-21T10:32:00+08:00"))
+    composition = RuntimeComposition.create(MockProvider(), clock=clock)
+    monkeypatch.setattr(server, "_composition", composition)
+    monkeypatch.setattr(server, "_provider", composition.provider)
+    monkeypatch.setattr(server, "_service", composition.dashboard_service)
+    monkeypatch.setattr(server, "_simulation_service", composition.simulation_service)
 
-    buy = server.submit_simulation_strategy_intent(
-        server.SimulationStrategyIntentRequest(
-            intent_id="api-orb-entry-3231",
-            strategy_id="opening_range_breakout",
-            strategy_version="opening_range_breakout_entry_v1",
-            symbol="3231",
-            side="BUY",
-            lots=1,
-            limit_price="106",
-            signaled_at=datetime.fromisoformat("2026-08-21T10:30:00+08:00"),
-        ),
-        Response(),
-    )
-    sell = server.submit_simulation_strategy_intent(
-        server.SimulationStrategyIntentRequest(
-            intent_id="api-orb-exit-3231",
-            strategy_id="opening_range_breakout",
-            strategy_version="opening_range_breakout_exit_v1",
-            symbol="3231",
-            side="SELL",
-            lots=1,
-            limit_price="105",
-            signaled_at=datetime.fromisoformat("2026-08-21T10:31:00+08:00"),
-        ),
-        Response(),
-    )
+    try:
+        buy = server.submit_simulation_strategy_intent(
+            server.SimulationStrategyIntentRequest(
+                intent_id="api-orb-entry-3231",
+                strategy_id="opening_range_breakout",
+                strategy_version="opening_range_breakout_entry_v1",
+                symbol="3231",
+                side="BUY",
+                lots=1,
+                limit_price="106",
+                signaled_at=datetime.fromisoformat("2026-08-21T10:30:00+08:00"),
+            ),
+            Response(),
+        )
+        sell = server.submit_simulation_strategy_intent(
+            server.SimulationStrategyIntentRequest(
+                intent_id="api-orb-exit-3231",
+                strategy_id="opening_range_breakout",
+                strategy_version="opening_range_breakout_exit_v1",
+                symbol="3231",
+                side="SELL",
+                lots=1,
+                limit_price="105",
+                signaled_at=datetime.fromisoformat("2026-08-21T10:31:00+08:00"),
+            ),
+            Response(),
+        )
 
-    assert buy["order"]["status"] == "FILLED"
-    assert sell["order"]["status"] == "FILLED"
-    assert buy["order"]["origin"] == "STRATEGY_AUTOMATED"
-    assert server.simulation_positions()["positions"] == []
+        assert buy["order"]["status"] == "FILLED"
+        assert sell["order"]["status"] == "FILLED"
+        assert buy["order"]["origin"] == "STRATEGY_AUTOMATED"
+        assert server.simulation_positions()["positions"] == []
+    finally:
+        composition.close()
 
 
 def test_strategy_intent_http_round_trip_and_retry(monkeypatch):

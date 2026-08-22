@@ -40,7 +40,7 @@ def test_simulation_positions_use_websocket_with_http_fallback() -> None:
     assert 'state.simulationSocketState = "fallback"' in SIMULATION
     assert "if (simulationSocketIsOpen()) return;" in SIMULATION
     assert "loadSnapshot(false).finally(bootstrapSimulationStream)" in APP
-    assert "/static/js/app.js?v=20260821-shioaji-quota-v1" in HTML
+    assert "/static/js/app.js?v=20260821-atomic-strategy-v2" in HTML
 
 
 def test_pending_simulation_orders_explain_live_quote_state() -> None:

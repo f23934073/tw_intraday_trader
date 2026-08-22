@@ -28,9 +28,10 @@ class StrategyPaperIntent:
     strategy_version: str
     symbol: str
     side: CommandSide
-    lots: int
     limit_price: Decimal
     signaled_at: datetime
+    quantity_shares: int | None = None
+    lots: int | None = None
     schema_version: str = STRATEGY_PAPER_INTENT_VERSION
 
     def __post_init__(self) -> None:
@@ -48,8 +49,32 @@ class StrategyPaperIntent:
             raise SimulationValidationError("股票代碼必須先正規化")
         if not isinstance(self.side, CommandSide):
             raise SimulationValidationError("交易方向只支援 BUY 或 SELL")
-        if isinstance(self.lots, bool) or not isinstance(self.lots, int) or self.lots <= 0:
-            raise SimulationValidationError("張數必須是大於 0 的整數")
+        if self.quantity_shares is not None and self.lots is not None:
+            raise SimulationValidationError("股數與張數不可同時提供")
+        if self.quantity_shares is not None:
+            quantity_shares = self.quantity_shares
+            if (
+                isinstance(quantity_shares, bool)
+                or not isinstance(quantity_shares, int)
+                or quantity_shares <= 0
+            ):
+                raise SimulationValidationError("股數必須是大於 0 的整數")
+        elif self.lots is not None:
+            if (
+                isinstance(self.lots, bool)
+                or not isinstance(self.lots, int)
+                or self.lots <= 0
+            ):
+                raise SimulationValidationError("張數必須是大於 0 的整數")
+            quantity_shares = self.lots * 1_000
+        else:
+            raise SimulationValidationError("請輸入股數")
+        object.__setattr__(self, "quantity_shares", quantity_shares)
+        object.__setattr__(
+            self,
+            "lots",
+            quantity_shares // 1_000 if quantity_shares % 1_000 == 0 else None,
+        )
         if not self.limit_price.is_finite() or self.limit_price <= 0:
             raise SimulationValidationError("限價必須是大於 0 的有限數字")
         if self.signaled_at.tzinfo is None or self.signaled_at.utcoffset() is None:
@@ -66,9 +91,10 @@ class StrategyPaperIntent:
         strategy_version: str,
         symbol: str,
         side: str,
-        lots: int,
         limit_price: Decimal | float | int | str,
         signaled_at: datetime,
+        quantity_shares: int | None = None,
+        lots: int | None = None,
     ) -> "StrategyPaperIntent":
         try:
             normalized_side = CommandSide(str(side).strip().upper())
@@ -84,9 +110,10 @@ class StrategyPaperIntent:
             strategy_version=str(strategy_version).strip(),
             symbol=str(symbol).strip().upper(),
             side=normalized_side,
-            lots=lots,
             limit_price=normalized_price,
             signaled_at=signaled_at,
+            quantity_shares=quantity_shares,
+            lots=lots,
         )
 
     def journal_payload(self) -> dict[str, object]:
@@ -98,7 +125,7 @@ class StrategyPaperIntent:
             "symbol": self.symbol,
             "side": self.side.value,
             "lots": self.lots,
-            "quantity_shares": self.lots * 1_000,
+            "quantity_shares": self.quantity_shares,
             "limit_price": canonical_decimal_string(self.limit_price),
             "signaled_at": self.signaled_at.isoformat(),
             "execution_boundary": "LOCAL_ONLY",
@@ -147,7 +174,7 @@ class StrategyPaperFlowService:
             strategy_version=intent.strategy_version,
             symbol=intent.symbol,
             side=intent.side.value,
-            lots=intent.lots,
+            quantity_shares=intent.quantity_shares,
             limit_price=intent.limit_price,
         )
         return {

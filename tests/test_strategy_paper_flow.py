@@ -173,6 +173,27 @@ def test_strategy_buy_is_journaled_risk_checked_filled_and_idempotent() -> None:
     ).digest == checkpoint.digest
 
 
+def test_strategy_intent_accepts_exact_odd_lot_share_quantity() -> None:
+    flow, simulation, journal = paper_flow()
+    odd_lot = StrategyPaperIntent.create(
+        intent_id="orb-odd-lot-entry-3231-20260821",
+        strategy_id="opening_range_breakout",
+        strategy_version="opening_range_breakout_entry_v1",
+        symbol="3231",
+        side="BUY",
+        quantity_shares=125,
+        limit_price="106",
+        signaled_at=_NOW,
+    )
+
+    result = flow.submit(odd_lot)
+
+    assert result["order"]["status"] == "FILLED"
+    assert result["order"]["quantity_shares"] == 125
+    assert simulation.positions()[0]["quantity"] == 125
+    assert journal.records(_SESSION_ID)[0].record.payload["quantity_shares"] == 125
+
+
 def test_strategy_buy_and_sell_complete_one_closed_local_paper_trade() -> None:
     flow, simulation, journal = paper_flow()
 

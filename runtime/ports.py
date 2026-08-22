@@ -44,9 +44,10 @@ class OrderCommandHandler(Protocol):
         *,
         symbol: str,
         side: str,
-        lots: int,
         limit_price: float,
         idempotency_key: str,
+        quantity_shares: int | None = None,
+        lots: int | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Submit a local-paper order."""
 

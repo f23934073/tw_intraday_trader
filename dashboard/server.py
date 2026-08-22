@@ -9,7 +9,7 @@ from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from threading import RLock
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 from fastapi import (
@@ -108,10 +108,14 @@ app = FastAPI(title="台股盤中雷達", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+StrictPositiveInt = Annotated[int, Field(strict=True, gt=0)]
+
+
 class SimulationOrderRequest(BaseModel):
     symbol: str
     side: str
-    lots: int
+    quantity_shares: StrictPositiveInt | None = None
+    lots: StrictPositiveInt | None = None
     limit_price: float
     idempotency_key: str
 
@@ -131,7 +135,8 @@ class SimulationStrategyIntentRequest(BaseModel):
     strategy_version: str
     symbol: str
     side: str
-    lots: int
+    quantity_shares: StrictPositiveInt | None = None
+    lots: StrictPositiveInt | None = None
     limit_price: str
     signaled_at: datetime
 
@@ -656,6 +661,7 @@ def submit_simulation_order(
         order, idempotent = get_local_paper_command_service().submit_order(
             symbol=request.symbol,
             side=request.side,
+            quantity_shares=request.quantity_shares,
             lots=request.lots,
             limit_price=request.limit_price,
             idempotency_key=request.idempotency_key,

@@ -337,7 +337,7 @@ class SimulationService:
                     symbol=self._normalize_symbol(str(raw["symbol"])),
                     name=str(raw["name"]),
                     side=OrderSide(str(raw["side"])),
-                    lots=int(raw["lots"]),
+                    quantity_shares=self._restored_quantity_shares(raw),
                     limit_price=self._money(raw["limit_price"], "restored.limit_price"),
                     status=OrderStatus(str(raw["status"])),
                     submitted_at=datetime.fromisoformat(str(raw["submitted_at"])),
@@ -536,9 +536,10 @@ class SimulationService:
         *,
         symbol: str,
         side: str,
-        lots: int,
         limit_price: Decimal | float | int | str,
         idempotency_key: str,
+        quantity_shares: int | None = None,
+        lots: int | None = None,
         origin: str = "MANUAL_WEB",
         strategy_id: str | None = None,
         strategy_version: str | None = None,
@@ -548,7 +549,10 @@ class SimulationService:
         """接受限價委託；串流模式以賣一／買一，本機模式以 snapshot 撮合。"""
         normalized_symbol = self._normalize_symbol(symbol)
         normalized_side = self._normalize_side(side)
-        normalized_lots = self._normalize_lots(lots)
+        normalized_quantity_shares = self._resolve_quantity_shares(
+            quantity_shares=quantity_shares,
+            lots=lots,
+        )
         normalized_price = self._normalize_price(limit_price)
         normalized_key = self._normalize_idempotency_key(idempotency_key)
         normalized_origin = str(origin).strip().upper()
@@ -591,7 +595,7 @@ class SimulationService:
                 symbol=stock_symbol,
                 name=stock_name,
                 side=normalized_side,
-                lots=normalized_lots,
+                quantity_shares=normalized_quantity_shares,
                 limit_price=normalized_price,
                 status=OrderStatus.SUBMITTED,
                 submitted_at=now,
@@ -1121,6 +1125,41 @@ class SimulationService:
         return lots
 
     @staticmethod
+    def _normalize_quantity_shares(quantity_shares: int) -> int:
+        if (
+            isinstance(quantity_shares, bool)
+            or not isinstance(quantity_shares, int)
+            or quantity_shares <= 0
+        ):
+            raise SimulationValidationError("股數必須是大於 0 的整數")
+        return quantity_shares
+
+    @classmethod
+    def _resolve_quantity_shares(
+        cls,
+        *,
+        quantity_shares: int | None,
+        lots: int | None,
+    ) -> int:
+        if quantity_shares is not None and lots is not None:
+            raise SimulationValidationError("股數與張數不可同時提供")
+        if quantity_shares is not None:
+            return cls._normalize_quantity_shares(quantity_shares)
+        if lots is not None:
+            return cls._normalize_lots(lots) * 1_000
+        raise SimulationValidationError("請輸入股數")
+
+    @classmethod
+    def _restored_quantity_shares(cls, raw: dict[str, Any]) -> int:
+        if raw.get("quantity_shares") is not None:
+            quantity = int(raw["quantity_shares"])
+        elif raw.get("quantity") is not None:
+            quantity = int(raw["quantity"])
+        else:
+            quantity = int(raw["lots"]) * 1_000
+        return cls._normalize_quantity_shares(quantity)
+
+    @staticmethod
     def _normalize_price(limit_price: Decimal | float | int | str) -> Decimal:
         try:
             normalized = Decimal(str(limit_price))
@@ -1228,6 +1267,7 @@ class SimulationService:
             "name": order.name,
             "side": order.side.value,
             "lots": order.lots,
+            "quantity_shares": order.quantity_shares,
             "quantity": order.quantity,
             "remaining_quantity": order.remaining_quantity,
             "limit_price": float(order.limit_price),
@@ -1343,7 +1383,7 @@ class SimulationService:
         *,
         symbol: str,
         side: str,
-        lots: int,
+        quantity_shares: int,
         limit_price: Decimal | float | int | str,
         idempotency_key: str,
         reason: str,
@@ -1352,7 +1392,7 @@ class SimulationService:
         """Project a RiskGate rejection without calling a broker or quote stream."""
         normalized_symbol = self._normalize_symbol(symbol)
         normalized_side = self._normalize_side(side)
-        normalized_lots = self._normalize_lots(lots)
+        normalized_quantity_shares = self._normalize_quantity_shares(quantity_shares)
         normalized_price = self._normalize_price(limit_price)
         normalized_key = self._normalize_idempotency_key(idempotency_key)
         with self._lock:
@@ -1372,7 +1412,7 @@ class SimulationService:
                 symbol=stock_symbol,
                 name=stock_name,
                 side=normalized_side,
-                lots=normalized_lots,
+                quantity_shares=normalized_quantity_shares,
                 limit_price=normalized_price,
                 status=OrderStatus.REJECTED,
                 submitted_at=now,

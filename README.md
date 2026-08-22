@@ -101,7 +101,7 @@ MOMENTUM_DASHBOARD_WS_MAX_CLIENTS=32
 
 左側的「模擬下單」可建立本機紙上限價委託；「委託」可查看已送出、成交、取消或拒絕的紀錄；「持倉」只顯示由已成交模擬委託建立的股票與其平均成交價、最新成交、買一／賣一、市值和損益。這些功能會開啟整頁工作區；瀏覽器在初次快照後連線 `/ws/simulation/projection`，後端每 250ms 檢查一次內存投影，價格、買一／賣一或損益改變時就透過 WebSocket 推送。WebSocket 斷線期間才每 2 秒讀取 HTTP 投影作為備援；這兩種畫面傳輸都不會輪詢 Shioaji snapshot 或帳務 API。
 
-這個功能是 **LOCAL_PAPER_SIMULATION**：預設虛擬現金為 1,000 萬元，只支援多頭整張限價單（1 張＝1,000 股），不計手續費或稅金。使用 `PROVIDER=shioaji` 時，後端只對持倉與尚未成交委託動態訂閱 Tick＋BidAsk；買進以賣一、賣出以買一判斷並作為本機模擬成交價，Tick 用來更新持倉市值與未實現損益。每檔使用兩個行情訂閱，程式最多允許同時監控 100 檔。若使用 MockProvider，則保留 snapshot 立即撮合，方便離線開發與測試。
+這個功能是 **LOCAL_PAPER_SIMULATION**：預設虛擬現金為 1,000 萬元，只支援多頭現股限價單，委託量使用正整數股數；1～999 股可作為零股本機模擬，1,000 股以上也不會強制取整張，不計手續費或稅金。使用 `PROVIDER=shioaji` 時，後端只對持倉與尚未成交委託動態訂閱既有的整股 Tick＋BidAsk；買進以賣一、賣出以買一作為本機參考撮合價，Tick 用來更新持倉市值與未實現損益。這不是證交所零股五檔撮合，也不代表 Shioaji Simulation 或券商成交。每檔使用兩個行情訂閱，程式最多允許同時監控 100 檔。若使用 MockProvider，則保留 snapshot 立即撮合，方便離線開發與測試。
 
 委託會經過 `PENDING`、`PARTIALLY_FILLED`、`FILLED`、`CANCELLED`、`EXPIRED` 或 `RECOVERY_REQUIRED` 等明確狀態。最優一檔量可限制每次本機成交量；未成交餘量會保留，逾時取消或到期後只能建立有次數上限的 successor order。timeout、expiry 與恢復異常會顯示在模擬工作區。Shioaji 登入明確使用 `subscribe_trade=False`，沒有啟用憑證、註冊委託 callback 或呼叫下單 API；因此它仍不是 Shioaji Simulation 帳戶，也不會送出任何真實券商委託。
 
@@ -141,11 +141,11 @@ fail closed。成交、持倉與損益會直接出現在既有「委託」與「
 ```bash
 curl -X POST http://127.0.0.1:8000/api/simulation/strategy-intents \
   -H 'Content-Type: application/json' \
-  -d '{"intent_id":"orb-entry-3231-demo","strategy_id":"opening_range_breakout","strategy_version":"opening_range_breakout_entry_v1","symbol":"3231","side":"BUY","lots":1,"limit_price":"106","signaled_at":"2026-08-21T10:30:00+08:00"}'
+  -d '{"intent_id":"orb-entry-3231-demo","strategy_id":"opening_range_breakout","strategy_version":"opening_range_breakout_entry_v1","symbol":"3231","side":"BUY","quantity_shares":125,"limit_price":"106","signaled_at":"2026-08-21T10:30:00+08:00"}'
 
 curl -X POST http://127.0.0.1:8000/api/simulation/strategy-intents \
   -H 'Content-Type: application/json' \
-  -d '{"intent_id":"orb-exit-3231-demo","strategy_id":"opening_range_breakout","strategy_version":"opening_range_breakout_exit_v1","symbol":"3231","side":"SELL","lots":1,"limit_price":"105","signaled_at":"2026-08-21T10:31:00+08:00"}'
+  -d '{"intent_id":"orb-exit-3231-demo","strategy_id":"opening_range_breakout","strategy_version":"opening_range_breakout_exit_v1","symbol":"3231","side":"SELL","quantity_shares":125,"limit_price":"105","signaled_at":"2026-08-21T10:31:00+08:00"}'
 ```
 
 這個入口仍只負責執行明確的策略意圖；Candidate 與 Buy Score 不會直接變成委託。
