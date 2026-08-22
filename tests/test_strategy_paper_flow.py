@@ -426,6 +426,36 @@ def test_effective_strategy_daily_loss_policy_blocks_at_operator_limit() -> None
     simulation.close()
 
 
+def test_activation_preview_digest_conflict_has_no_policy_or_journal_side_effect() -> None:
+    flow, simulation, journal = paper_flow(starting_cash=Decimal("300000"))
+
+    preview = flow.preview_run_activation(
+        owner_strategy_id="atomic-set:paper-v1",
+        operator_max_daily_loss=Decimal("1000"),
+    )
+
+    with pytest.raises(SimulationStateError, match="preview 與 activation commit"):
+        flow.activate_run(
+            owner_strategy_id="atomic-set:paper-v1",
+            operator_max_daily_loss=Decimal("1000"),
+            activation_config={"pipeline_digest": "p" * 64},
+            actor_id="local-operator",
+            idempotency_key="activation-preview-conflict",
+            occurred_at=_NOW,
+            expected_policy_digest="f" * 64,
+        )
+
+    assert preview["effective_policy_digest"] != "f" * 64
+    assert flow._commands.strategy_risk_policy(
+        owner_strategy_id="atomic-set:paper-v1"
+    ) is None
+    assert all(
+        item.record.kind != "strategy_runtime_activation.v1"
+        for item in journal.records(_SESSION_ID)
+    )
+    simulation.close()
+
+
 def test_effective_strategy_daily_loss_cannot_exceed_system_ceiling() -> None:
     flow, simulation, _ = paper_flow(starting_cash=Decimal("300000"))
 

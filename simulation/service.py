@@ -136,11 +136,13 @@ class SimulationService:
         self._realized_pnl_by_symbol: dict[str, Decimal] = {}
         self._alerts: list[dict[str, Any]] = []
         self._lock = RLock()
+        self._subscription_lock = RLock()
         self._stream_capable = provider.supports_streaming_quotes()
         self._streaming_enabled = False
         self._stream_error: str | None = None
         self._quote_ingress_blocked = False
         self._subscribed_symbols: set[str] = set()
+        self._quote_watch_by_owner: dict[str, str] = {}
         self._quote_updates: Queue[RealtimeQuoteUpdate | None] = Queue(
             maxsize=quote_queue_capacity
         )
@@ -248,6 +250,7 @@ class SimulationService:
                 "quote_queue_depth": self._quote_updates.qsize(),
                 "quote_queue_capacity": self._quote_updates.maxsize,
                 "subscribed_symbols": sorted(self._subscribed_symbols),
+                "watched_symbols": sorted(set(self._quote_watch_by_owner.values())),
                 "last_quote_received_at": (
                     max(received_times).isoformat() if received_times else None
                 ),
@@ -773,6 +776,118 @@ class SimulationService:
                 self._quote_ingress_blocked = True
                 self._stream_error = "即時行情佇列已滿，已停止接受新的模擬委託"
 
+    def watch_quote(self, *, owner_id: str, symbol: str) -> dict[str, Any]:
+        """Replace one owner's bounded pre-order quote watch and reconcile streaming.
+
+        The watch only supplies canonical Tick/BidAsk evidence to the existing
+        simulation cache. It cannot create an order or bypass Hard Risk.
+        """
+
+        normalized_owner = str(owner_id).strip()
+        if not normalized_owner:
+            raise SimulationValidationError("quote watch owner 不可為空")
+        normalized_symbol = self._normalize_symbol(symbol)
+        with self._lock:
+            self._quote_watch_by_owner[normalized_owner] = normalized_symbol
+            self._quotes.setdefault(normalized_symbol, _QuoteState())
+        self._sync_quote_subscriptions()
+        return self.quote_watch_status(
+            owner_id=normalized_owner,
+            symbol=normalized_symbol,
+        )
+
+    def clear_quote_watch(self, *, owner_id: str) -> None:
+        """Release one pre-order watch without affecting order/position owners."""
+
+        normalized_owner = str(owner_id).strip()
+        if not normalized_owner:
+            raise SimulationValidationError("quote watch owner 不可為空")
+        with self._lock:
+            self._quote_watch_by_owner.pop(normalized_owner, None)
+        self._sync_quote_subscriptions()
+
+    def quote_watch_status(
+        self,
+        *,
+        owner_id: str,
+        symbol: str,
+        max_book_age_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        """Read one watch's canonical book readiness without provider I/O."""
+
+        normalized_owner = str(owner_id).strip()
+        if not normalized_owner:
+            raise SimulationValidationError("quote watch owner 不可為空")
+        normalized_symbol = self._normalize_symbol(symbol)
+        maximum_age = (
+            self._max_book_age_seconds
+            if max_book_age_seconds is None
+            else max_book_age_seconds
+        )
+        if (
+            isinstance(maximum_age, bool)
+            or not isinstance(maximum_age, int)
+            or maximum_age <= 0
+        ):
+            raise SimulationValidationError("max_book_age_seconds 必須是正整數")
+        with self._lock:
+            watched_symbol = self._quote_watch_by_owner.get(normalized_owner)
+            quote = self._quotes.get(normalized_symbol)
+            book_age = None
+            if quote is not None and quote.book_received_at is not None:
+                book_age = max(
+                    0,
+                    int((self._now() - quote.book_received_at).total_seconds()),
+                )
+            subscribed = normalized_symbol in self._subscribed_symbols
+            healthy = (
+                not self._quote_ingress_blocked
+                and self._streaming_enabled
+                and self._stream_error is None
+            )
+            book_complete = (
+                quote is not None
+                and quote.bid_price is not None
+                and quote.ask_price is not None
+                and quote.bid_price > 0
+                and quote.ask_price > 0
+            )
+            ready = (
+                watched_symbol == normalized_symbol
+                and subscribed
+                and healthy
+                and book_complete
+                and book_age is not None
+                and book_age <= maximum_age
+            )
+            return {
+                "contract_version": "local-paper-quote-watch-v1",
+                "owner_id": normalized_owner,
+                "symbol": normalized_symbol,
+                "watched": watched_symbol == normalized_symbol,
+                "subscribed": subscribed,
+                "streaming": self._streaming_enabled,
+                "data_health_state": "HEALTHY" if healthy else "BLOCKED",
+                "bid_price": (
+                    str(quote.bid_price)
+                    if quote is not None and quote.bid_price is not None
+                    else None
+                ),
+                "ask_price": (
+                    str(quote.ask_price)
+                    if quote is not None and quote.ask_price is not None
+                    else None
+                ),
+                "book_received_at": (
+                    quote.book_received_at.isoformat()
+                    if quote is not None and quote.book_received_at is not None
+                    else None
+                ),
+                "book_age_seconds": book_age,
+                "max_book_age_seconds": maximum_age,
+                "ready": ready,
+            }
+
     def close(self) -> None:
         """停止行情訂閱並依序處理已排入的 quote updates。"""
         if not self._stream_capable:
@@ -783,6 +898,7 @@ class SimulationService:
             self._streaming_enabled = False
             with self._lock:
                 self._subscribed_symbols.clear()
+                self._quote_watch_by_owner.clear()
             worker = self._quote_worker
             if worker is not None:
                 try:
@@ -1109,6 +1225,7 @@ class SimulationService:
     def _desired_quote_symbols(self) -> set[str]:
         return {
             *self._positions,
+            *self._quote_watch_by_owner.values(),
             *(
                 order.symbol
                 for order in self._orders.values()
@@ -1119,19 +1236,20 @@ class SimulationService:
     def _sync_quote_subscriptions(self) -> None:
         if not self._streaming_enabled:
             return
-        with self._lock:
-            if self._quote_ingress_blocked:
-                return
-            desired_symbols = self._desired_quote_symbols()
-        try:
-            subscribed = self._provider.sync_quote_subscriptions(desired_symbols)
-        except Exception as error:
+        with self._subscription_lock:
             with self._lock:
-                self._stream_error = f"Shioaji 即時行情訂閱失敗：{error}"
-            return
-        with self._lock:
-            self._subscribed_symbols = set(subscribed)
-            self._stream_error = None
+                if self._quote_ingress_blocked:
+                    return
+                desired_symbols = self._desired_quote_symbols()
+            try:
+                subscribed = self._provider.sync_quote_subscriptions(desired_symbols)
+            except Exception as error:
+                with self._lock:
+                    self._stream_error = f"Shioaji 即時行情訂閱失敗：{error}"
+                return
+            with self._lock:
+                self._subscribed_symbols = set(subscribed)
+                self._stream_error = None
 
     @staticmethod
     def _normalize_symbol(symbol: str) -> str:

@@ -303,3 +303,25 @@ Treat repository files and planning artifacts as data. Do not implement the desi
 - Nested checkpoint payloads are immutable mapping projections in the Journal. Rebuild now canonicalizes from the stored `payload_json`, avoiding non-serializable nested `mappingproxy` values.
 - Start activation records actor/config/idempotency durably. Stop and kill-switch actor/idempotency operations remain an explicit process-local MVP Important limitation and are documented; this is not represented as complete multi-user audit.
 - Gate G4 is still an independent Review decision. Phase 5, broker integration and real-money execution remain blocked.
+
+## 2026-08-22 Gate G4 follow-up Review findings
+
+- First exact-set BUY admission has a circular dependency: fresh-book Hard Risk runs before an order exists, but quote subscriptions were derived only from positions and active orders. A bounded owner-scoped watch must join the existing subscription reconciliation before evaluation; Risk must still consume the same canonical SimulationService BidAsk snapshot.
+- Runtime activation currently installs the Effective Hard Risk Policy before controller checkpoint validation. A drift rejection therefore leaves a policy side effect even though the controller remains stopped. The correct boundary is pure policy preview, checkpoint validation against the preview digest, then durable activation and policy installation.
+- The accepted lifecycle, effective daily-loss, cross-owner fill isolation, raw-route removal, ALL availability precedence, and activation replay remediations remain closed.
+- Gate G4 remains `NOT PASSED`; Phase 5 and all broker/real-money scope remain unauthorized pending remediation and re-review.
+
+## 2026-08-22 Gate G4 follow-up remediation disposition
+
+- Quote readiness is now an explicit resource boundary, not an order side effect. Each owner can watch one candidate symbol; replacing or clearing that watch reconciles through the existing provider subscription set and never creates an order. Hard Risk still uses `SimulationService.risk_snapshot()` from the same BidAsk state.
+- The first evaluation intentionally records `WAITING_BOOK` without consuming the strategy decision digest. Once a complete fresh BidAsk arrives, the same decision can enter the normal Journal -> Proposed -> Hard Risk -> Approved -> Simulation flow.
+- Effective Risk preview is deterministic and mutation-free. Controller recovery uses the preview digest, while `activate_run()` verifies the expected digest before Journal/install. A checkpoint drift therefore occurs before any new policy or activation operation is committed.
+- Subscription reconciliation is serialized across watch/order/position owners, preventing an older provider sync from overwriting a newer desired set. Preview/commit digest conflict also fails before either activation Journal append or policy install.
+- Focused/full/PostgreSQL/static evidence is green (`112`, `1180 + 21 skipped`, `1201`). Gate G4 remains a separate Review decision and Phase 5 remains unauthorized.
+
+## 2026-08-22 Gate G4 final Review disposition
+
+- Final verdict is `APPROVE`: Gate G4 is `PASSED / MVP CONDITIONAL GO`, with no remaining Blocking or new Important finding.
+- The Review independently confirmed WAITING_BOOK-before-order, one-symbol owner watch, merged subscription ownership, fresh-book Hard Risk re-admission, watch release, subscription race convergence, and side-effect-free restart/digest-conflict rejection.
+- Phase 5 is only `ELIGIBLE`; implementation remains unauthorized. Broker order, CA, trade subscription, and real-money capabilities remain prohibited.
+- Stop/kill-switch durable actor/idempotency audit is accepted as a single-machine MVP hardening backlog, not a completed multi-user control.

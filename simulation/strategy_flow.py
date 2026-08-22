@@ -212,6 +212,7 @@ class StrategyPaperFlowService:
         actor_id: str,
         idempotency_key: str,
         occurred_at: datetime,
+        expected_policy_digest: str | None = None,
     ) -> Mapping[str, Any]:
         """Journal one exact-set activation before installing its Risk Policy."""
 
@@ -219,6 +220,13 @@ class StrategyPaperFlowService:
             owner_strategy_id=owner_strategy_id,
             operator_max_daily_loss=operator_max_daily_loss,
         )
+        if (
+            expected_policy_digest is not None
+            and risk_evidence["effective_policy_digest"] != expected_policy_digest
+        ):
+            raise SimulationStateError(
+                "Effective Hard Risk preview 與 activation commit 不一致"
+            )
         payload = {
             "contract_version": "strategy-runtime-activation-v1",
             "owner_strategy_id": owner_strategy_id,
@@ -276,6 +284,38 @@ class StrategyPaperFlowService:
             "activation_sequence": appended.sequence,
             "activation_idempotent": appended.idempotent,
         }
+
+    def preview_run_activation(
+        self,
+        *,
+        owner_strategy_id: str,
+        operator_max_daily_loss: Decimal,
+    ) -> Mapping[str, Any]:
+        """Compute activation Risk evidence without Journal or runtime mutation."""
+
+        _, risk_evidence = self._commands.prepare_strategy_risk_policy(
+            owner_strategy_id=owner_strategy_id,
+            operator_max_daily_loss=operator_max_daily_loss,
+        )
+        return risk_evidence
+
+    def prepare_entry_quote(
+        self,
+        *,
+        owner_strategy_id: str,
+        symbol: str,
+    ) -> Mapping[str, Any]:
+        """Acquire one bounded pre-order watch through the existing quote owner."""
+
+        return self._commands.prepare_strategy_entry_quote(
+            owner_strategy_id=owner_strategy_id,
+            symbol=symbol,
+        )
+
+    def clear_entry_quote_watch(self, *, owner_strategy_id: str) -> None:
+        self._commands.clear_strategy_entry_quote(
+            owner_strategy_id=owner_strategy_id
+        )
 
     def _activation_record(
         self,

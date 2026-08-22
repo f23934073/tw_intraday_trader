@@ -254,3 +254,29 @@
 - The disposable cluster at `/private/tmp/g4_remediation_pg.VCGtZ4` was stopped and deleted after validation; no development or production database was accessed.
 - Start activation now has actor/config/durable-idempotency evidence. Stop and kill-switch operations remain documented process-local MVP audit limitations; they must be hardened before multi-user, external network, auto-promotion or real-money scope.
 - No broker adapter, CA, trade subscription, `place_order`, `subscribe_trade=True`, or real-money capability was added.
+
+## 2026-08-22 — Gate G4 execution-contract remediation started
+
+- **Status:** in progress; Gate G4 remains `NOT PASSED`; Phase 5 remains unauthorized.
+- Follow-up Review reproduced a first-entry subscription cycle: BUY requires a fresh BidAsk before admission, while the simulator previously subscribed only symbols already present in positions or active orders.
+- Follow-up Review also reproduced a failed-restart side effect: the new Effective Hard Risk Policy was installed before runtime checkpoint validation and remained installed after drift rejection.
+- Remediation is limited to one bounded owner-scoped market-data watch and a preview-then-commit activation boundary. It must continue using the canonical SimulationService BidAsk cache, existing RiskGate, and existing Journal/Simulation path.
+- No broker transport, CA, trade callback, Shioaji order API, or real-money execution is authorized.
+
+## 2026-08-22 — Gate G4 follow-up remediation candidate ready
+
+- Added a one-symbol-per-owner pre-order quote watch to the existing `SimulationService` subscription reconciliation. The first exact-set evaluation now returns `WAITING_BOOK` with no order, then proceeds only after the same canonical BidAsk cache is subscribed, complete, and fresh.
+- The real streaming flow test proves `[] -> {3231}` subscription, BidAsk warm-up, Hard Risk admission, FILLED strategy-owned position, and no `BOOK_UNAVAILABLE` rejection. Releasing the watch leaves the position/order subscription owner intact.
+- Activation now computes a mutation-free Effective Risk preview, restores ownership/checkpoint against that digest, and only then journals/installs the policy. The drift regression proves the installed 50,000 policy and activation-row count remain unchanged after a rejected 40,000 restart.
+- Subscription reconciliation is serialized so overlapping watch/order/position changes cannot publish a stale final subscribed set. A direct preview-digest-conflict test also proves no policy or activation Journal side effect.
+- Focused Local Paper suite: `112 passed`. Full no-DSN regression: `1180 passed, 21 skipped`. Disposable PostgreSQL 17 full regression: `1201 passed`.
+- Python compilation, every Dashboard JavaScript syntax check, and `git diff --check` passed. Both disposable clusters used during incremental/final verification were stopped and deleted; no development or production database was accessed.
+- **Status:** candidate ready for short Review. Gate G4 remains `NOT PASSED`; Phase 5 and broker/real-money execution remain prohibited.
+
+## 2026-08-22 — Gate G4 approved
+
+- Independent Review returned `APPROVE` with no Blocking or new Important finding.
+- Gate G4 is formally `PASSED / MVP CONDITIONAL GO`; Phase 5 is `ELIGIBLE but NOT AUTHORIZED`.
+- Reviewer verification: remediation-focused `70 passed` and `git diff --check` passed. The disposable PostgreSQL 17 full result `1201 passed` remains the candidate's verified evidence and was not rerun by the reviewer because `TEST_POSTGRES_DSN` was unavailable.
+- Stop/kill-switch durable actor/idempotency audit remains a mandatory hardening backlog before multi-user, external-network, auto-promotion, or real-money scope.
+- The Review modified no files and did not touch unrelated FinMind, live-trading, or odd-lot planning changes.

@@ -6,11 +6,11 @@ Produce a repository-grounded, implementation-ready plan for a PostgreSQL-only, 
 
 ## Current Phase
 
-Phase 22 Gate G4 remediation candidate ready for short Review; Gate G4 NOT PASSED
+Phase 24 Gate G4 approved; Phase 5 eligible but not authorized
 
 ## Implementation Gate
 
-Contract Review returned **APPROVE / GO** for the frozen B1–B5 contracts, and the user explicitly authorized Phase 1 implementation. The final short implementation Reviews subsequently returned **APPROVE / Gate G1 PASSED** and **APPROVE / Gate G2 PASSED** with no remaining blocking or important finding. The user explicitly authorized Phase 3 Backtest Qualification on 2026-08-22. After two remediation rounds, the final MVP Review approved Gate G3 as **PASSED / MVP CONDITIONAL GO** for a loopback, single-user, trusted-PostgreSQL, manual-review deployment. On 2026-08-22 the user then said 「開始process」 immediately after reaffirming that Phase 4 requires separate authorization; this plan records that statement as explicit authorization to start Phase 4 Local Paper Runtime. Gate G4 remains `NOT PASSED` until implementation Review.
+Contract Review returned **APPROVE / GO** for the frozen B1–B5 contracts, and the user explicitly authorized Phase 1 implementation. The final short implementation Reviews subsequently returned **APPROVE / Gate G1 PASSED** and **APPROVE / Gate G2 PASSED** with no remaining blocking or important finding. The user explicitly authorized Phase 3 Backtest Qualification on 2026-08-22. After two remediation rounds, the final MVP Review approved Gate G3 as **PASSED / MVP CONDITIONAL GO** for a loopback, single-user, trusted-PostgreSQL, manual-review deployment. The user separately authorized Phase 4, and the final follow-up Review approved Gate G4 as **PASSED / MVP CONDITIONAL GO**. Phase 5 is eligible but remains unauthorized.
 
 | ID | Blocking contract | Plan status | Review status |
 |---|---|---|---|
@@ -24,7 +24,7 @@ Gate rules:
 
 - Contract Gate G0 and implementation Gates G1/G2 are passed. Gate G3 is `PASSED / MVP CONDITIONAL GO` under the frozen single-user/manual-review constraints recorded in Phase 20.
 - Closed blockers are not reopened without new contradictory evidence.
-- Phase 4 Local Paper Runtime is authorized; Gate G4 remains `NOT PASSED`. Authorization is limited to local simulation through the existing Journal/Risk/Simulation boundary and still excludes Shioaji/broker orders, CA, trade subscription, and real-money execution.
+- Gate G4 is `PASSED / MVP CONDITIONAL GO`; Phase 5 is `ELIGIBLE but NOT AUTHORIZED`. The approved scope remains local simulation through the existing Journal/Risk/Simulation boundary and still excludes Shioaji/broker orders, CA, trade subscription, and real-money execution.
 
 ## Phases
 
@@ -266,6 +266,23 @@ Gate rules:
 - [x] Add adversarial lifecycle, raw-API, effective-policy, pending/fill ownership, composition, recovery, and audit tests.
 - [x] Run focused/full/disposable-PostgreSQL/static verification and prepare the remediation candidate for short G4 re-review.
 - **Status:** remediation candidate ready for short Review — Gate G4 NOT PASSED; Phase 5 and broker/real-money execution prohibited
+
+### Phase 23: Gate G4 quote-readiness and side-effect-free restart remediation
+
+- [x] Record the follow-up Request Changes verdict and keep Gate G4/Phase 5 closed.
+- [x] Add a bounded, owner-scoped quote watch before Hard Risk so the first exact-set entry can receive canonical Tick/BidAsk evidence without an existing order or position.
+- [x] Split activation into a pure Effective Hard Risk preview/checkpoint-validation stage and a commit/install stage so failed restart cannot mutate installed risk policy.
+- [x] Add streaming first-entry and failed-restart side-effect regression tests using the real Local Paper flow.
+- [x] Run focused/full/static verification and prepare the candidate for a short G4 re-review.
+- **Status:** follow-up remediation candidate ready for short Review — Gate G4 NOT PASSED; Phase 5 and broker/real-money execution prohibited
+
+### Phase 24: Gate G4 MVP conditional approval
+
+- [x] Record the final independent Review as `Gate G4: PASSED / MVP CONDITIONAL GO` with no Blocking or new Important finding.
+- [x] Mark Phase 5 `ELIGIBLE but NOT AUTHORIZED`; do not start strategy expansion or any broker/real-money work.
+- [x] Preserve stop/kill-switch durable actor/idempotency audit as mandatory hardening before multi-user, external-network, auto-promotion, or real-money scope.
+- [x] Record independent evidence: remediation tests `70 passed` and `git diff --check` passed; PostgreSQL `1201 passed` remains candidate-provided evidence not rerun by the reviewer.
+- **Status:** complete — Gate G4 PASSED / MVP CONDITIONAL GO; Phase 5 ELIGIBLE but NOT AUTHORIZED
 
 ## Decisions Made
 

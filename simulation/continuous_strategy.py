@@ -52,7 +52,24 @@ class _StrategyFlow(Protocol):
         actor_id: str,
         idempotency_key: str,
         occurred_at: datetime,
+        expected_policy_digest: str | None = None,
     ) -> Mapping[str, Any]: ...
+
+    def preview_run_activation(
+        self,
+        *,
+        owner_strategy_id: str,
+        operator_max_daily_loss: Decimal,
+    ) -> Mapping[str, Any]: ...
+
+    def prepare_entry_quote(
+        self,
+        *,
+        owner_strategy_id: str,
+        symbol: str,
+    ) -> Mapping[str, Any]: ...
+
+    def clear_entry_quote_watch(self, *, owner_strategy_id: str) -> None: ...
 
 
 class LocalPaperKillSwitch:
@@ -257,6 +274,8 @@ class ContinuousPaperStrategyController:
                 raise AutomatedStrategyStateError("自動模擬策略已在執行")
             atomic_resolution = None
             effective_risk_evidence = None
+            activation_config = None
+            activator = None
             started_at = self._clock.now()
             if config.entry_strategy_set_version_id is not None:
                 if self._atomic_resolver is None:
@@ -267,25 +286,23 @@ class ContinuousPaperStrategyController:
                     config.entry_strategy_set_version_id
                 )
                 activator = getattr(self._flow, "activate_run", None)
-                if not callable(activator):
+                previewer = getattr(self._flow, "preview_run_activation", None)
+                if not callable(activator) or not callable(previewer):
                     raise AutomatedStrategyStateError(
-                        "exact Strategy Set flow 缺少 durable activation boundary"
+                        "exact Strategy Set flow 缺少 preview/commit activation boundary"
                     )
-                effective_risk_evidence = activator(
+                activation_config = {
+                    "config": config.payload(),
+                    "pipeline": {
+                        **atomic_resolution.pipeline.to_dict(),
+                        "snapshot_digest": (
+                            atomic_resolution.pipeline.snapshot_digest
+                        ),
+                    },
+                }
+                effective_risk_evidence = previewer(
                     owner_strategy_id=atomic_resolution.pipeline.owner_strategy_id,
                     operator_max_daily_loss=config.max_daily_loss,
-                    activation_config={
-                        "config": config.payload(),
-                        "pipeline": {
-                            **atomic_resolution.pipeline.to_dict(),
-                            "snapshot_digest": (
-                                atomic_resolution.pipeline.snapshot_digest
-                            ),
-                        },
-                    },
-                    actor_id=config.actor_id,
-                    idempotency_key=config.activation_idempotency_key,
-                    occurred_at=started_at,
                 )
             previous_runtime = (
                 self._config,
@@ -302,6 +319,32 @@ class ContinuousPaperStrategyController:
             try:
                 self._restore_session_ownership_locked()
                 self._restore_runtime_checkpoint_locked()
+                if atomic_resolution is not None:
+                    assert callable(activator)
+                    assert activation_config is not None
+                    preview_digest = str(
+                        (effective_risk_evidence or {}).get(
+                            "effective_policy_digest", ""
+                        )
+                    )
+                    committed_evidence = activator(
+                        owner_strategy_id=(
+                            atomic_resolution.pipeline.owner_strategy_id
+                        ),
+                        operator_max_daily_loss=config.max_daily_loss,
+                        activation_config=activation_config,
+                        actor_id=config.actor_id,
+                        idempotency_key=config.activation_idempotency_key,
+                        occurred_at=started_at,
+                        expected_policy_digest=preview_digest,
+                    )
+                    if str(
+                        committed_evidence.get("effective_policy_digest", "")
+                    ) != preview_digest:
+                        raise AutomatedStrategyStateError(
+                            "Effective Hard Risk preview 與 activation commit 不一致"
+                        )
+                    self._effective_risk_evidence = committed_evidence
             except Exception:
                 (
                     self._config,
@@ -349,7 +392,10 @@ class ContinuousPaperStrategyController:
             self._decision = "STOPPED"
             self._message = "自動模擬策略已停止；既有本機持倉不會自動清除"
             self._write_runtime_checkpoint_locked()
-            return self._status_locked()
+            status = self._status_locked()
+            owner = self._atomic_owner_strategy_id_locked()
+        self._clear_entry_quote_watch(owner)
+        return status
 
     def close(self) -> None:
         self.stop()
@@ -362,7 +408,10 @@ class ContinuousPaperStrategyController:
             self._decision = "KILL_SWITCH_ENGAGED"
             self._message = "全域 Local Paper kill switch 已啟用；禁止產生新意圖"
             self._write_runtime_checkpoint_locked()
-            return self._status_locked()
+            status = self._status_locked()
+            owner = self._atomic_owner_strategy_id_locked()
+        self._clear_entry_quote_watch(owner)
+        return status
 
     def reset_kill_switch(self) -> dict[str, Any]:
         self._kill_switch.reset()
@@ -652,6 +701,21 @@ class ContinuousPaperStrategyController:
             return
 
         decision = sorted(triggered, key=lambda item: item.symbol)[0]
+        quote_preparer = getattr(self._flow, "prepare_entry_quote", None)
+        if not callable(quote_preparer):
+            raise AutomatedStrategyStateError(
+                "exact Strategy Set flow 缺少 pre-order quote watch boundary"
+            )
+        quote_evidence = quote_preparer(
+            owner_strategy_id=resolution.pipeline.owner_strategy_id,
+            symbol=decision.symbol,
+        )
+        if quote_evidence.get("ready") is not True:
+            self._set_decision(
+                "WAITING_BOOK",
+                f"等待 {decision.symbol} fresh BidAsk 暖機後再進入 Hard Risk",
+            )
+            return
         short_digest = decision.decision_digest[:32]
         intent = StrategyPaperIntent.create(
             intent_id=f"auto:{self._run_id}:entry:{short_digest}",
@@ -668,9 +732,15 @@ class ContinuousPaperStrategyController:
                 "pipeline": resolution.pipeline.to_dict(),
                 "pipeline_digest": resolution.pipeline.snapshot_digest,
                 "strategy_set_decision": decision.evidence(),
+                "pre_order_quote_watch": dict(quote_evidence),
             },
         )
-        flow_result = self._flow.submit(intent)
+        try:
+            flow_result = self._flow.submit(intent)
+        finally:
+            self._clear_entry_quote_watch(
+                resolution.pipeline.owner_strategy_id
+            )
         self._consumed_signal_digests.add(decision.decision_digest)
         self._entries_submitted += 1
         self._last_action_at = now
@@ -683,6 +753,18 @@ class ContinuousPaperStrategyController:
             outcome,
             f"已依 exact Strategy Set 送出 {decision.symbol} 一張本機模擬進場意圖",
         )
+
+    def _atomic_owner_strategy_id_locked(self) -> str | None:
+        if self._atomic_resolution is None:
+            return None
+        return self._atomic_resolution.pipeline.owner_strategy_id
+
+    def _clear_entry_quote_watch(self, owner_strategy_id: str | None) -> None:
+        if owner_strategy_id is None:
+            return
+        clearer = getattr(self._flow, "clear_entry_quote_watch", None)
+        if callable(clearer):
+            clearer(owner_strategy_id=owner_strategy_id)
 
     def _evaluate_position(
         self,

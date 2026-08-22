@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from time import monotonic, sleep
 import pytest
 
 from config import twse_calendar_2026
 from market_data.equity_calendar import ReviewedEquityCalendar
+from market_data.models import RealtimeQuoteUpdate
 from market_data.provider import MockProvider
 from runtime.in_memory import InMemoryJournalRepository
 from simulation.application import LocalPaperCommandService
@@ -53,6 +55,18 @@ class FakeFlow:
         self.cancellations = []
         self.retries = []
         self.activations = []
+        self.quote_watches = []
+
+    def preview_run_activation(self, **payload):
+        return {
+            "contract_version": "effective-local-paper-risk-v1",
+            "owner_strategy_id": payload["owner_strategy_id"],
+            "merge_rule": "MIN_SYSTEM_OPERATOR",
+            "system_max_daily_loss": "10000000",
+            "operator_max_daily_loss": str(payload["operator_max_daily_loss"]),
+            "effective_max_daily_loss": str(payload["operator_max_daily_loss"]),
+            "effective_policy_digest": "e" * 64,
+        }
 
     def activate_run(self, **payload):
         self.activations.append(payload)
@@ -79,6 +93,18 @@ class FakeFlow:
                 "status": self.order_status,
             },
         }
+
+    def prepare_entry_quote(self, **payload):
+        self.quote_watches.append((payload["owner_strategy_id"], payload["symbol"]))
+        return {
+            "contract_version": "local-paper-quote-watch-v1",
+            "owner_id": payload["owner_strategy_id"],
+            "symbol": payload["symbol"],
+            "ready": True,
+        }
+
+    def clear_entry_quote_watch(self, **payload):
+        self.quote_watches.append((payload["owner_strategy_id"], None))
 
     def cancel(self, order_id: str, idempotency_key: str):
         self.cancellations.append((order_id, idempotency_key))
@@ -107,6 +133,50 @@ class ProjectionReader:
 
     def __call__(self) -> dict:
         return self.value
+
+
+class StreamingEntryProvider(MockProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.handler = None
+        self.subscribed_symbols: set[str] = set()
+
+    def supports_streaming_quotes(self) -> bool:
+        return True
+
+    def start_quote_stream(self, handler) -> None:
+        self.handler = handler
+
+    def sync_quote_subscriptions(self, symbols: set[str]) -> set[str]:
+        self.subscribed_symbols = set(symbols)
+        return set(self.subscribed_symbols)
+
+    def stop_quote_stream(self) -> None:
+        self.subscribed_symbols.clear()
+
+    def emit_bidask(self, *, clock: MutableClock, bid: str, ask: str) -> None:
+        assert self.handler is not None
+        self.handler(
+            RealtimeQuoteUpdate(
+                symbol="3231",
+                kind="BIDASK",
+                exchange_timestamp=clock.now(),
+                received_at=clock.now(),
+                bid_price=float(bid),
+                ask_price=float(ask),
+                bid_volume_lots=5,
+                ask_volume_lots=5,
+            )
+        )
+
+
+def wait_until(predicate, timeout: float = 1.0) -> None:
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        if predicate():
+            return
+        sleep(0.005)
+    raise AssertionError("quote worker did not reach the expected state")
 
 
 def empty_projection(*, equity: float = 10_000_000) -> dict:
@@ -347,6 +417,90 @@ def test_exact_strategy_set_submits_pipeline_owned_auditable_entry() -> None:
     assert intent.decision_evidence["strategy_set_decision"]["decision_digest"] == (
         "atomic-decision-digest-1"
     )
+
+
+def test_exact_streaming_first_entry_watches_book_before_hard_risk() -> None:
+    clock = MutableClock()
+    provider = StreamingEntryProvider()
+    simulation = SimulationService(
+        provider,
+        starting_cash=Decimal("300000"),
+        clock=clock,
+    )
+    journal = InMemoryJournalRepository()
+    session_id = "exact-streaming-first-entry"
+    journal.start_session(
+        JournalSession(
+            session_id=session_id,
+            started_at=clock.now(),
+            mode="LOCAL_PAPER_SIMULATION",
+            metadata={"execution_boundary": "LOCAL_ONLY"},
+        )
+    )
+    commands = LocalPaperCommandService(
+        simulation=simulation,
+        journal=journal,
+        session_id=session_id,
+        clock=clock,
+    )
+    flow = StrategyPaperFlowService(
+        commands=commands,
+        journal=journal,
+        session_id=session_id,
+        clock=clock,
+    )
+    resolved = atomic_resolution()
+    instance = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=simulation.projection,
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+        atomic_resolver=lambda _: resolved,
+    )
+    instance.start(
+        AutomatedStrategyConfig.create(
+            entry_strategy_set_version_id="paper-entry-set-v1",
+            stop_loss_pct="1.5",
+            take_profit_pct="3",
+            max_daily_loss="50000",
+            activation_idempotency_key="exact-streaming-first-entry",
+        ),
+        background=False,
+    )
+
+    warming = instance.run_once()
+
+    assert warming["decision"] == "WAITING_BOOK"
+    assert simulation.orders() == []
+    assert provider.subscribed_symbols == {"3231"}
+    assert simulation.session()["watched_symbols"] == ["3231"]
+
+    provider.emit_bidask(clock=clock, bid="177", ask="178")
+    wait_until(
+        lambda: simulation.quote_watch_status(
+            owner_id=resolved.pipeline.owner_strategy_id,
+            symbol="3231",
+        )["ready"]
+    )
+
+    submitted = instance.run_once()
+
+    assert submitted["decision"] == "ENTRY_SUBMITTED"
+    assert simulation.orders()[0]["status"] == "FILLED"
+    assert simulation.orders()[0]["reason"] is None
+    assert simulation.positions()[0]["owner_strategy_id"] == (
+        resolved.pipeline.owner_strategy_id
+    )
+    assert simulation.session()["watched_symbols"] == []
+    assert provider.subscribed_symbols == {"3231"}
+    assert all(
+        item.record.kind != "local_paper_rejection.v1"
+        for item in journal.records(session_id)
+    )
+
+    instance.stop()
+    simulation.close()
 
 
 def test_start_fails_closed_when_existing_automated_owner_differs() -> None:
@@ -830,6 +984,11 @@ def test_exact_runtime_checkpoint_preserves_effective_risk_and_rejects_drift() -
             if item.record.kind == "strategy_runtime_activation.v1"
         ]
     ) == 1
+    installed_before_failed_restart = commands.strategy_risk_policy(
+        owner_strategy_id=resolved.pipeline.owner_strategy_id
+    )
+    assert installed_before_failed_restart is not None
+    assert installed_before_failed_restart["policy"]["max_daily_loss"] == "50000"
     restarted.stop()
 
     drifted = ContinuousPaperStrategyController(
@@ -852,6 +1011,17 @@ def test_exact_runtime_checkpoint_preserves_effective_risk_and_rejects_drift() -
             background=False,
         )
     assert drifted.status()["state"] == "STOPPED"
+    installed_after_failed_restart = commands.strategy_risk_policy(
+        owner_strategy_id=resolved.pipeline.owner_strategy_id
+    )
+    assert installed_after_failed_restart == installed_before_failed_restart
+    assert len(
+        [
+            item
+            for item in journal.records(session_id)
+            if item.record.kind == "strategy_runtime_activation.v1"
+        ]
+    ) == 1
     simulation.close()
 
 

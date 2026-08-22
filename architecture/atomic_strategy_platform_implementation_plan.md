@@ -6,7 +6,7 @@
 
 ### 1.1 實作前 Review Gate
 
-**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gate G3 已核准為 `PASSED / MVP CONDITIONAL GO`；Phase 4 Local Paper 已由使用者另行授權並進入實作候選驗證。** B1–B5 契約維持 `REVIEWED / CLOSED`。Gate G4 仍為 `NOT PASSED`；Phase 4 只允許既有本機 Journal／Risk／Simulation 路徑，券商委託與真實交易仍不得開始：
+**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4 均核准為 `PASSED / MVP CONDITIONAL GO`；Phase 5 為 `ELIGIBLE but NOT AUTHORIZED`。** B1–B5 契約維持 `REVIEWED / CLOSED`。G4 核准只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper；券商委託與真實交易仍不得開始：
 
 | ID | Blocking contract | 本文件的處理方向 | Gate 狀態 |
 |---|---|---|---|
@@ -19,7 +19,7 @@
 契約 Gate 已關閉後仍維持下列實作邊界：
 
 - Phase 1、Phase 2、Phase 3 已完成；Phase 3 只新增歷史回測 qualification evidence、PostgreSQL persistence 與 Web review，不修改 execution runtime。
-- Phase 4 已由使用者以「開始process」另行明確授權；授權只涵蓋 Local Paper Runtime。G4 Review 核准前不得標示完成，更不得新增任何券商委託能力。
+- Phase 4 Local Paper Runtime 已通過 G4 的 MVP conditional Review。Phase 5 只有資格、尚未獲得實作授權，更不得新增任何券商委託能力。
 - 每一 Phase 仍須通過自己的 migration、determinism、compatibility 與 regression 驗收。
 - 先前 `1100 passed, 10 skipped` 不是有效的穩定 G1 證據：Review 在 Asia/Taipei 晚間重現 `8 failed, 1092 passed, 10 skipped`，根因為 wall-clock-dependent fixture 跨日。
 - 後續 `0bcf61c` 已讓兩個 affected fixtures 共用 deterministic clock；Phase 13 也已完成其餘 snapshot、durable replay、integrity、migration acceptance 與 test cleanup guard remediation。最新全套證據為 disposable PostgreSQL `1113 passed`，一般無 DSN 模式 `1103 passed, 10 skipped`；最終短 Review 已正式關閉 G1。
@@ -131,7 +131,9 @@ Pipeline 固定順序：
 ```text
 Market Data event
   -> Runtime/Cadence Feature Adapter
-  -> Filter Set -> Entry Set -> TradeIntent
+  -> Filter Set -> Entry Set
+  -> bounded owner-scoped quote watch -> canonical fresh BidAsk ready
+  -> TradeIntent
   -> Execution Policy -> ProposedOrderCommand
   -> Hard Risk Admission -> ApprovedOrderCommand
   -> Simulation/Broker Adapter -> Fill -> Position state
@@ -142,7 +144,8 @@ Market Data event
               -> Hard Risk Admission -> ApprovedOrderCommand
               -> Simulation/Broker Adapter -> monitor/terminal
 
-restart -> checkpoint/reconciliation -> RUNNING or RECOVERY_REQUIRED
+restart -> pure Effective Risk preview -> checkpoint/reconciliation
+        -> activation Journal + policy install -> RUNNING or RECOVERY_REQUIRED
 ```
 
 這是一個持續事件迴圈／position lifecycle state machine，不是一筆訊號走完就結束的單次箭頭。成交後仍必須持續訂閱、評估 Exit Set、執行硬風控與復原，直到 position terminal。
@@ -755,6 +758,8 @@ Mutation contract：
 - 保存 per-strategy/per-symbol state checkpoint，包含 cooldown、last trigger、position owner 與 pending intent。
 - 恢復前 reconciliation orders/positions/journal；不確定時停在 `RECOVERY_REQUIRED`。
 - 行情中斷、queue overflow、stale BidAsk、calendar 不確定、Journal failure 一律停止產生新意圖。
+- 首次 Entry 不得依賴「已有持倉／active order」才建立行情訂閱。觸發後先以 exact owner 建立最多一檔的 pre-order quote watch，納入既有 `SimulationService` 訂閱 reconciliation；只有 canonical BidAsk cache 已訂閱、完整且 fresh 才可建立 TradeIntent。watch 不建立委託、不繞過 Hard Risk，送單後或 stop／kill 時釋放，active order／position 仍由原訂閱 owner 接手。
+- restart 必須先以純函式預覽 Effective Hard Risk evidence，使用其 digest 完成 ownership/checkpoint validation；只有 validation 成功後才允許寫 activation operation 並安裝 policy。失敗啟動不得改寫既有已安裝 policy。
 - 提供 per-run stop 與 global kill switch；停止策略不自動清除既有持倉，除非有明確 flatten policy。
 - Runtime 是事件迴圈／position lifecycle state machine：每個行情事件更新 Feature Snapshot，依當前 run/position/order state 評估 Filter/Entry/Exit，成交後持續監控直到 terminal；restart 只能經 checkpoint + journal + open order/position reconciliation 回到 RUNNING。
 - 所有 entry/exit command 固定走 `TradeIntent -> Execution Policy -> ProposedOrderCommand -> Hard Risk Admission -> ApprovedOrderCommand -> Adapter`；adapter 的公開 port 不接受 proposed type。現有 `OrderCommand` migration adapter 也必須在型別／狀態上證明已 admission。
@@ -844,7 +849,7 @@ MVP Conditional Gate 附帶下列凍結與人工治理條件：
 
 Gate G4：完成 event loop：Feature -> Entry/Exit Intent -> Execution Policy -> ProposedOrderCommand -> Hard Risk -> ApprovedOrderCommand -> BidAsk Fill -> Position/terminal；restart fail closed；完全沒有券商委託 API。
 
-目前狀態：**REMEDIATION CANDIDATE READY FOR SHORT REVIEW；G4 NOT PASSED**。候選除既有 exact-version ENTRY Pipeline、Feature projection、Proposed -> Hard Risk -> Approved、checkpoint/recovery、continuous exit 與 Web controls 外，已補上 transactional `PAPER_APPROVED` admission（含 lifecycle sequence/event/projection digest）、封閉 raw Strategy Intent HTTP bypass、以 `min(system ceiling, operator limit)` 建立並保存 per-run Effective Hard Risk、cross-owner pending/fill-time 雙重驗證，以及 ALL unavailable precedence。start activation 保存 actor、完整 config 與 durable idempotency result；stop／kill-switch actor 與 durable operation audit 仍是明確的單機 MVP Important 限制，不得宣稱完整多使用者稽核。最終候選驗證為 focused PostgreSQL `82 passed`、無 DSN full `1178 passed, 21 skipped`、disposable PostgreSQL 17 full `1199 passed`，另含 Python compilation、Dashboard JavaScript syntax 與 `git diff --check`。一次性 PostgreSQL 叢集與測試資料已停止並刪除。在獨立短 Review 明確核准前不得標示 G4 完成，也不得開始 Phase 5 或任何 broker／real-money 工作。
+目前狀態：**G4 PASSED / MVP CONDITIONAL GO；PHASE 5 ELIGIBLE BUT NOT AUTHORIZED**。獨立 Review 確認首次 exact-set `WAITING_BOOK`、每 owner 一檔 quote watch、watch/order/position 訂閱合併、fresh BidAsk 後重新通過 Hard Risk、watch release、subscription concurrency，以及 preview -> checkpoint validation -> activation commit/install 均符合契約；remediation focused tests 為 `70 passed`，`git diff --check` 通過。候選方完整證據仍為 focused Local Paper `112 passed`、無 DSN full `1180 passed, 21 skipped`、disposable PostgreSQL 17 full `1201 passed`。Stop／kill-switch durable actor/idempotency audit保留為單機 MVP hardening backlog，必須在 multi-user、外網、auto-promotion 或 real-money 前補齊並重新過 Gate。Phase 5 未獲授權，broker／real-money 工作仍禁止。
 
 ### Phase 5 — 逐批擴充策略
 

@@ -218,6 +218,55 @@ class LocalPaperCommandService:
                 self._application_for_policy(policy),
             )
 
+    def strategy_risk_policy(
+        self,
+        *,
+        owner_strategy_id: str,
+    ) -> dict[str, Any] | None:
+        """Return the installed policy identity for diagnostics and recovery checks."""
+
+        owner = self._normalize_key(owner_strategy_id)
+        with self._lock:
+            admitted = self._strategy_applications.get(owner)
+            if admitted is None:
+                return None
+            policy = admitted[0]
+            return {
+                "owner_strategy_id": owner,
+                "policy": policy.to_dict(),
+                "effective_policy_digest": policy.policy_digest,
+            }
+
+    def prepare_strategy_entry_quote(
+        self,
+        *,
+        owner_strategy_id: str,
+        symbol: str,
+    ) -> dict[str, Any]:
+        """Acquire one bounded watch and report canonical BidAsk readiness."""
+
+        owner = self._normalize_key(owner_strategy_id)
+        with self._lock:
+            admitted = self._strategy_applications.get(owner)
+            if admitted is None:
+                raise SimulationStateError(
+                    "exact Strategy Set 尚未安裝 Effective Hard Risk Policy"
+                )
+            maximum_age = admitted[0].max_book_age_seconds
+        self._simulation.watch_quote(owner_id=owner, symbol=symbol)
+        return self._simulation.quote_watch_status(
+            owner_id=owner,
+            symbol=symbol,
+            max_book_age_seconds=maximum_age,
+        )
+
+    def clear_strategy_entry_quote(self, *, owner_strategy_id: str) -> None:
+        """Release the owner's pre-order watch; orders/positions remain subscribed."""
+
+        self._simulation.clear_quote_watch(
+            owner_id=self._normalize_key(owner_strategy_id)
+        )
+
     def _submit_order(
         self,
         *,
