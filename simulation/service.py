@@ -884,7 +884,7 @@ class SimulationService:
         fill_price: Decimal,
         *,
         fill_quantity: int | None = None,
-    ) -> None:
+    ) -> int:
         """在 lock 內以已驗證的 snapshot／買一／賣一完成本機紙上成交。"""
         quantity = min(fill_quantity or order.remaining_quantity, order.remaining_quantity)
         if quantity <= 0:

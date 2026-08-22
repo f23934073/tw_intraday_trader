@@ -19,7 +19,6 @@ from trading.journal import (
     JournalRepository,
 )
 from trading.risk import CommandSide
-from trading.risk import RiskPolicy
 from strategy_catalog.parameter_schema import canonical_digest
 
 

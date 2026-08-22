@@ -184,9 +184,7 @@ class LocalPaperCommandService:
         effective_limit = min(system_ceiling, operator_limit)
         policy = RiskPolicy(
             version="local-paper-risk-v1:effective-strategy-v1",
-            allow_strategy_origin=(
-                self._base_risk_policy.allow_strategy_origin and True
-            ),
+            allow_strategy_origin=self._base_risk_policy.allow_strategy_origin,
             max_order_notional=self._base_risk_policy.max_order_notional,
             max_position_notional=self._base_risk_policy.max_position_notional,
             max_daily_loss=effective_limit,
