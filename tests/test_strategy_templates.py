@@ -6,6 +6,10 @@ from atomic_strategies.entries.above_vwap import AboveVwapEntryStrategy
 from atomic_strategies.entries.breakout_previous_high import (
     BreakoutPreviousHighEntryStrategy,
 )
+from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
+from atomic_strategies.entries.volume_acceleration import (
+    VolumeAccelerationEntryStrategy,
+)
 from atomic_strategies.registry import AtomicStrategyRegistry
 
 
@@ -13,11 +17,24 @@ def test_first_atomic_templates_are_separate_allowlisted_implementations() -> No
     registry = AtomicStrategyRegistry()
     templates = {item.strategy_id: item for item in registry.templates()}
 
-    assert set(templates) == {"above_vwap_entry", "breakout_previous_high_entry"}
+    assert set(templates) == {
+        "above_vwap_entry",
+        "breakout_previous_high_entry",
+        "rolling_return_entry",
+        "volume_acceleration_entry",
+    }
     assert isinstance(registry.strategy("above_vwap_entry"), AboveVwapEntryStrategy)
     assert isinstance(
         registry.strategy("breakout_previous_high_entry"),
         BreakoutPreviousHighEntryStrategy,
+    )
+    assert isinstance(
+        registry.strategy("rolling_return_entry"),
+        RollingReturnEntryStrategy,
+    )
+    assert isinstance(
+        registry.strategy("volume_acceleration_entry"),
+        VolumeAccelerationEntryStrategy,
     )
     assert templates["above_vwap_entry"].template_digest != templates[
         "breakout_previous_high_entry"
@@ -40,4 +57,30 @@ def test_parameter_schema_canonicalizes_defaults_and_rejects_unknown_or_bad_wind
     with pytest.raises(ValueError, match="必須早於"):
         template.validate_parameters(
             {"entry_window_start": "12:45", "entry_window_end": "09:01"}
+        )
+
+
+def test_phase5_strategy_schemas_are_parameterized_and_backtest_only() -> None:
+    rolling = RollingReturnEntryStrategy.template
+    volume = VolumeAccelerationEntryStrategy.template
+
+    assert rolling.validate_parameters(
+        {"window_minutes": 3, "minimum_return_pct": "2.0"}
+    )["minimum_return_pct"] == "2"
+    assert volume.validate_parameters(
+        {
+            "window_minutes": 3,
+            "baseline_window_count": 4,
+            "minimum_complete_baseline_windows": 3,
+        }
+    )["window_minutes"] == 3
+    assert set(rolling.runtime_bindings) == {"BACKTEST_KBAR_1M"}
+    assert set(volume.runtime_bindings) == {"BACKTEST_KBAR_1M"}
+
+    with pytest.raises(ValueError, match="不可大於"):
+        volume.validate_parameters(
+            {
+                "baseline_window_count": 3,
+                "minimum_complete_baseline_windows": 4,
+            }
         )

@@ -746,3 +746,19 @@ class StrategyRegistry:
         if strategy is None:
             raise ValueError(f"未註冊的回測策略：{strategy_id}")
         return strategy.evaluate(context)
+
+    def reset_runtime(self) -> None:
+        """Reset run-local state without changing immutable strategy identity."""
+
+        for strategy in self._strategies.values():
+            reset = getattr(strategy, "reset_runtime", None)
+            if reset is not None:
+                reset()
+
+    def begin_session(self, session_date: date) -> None:
+        """Advance session-local strategy state before replaying the next day."""
+
+        for strategy in self._strategies.values():
+            begin = getattr(strategy, "begin_session", None)
+            if begin is not None:
+                begin(session_date)

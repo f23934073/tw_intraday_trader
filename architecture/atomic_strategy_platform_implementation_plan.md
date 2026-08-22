@@ -6,7 +6,7 @@
 
 ### 1.1 實作前 Review Gate
 
-**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4 均核准為 `PASSED / MVP CONDITIONAL GO`；Phase 5 為 `ELIGIBLE but NOT AUTHORIZED`。** B1–B5 契約維持 `REVIEWED / CLOSED`。G4 核准只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper；券商委託與真實交易仍不得開始：
+**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4 均核准為 `PASSED / MVP CONDITIONAL GO`；Phase 5 首批已核准為 `G5 PASSED / MVP SCOPED GO`。** B1–B5 契約維持 `REVIEWED / CLOSED`。G4/G5 核准只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper／Backtest scoped MVP；券商委託與真實交易仍不得開始：
 
 | ID | Blocking contract | 本文件的處理方向 | Gate 狀態 |
 |---|---|---|---|
@@ -19,7 +19,7 @@
 契約 Gate 已關閉後仍維持下列實作邊界：
 
 - Phase 1、Phase 2、Phase 3 已完成；Phase 3 只新增歷史回測 qualification evidence、PostgreSQL persistence 與 Web review，不修改 execution runtime。
-- Phase 4 Local Paper Runtime 已通過 G4 的 MVP conditional Review。Phase 5 只有資格、尚未獲得實作授權，更不得新增任何券商委託能力。
+- Phase 4 Local Paper Runtime 已通過 G4 的 MVP conditional Review；Phase 5 首批 rolling return／volume acceleration 已通過 G5 scoped Review。後續策略批次仍須分批授權與驗收，且不得新增任何券商委託能力。
 - 每一 Phase 仍須通過自己的 migration、determinism、compatibility 與 regression 驗收。
 - 先前 `1100 passed, 10 skipped` 不是有效的穩定 G1 證據：Review 在 Asia/Taipei 晚間重現 `8 failed, 1092 passed, 10 skipped`，根因為 wall-clock-dependent fixture 跨日。
 - 後續 `0bcf61c` 已讓兩個 affected fixtures 共用 deterministic clock；Phase 13 也已完成其餘 snapshot、durable replay、integrity、migration acceptance 與 test cleanup guard remediation。最新全套證據為 disposable PostgreSQL `1113 passed`，一般無 DSN 模式 `1103 passed, 10 skipped`；最終短 Review 已正式關閉 G1。
@@ -831,7 +831,7 @@ Gate G2：無任意 code/import path/JSON execution；API 不接受 raw strategy
 
 Gate G3：**PASSED / MVP CONDITIONAL GO**。使用者已於 2026-08-22 以「開始process」另行明確授權 Phase 4；此授權只涵蓋 Local Paper Runtime，不包含券商委託或 real-money execution。
 
-目前狀態：**G3 PASSED / MVP CONDITIONAL GO；PHASE 4 IMPLEMENTATION CANDIDATE READY FOR REVIEW；G4 NOT PASSED**。G3 核准範圍只適用於單機、loopback、single-user、可信操作者與 trusted PostgreSQL 的人工審核 MVP。Qualification 必須維持 `REVIEW_ONLY_NO_LIFECYCLE_MUTATION`：任何 `ELIGIBLE_FOR_PROMOTION_REVIEW` 只代表可交付人工 Review，不得自動 promotion 或切換 Strategy lifecycle。Phase 4 的 Local Paper 啟動必須是另一個明確、人工、loopback-only 動作，不得由 Qualification 自動觸發。現有 G3 驗證證據為 focused no-DSN `31 passed, 10 skipped`、focused PostgreSQL `8 passed`、full no-DSN `1157 passed, 20 skipped`、full disposable PostgreSQL 17 `1177 passed`；Python compilation、Dashboard JavaScript syntax、browser smoke 與 `git diff --check` 通過。
+G3 最終 disposition：**PASSED / MVP CONDITIONAL GO**。G3 核准範圍只適用於單機、loopback、single-user、可信操作者與 trusted PostgreSQL 的人工審核 MVP。Qualification 必須維持 `REVIEW_ONLY_NO_LIFECYCLE_MUTATION`：任何 `ELIGIBLE_FOR_PROMOTION_REVIEW` 只代表可交付人工 Review，不得自動 promotion 或切換 Strategy lifecycle。Phase 4 的 Local Paper 啟動必須是另一個明確、人工、loopback-only 動作，不得由 Qualification 自動觸發。現有 G3 驗證證據為 focused no-DSN `31 passed, 10 skipped`、focused PostgreSQL `8 passed`、full no-DSN `1157 passed, 20 skipped`、full disposable PostgreSQL 17 `1177 passed`；Python compilation、Dashboard JavaScript syntax、browser smoke 與 `git diff --check` 通過。後續 Gate 狀態以各 Phase 小節為準。
 
 MVP Conditional Gate 附帶下列凍結與人工治理條件：
 
@@ -840,7 +840,7 @@ MVP Conditional Gate 附帶下列凍結與人工治理條件：
 - Dataset stable research identity 與 canonical Baseline revalidation 登記為 Phase 3 hardening backlog。兩者在本機可信 MVP 可視為 defense-in-depth，但在 multi-user、非 loopback／外網、auto-promotion 或任何正式交易能力開始前，必須完成、補對抗性測試並重新過 Gate。
 - PostgreSQL 被視為 trusted local authority；本 Gate 不涵蓋具備資料庫直接寫入權限的惡意操作者或資料庫被竄改後仍可安全運作的保證。
 
-### Phase 4 — Local Paper Runtime（已授權；候選完成待 Review）
+### Phase 4 — Local Paper Runtime（完成；MVP Conditional Go）
 
 - 將 `continuous_strategy.py` 收斂為 generic paper orchestrator，而不是建立另一套策略／Feature source of truth。
 - 使用 selected exact-version Pipeline、Execution Policy、Hard Risk Policy、Journal 與 SimulationService。
@@ -849,15 +849,21 @@ MVP Conditional Gate 附帶下列凍結與人工治理條件：
 
 Gate G4：完成 event loop：Feature -> Entry/Exit Intent -> Execution Policy -> ProposedOrderCommand -> Hard Risk -> ApprovedOrderCommand -> BidAsk Fill -> Position/terminal；restart fail closed；完全沒有券商委託 API。
 
-目前狀態：**G4 PASSED / MVP CONDITIONAL GO；PHASE 5 ELIGIBLE BUT NOT AUTHORIZED**。獨立 Review 確認首次 exact-set `WAITING_BOOK`、每 owner 一檔 quote watch、watch/order/position 訂閱合併、fresh BidAsk 後重新通過 Hard Risk、watch release、subscription concurrency，以及 preview -> checkpoint validation -> activation commit/install 均符合契約；remediation focused tests 為 `70 passed`，`git diff --check` 通過。候選方完整證據仍為 focused Local Paper `112 passed`、無 DSN full `1180 passed, 21 skipped`、disposable PostgreSQL 17 full `1201 passed`。Stop／kill-switch durable actor/idempotency audit保留為單機 MVP hardening backlog，必須在 multi-user、外網、auto-promotion 或 real-money 前補齊並重新過 Gate。Phase 5 未獲授權，broker／real-money 工作仍禁止。
+目前狀態：**G4 PASSED / MVP CONDITIONAL GO；PHASE 5 已由使用者另行明確授權**。獨立 Review 確認首次 exact-set `WAITING_BOOK`、每 owner 一檔 quote watch、watch/order/position 訂閱合併、fresh BidAsk 後重新通過 Hard Risk、watch release、subscription concurrency，以及 preview -> checkpoint validation -> activation commit/install 均符合契約；remediation focused tests 為 `70 passed`，`git diff --check` 通過。候選方完整證據仍為 focused Local Paper `112 passed`、無 DSN full `1180 passed, 21 skipped`、disposable PostgreSQL 17 full `1201 passed`。Stop／kill-switch durable actor/idempotency audit保留為單機 MVP hardening backlog，必須在 multi-user、外網、auto-promotion 或 real-money 前補齊並重新過 Gate。Phase 5 的授權只涵蓋逐批原子策略擴充；broker／real-money 工作仍禁止。
 
-### Phase 5 — 逐批擴充策略
+### Phase 5 — 逐批擴充策略（首批已通過 G5）
 
 - 先加入 parameterized rolling return 與 volume acceleration。
 - 經各自資料能力與 golden tests 後，再考慮 distance-to-limit、external ratio、ORB、EMA、RSI/Bollinger 及 exits。
 - 只為實際遷移且有測試的策略新增檔案，不一次建立 speculative stubs。
+- 首批 `rolling_return_entry` 與 `volume_acceleration_entry` 各自擁有獨立檔案、Schema、Template 與 parameter-derived Feature Requests；Web／PostgreSQL 沿用 generic Draft/Publish/Version/Set contract。
+- completed 1m Kbar adapter 的每個 deque 雖有上限，但首輪 Review 發現 session-keyed map 仍會跨日累積；G5 remediation 必須在 engine session transition 淘汰前一 session，只保留目前 session 的 request/symbol state。
+- volume baseline 的凍結語意為「由最新往最舊的連續完整視窗前綴」：僅允許最舊端因開盤暖機不足而缺少 suffix；任何中間／較新的缺口一律 `INSUFFICIENT_DATA`，不得用更舊視窗補足。
+- 首批 runtime availability 明確為 `BACKTEST_KBAR_1M`。現有 Local Paper Tick projection 只有固定 2 分鐘 legacy features，因此任意 N 分鐘版本不宣稱 parity，activation 因缺少 binding fail closed。
 
 Gate G5：每個已遷移策略有獨立檔案、Schema/Feature Requests、runtime availability、golden tests 與可重現 evidence。
+
+目前狀態：**PHASE 5 FIRST SLICE APPROVED；G5 PASSED / MVP SCOPED GO**。Engine 已透過既有 Registry/adapter boundary 宣告 session transition，completed-Kbar state 會在切換前淘汰舊 session；100-session 測試證明單一 symbol/request 只保留一組 active state。Volume golden tests 證明只缺最舊暖機 suffix 時可依 minimum count 計算，但缺少 09:05 的中間 gap 會以 `baseline_volume_windows_non_contiguous` fail closed。候選驗證為 focused `39 passed, 8 skipped`、無 DSN full `1193 passed, 22 skipped`；獨立 Review 為 focused `36 passed, 8 skipped`、full no-DSN `1193 passed, 22 skipped`，且 `git diff --check` 通過。本輪沒有 PostgreSQL schema/repository 變更，因此沒有重跑 PostgreSQL。此 Gate 只核准首批 rolling return／volume acceleration；後續策略批次、Local Paper parameterized Tick adapter、broker／real-money 工作均不在核准範圍內。
 
 ## 19. Test Matrix
 
@@ -1035,6 +1041,27 @@ tests/test_backtest_sqlite_postgres_migration.py
 ```
 
 Phase 4 另行核准後才修改 `simulation/continuous_strategy.py`、`simulation/strategy_flow.py`。剩餘策略檔案只在該策略實際遷移與測試時新增，不先建立 speculative 空殼。
+
+Phase 5 首批已加入且由 Gate G5 管理的檔案：
+
+```text
+atomic_strategies/entries/rolling_return.py
+atomic_strategies/entries/volume_acceleration.py
+atomic_strategies/feature_requests.py
+atomic_strategies/registry.py
+features/specifications.py
+backtest/features.py
+backtest/feature_adapters.py
+backtest/atomic_strategy_adapter.py
+backtest/engine.py
+backtest/strategies.py
+tests/test_atomic_strategy_phase5.py
+tests/test_parameterized_feature_requests.py
+tests/test_strategy_templates.py
+tests/test_atomic_strategy_web_api.py
+tests/test_atomic_paper_runtime.py
+tests/test_strategy_publish_idempotency.py
+```
 
 以上 ownership 是 v1 frozen contract。`atomic_strategies/` 是窄範圍 pure-kernel owner，不得成長為重複 catalog/feature/backtest/simulation 的廣泛 runtime package。Feature Specification 固定放在既有頂層 `features/` owner，不建立第三套 calculator；任何 owner 變更都必須先修改本計畫並重新 Review，不能在實作中臨時漂移。
 

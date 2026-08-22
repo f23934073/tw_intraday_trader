@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import replace
 
 from atomic_strategies.entries.above_vwap import AboveVwapEntryStrategy
+from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
+from atomic_strategies.entries.volume_acceleration import (
+    VolumeAccelerationEntryStrategy,
+)
 from atomic_strategies.feature_requests import resolve_feature_requests
 from features.specifications import FeatureRequestSpec, FeatureSpecificationRegistry
 
@@ -61,3 +65,58 @@ def test_feature_specification_digest_freezes_implementation_and_as_of_semantics
         specification,
         as_of_semantics="STRICTLY_BEFORE_CURRENT_COMPLETED_BAR",
     ).specification_digest != specification.specification_digest
+
+
+def test_existing_feature_specification_digests_do_not_change_in_phase5() -> None:
+    registry = FeatureSpecificationRegistry()
+
+    assert registry.get("vwap_session_v1").specification_digest == (
+        "362508f9163f669d8aee28f74585f0124dc9e2b6f71d067a5fcd875eed7bfba0"
+    )
+    assert registry.get("previous_intraday_high_v1").specification_digest == (
+        "bb0e2ae9f141448e624cf94d7266fe10531bcb0918741de955a959f37a34e1f1"
+    )
+
+
+def test_volume_specification_and_web_schema_freeze_gap_semantics() -> None:
+    specification = FeatureSpecificationRegistry().get("rolling_volume_ratio_v1")
+    minimum_field = VolumeAccelerationEntryStrategy.template.parameter_schema.fields[
+        "minimum_complete_baseline_windows"
+    ]
+
+    assert specification.missing_semantics == (
+        "INSUFFICIENT_DATA_ON_INCOMPLETE_CURRENT_OR_NON_SUFFIX_BASELINE_WINDOWS"
+    )
+    assert specification.warmup_semantics == (
+        "NEWEST_CONTIGUOUS_COMPLETE_BASELINE_PREFIX_WITH_OLDEST_WARMUP_SUFFIX"
+    )
+    assert "中間缺少任何 1 分 Kbar" in minimum_field["help"]
+
+
+def test_strategy_parameters_resolve_into_real_feature_windows() -> None:
+    rolling_requests = resolve_feature_requests(
+        RollingReturnEntryStrategy.template,
+        {"window_minutes": 3, "minimum_return_pct": "2.0"},
+    )
+    volume_requests = resolve_feature_requests(
+        VolumeAccelerationEntryStrategy.template,
+        {
+            "window_minutes": 3,
+            "baseline_window_count": 4,
+            "minimum_complete_baseline_windows": 3,
+            "minimum_acceleration_ratio": "2",
+        },
+    )
+    registry = FeatureSpecificationRegistry()
+    registry.validate_requests(rolling_requests)
+    registry.validate_requests(volume_requests)
+
+    assert rolling_requests[0].parameters == {"window_minutes": 3}
+    assert volume_requests[0].parameters == {
+        "window_minutes": 3,
+        "baseline_window_count": 4,
+        "minimum_complete_baseline_windows": 3,
+        "baseline_method": "MEDIAN",
+    }
+    assert registry.get("rolling_return_v1").request_parameter_schema is not None
+    assert registry.get("rolling_volume_ratio_v1").request_parameter_schema is not None

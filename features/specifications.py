@@ -7,7 +7,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Mapping
 
-from strategy_catalog.parameter_schema import canonical_digest
+from strategy_catalog.parameter_schema import ParameterSchema, canonical_digest
+
+
+def _validate_volume_window_parameters(parameters: Mapping[str, Any]) -> None:
+    minimum = int(parameters["minimum_complete_baseline_windows"])
+    total = int(parameters["baseline_window_count"])
+    if minimum > total:
+        raise ValueError(
+            "minimum_complete_baseline_windows 不可大於 baseline_window_count"
+        )
 
 
 @dataclass(frozen=True)
@@ -87,22 +96,44 @@ class FeatureSpecification:
     missing_semantics: str
     as_of_semantics: str
     implementation_digest: str
+    warmup_semantics: str = "FIXED_WARMUP_BARS"
+    request_parameter_schema: ParameterSchema | None = field(
+        default=None,
+        repr=False,
+    )
 
     @property
     def specification_digest(self) -> str:
-        return canonical_digest(
-            {
-                "feature_id": self.feature_id,
-                "unit": self.unit,
-                "cadence": self.cadence,
-                "completed_data_only": self.completed_data_only,
-                "session_reset": self.session_reset,
-                "warmup_bars": self.warmup_bars,
-                "missing_semantics": self.missing_semantics,
-                "as_of_semantics": self.as_of_semantics,
-                "implementation_digest": self.implementation_digest,
-            }
-        )
+        document = {
+            "feature_id": self.feature_id,
+            "unit": self.unit,
+            "cadence": self.cadence,
+            "completed_data_only": self.completed_data_only,
+            "session_reset": self.session_reset,
+            "warmup_bars": self.warmup_bars,
+            "missing_semantics": self.missing_semantics,
+            "as_of_semantics": self.as_of_semantics,
+            "implementation_digest": self.implementation_digest,
+        }
+        # Preserve the already-published v1 digest for non-parameterized specs.
+        if self.warmup_semantics != "FIXED_WARMUP_BARS":
+            document["warmup_semantics"] = self.warmup_semantics
+        if self.request_parameter_schema is not None:
+            document["request_parameter_schema"] = (
+                self.request_parameter_schema.schema_document
+            )
+        return canonical_digest(document)
+
+    def validate_request(self, request: FeatureRequestSpec) -> None:
+        if request.feature_id != self.feature_id:
+            raise ValueError("Feature Request 與 Specification identity 不一致")
+        if self.request_parameter_schema is None:
+            if request.parameters:
+                raise ValueError(f"{self.feature_id} 不接受 Feature parameters")
+            return
+        canonical = self.request_parameter_schema.canonicalize(request.parameters)
+        if canonical != dict(request.parameters):
+            raise ValueError(f"{self.feature_id} Feature parameters 必須先 canonicalize")
 
 
 @dataclass(frozen=True)
@@ -113,9 +144,15 @@ class NormalizedFeatureSnapshot:
     adapter_identity: str
     values: Mapping[str, Any]
     input_digest: str
+    missing_reasons: Mapping[str, str] = field(default_factory=dict)
+    request_digests: Mapping[str, str] = field(default_factory=dict)
+    state_keys: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "values", dict(self.values))
+        object.__setattr__(self, "missing_reasons", dict(self.missing_reasons))
+        object.__setattr__(self, "request_digests", dict(self.request_digests))
+        object.__setattr__(self, "state_keys", dict(self.state_keys))
 
 
 class FeatureSpecificationRegistry:
@@ -147,6 +184,80 @@ class FeatureSpecificationRegistry:
                     b"previous-intraday-high-feature-implementation-v1"
                 ).hexdigest(),
             ),
+            FeatureSpecification(
+                feature_id="rolling_return_v1",
+                unit="RATIO",
+                cadence="COMPLETED_KBAR_1M",
+                completed_data_only=True,
+                session_reset=True,
+                warmup_bars=2,
+                missing_semantics="INSUFFICIENT_DATA_ON_INCOMPLETE_CONTIGUOUS_WINDOW",
+                as_of_semantics="CURRENT_COMPLETED_BAR_CLOSE_INCLUSIVE_EXACT_WINDOW_ANCHOR",
+                implementation_digest=hashlib.sha256(
+                    b"completed-kbar-rolling-return-feature-implementation-v1"
+                ).hexdigest(),
+                warmup_semantics="WINDOW_MINUTES_PLUS_ONE_CONTIGUOUS_COMPLETED_BARS",
+                request_parameter_schema=ParameterSchema(
+                    version="rolling-return-feature-request-v1",
+                    fields={
+                        "window_minutes": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 30,
+                            "default": 2,
+                        }
+                    },
+                ),
+            ),
+            FeatureSpecification(
+                feature_id="rolling_volume_ratio_v1",
+                unit="RATIO",
+                cadence="COMPLETED_KBAR_1M",
+                completed_data_only=True,
+                session_reset=True,
+                warmup_bars=2,
+                missing_semantics=(
+                    "INSUFFICIENT_DATA_ON_INCOMPLETE_CURRENT_OR_"
+                    "NON_SUFFIX_BASELINE_WINDOWS"
+                ),
+                as_of_semantics="CURRENT_COMPLETED_WINDOW_OVER_PRIOR_NON_OVERLAPPING_WINDOWS",
+                implementation_digest=hashlib.sha256(
+                    b"completed-kbar-rolling-volume-ratio-feature-implementation-v2"
+                ).hexdigest(),
+                warmup_semantics=(
+                    "NEWEST_CONTIGUOUS_COMPLETE_BASELINE_PREFIX_WITH_"
+                    "OLDEST_WARMUP_SUFFIX"
+                ),
+                request_parameter_schema=ParameterSchema(
+                    version="rolling-volume-ratio-feature-request-v1",
+                    fields={
+                        "window_minutes": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 30,
+                            "default": 2,
+                        },
+                        "baseline_window_count": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10,
+                            "default": 5,
+                        },
+                        "minimum_complete_baseline_windows": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10,
+                            "default": 4,
+                        },
+                        "baseline_method": {
+                            "type": "string",
+                            "enum": ["MEDIAN"],
+                            "default": "MEDIAN",
+                        },
+                    },
+                    cross_validators=(_validate_volume_window_parameters,),
+                ),
+            ),
         )
         self._specifications = {item.feature_id: item for item in specifications}
 
@@ -158,4 +269,4 @@ class FeatureSpecificationRegistry:
 
     def validate_requests(self, requests: tuple[FeatureRequestSpec, ...]) -> None:
         for request in requests:
-            self.get(request.feature_id)
+            self.get(request.feature_id).validate_request(request)

@@ -323,3 +323,24 @@ def test_resolution_requires_transactional_lifecycle_catalog_api(versions) -> No
             AtomicStrategyRegistry(),
             snapshot.strategy_set_version_id,
         )
+
+
+def test_parameterized_rolling_strategy_fails_closed_without_tick_adapter() -> None:
+    rolling = version(
+        "rolling_return_entry",
+        1,
+        {
+            "window_minutes": 3,
+            "minimum_return_pct": "2",
+            "entry_window_start": "09:03",
+            "entry_window_end": "12:45",
+        },
+    )
+    snapshot = entry_set((rolling,))
+
+    with pytest.raises(ValueError, match="沒有 LOCAL_PAPER_TICK_BIDASK binding"):
+        resolve_atomic_paper_entry_set(
+            FakeCatalog(snapshot, (rolling,)),
+            AtomicStrategyRegistry(),
+            snapshot.strategy_set_version_id,
+        )

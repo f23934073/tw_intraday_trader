@@ -280,3 +280,53 @@
 - Reviewer verification: remediation-focused `70 passed` and `git diff --check` passed. The disposable PostgreSQL 17 full result `1201 passed` remains the candidate's verified evidence and was not rerun by the reviewer because `TEST_POSTGRES_DSN` was unavailable.
 - Stop/kill-switch durable actor/idempotency audit remains a mandatory hardening backlog before multi-user, external-network, auto-promotion, or real-money scope.
 - The Review modified no files and did not touch unrelated FinMind, live-trading, or odd-lot planning changes.
+
+## 2026-08-22 — Phase 5 first slice authorized
+
+- The user's 「開始下一個phase」 is recorded as explicit authorization to begin Phase 5 after Gate G4 approval.
+- The first slice follows the frozen order: parameterized rolling return and parameterized volume acceleration, each as an independent strategy implementation file using the existing Feature/Registry/Web/PostgreSQL/backtest boundaries.
+- Gate G5 remains `NOT PASSED`. No broker adapter, CA, trade subscription, Shioaji order API, or real-money capability is authorized.
+- Existing FinMind, live-trading, odd-lot, and `.planning/.active_plan` worktree changes remain outside this task.
+- Reconciled the first slice with the existing generic PostgreSQL/Web catalog; no strategy-specific migration or form is needed. Parameterized rolling features are intentionally backtest-only in this slice because the current Local Paper projection is fixed at 2 minutes and must not masquerade as arbitrary windows.
+
+## 2026-08-22 — Phase 5 first-slice implementation candidate ready
+
+- Added independent `rolling_return_entry` and `volume_acceleration_entry` strategy files with code-owned Traditional Chinese schemas, deterministic parameter-to-Feature-Request bindings, stable implementation identities, and explicit `BACKTEST_KBAR_1M` availability.
+- Added shared `rolling_return_v1` and `rolling_volume_ratio_v1` Feature Specifications without changing the already-published VWAP/previous-high specification digests.
+- The completed-Kbar adapter now owns bounded request/symbol/session rolling state keyed by the real `FeatureRequestSpec.state_key`; engine run start resets state, repeated resolved-registry replay is deterministic, and incomplete 1-minute windows fail closed.
+- Web and PostgreSQL reuse the generic Template/Draft/Publish/Version/Set path. Disposable PostgreSQL inspection confirmed all four Templates plus the parameter-binding JSON and backtest-only runtime binding.
+- Golden coverage proves 3-minute / 2% rolling return uses a real 3-minute window, volume acceleration uses current volume over the median of prior non-overlapping windows, gap handling is unavailable, and Local Paper rejects the new strategies until a parameterized Tick adapter exists.
+- Verification: focused `41 passed, 12 skipped`; no-DSN full `1189 passed, 22 skipped`; disposable PostgreSQL 17 full `1211 passed`; Python compilation and `git diff --check` passed.
+- Browser smoke loaded 4 atomic Templates and verified the rolling-return and volume-acceleration schema defaults and controls. The temporary Dashboard, all disposable PostgreSQL containers, and test data were stopped/deleted; no development or production database was accessed.
+- **Status:** first-slice candidate ready for independent Gate G5 Review. Gate G5 remains `NOT PASSED`; no broker, CA, trade subscription, Shioaji order API, or real-money capability was added.
+
+## 2026-08-22 — Gate G5 remediation started
+
+- Independent Review returned Request Changes with two correctness blockers: session-keyed rolling state accumulates across the whole Run, and volume baseline evaluation can skip a middle Kbar gap while still producing a signal.
+- Gate G5 remains `NOT PASSED`; no later strategy batch has started.
+- Remediation is limited to the existing completed-Kbar Feature state owner and its session lifecycle. Volume semantics are frozen as a newest contiguous prefix with only an unavailable oldest warm-up suffix.
+- Planned regressions cover 100-session boundedness, valid opening warm-up, and a missing 09:05 middle-gap case that must fail closed.
+- Added the three regressions before product changes. Targeted result: `2 failed, 1 passed`; boundedness fails because the adapter has no active-session lifecycle/count, and the 09:05 gap still returns ratio `2`. The oldest-only warm-up case already passes, confirming the intended exception can be preserved.
+- Added explicit engine -> Registry -> atomic adapter -> completed-Kbar adapter session lifecycle. State now clears only when the active session changes and exposes bounded-state observability for the regression.
+- Volume baseline evaluation now rejects an older complete window after any missing newer baseline window; only an unavailable oldest suffix remains eligible for the configured minimum count. Feature implementation identity was advanced to v2, and the Web schema help explains the same rule.
+- Phase 5 golden file now passes: `8 passed`.
+- No Local Paper parameterized adapter, broker API, CA, trade subscription, or real-money capability is authorized by this work.
+
+## 2026-08-22 — Gate G5 remediation candidate ready
+
+- Closed the two Review blockers in the existing completed-Kbar path: active-session eviction bounds retained rolling state, and volume baselines can no longer skip a middle/newer gap.
+- Added an explicit Feature implementation v2 identity plus matching Feature Specification and Traditional Chinese schema help. Existing VWAP/previous-high specification identities remain unchanged.
+- Final focused atomic/Phase 5 suite: `39 passed, 8 skipped`.
+- Final no-DSN full regression: `1193 passed, 22 skipped`.
+- Python compilation and `git diff --check` passed.
+- No PostgreSQL code or schema changed in this remediation. The previous disposable PostgreSQL 17 `1211 passed` remains prior first-slice evidence and was not represented as a new run.
+- **Status:** remediation candidate ready for short independent Review. Gate G5 remains `NOT PASSED`; no later strategy batch or broker/real-money capability has started.
+
+## 2026-08-22 — Gate G5 approved
+
+- Independent Review returned `APPROVE` with no Blocking or Important finding.
+- Phase 5 first slice is formally approved; Gate G5 is `PASSED / MVP SCOPED GO`.
+- Reviewer verification: focused `36 passed, 8 skipped`, full no-DSN `1193 passed, 22 skipped`, and `git diff --check` passed.
+- PostgreSQL was not rerun because the remediation changed no database contract or migration.
+- This disposition does not include a later strategy batch, parameterized Local Paper Tick adapter, Shioaji/broker integration, CA, trade subscription, or real-money execution.
+- Post-commit document cross-check found two stale Implementation Plan header statements that still described Phase 5 as unauthorized. They were corrected within the same scoped payload before finalizing the commit; no product scope changed.

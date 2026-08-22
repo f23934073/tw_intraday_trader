@@ -137,6 +137,7 @@ class HistoricalBacktestEngine:
         total_bars: int | None = None,
         terminal_timestamp_by_symbol: Mapping[str, datetime] | None = None,
     ) -> BacktestEngineResult:
+        self._registry.reset_runtime()
         if bars_are_ordered:
             if total_bars is None or total_bars <= 0:
                 raise ValueError("ordered Kbar replay requires a positive total_bars")
@@ -181,6 +182,7 @@ class HistoricalBacktestEngine:
         )
         for session_date, session_bars in sessions:
             self._raise_if_cancelled(cancelled)
+            self._registry.begin_session(session_date)
             last_timestamp_by_symbol: dict[str, datetime] = {}
             for bar in session_bars:
                 last_timestamp_by_symbol[bar.symbol] = bar.timestamp

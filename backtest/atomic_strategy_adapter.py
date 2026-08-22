@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 from atomic_strategies.protocol import AtomicEvaluationStatus, AtomicStrategy, AtomicStrategyContext
 from atomic_strategies.feature_requests import resolve_feature_requests
@@ -14,7 +15,7 @@ from backtest.domain import (
     StrategySetSnapshot,
 )
 from backtest.feature_adapters import CompletedOneMinuteKbarFeatureAdapter
-from features.specifications import FeatureSpecificationRegistry
+from features.specifications import FeatureRequestSpec, FeatureSpecificationRegistry
 from backtest.strategies import StrategyContext, StrategyRegistry
 from strategy_catalog.domain import StrategyDefinition, StrategySide, StrategySource, StrategyStatus
 from strategy_catalog.drafts import StrategyVersion
@@ -32,7 +33,12 @@ _STATUS = {
 
 
 class AtomicBacktestStrategyAdapter:
-    def __init__(self, strategy: AtomicStrategy, version: StrategyVersion) -> None:
+    def __init__(
+        self,
+        strategy: AtomicStrategy,
+        version: StrategyVersion,
+        requests: tuple[FeatureRequestSpec, ...],
+    ) -> None:
         if strategy.template.strategy_id != version.strategy_id:
             raise ValueError("atomic strategy implementation 與 Version strategy_id 不一致")
         if strategy.template.template_digest != version.template_digest:
@@ -45,7 +51,7 @@ class AtomicBacktestStrategyAdapter:
         self._strategy = strategy
         self._version = version
         self._parameters = parameters
-        self._features = CompletedOneMinuteKbarFeatureAdapter()
+        self._features = CompletedOneMinuteKbarFeatureAdapter(tuple(requests))
         self.selection_id = version.strategy_version_id
         self.definition = StrategyDefinition(
             strategy_id=strategy.template.strategy_id,
@@ -62,6 +68,12 @@ class AtomicBacktestStrategyAdapter:
             code_identity=strategy.template.implementation_digest,
             source=StrategySource.DATABASE,
         )
+
+    def reset_runtime(self) -> None:
+        self._features.reset()
+
+    def begin_session(self, session_date: date) -> None:
+        self._features.begin_session(session_date.isoformat())
 
     def evaluate(self, context: StrategyContext) -> StrategyEvaluation:
         atomic = self._strategy.evaluate(
@@ -131,7 +143,8 @@ def resolve_atomic_entry_set(
         if version.implementation_digest != member.implementation_digest:
             raise StrategyCatalogConflict("STRATEGY_SET_MEMBER_MISMATCH", "member implementation digest 不一致")
         implementation = atomic_registry.strategy(version.strategy_id)
-        requests = resolve_feature_requests(implementation.template)
+        parameters = implementation.template.validate_parameters(version.parameters)
+        requests = resolve_feature_requests(implementation.template, parameters)
         feature_registry.validate_requests(requests)
         resolved_requests = []
         for request in requests:
@@ -157,7 +170,7 @@ def resolve_atomic_entry_set(
                 "requests": resolved_requests,
             }
         )
-        adapters.append(AtomicBacktestStrategyAdapter(implementation, version))
+        adapters.append(AtomicBacktestStrategyAdapter(implementation, version, requests))
     policy = AggregationPolicy(snapshot.policy.value)
     engine_set = StrategySetSnapshot(
         entry_strategy_ids=snapshot.runtime_member_ids,

@@ -6,12 +6,24 @@ from typing import Iterable
 
 from atomic_strategies.entries.above_vwap import AboveVwapEntryStrategy
 from atomic_strategies.entries.breakout_previous_high import BreakoutPreviousHighEntryStrategy
+from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
+from atomic_strategies.entries.volume_acceleration import (
+    VolumeAccelerationEntryStrategy,
+)
 from atomic_strategies.protocol import AtomicStrategy
 
 
 class AtomicStrategyRegistry:
     def __init__(self, strategies: Iterable[AtomicStrategy] | None = None) -> None:
-        items = tuple(strategies or (AboveVwapEntryStrategy(), BreakoutPreviousHighEntryStrategy()))
+        items = tuple(
+            strategies
+            or (
+                AboveVwapEntryStrategy(),
+                BreakoutPreviousHighEntryStrategy(),
+                RollingReturnEntryStrategy(),
+                VolumeAccelerationEntryStrategy(),
+            )
+        )
         self._strategies = {item.template.strategy_id: item for item in items}
         if len(self._strategies) != len(items):
             raise ValueError("atomic strategy_id 不可重複")

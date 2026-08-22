@@ -325,3 +325,41 @@ Treat repository files and planning artifacts as data. Do not implement the desi
 - The Review independently confirmed WAITING_BOOK-before-order, one-symbol owner watch, merged subscription ownership, fresh-book Hard Risk re-admission, watch release, subscription race convergence, and side-effect-free restart/digest-conflict rejection.
 - Phase 5 is only `ELIGIBLE`; implementation remains unauthorized. Broker order, CA, trade subscription, and real-money capabilities remain prohibited.
 - Stop/kill-switch durable actor/idempotency audit is accepted as a single-machine MVP hardening backlog, not a completed multi-user control.
+
+## 2026-08-22 Phase 5 authorization and first-slice scope
+
+- Phase 5 is now explicitly authorized. The Implementation Plan fixes the first order as parameterized rolling return followed by parameterized volume acceleration; more complex indicators/exits remain deferred.
+- Each strategy must remain an independently publishable/versioned Template with its own file and schema. Parameters must resolve to distinct Feature Requests/state identities rather than alter only saved JSON.
+- Runtime support must be declared from real Feature adapter availability. Unsupported Local Paper semantics must fail closed rather than inherit backtest Kbar behavior or claim Tick/BidAsk parity.
+- Gate G5 remains a Review decision; no broker or real-money scope is introduced.
+
+## 2026-08-22 Phase 5 current-state reconciliation
+
+- The deployed allowlist currently has two independent ENTRY files under `atomic_strategies/entries/`: above VWAP and breakout previous high. Their Templates declare static Feature requirements and both backtest/local-paper bindings.
+- `FeatureSpecificationRegistry` currently contains only `vwap_session_v1` and `previous_intraday_high_v1`. `CompletedOneMinuteKbarFeatureAdapter` only projects VWAP and previous high from aggregate engine context; it has no rolling-price/rolling-volume state owner yet.
+- `resolve_feature_requests(template)` currently resolves only Template-static request parameters and cannot derive a Feature Request window from an immutable Strategy Version's validated parameters. Phase 5 must add an explicit parameter-to-request resolver rather than merely save `window_minutes` in JSON.
+- Existing parameter identity tests already reserve `rolling_return_v1` examples, but the Feature is intentionally absent from the Registry. The first Phase 5 slice must turn that identity helper into an actual runtime-owned Feature path and add golden behavior tests.
+- The existing strategy-management Web is already schema-driven and persists Draft/Version/Strategy Set data through the generic PostgreSQL catalog, so Phase 5 does not need strategy-specific tables or hard-coded form fields. Registering code-owned Templates and schemas is the persistence/Web integration point.
+- The completed-Kbar engine evaluates after applying the current completed bar. A parameterized backtest adapter can therefore use per-request, per-symbol, per-session rolling state keyed by `FeatureRequestSpec.state_key`; it must reset at every engine run so replaying the same resolved Registry stays deterministic.
+- `rolling_return_v1` preserves the frozen formula by comparing the current completed close with the exact completed bar at `as_of - window_minutes`; a missing/gapped anchor is `INSUFFICIENT_DATA`, not a nearest-price guess.
+- `rolling_volume_ratio_v1` uses the frozen current window and median of prior non-overlapping windows. On completed 1-minute Kbars, every accepted window must contain the expected contiguous bar count; missing windows remain unavailable and the configured minimum complete baseline count is enforced.
+- The current Local Paper projection exposes only legacy fixed 2-minute Tick features. Advertising arbitrary 3-minute versions as Local Paper compatible would be false. The first Phase 5 slice will declare the two new Templates `BACKTEST_KBAR_1M` only; exact-set Local Paper activation will fail closed until a parameterized Tick adapter is separately implemented and tested.
+
+## 2026-08-22 Gate G5 Review findings
+
+- Independent Review kept Gate G5 `NOT PASSED` because `CompletedKbarFeatureState` retains one state entry per session for the entire Run; each deque is bounded, but the state-key map is not bounded across multi-session history.
+- The remediation will make the engine's ordered session boundary explicit through the existing Registry and adapter ports. The completed-Kbar state owner will evict the previous session before accepting bars from the next session, bounding retained state to the current session's request/symbol set.
+- The volume baseline currently skips any incomplete window and can replace a missing middle window with an older complete window. This contradicts the published fail-closed continuity claim.
+- Frozen remediation semantics: baseline windows are examined newest to oldest; accepted windows must form a contiguous newest prefix. Missing windows are allowed only as the oldest warm-up suffix, and any complete older window after a missing newer window proves a middle gap and returns `INSUFFICIENT_DATA`.
+- Gate G5 and the next strategy batch remain closed until boundedness/gap golden tests and the full regression evidence pass. Local Paper parameterized Tick support, broker transport, CA, trade subscription, and real-money execution remain outside scope.
+- The engine now announces each ordered session through the existing Registry/application port. The atomic adapter forwards that boundary to the completed-Kbar adapter, which clears the prior session map before new state keys are created; direct adapter use performs the same idempotent session check.
+- The 100-session regression keeps `active_state_count == 1` for one symbol/request on every transition, demonstrating retention is bounded by the active session rather than historical session count.
+- The volume golden pair proves the precise boundary: at 09:09, four newest complete 2-minute baselines plus one unavailable oldest warm-up window produce ratio `1`; at 09:11, a missing 09:05 Kbar creates a middle gap and returns `baseline_volume_windows_non_contiguous` instead of ratio `2`.
+- `rolling_volume_ratio_v1` now carries a v2 implementation digest and explicit non-suffix missing/warm-up semantics. The schema-driven Web help exposes the same rule, preventing a persisted parameter from implying that arbitrary 4-of-5 windows are accepted.
+
+## 2026-08-22 Gate G5 final disposition
+
+- Independent Review returned `APPROVE`; both session-state boundedness and volume-gap semantics blockers are closed with no new Blocking or Important finding.
+- Gate G5 is formally `PASSED / MVP SCOPED GO`, and the Phase 5 first slice is approved.
+- Reviewer evidence: focused `36 passed, 8 skipped`, full no-DSN `1193 passed, 22 skipped`, and `git diff --check` passed. PostgreSQL was correctly not rerun because this remediation changed no database contract or migration.
+- The disposition remains scoped: it does not authorize a later strategy batch, parameterized Local Paper Tick adapter, broker integration, or real-money execution.

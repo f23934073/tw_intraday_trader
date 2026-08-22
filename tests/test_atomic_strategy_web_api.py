@@ -135,9 +135,16 @@ def test_atomic_strategy_web_routes_require_csrf_and_use_exact_set(monkeypatch) 
     assert {item["strategy_id"] for item in templates} == {
         "above_vwap_entry",
         "breakout_previous_high_entry",
+        "rolling_return_entry",
+        "volume_acceleration_entry",
     }
     assert templates[0]["parameter_schema"]["fields"]
     assert "runtime_bindings" in templates[0]
+    rolling_schema = client.get(
+        "/api/strategy-templates/rolling_return_entry/parameter-schema"
+    ).json()["parameter_schema"]
+    assert rolling_schema["fields"]["window_minutes"]["default"] == 2
+    assert rolling_schema["fields"]["minimum_return_pct"]["default"] == "1.5"
 
     rejected = client.post(
         "/api/strategy-versions/drafts",

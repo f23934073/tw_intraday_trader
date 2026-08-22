@@ -213,6 +213,41 @@ def test_atomic_strategy_factory_rejects_sqlite_and_unavailable_postgresql() -> 
         )
 
 
+def test_phase5_templates_sync_to_postgresql_with_parameter_bindings(
+    postgres_test_connection,
+) -> None:
+    apply_migrations(postgres_test_connection)
+    registry = AtomicStrategyRegistry()
+    service = build_atomic_strategy_service(
+        database_backend="postgresql",
+        connection=postgres_test_connection,
+        templates=registry.templates(),
+    )
+    service.sync_templates()
+
+    with postgres_test_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT strategy_id, feature_requirements_json, runtime_bindings_json
+            FROM backtest.strategy_templates
+            ORDER BY strategy_id
+            """
+        )
+        rows = cursor.fetchall()
+
+    assert {row[0] for row in rows} == {
+        "above_vwap_entry",
+        "breakout_previous_high_entry",
+        "rolling_return_entry",
+        "volume_acceleration_entry",
+    }
+    rolling = next(row for row in rows if row[0] == "rolling_return_entry")
+    assert rolling[1][0]["parameter_bindings"] == {
+        "window_minutes": "window_minutes"
+    }
+    assert set(rolling[2]) == {"BACKTEST_KBAR_1M"}
+
+
 def test_first_publish_replays_and_seals_draft_in_one_postgresql_transaction(
     postgres_test_connection,
 ) -> None:

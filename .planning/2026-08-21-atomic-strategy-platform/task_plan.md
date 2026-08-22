@@ -6,11 +6,11 @@ Produce a repository-grounded, implementation-ready plan for a PostgreSQL-only, 
 
 ## Current Phase
 
-Phase 24 Gate G4 approved; Phase 5 eligible but not authorized
+Phase 26 complete; Phase 5 first slice approved; Gate G5 PASSED / MVP SCOPED GO
 
 ## Implementation Gate
 
-Contract Review returned **APPROVE / GO** for the frozen B1–B5 contracts, and the user explicitly authorized Phase 1 implementation. The final short implementation Reviews subsequently returned **APPROVE / Gate G1 PASSED** and **APPROVE / Gate G2 PASSED** with no remaining blocking or important finding. The user explicitly authorized Phase 3 Backtest Qualification on 2026-08-22. After two remediation rounds, the final MVP Review approved Gate G3 as **PASSED / MVP CONDITIONAL GO** for a loopback, single-user, trusted-PostgreSQL, manual-review deployment. The user separately authorized Phase 4, and the final follow-up Review approved Gate G4 as **PASSED / MVP CONDITIONAL GO**. Phase 5 is eligible but remains unauthorized.
+Contract Review returned **APPROVE / GO** for the frozen B1–B5 contracts, and the user explicitly authorized Phase 1 implementation. The final short implementation Reviews subsequently returned **APPROVE / Gate G1 PASSED** and **APPROVE / Gate G2 PASSED** with no remaining blocking or important finding. The user explicitly authorized Phase 3 Backtest Qualification on 2026-08-22. After two remediation rounds, the final MVP Review approved Gate G3 as **PASSED / MVP CONDITIONAL GO** for a loopback, single-user, trusted-PostgreSQL, manual-review deployment. The user separately authorized Phase 4, and the final follow-up Review approved Gate G4 as **PASSED / MVP CONDITIONAL GO**. The user then authorized Phase 5; its first parameterized rolling-strategy slice and remediation received independent **APPROVE / Gate G5 PASSED / MVP SCOPED GO** on 2026-08-22.
 
 | ID | Blocking contract | Plan status | Review status |
 |---|---|---|---|
@@ -24,7 +24,7 @@ Gate rules:
 
 - Contract Gate G0 and implementation Gates G1/G2 are passed. Gate G3 is `PASSED / MVP CONDITIONAL GO` under the frozen single-user/manual-review constraints recorded in Phase 20.
 - Closed blockers are not reopened without new contradictory evidence.
-- Gate G4 is `PASSED / MVP CONDITIONAL GO`; Phase 5 is `ELIGIBLE but NOT AUTHORIZED`. The approved scope remains local simulation through the existing Journal/Risk/Simulation boundary and still excludes Shioaji/broker orders, CA, trade subscription, and real-money execution.
+- Gate G4 is `PASSED / MVP CONDITIONAL GO`; Phase 5 first slice is `APPROVED` and Gate G5 is `PASSED / MVP SCOPED GO`. This approval does not include later strategy batches, a parameterized Local Paper Tick adapter, Shioaji/broker orders, CA, trade subscription, or real-money execution.
 
 ## Phases
 
@@ -284,6 +284,28 @@ Gate rules:
 - [x] Record independent evidence: remediation tests `70 passed` and `git diff --check` passed; PostgreSQL `1201 passed` remains candidate-provided evidence not rerun by the reviewer.
 - **Status:** complete — Gate G4 PASSED / MVP CONDITIONAL GO; Phase 5 ELIGIBLE but NOT AUTHORIZED
 
+### Phase 25: Phase 5 parameterized rolling strategies
+
+- [x] Record explicit Phase 5 authorization while preserving Gate G5 and the no-broker/no-real-money boundary.
+- [x] Reconcile the current Feature Registry/state owners, strategy Registry, parameter schemas, backtest adapter, Web forms, and Local Paper capability declarations for rolling return and volume acceleration.
+- [x] Implement parameterized rolling-return as one independent strategy file with parameter-derived Feature Request identity, deterministic evaluation, and explicit runtime availability.
+- [x] Implement parameterized volume-acceleration as one independent strategy file with parameter-derived Feature Request identity, deterministic evaluation, and explicit runtime availability.
+- [x] Register both strategies in the code-owned allowlist and expose their schemas through the existing Web/PostgreSQL Draft/Publish flow without adding arbitrary code execution.
+- [x] Add schema, Feature Request/state identity, golden evaluation, backtest snapshot, Web/API, and supported-runtime tests; fail closed where a runtime Feature adapter is unavailable.
+- [x] Run focused/full/disposable-PostgreSQL/static/browser verification and prepare the first Phase 5 slice for Gate G5 Review.
+- **Status:** approved — Gate G5 PASSED / MVP SCOPED GO; broker/real-money execution prohibited
+
+### Phase 26: Gate G5 rolling-state and volume-gap remediation
+
+- [x] Record the independent Request Changes verdict and keep Gate G5 plus all later strategy batches closed.
+- [x] Evict completed-Kbar rolling state at every session transition so retained state is bounded by the active session rather than total run history.
+- [x] Propagate session lifecycle through the existing engine -> Registry -> atomic adapter -> completed-Kbar adapter boundary without adding another state or market-data pipeline.
+- [x] Freeze volume baseline semantics as a newest contiguous complete-window prefix; only the oldest warm-up suffix may be unavailable, while any middle/newer gap fails closed.
+- [x] Update Feature Specification and Web parameter help to match the frozen volume-gap semantics.
+- [x] Add multi-session boundedness, allowed oldest-warmup, and middle-gap golden regressions.
+- [x] Run focused/full/static verification, update Gate evidence, and submit the candidate for a short G5 re-review; do not begin the next strategy batch.
+- **Status:** complete — independent Review approved Gate G5 / MVP SCOPED GO; later strategies and broker/real-money execution are not part of this Gate
+
 ## Decisions Made
 
 | Decision | Rationale |
@@ -386,6 +408,7 @@ Gate rules:
 | A temporary-directory verification loop used zsh's special `path` variable and hid `rg` for that subprocess | 1 | The shell exited without file changes; reran with the task-specific `candidate_dir` variable. |
 | Phase 4 registry inspection requested non-existent `strategy_catalog/registry.py` | 1 | No file changed; the executable allowlist owner is `atomic_strategies/registry.py`, while catalog metadata lives in `strategy_catalog/drafts.py` and the PostgreSQL repository. |
 | Phase 4 source search assumed a top-level `momentum/` package | 1 | No file changed; the live Momentum projection and canonical FeatureEngine integration are owned by `dashboard/momentum.py`. |
+| Initial Phase 5 inspection requested non-existent `atomic_strategies/contracts.py` and top-level strategy modules | 1 | No file changed; corrected the inspection to `atomic_strategies/protocol.py` and `atomic_strategies/entries/*.py`. |
 
 ## Non-goals
 
