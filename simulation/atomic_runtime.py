@@ -14,8 +14,14 @@ from atomic_strategies.protocol import (
     AtomicStrategyContext,
     AtomicStrategyEvaluation,
 )
+from atomic_strategies.feature_requests import resolve_feature_requests
 from atomic_strategies.registry import AtomicStrategyRegistry
-from features.specifications import NormalizedFeatureSnapshot
+from features.engine import FeatureEngine
+from features.specifications import (
+    FeatureRequestSpec,
+    FeatureSpecificationRegistry,
+    NormalizedFeatureSnapshot,
+)
 from strategy_catalog.domain import StrategyRole
 from strategy_catalog.drafts import StrategyTemplate, StrategyVersion
 from strategy_catalog.parameter_schema import canonical_digest
@@ -27,7 +33,10 @@ from strategy_catalog.sets import CompositionPolicy, ExactStrategySetSnapshot
 
 LOCAL_PAPER_RUNTIME_BINDING = "LOCAL_PAPER_TICK_BIDASK"
 LOCAL_PAPER_FEATURE_ADAPTER_IDENTITY = (
-    "momentum-feature-engine-projection.local-paper-tick-bidask-v1"
+    "momentum-feature-engine-projection.local-paper-tick-bidask-v2"
+)
+REQUESTED_PROJECTION_FEATURE_IDS = frozenset(
+    {"rolling_return_v1", "rolling_volume_ratio_v1"}
 )
 
 
@@ -49,13 +58,13 @@ class PaperSetStatus(StrEnum):
 class LocalPaperPipelineSnapshot:
     entry_strategy_set: ExactStrategySetSnapshot
     runtime_bindings: tuple[Mapping[str, str], ...]
-    feature_contracts: tuple[Mapping[str, str], ...]
+    feature_contracts: tuple[Mapping[str, Any], ...]
     lifecycle_admissions: tuple[Mapping[str, Any], ...]
     execution_policy_identity: str = "local-paper-limit-best-offer-v1"
     hard_risk_policy_identity: str = "local-paper-hard-risk-v1"
     exit_policy_identity: str = "fixed-stop-take-profit-eod-v1"
     feature_adapter_identity: str = LOCAL_PAPER_FEATURE_ADAPTER_IDENTITY
-    contract_version: str = "local-paper-pipeline-snapshot-v1"
+    contract_version: str = "local-paper-pipeline-snapshot-v2"
 
     def __post_init__(self) -> None:
         if not self.runtime_bindings:
@@ -107,6 +116,7 @@ class ResolvedPaperStrategy:
     version: StrategyVersion
     parameters: Mapping[str, Any]
     runtime_binding: str
+    feature_requests: tuple[FeatureRequestSpec, ...]
 
 
 @dataclass(frozen=True)
@@ -160,6 +170,15 @@ class AtomicPaperRuntimeResolution:
     pipeline: LocalPaperPipelineSnapshot
     members: tuple[ResolvedPaperStrategy, ...]
 
+    @property
+    def projection_requests(self) -> tuple[FeatureRequestSpec, ...]:
+        unique: dict[str, FeatureRequestSpec] = {}
+        for member in self.members:
+            for request in member.feature_requests:
+                if request.feature_id in REQUESTED_PROJECTION_FEATURE_IDS:
+                    unique.setdefault(request.request_digest, request)
+        return tuple(unique[key] for key in sorted(unique))
+
     def evaluate_projection(
         self,
         projection: Mapping[str, Any],
@@ -180,27 +199,35 @@ class AtomicPaperRuntimeResolution:
         blocked: list[str] = []
         for raw_item in _mapping_list(projection.get("items"), "atomic-paper.items"):
             try:
-                normalized = _normalize_candidate(
-                    raw_item,
-                    evaluated_at=evaluated_at,
-                    max_age_seconds=max_age_seconds,
+                member_inputs = tuple(
+                    (
+                        member,
+                        _normalize_candidate(
+                            raw_item,
+                            evaluated_at=evaluated_at,
+                            max_age_seconds=max_age_seconds,
+                            requests=member.feature_requests,
+                        ),
+                    )
+                    for member in self.members
                 )
             except ValueError as error:
                 symbol = str(raw_item.get("symbol") or "?").strip().upper()
                 blocked.append(f"{symbol}: {error}")
                 continue
+            normalized = member_inputs[0][1]
             evaluations = tuple(
                 member.implementation.evaluate(
                     AtomicStrategyContext(
                         strategy_version_id=member.version.strategy_version_id,
-                        symbol=normalized.symbol,
-                        event_at=normalized.as_of,
-                        current_price=str(normalized.values["current_price"]),
+                        symbol=member_input.symbol,
+                        event_at=member_input.as_of,
+                        current_price=str(member_input.values["current_price"]),
                         parameters=member.parameters,
-                        features=normalized,
+                        features=member_input,
                     )
                 )
-                for member in self.members
+                for member, member_input in member_inputs
             )
             status = _compose(self.pipeline.entry_strategy_set, evaluations)
             triggered_ids = {
@@ -220,7 +247,10 @@ class AtomicPaperRuntimeResolution:
                 "pipeline_digest": self.pipeline.snapshot_digest,
                 "symbol": normalized.symbol,
                 "event_at": normalized.as_of.isoformat(),
-                "input_digest": normalized.input_digest,
+                "input_digests": {
+                    member.version.strategy_version_id: member_input.input_digest
+                    for member, member_input in member_inputs
+                },
                 "status": status.value,
                 "evaluations": [
                     {
@@ -298,22 +328,23 @@ def resolve_atomic_paper_entry_set(
             raise ValueError(
                 f"策略 {version.strategy_version_id} 沒有 {LOCAL_PAPER_RUNTIME_BINDING} binding"
             )
+        parameters = template.validate_parameters(version.parameters)
+        feature_requests = resolve_feature_requests(template, parameters)
+        FeatureSpecificationRegistry().validate_requests(feature_requests)
         resolved.append(
             ResolvedPaperStrategy(
                 implementation=implementation,
                 template=template,
                 version=version,
-                parameters=template.validate_parameters(version.parameters),
+                parameters=parameters,
                 runtime_binding=binding,
+                feature_requests=feature_requests,
             )
         )
-    required_feature_ids = sorted(
-        {
-            str(requirement["feature_id"])
-            for member in resolved
-            for requirement in member.template.feature_requirements
-        }
-    )
+    unique_requests: dict[str, FeatureRequestSpec] = {}
+    for resolved_member in resolved:
+        for request in resolved_member.feature_requests:
+            unique_requests.setdefault(request.request_digest, request)
     return AtomicPaperRuntimeResolution(
         pipeline=LocalPaperPipelineSnapshot(
             entry_strategy_set=snapshot,
@@ -326,8 +357,8 @@ def resolve_atomic_paper_entry_set(
                 for member in resolved
             ),
             feature_contracts=tuple(
-                _local_paper_feature_contract(feature_id)
-                for feature_id in required_feature_ids
+                _local_paper_feature_contract(unique_requests[request_digest])
+                for request_digest in sorted(unique_requests)
             ),
             lifecycle_admissions=tuple(
                 item.lifecycle.to_dict() for item in activation.members
@@ -337,7 +368,13 @@ def resolve_atomic_paper_entry_set(
     )
 
 
-def _local_paper_feature_contract(feature_id: str) -> Mapping[str, str]:
+def _local_paper_feature_contract(
+    request: FeatureRequestSpec,
+) -> Mapping[str, Any]:
+    feature_id = request.feature_id
+    registry = FeatureSpecificationRegistry()
+    specification = registry.get(feature_id)
+    specification.validate_request(request)
     contracts = {
         "vwap_session_v1": {
             "feature_id": "vwap_session_v1",
@@ -352,12 +389,34 @@ def _local_paper_feature_contract(feature_id: str) -> Mapping[str, str]:
             "implementation_identity": "FeatureEngine.intraday_features_v0",
         },
     }
-    try:
-        return contracts[feature_id]
-    except KeyError as error:
+    base = contracts.get(feature_id)
+    if feature_id in REQUESTED_PROJECTION_FEATURE_IDS:
+        base = {
+            "feature_id": feature_id,
+            "source_projection": "RequestedFeatureProjection",
+            "projection_adapter_identity": (
+                FeatureEngine.requested_feature_adapter_identity
+            ),
+            "as_of_semantics": specification.as_of_semantics,
+        }
+    if base is None:
         raise ValueError(
             f"Local Paper adapter 尚未定義 Feature contract：{feature_id}"
-        ) from error
+        )
+    return {
+        **base,
+        "request_digest": request.request_digest,
+        "parameter_digest": request.parameter_digest,
+        "parameters": dict(request.parameters),
+        "specification_digest": specification.specification_digest,
+        "feature_implementation_digest": (
+            specification.implementation_digest
+        ),
+        "cadence": specification.cadence,
+        "completed_data_only": specification.completed_data_only,
+        "missing_semantics": specification.missing_semantics,
+        "specification_as_of_semantics": specification.as_of_semantics,
+    }
 
 
 def _normalize_candidate(
@@ -365,6 +424,7 @@ def _normalize_candidate(
     *,
     evaluated_at: datetime,
     max_age_seconds: float,
+    requests: tuple[FeatureRequestSpec, ...] = (),
 ) -> NormalizedFeatureSnapshot:
     symbol = str(item.get("symbol") or "").strip().upper()
     if not symbol or item.get("availability") != "EVALUATED":
@@ -393,17 +453,86 @@ def _normalize_candidate(
         "best_bid": execution_book.get("best_bid"),
         "best_ask": execution_book["best_ask"],
     }
+    missing_reasons: dict[str, str] = {}
+    request_digests: dict[str, str] = {}
+    state_keys: dict[str, str] = {}
     for projection_name, feature_id in (
         ("vwap", "vwap_session_v1"),
         ("previous_intraday_high", "previous_intraday_high_v1"),
     ):
         feature = _valid_feature(intraday, projection_name, required=False)
         values[feature_id] = feature["value"] if feature is not None else None
+        if feature is None:
+            raw_feature = intraday.get(projection_name)
+            if isinstance(raw_feature, Mapping) and raw_feature.get("reason"):
+                missing_reasons[feature_id] = str(raw_feature["reason"])
+
+    requested_rows = _requested_feature_rows(item)
+    registry = FeatureSpecificationRegistry()
+    for request in requests:
+        if request.feature_id in values:
+            request_digests[request.feature_id] = request.request_digest
+            continue
+        if request.feature_id not in REQUESTED_PROJECTION_FEATURE_IDS:
+            raise ValueError(
+                f"Local Paper 不支援 Feature：{request.feature_id}"
+            )
+        if request.feature_id in request_digests:
+            raise ValueError(
+                f"單一策略不可重複要求 Feature：{request.feature_id}"
+            )
+        try:
+            row = requested_rows[request.request_digest]
+        except KeyError as error:
+            raise ValueError(
+                f"缺少 exact Feature Request evidence：{request.feature_id}"
+            ) from error
+        specification = registry.get(request.feature_id)
+        expected_state_key = request.state_key(
+            adapter_identity=FeatureEngine.requested_feature_adapter_identity,
+            cadence=specification.cadence,
+            symbol=symbol,
+            session=source_at.date().isoformat(),
+        )
+        _verify_requested_feature_identity(
+            row,
+            request=request,
+            specification=specification,
+            expected_state_key=expected_state_key,
+        )
+        feature_value = _mapping(
+            row.get("value"),
+            f"requested-feature.{request.feature_id}.value",
+        )
+        status = str(feature_value.get("status") or "")
+        value = feature_value.get("value")
+        if status == "VALID" and value is not None:
+            requested_as_of = _aware_datetime(
+                feature_value.get("source_as_of"),
+                f"requested-feature.{request.feature_id}.source_as_of",
+            )
+            requested_age = (source_at - requested_as_of).total_seconds()
+            if requested_age < 0 or requested_age >= 120:
+                raise ValueError(
+                    f"{request.feature_id} 完整 Kbar evidence 時間不一致"
+                )
+            values[request.feature_id] = value
+        else:
+            values[request.feature_id] = None
+            missing_reasons[request.feature_id] = str(
+                feature_value.get("reason")
+                or f"{request.feature_id} evidence unavailable"
+            )
+        request_digests[request.feature_id] = request.request_digest
+        state_keys[request.feature_id] = expected_state_key
     input_body = {
         "adapter_identity": LOCAL_PAPER_FEATURE_ADAPTER_IDENTITY,
         "symbol": symbol,
         "as_of": source_at.isoformat(),
         "values": values,
+        "missing_reasons": missing_reasons,
+        "request_digests": request_digests,
+        "state_keys": state_keys,
     }
     return NormalizedFeatureSnapshot(
         symbol=symbol,
@@ -412,7 +541,57 @@ def _normalize_candidate(
         adapter_identity=LOCAL_PAPER_FEATURE_ADAPTER_IDENTITY,
         values=values,
         input_digest=canonical_digest(input_body),
+        missing_reasons=missing_reasons,
+        request_digests=request_digests,
+        state_keys=state_keys,
     )
+
+
+def _requested_feature_rows(
+    item: Mapping[str, Any],
+) -> dict[str, Mapping[str, Any]]:
+    rows: dict[str, Mapping[str, Any]] = {}
+    for row in _mapping_list(
+        item.get("requested_features", []),
+        "candidate.requested_features",
+    ):
+        request_digest = str(row.get("request_digest") or "").strip()
+        if not request_digest:
+            raise ValueError("requested Feature evidence 缺少 request_digest")
+        if request_digest in rows:
+            raise ValueError("requested Feature evidence request_digest 重複")
+        rows[request_digest] = row
+    return rows
+
+
+def _verify_requested_feature_identity(
+    row: Mapping[str, Any],
+    *,
+    request: FeatureRequestSpec,
+    specification,
+    expected_state_key: str,
+) -> None:
+    expected = {
+        "feature_id": request.feature_id,
+        "adapter_identity": FeatureEngine.requested_feature_adapter_identity,
+        "request_digest": request.request_digest,
+        "parameter_digest": request.parameter_digest,
+        "specification_digest": specification.specification_digest,
+        "implementation_digest": specification.implementation_digest,
+        "state_key": expected_state_key,
+    }
+    for field_name, expected_value in expected.items():
+        if str(row.get(field_name) or "") != expected_value:
+            raise ValueError(
+                f"{request.feature_id} Feature evidence identity mismatch: "
+                f"{field_name}"
+            )
+    if dict(_mapping(row.get("parameters"), "requested-feature.parameters")) != dict(
+        request.parameters
+    ):
+        raise ValueError(
+            f"{request.feature_id} Feature evidence parameters mismatch"
+        )
 
 
 def _compose(

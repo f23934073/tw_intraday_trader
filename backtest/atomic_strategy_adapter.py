@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from atomic_strategies.protocol import AtomicEvaluationStatus, AtomicStrategy, AtomicStrategyContext
+from atomic_strategies.compatibility import backtest_compatible_template_digests
 from atomic_strategies.feature_requests import resolve_feature_requests
 from atomic_strategies.registry import AtomicStrategyRegistry
 from backtest.domain import (
@@ -41,7 +42,9 @@ class AtomicBacktestStrategyAdapter:
     ) -> None:
         if strategy.template.strategy_id != version.strategy_id:
             raise ValueError("atomic strategy implementation 與 Version strategy_id 不一致")
-        if strategy.template.template_digest != version.template_digest:
+        if version.template_digest not in backtest_compatible_template_digests(
+            strategy
+        ):
             raise ValueError("atomic strategy Template digest 與 Version 不一致")
         if strategy.template.parameter_schema.schema_digest != version.parameter_schema_digest:
             raise ValueError("atomic strategy parameter schema digest 與 Version 不一致")

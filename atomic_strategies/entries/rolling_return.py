@@ -53,6 +53,7 @@ PARAMETER_SCHEMA = ParameterSchema(
 
 
 class RollingReturnEntryStrategy:
+    allow_legacy_backtest_only_template = True
     template = StrategyTemplate(
         strategy_id="rolling_return_entry",
         display_name_zh_tw="滾動報酬突破",
@@ -78,6 +79,9 @@ class RollingReturnEntryStrategy:
         ),
         runtime_bindings={
             "BACKTEST_KBAR_1M": "rolling_return.backtest_kbar_1m_v1",
+            "LOCAL_PAPER_TICK_BIDASK": (
+                "rolling_return.local_paper_completed_kbar_v1"
+            ),
         },
         description_zh_tw=(
             "目前完整 1 分 K 收盤價相對 N 分鐘前完整 Kbar 的報酬率達門檻時觸發。"

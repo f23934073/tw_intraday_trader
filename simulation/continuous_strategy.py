@@ -10,6 +10,7 @@ from threading import Event, RLock, Thread, current_thread
 from typing import Any, Protocol
 from uuid import uuid4
 
+from features.specifications import FeatureRequestSpec
 from market_data.equity_calendar import ReviewedEquityCalendar
 from runtime.clock import TAIPEI, Clock
 from simulation.execution_policy import EXECUTABLE_BOOK_MAX_AGE_SECONDS
@@ -231,6 +232,10 @@ class ContinuousPaperStrategyController:
         calendar: ReviewedEquityCalendar,
         clock: Clock,
         atomic_resolver: Callable[[str], AtomicPaperRuntimeResolution] | None = None,
+        atomic_signal_reader: Callable[
+            [tuple[FeatureRequestSpec, ...]], Mapping[str, Any]
+        ]
+        | None = None,
         kill_switch: LocalPaperKillSwitch | None = None,
     ) -> None:
         self._flow = flow
@@ -239,6 +244,7 @@ class ContinuousPaperStrategyController:
         self._calendar = calendar
         self._clock = clock
         self._atomic_resolver = atomic_resolver
+        self._atomic_signal_reader = atomic_signal_reader
         self._kill_switch = kill_switch or LocalPaperKillSwitch()
         self._lock = RLock()
         self._stop = Event()
@@ -665,8 +671,13 @@ class ContinuousPaperStrategyController:
         resolution = self._atomic_resolution
         if resolution is None:
             raise AutomatedStrategyStateError("atomic Local Paper runtime 尚未解析")
+        snapshot = (
+            self._atomic_signal_reader(resolution.projection_requests)
+            if self._atomic_signal_reader is not None
+            else self._signal_reader()
+        )
         result = resolution.evaluate_projection(
-            self._signal_reader(),
+            snapshot,
             evaluated_at=now,
             max_age_seconds=config.max_signal_age_seconds,
         )

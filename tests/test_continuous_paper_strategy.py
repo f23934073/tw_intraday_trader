@@ -6,6 +6,7 @@ from time import monotonic, sleep
 import pytest
 
 from config import twse_calendar_2026
+from features.specifications import FeatureRequestSpec
 from market_data.equity_calendar import ReviewedEquityCalendar
 from market_data.models import RealtimeQuoteUpdate
 from market_data.provider import MockProvider
@@ -265,6 +266,7 @@ def atomic_resolution():
     )
 
     class Resolution:
+        projection_requests = ()
         pipeline = LocalPaperPipelineSnapshot(
             entry_strategy_set=snapshot,
             runtime_bindings=(
@@ -417,6 +419,44 @@ def test_exact_strategy_set_submits_pipeline_owned_auditable_entry() -> None:
     assert intent.decision_evidence["strategy_set_decision"]["decision_digest"] == (
         "atomic-decision-digest-1"
     )
+
+
+def test_exact_strategy_set_passes_feature_requests_to_atomic_reader() -> None:
+    resolved = atomic_resolution()
+    request = FeatureRequestSpec(
+        "rolling_return_v1",
+        {"window_minutes": 3},
+    )
+    resolved.projection_requests = (request,)
+    calls: list[tuple[FeatureRequestSpec, ...]] = []
+    flow = FakeFlow()
+    instance = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=ProjectionReader(),
+        signal_reader=lambda: (_ for _ in ()).throw(
+            AssertionError("atomic runtime 不應讀取固定 signal snapshot")
+        ),
+        atomic_signal_reader=lambda requests: (
+            calls.append(requests) or live_signal()
+        ),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=MutableClock(),
+        atomic_resolver=lambda _: resolved,
+    )
+    instance.start(
+        AutomatedStrategyConfig.create(
+            entry_strategy_set_version_id="paper-entry-set-v1",
+            stop_loss_pct="1.5",
+            take_profit_pct="3",
+            max_daily_loss="50000",
+        ),
+        background=False,
+    )
+
+    status = instance.run_once()
+
+    assert status["decision"] == "ENTRY_SUBMITTED"
+    assert calls == [(request,)]
 
 
 def test_exact_streaming_first_entry_watches_book_before_hard_risk() -> None:

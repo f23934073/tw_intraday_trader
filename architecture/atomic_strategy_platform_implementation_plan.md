@@ -6,7 +6,7 @@
 
 ### 1.1 實作前 Review Gate
 
-**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4 均核准為 `PASSED / MVP CONDITIONAL GO`；Phase 5 首批已核准為 `G5 PASSED / MVP SCOPED GO`。** B1–B5 契約維持 `REVIEWED / CLOSED`。G4/G5 核准只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper／Backtest scoped MVP；券商委託與真實交易仍不得開始：
+**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4 均核准為 `PASSED / MVP CONDITIONAL GO`；Phase 5 首批已核准為 `G5 PASSED / MVP SCOPED GO`；parameterized Local Paper 為 G6 implementation candidate，尚未通過 Review。** B1–B5 契約維持 `REVIEWED / CLOSED`。G4/G5 核准只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper／Backtest scoped MVP；券商委託與真實交易仍不得開始：
 
 | ID | Blocking contract | 本文件的處理方向 | Gate 狀態 |
 |---|---|---|---|
@@ -859,17 +859,31 @@ Gate G4：完成 event loop：Feature -> Entry/Exit Intent -> Execution Policy -
 - 首批 `rolling_return_entry` 與 `volume_acceleration_entry` 各自擁有獨立檔案、Schema、Template 與 parameter-derived Feature Requests；Web／PostgreSQL 沿用 generic Draft/Publish/Version/Set contract。
 - completed 1m Kbar adapter 的每個 deque 雖有上限，但首輪 Review 發現 session-keyed map 仍會跨日累積；G5 remediation 必須在 engine session transition 淘汰前一 session，只保留目前 session 的 request/symbol state。
 - volume baseline 的凍結語意為「由最新往最舊的連續完整視窗前綴」：僅允許最舊端因開盤暖機不足而缺少 suffix；任何中間／較新的缺口一律 `INSUFFICIENT_DATA`，不得用更舊視窗補足。
-- 首批 runtime availability 明確為 `BACKTEST_KBAR_1M`。現有 Local Paper Tick projection 只有固定 2 分鐘 legacy features，因此任意 N 分鐘版本不宣稱 parity，activation 因缺少 binding fail closed。
+- 首批 G5 核准時的 runtime availability 明確為 `BACKTEST_KBAR_1M`；後續 parameterized Local Paper adapter 必須另過 G6，不能由 G5 核准推論可用。
 
 Gate G5：每個已遷移策略有獨立檔案、Schema/Feature Requests、runtime availability、golden tests 與可重現 evidence。
 
 目前狀態：**PHASE 5 FIRST SLICE APPROVED；G5 PASSED / MVP SCOPED GO**。Engine 已透過既有 Registry/adapter boundary 宣告 session transition，completed-Kbar state 會在切換前淘汰舊 session；100-session 測試證明單一 symbol/request 只保留一組 active state。Volume golden tests 證明只缺最舊暖機 suffix 時可依 minimum count 計算，但缺少 09:05 的中間 gap 會以 `baseline_volume_windows_non_contiguous` fail closed。候選驗證為 focused `39 passed, 8 skipped`、無 DSN full `1193 passed, 22 skipped`；獨立 Review 為 focused `36 passed, 8 skipped`、full no-DSN `1193 passed, 22 skipped`，且 `git diff --check` 通過。本輪沒有 PostgreSQL schema/repository 變更，因此沒有重跑 PostgreSQL。此 Gate 只核准首批 rolling return／volume acceleration；後續策略批次、Local Paper parameterized Tick adapter、broker／real-money 工作均不在核准範圍內。
 
+### Phase 6 — Parameterized Local Paper Feature Adapter（完成；MVP Conditional Go）
+
+- 只為 `rolling_return_entry` 與 `volume_acceleration_entry` 啟用 `LOCAL_PAPER_TICK_BIDASK` binding；不新增下一批策略。
+- 沿用既有 `MomentumShadowRuntime -> FeatureEngine -> IntradayBarStore`，把 Tick 聚合的完整 1 分 K 投影成 exact `FeatureRequestSpec` evidence；Simulation 不另建行情或 rolling-state pipeline。
+- raw Tick 維持 20 分鐘 retention；completed 1m bars 使用獨立 6 小時 bounded retention，涵蓋目前 schema 最大的 `30m * (10 baseline + current)` 需求，session transition 一律清空。
+- Controller 只把目前 `PAPER_APPROVED` exact Strategy Set 所需的 parameterized requests 交給 reader；Dashboard snapshot 保存 adapter/request/parameter/specification/implementation/state-key identities 與 missing evidence。
+- Atomic Local Paper 對每個 Strategy Version 分別核對 exact request evidence；同一 feature 的 2m/3m 不共用值，identity/parameters/state key 漂移一律 fail closed。
+- rolling calculator 與 G5 backtest 共用 `features/rolling.py` 的 completed-Kbar 公式與 volume gap contract；runtime owner 仍分別是 Backtest state 與既有 live FeatureEngine。
+- G5 已發布、Template 尚只有 `BACKTEST_KBAR_1M` 的舊 Version 仍可由窄範圍 compatibility rule 重播 Backtest；它不會因部署 G6 自動取得 Local Paper admission。要跑 Paper 必須另建使用目前 Template digest 的 immutable Version。
+
+Gate G6：**PASSED / MVP CONDITIONAL GO**。Parameterized Local Paper 已核准；broker／real-money 明確禁止。候選驗證為 focused no-DSN `95 passed, 8 skipped`、full no-DSN `1203 passed, 22 skipped`、full disposable PostgreSQL 17 `1225 passed`；獨立 Reviewer 另驗證 focused `86 passed, 8 skipped`、Backtest slice `3 passed`、full no-DSN `1203 passed, 22 skipped` 與 `git diff --check`。一次性 PostgreSQL 已停止並清除。
+
+MVP 操作限制：Momentum runtime 與 Dashboard singleton 綁定 process 啟動日，目前沒有跨交易日 hot rollover。Dashboard 若跨日持續執行，新交易日行情會 fail closed；正式加入 session rollover 前，操作者必須在每個交易日開始前重啟 Dashboard。首次實際使用仍須完成盤中真實行情 smoke test。此 Gate 不包含後續策略、Parameterized broker adapter、CA、trade subscription、Shioaji 委託或 real-money execution。
+
 ## 19. Test Matrix
 
 - Parameter Schema unit/cross-field/canonicalization tests。
 - 3m/2.0% 等 Strategy parameters 解析成正確 Feature Request，不會仍使用固定 2m window。
-- Feature Request/state-key identity unit tests：2m 與 3m、不同 adapter/cadence 產生不同 identity；真正 runtime state owner 在 Phase 5 對應 Feature 上線時才驗收，不以 helper test 宣稱已接入 runtime cache。
+- Feature Request/state-key identity unit tests：2m 與 3m、不同 adapter/cadence 產生不同 identity；G5 驗收 Backtest state owner，G6 另驗收既有 live FeatureEngine 的 request-aware projection，不以 helper test取代 runtime evidence。
 - Template/Draft/Version/Event transaction、digest、immutable conflict與 Publish TOCTOU tests。
 - Lifecycle legal/illegal transition table、PAUSED reactivation preflight、RETIRED terminal與 projection deterministic rebuild/gap/fork quarantine tests。
 - PostgreSQL post-publish concurrency suites：兩個相同 Version/key 同時送達必須 replay 同一成功 event；不同 digest 必須 idempotency conflict；不同 key/stale sequence 必須 sequence conflict。
@@ -1060,6 +1074,32 @@ tests/test_parameterized_feature_requests.py
 tests/test_strategy_templates.py
 tests/test_atomic_strategy_web_api.py
 tests/test_atomic_paper_runtime.py
+tests/test_strategy_publish_idempotency.py
+```
+
+Phase 6 parameterized Local Paper candidate 修改／新增：
+
+```text
+atomic_strategies/compatibility.py
+features/rolling.py
+features/models.py
+features/engine.py
+market_data/intraday_bar_store.py
+runtime/momentum_shadow.py
+dashboard/momentum.py
+dashboard/server.py
+simulation/atomic_runtime.py
+simulation/continuous_strategy.py
+atomic_strategies/entries/rolling_return.py
+atomic_strategies/entries/volume_acceleration.py
+backtest/features.py
+tests/test_local_paper_parameterized_features.py
+tests/test_momentum_shadow_runtime.py
+tests/test_realtime_momentum_dashboard_service.py
+tests/test_atomic_paper_runtime.py
+tests/test_continuous_paper_strategy.py
+tests/test_atomic_strategy_phase5.py
+tests/test_strategy_templates.py
 tests/test_strategy_publish_idempotency.py
 ```
 

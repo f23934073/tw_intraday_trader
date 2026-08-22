@@ -60,7 +60,7 @@ def test_parameter_schema_canonicalizes_defaults_and_rejects_unknown_or_bad_wind
         )
 
 
-def test_phase5_strategy_schemas_are_parameterized_and_backtest_only() -> None:
+def test_phase5_strategy_schemas_are_parameterized_and_runtime_bound() -> None:
     rolling = RollingReturnEntryStrategy.template
     volume = VolumeAccelerationEntryStrategy.template
 
@@ -74,8 +74,14 @@ def test_phase5_strategy_schemas_are_parameterized_and_backtest_only() -> None:
             "minimum_complete_baseline_windows": 3,
         }
     )["window_minutes"] == 3
-    assert set(rolling.runtime_bindings) == {"BACKTEST_KBAR_1M"}
-    assert set(volume.runtime_bindings) == {"BACKTEST_KBAR_1M"}
+    assert set(rolling.runtime_bindings) == {
+        "BACKTEST_KBAR_1M",
+        "LOCAL_PAPER_TICK_BIDASK",
+    }
+    assert set(volume.runtime_bindings) == {
+        "BACKTEST_KBAR_1M",
+        "LOCAL_PAPER_TICK_BIDASK",
+    }
 
     with pytest.raises(ValueError, match="不可大於"):
         volume.validate_parameters(

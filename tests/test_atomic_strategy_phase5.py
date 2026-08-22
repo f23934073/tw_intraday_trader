@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -360,8 +361,54 @@ def test_gap_in_rolling_window_fails_closed() -> None:
     )
 
 
-def test_phase5_strategy_rejects_local_paper_until_parameterized_tick_adapter_exists() -> None:
+def test_phase5_strategy_exposes_parameterized_local_paper_binding() -> None:
     template = AtomicStrategyRegistry().strategy("rolling_return_entry").template
-    assert "LOCAL_PAPER_TICK_BIDASK" not in template.runtime_bindings
+    assert template.runtime_bindings["LOCAL_PAPER_TICK_BIDASK"] == (
+        "rolling_return.local_paper_completed_kbar_v1"
+    )
     requests = resolve_feature_requests(template, {"window_minutes": 3})
     assert requests[0].parameters == {"window_minutes": 3}
+
+
+def test_pre_g6_version_remains_replayable_in_backtest() -> None:
+    current = _version(
+        "rolling_return_entry",
+        "rolling-return:pre-g6",
+        {
+            "window_minutes": 3,
+            "minimum_return_pct": "2",
+            "entry_window_start": "09:03",
+            "entry_window_end": "12:45",
+        },
+    )
+    template = AtomicStrategyRegistry().strategy(
+        current.strategy_id
+    ).template
+    legacy_document = template.template_document
+    legacy_document["runtime_bindings"] = {
+        "BACKTEST_KBAR_1M": template.runtime_bindings["BACKTEST_KBAR_1M"]
+    }
+    legacy_template_digest = canonical_digest(legacy_document)
+    legacy_configuration_digest = canonical_digest(
+        {
+            "strategy_id": current.strategy_id,
+            "parameters": dict(current.parameters),
+            "parameter_schema_version": current.parameter_schema_version,
+            "parameter_schema_digest": current.parameter_schema_digest,
+            "parameters_digest": current.parameters_digest,
+            "template_digest": legacy_template_digest,
+            "implementation_digest": current.implementation_digest,
+        }
+    )
+    legacy = replace(
+        current,
+        template_digest=legacy_template_digest,
+        configuration_digest=legacy_configuration_digest,
+    )
+
+    resolved = _resolve(legacy)
+
+    assert legacy.template_digest != template.template_digest
+    assert resolved.engine_strategy_set.entry_strategy_ids == (
+        legacy.strategy_version_id,
+    )

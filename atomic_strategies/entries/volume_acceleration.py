@@ -90,6 +90,7 @@ PARAMETER_SCHEMA = ParameterSchema(
 
 
 class VolumeAccelerationEntryStrategy:
+    allow_legacy_backtest_only_template = True
     template = StrategyTemplate(
         strategy_id="volume_acceleration_entry",
         display_name_zh_tw="成交量加速",
@@ -122,6 +123,9 @@ class VolumeAccelerationEntryStrategy:
         ),
         runtime_bindings={
             "BACKTEST_KBAR_1M": "volume_acceleration.backtest_kbar_1m_v1",
+            "LOCAL_PAPER_TICK_BIDASK": (
+                "volume_acceleration.local_paper_completed_kbar_v1"
+            ),
         },
         description_zh_tw=(
             "目前 N 分鐘成交量相對先前不重疊完整視窗中位數達門檻時觸發。"

@@ -6,6 +6,8 @@ from datetime import datetime
 import pytest
 
 from atomic_strategies.registry import AtomicStrategyRegistry
+from features.engine import FeatureEngine
+from features.specifications import FeatureRequestSpec, FeatureSpecificationRegistry
 from simulation.atomic_runtime import (
     PaperSetStatus,
     resolve_atomic_paper_entry_set,
@@ -120,7 +122,12 @@ def entry_set(
     )
 
 
-def projection(*, at: datetime = AT, price: str = "101") -> dict:
+def projection(
+    *,
+    at: datetime = AT,
+    price: str = "101",
+    requested_features: list[dict] | None = None,
+) -> dict:
     feature = lambda value: {
         "value": value,
         "status": "VALID",
@@ -149,8 +156,40 @@ def projection(*, at: datetime = AT, price: str = "101") -> dict:
                     "vwap": feature("100"),
                     "previous_intraday_high": feature("102"),
                 },
+                "requested_features": requested_features or [],
             }
         ],
+    }
+
+
+def requested_feature(
+    request: FeatureRequestSpec,
+    *,
+    value: str | None,
+    reason: str | None = None,
+) -> dict:
+    specification = FeatureSpecificationRegistry().get(request.feature_id)
+    return {
+        "feature_id": request.feature_id,
+        "adapter_identity": FeatureEngine.requested_feature_adapter_identity,
+        "request_digest": request.request_digest,
+        "parameter_digest": request.parameter_digest,
+        "specification_digest": specification.specification_digest,
+        "implementation_digest": specification.implementation_digest,
+        "parameters": dict(request.parameters),
+        "state_key": request.state_key(
+            adapter_identity=FeatureEngine.requested_feature_adapter_identity,
+            cadence=specification.cadence,
+            symbol="3231",
+            session=AT.date().isoformat(),
+        ),
+        "value": {
+            "value": value,
+            "status": "VALID" if value is not None else "MISSING",
+            "source_as_of": AT.replace(minute=29).isoformat(),
+            "reason": reason,
+        },
+        "evidence": {},
     }
 
 
@@ -325,7 +364,7 @@ def test_resolution_requires_transactional_lifecycle_catalog_api(versions) -> No
         )
 
 
-def test_parameterized_rolling_strategy_fails_closed_without_tick_adapter() -> None:
+def test_parameterized_rolling_strategy_uses_exact_request_projection() -> None:
     rolling = version(
         "rolling_return_entry",
         1,
@@ -338,9 +377,177 @@ def test_parameterized_rolling_strategy_fails_closed_without_tick_adapter() -> N
     )
     snapshot = entry_set((rolling,))
 
-    with pytest.raises(ValueError, match="沒有 LOCAL_PAPER_TICK_BIDASK binding"):
+    runtime = resolve_atomic_paper_entry_set(
+        FakeCatalog(snapshot, (rolling,)),
+        AtomicStrategyRegistry(),
+        snapshot.strategy_set_version_id,
+    )
+    request = runtime.projection_requests[0]
+
+    result = runtime.evaluate_projection(
+        projection(requested_features=[requested_feature(request, value="0.03")]),
+        evaluated_at=AT,
+        max_age_seconds=5,
+    )
+
+    assert request.parameters == {"window_minutes": 3}
+    assert result.candidates[0].status is PaperSetStatus.TRIGGERED
+    assert result.candidates[0].evaluations[0].observed[
+        "window_minutes"
+    ] == 3
+
+
+def test_pre_g6_backtest_only_version_does_not_gain_paper_admission() -> None:
+    rolling = version(
+        "rolling_return_entry",
+        1,
+        {
+            "window_minutes": 3,
+            "minimum_return_pct": "2",
+            "entry_window_start": "09:03",
+            "entry_window_end": "12:45",
+        },
+    )
+    template = AtomicStrategyRegistry().strategy(rolling.strategy_id).template
+    legacy_document = template.template_document
+    legacy_document["runtime_bindings"] = {
+        "BACKTEST_KBAR_1M": template.runtime_bindings["BACKTEST_KBAR_1M"]
+    }
+    legacy = replace(
+        rolling,
+        template_digest=canonical_digest(legacy_document),
+        configuration_digest="legacy-backtest-only-config",
+    )
+    snapshot = entry_set((legacy,))
+
+    with pytest.raises(ValueError, match="Template digest"):
         resolve_atomic_paper_entry_set(
-            FakeCatalog(snapshot, (rolling,)),
+            FakeCatalog(snapshot, (legacy,)),
             AtomicStrategyRegistry(),
             snapshot.strategy_set_version_id,
         )
+
+
+def test_parameterized_projection_identity_drift_fails_closed() -> None:
+    rolling = version(
+        "rolling_return_entry",
+        1,
+        {
+            "window_minutes": 3,
+            "minimum_return_pct": "2",
+            "entry_window_start": "09:03",
+            "entry_window_end": "12:45",
+        },
+    )
+    snapshot = entry_set((rolling,))
+    runtime = resolve_atomic_paper_entry_set(
+        FakeCatalog(snapshot, (rolling,)),
+        AtomicStrategyRegistry(),
+        snapshot.strategy_set_version_id,
+    )
+    row = requested_feature(runtime.projection_requests[0], value="0.03")
+    row["implementation_digest"] = "tampered"
+
+    result = runtime.evaluate_projection(
+        projection(requested_features=[row]),
+        evaluated_at=AT,
+        max_age_seconds=5,
+    )
+
+    assert result.candidates == ()
+    assert "implementation_digest" in result.blocked_reasons[0]
+
+
+def test_same_feature_with_different_parameters_keeps_member_identity() -> None:
+    two_minute = version(
+        "rolling_return_entry",
+        1,
+        {
+            "window_minutes": 2,
+            "minimum_return_pct": "2",
+            "entry_window_start": "09:03",
+            "entry_window_end": "12:45",
+        },
+    )
+    three_minute = version(
+        "rolling_return_entry",
+        2,
+        {
+            "window_minutes": 3,
+            "minimum_return_pct": "2",
+            "entry_window_start": "09:03",
+            "entry_window_end": "12:45",
+        },
+    )
+    versions = (two_minute, three_minute)
+    snapshot = entry_set(versions)
+    runtime = resolve_atomic_paper_entry_set(
+        FakeCatalog(snapshot, versions),
+        AtomicStrategyRegistry(),
+        snapshot.strategy_set_version_id,
+    )
+    requests = {
+        request.parameters["window_minutes"]: request
+        for request in runtime.projection_requests
+    }
+
+    result = runtime.evaluate_projection(
+        projection(
+            requested_features=[
+                requested_feature(requests[2], value="0.01"),
+                requested_feature(requests[3], value="0.03"),
+            ]
+        ),
+        evaluated_at=AT,
+        max_age_seconds=5,
+    )
+
+    evaluations = result.candidates[0].evaluations
+    assert [item.status.value for item in evaluations] == [
+        "NOT_TRIGGERED",
+        "TRIGGERED",
+    ]
+    assert [item.observed["window_minutes"] for item in evaluations] == [2, 3]
+
+
+def test_volume_missing_reason_is_preserved_for_strategy_evaluation() -> None:
+    volume = version(
+        "volume_acceleration_entry",
+        1,
+        {
+            "window_minutes": 2,
+            "baseline_window_count": 5,
+            "minimum_complete_baseline_windows": 4,
+            "baseline_method": "MEDIAN",
+            "minimum_acceleration_ratio": "1.5",
+            "entry_window_start": "09:10",
+            "entry_window_end": "12:45",
+        },
+    )
+    snapshot = entry_set((volume,))
+    runtime = resolve_atomic_paper_entry_set(
+        FakeCatalog(snapshot, (volume,)),
+        AtomicStrategyRegistry(),
+        snapshot.strategy_set_version_id,
+    )
+    request = runtime.projection_requests[0]
+
+    result = runtime.evaluate_projection(
+        projection(
+            requested_features=[
+                requested_feature(
+                    request,
+                    value=None,
+                    reason="baseline_volume_windows_non_contiguous",
+                )
+            ]
+        ),
+        evaluated_at=AT,
+        max_age_seconds=5,
+    )
+
+    candidate = result.candidates[0]
+    assert candidate.status is PaperSetStatus.INSUFFICIENT_DATA
+    assert candidate.evaluations[0].reason == (
+        "baseline_volume_windows_non_contiguous"
+    )

@@ -7,7 +7,13 @@ from threading import Event, Thread
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from features.models import FeatureStatus, FeatureValue
+from features.models import (
+    FeatureStatus,
+    FeatureValue,
+    RequestedFeatureProjection,
+)
+from features.specifications import FeatureRequestSpec, FeatureSpecificationRegistry
+from features.engine import FeatureEngine
 from market_data.subscriptions import MissReason
 from dashboard.momentum import (
     MomentumDashboardService,
@@ -34,7 +40,14 @@ class MutableClock:
 
 
 class FakeLiveRuntime:
-    def __init__(self, projection, clock: MutableClock, *, projections=None) -> None:
+    def __init__(
+        self,
+        projection,
+        clock: MutableClock,
+        *,
+        projections=None,
+        requested_features=None,
+    ) -> None:
         self._projections = {projection.symbol: projection}
         if projections is not None:
             self._projections.update(projections)
@@ -44,6 +57,8 @@ class FakeLiveRuntime:
         self.discoveries = []
         self.symbols: tuple[str, ...] = ()
         self.read_view_calls = 0
+        self.requested_features = requested_features or {}
+        self.feature_request_calls = []
 
     def start(self) -> None:
         self.started = True
@@ -71,8 +86,13 @@ class FakeLiveRuntime:
             active_episode_count=1,
         )
 
-    def read_view(self, expected_symbols) -> MomentumShadowReadView:
+    def read_view(
+        self,
+        expected_symbols,
+        feature_requests=(),
+    ) -> MomentumShadowReadView:
         self.read_view_calls += 1
+        self.feature_request_calls.append(tuple(feature_requests))
         normalized = tuple(str(symbol).strip().upper() for symbol in expected_symbols)
         return MomentumShadowReadView(
             snapshot=self.snapshot(),
@@ -85,6 +105,10 @@ class FakeLiveRuntime:
                 if self._projections.get(symbol) is None
             ),
             pending_alerts=(),
+            requested_features=tuple(
+                (symbol, tuple(self.requested_features.get(symbol, ())))
+                for symbol in normalized
+            ),
         )
 
     def check_staleness(self, *, evaluated_at: datetime) -> bool:
@@ -215,6 +239,56 @@ def test_live_service_preserves_stale_intraday_feature_provenance():
     }
     service.close()
     assert runtime.closed is True
+
+
+def test_live_service_serializes_exact_requested_feature_evidence():
+    clock = MutableClock(datetime(2026, 8, 18, 9, 18, tzinfo=TAIPEI))
+    projection = MomentumDashboardService()._store.get("8039")
+    assert projection is not None
+    request = FeatureRequestSpec("rolling_return_v1", {"window_minutes": 3})
+    specification = FeatureSpecificationRegistry().get(request.feature_id)
+    requested = RequestedFeatureProjection(
+        feature_id=request.feature_id,
+        adapter_identity=FeatureEngine.requested_feature_adapter_identity,
+        request_digest=request.request_digest,
+        parameter_digest=request.parameter_digest,
+        specification_digest=specification.specification_digest,
+        implementation_digest=specification.implementation_digest,
+        parameters=request.parameters,
+        state_key=request.state_key(
+            adapter_identity=FeatureEngine.requested_feature_adapter_identity,
+            cadence=specification.cadence,
+            symbol="8039",
+            session=clock.now().date().isoformat(),
+        ),
+        value=FeatureValue(
+            value=Decimal("0.03"),
+            status=FeatureStatus.VALID,
+            source_as_of=clock.now().replace(minute=17, second=0),
+        ),
+        evidence={"window_minutes": 3},
+    )
+    runtime = FakeLiveRuntime(
+        projection,
+        clock,
+        requested_features={"8039": (requested,)},
+    )
+    service = RealtimeMomentumDashboardService(
+        runtime,
+        candidate_snapshot_loader=lambda: {
+            "candidates": [candidate("8039", score=40, name="台虹")]
+        },
+        clock=clock,
+    )
+
+    snapshot = service.snapshot(feature_requests=(request,))
+    serialized = snapshot["items"][0]["requested_features"][0]
+
+    assert runtime.feature_request_calls[-1] == (request,)
+    assert serialized["request_digest"] == request.request_digest
+    assert serialized["parameters"] == {"window_minutes": 3}
+    assert serialized["value"]["value"] == "0.03"
+    service.close()
 
 
 def test_live_service_orders_candidates_by_descending_intraday_score():

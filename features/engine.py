@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Callable
 
@@ -12,7 +12,15 @@ from features.models import (
     FeatureStatus,
     FeatureValue,
     IntradayFeatureSnapshot,
+    RequestedFeatureProjection,
 )
+from features.rolling import (
+    RollingBar,
+    RollingFeatureValue,
+    evaluate_completed_bars,
+    required_bar_capacity,
+)
+from features.specifications import FeatureRequestSpec, FeatureSpecificationRegistry
 from market_data.events import TickEvent
 from market_data.health import DataHealthState
 from market_data.instrument_reference import InstrumentReferenceStore
@@ -21,6 +29,10 @@ from market_data.order_book_store import OrderBookStatus, OrderBookStore
 
 
 class FeatureEngine:
+    requested_feature_adapter_identity = (
+        "feature-engine.completed-kbar-request-projection-v1"
+    )
+
     def __init__(
         self,
         *,
@@ -144,6 +156,109 @@ class FeatureEngine:
             book_imbalance_5=book_imbalance,
             opening_volume_context=opening_value,
             opening_volume_context_mode=opening_mode,
+        )
+
+    def evaluate_requests(
+        self,
+        current_tick: TickEvent,
+        requests: tuple[FeatureRequestSpec, ...],
+    ) -> tuple[RequestedFeatureProjection, ...]:
+        if current_tick.session_date != self._bars.session_date:
+            raise ValueError("tick session does not match bar store")
+        applied_tick = self._bars.latest_tick_at_or_before(
+            current_tick.symbol,
+            current_tick.event_time,
+        )
+        if applied_tick is None or applied_tick.event_id != current_tick.event_id:
+            raise ValueError(
+                "current tick must be applied before requested feature evaluation"
+            )
+        registry = FeatureSpecificationRegistry()
+        registry.validate_requests(requests)
+        request_digests = tuple(item.request_digest for item in requests)
+        if len(request_digests) != len(set(request_digests)):
+            raise ValueError("Local Paper Feature Requests 不可重複")
+
+        completed_through = (
+            current_tick.event_time.replace(second=0, microsecond=0)
+            - timedelta(minutes=1)
+        )
+        source_bars = self._bars.bars(
+            current_tick.symbol,
+            through=completed_through,
+        )
+        projections: list[RequestedFeatureProjection] = []
+        for request in requests:
+            specification = registry.get(request.feature_id)
+            if specification.cadence != "COMPLETED_KBAR_1M":
+                raise ValueError(
+                    f"Local Paper request cadence 不支援：{specification.cadence}"
+                )
+            capacity = required_bar_capacity(
+                request.feature_id,
+                request.parameters,
+            )
+            bars = tuple(
+                RollingBar(
+                    timestamp=item.minute,
+                    close=item.close,
+                    volume=item.volume_lots,
+                )
+                for item in source_bars[-capacity:]
+            )
+            result = evaluate_completed_bars(
+                request.feature_id,
+                request.parameters,
+                bars,
+            )
+            projections.append(
+                self._requested_projection(
+                    current_tick=current_tick,
+                    request=request,
+                    specification=specification,
+                    result=result,
+                    source_as_of=(
+                        bars[-1].timestamp if bars else completed_through
+                    ),
+                )
+            )
+        return tuple(projections)
+
+    def _requested_projection(
+        self,
+        *,
+        current_tick: TickEvent,
+        request: FeatureRequestSpec,
+        specification,
+        result: RollingFeatureValue,
+        source_as_of: datetime,
+    ) -> RequestedFeatureProjection:
+        value = FeatureValue(
+            value=result.value,
+            status=(
+                FeatureStatus.VALID
+                if result.value is not None
+                else FeatureStatus.MISSING
+            ),
+            source_as_of=source_as_of,
+            reason=result.missing_reason,
+        )
+        return RequestedFeatureProjection(
+            feature_id=request.feature_id,
+            adapter_identity=self.requested_feature_adapter_identity,
+            request_digest=request.request_digest,
+            parameter_digest=request.parameter_digest,
+            specification_digest=specification.specification_digest,
+            implementation_digest=specification.implementation_digest,
+            parameters=request.parameters,
+            state_key=request.state_key(
+                adapter_identity=self.requested_feature_adapter_identity,
+                cadence=specification.cadence,
+                symbol=current_tick.symbol,
+                session=current_tick.session_date.isoformat(),
+            ),
+            value=value,
+            evidence=result.evidence,
         )
 
     def _validate_evaluation(

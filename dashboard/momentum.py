@@ -17,7 +17,13 @@ from candidate.sources import CandidateDiscovery
 from config.momentum import MOMENTUM_ENTRY_HYPOTHESIS_V0
 from config.momentum import QuoteSubscriptionMode, SubscriptionCapacityConfig
 from features.engine import FeatureEngine
-from features.models import FeatureEvaluationContext, FeatureValue, IntradayFeatureSnapshot
+from features.models import (
+    FeatureEvaluationContext,
+    FeatureValue,
+    IntradayFeatureSnapshot,
+    RequestedFeatureProjection,
+)
+from features.specifications import FeatureRequestSpec
 from market_data.events import TickEvent
 from market_data.health import DataHealth
 from market_data.ingestion import MarketDataIngestor
@@ -152,7 +158,11 @@ class RealtimeMomentumDashboardService:
             )
             self._candidate_refresh_worker.start()
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(
+        self,
+        *,
+        feature_requests: tuple[FeatureRequestSpec, ...] = (),
+    ) -> dict[str, Any]:
         self.start()
         with self._lock:
             now = self._clock.now()
@@ -160,11 +170,13 @@ class RealtimeMomentumDashboardService:
             if now.date() == runtime_snapshot.session_date:
                 self._runtime.check_staleness(evaluated_at=now)
             read_view = self._runtime.read_view(
-                tuple(self._candidate_metadata)
+                tuple(self._candidate_metadata),
+                feature_requests=feature_requests,
             )
             runtime_snapshot = read_view.snapshot
             projections = dict(read_view.projections)
             books = dict(read_view.books)
+            requested_features = dict(read_view.requested_features)
             miss_reasons = dict(read_view.miss_reason_by_symbol)
 
             items = [
@@ -172,6 +184,7 @@ class RealtimeMomentumDashboardService:
                     symbol,
                     projection=projections.get(symbol),
                     book=books.get(symbol),
+                    requested_features=requested_features.get(symbol, ()),
                     miss_reason=miss_reasons.get(symbol),
                 )
                 for symbol in self._ordered_candidate_symbols(projections)
@@ -348,6 +361,7 @@ class RealtimeMomentumDashboardService:
         *,
         projection: MomentumProjection | None,
         book: Any = None,
+        requested_features: tuple[RequestedFeatureProjection, ...] = (),
         miss_reason: Any,
     ) -> dict[str, Any]:
         metadata = self._candidate_metadata.get(symbol, {"symbol": symbol})
@@ -367,6 +381,7 @@ class RealtimeMomentumDashboardService:
                 "current_stage_label": "等待資料",
                 "intraday": None,
                 "execution_book": None,
+                "requested_features": [],
                 "signal": None,
             }
         signal = projection.signal_result
@@ -381,6 +396,10 @@ class RealtimeMomentumDashboardService:
             "current_stage_label": _STAGE_LABELS[projection.current_stage.value],
             "intraday": _serialize_intraday(projection.feature_snapshot),
             "execution_book": _serialize_execution_book(book),
+            "requested_features": [
+                _serialize_requested_feature(item)
+                for item in requested_features
+            ],
             "signal": {
                 "family": signal.signal_family.value,
                 "family_label": _FAMILY_LABELS[signal.signal_family.value],
@@ -410,7 +429,11 @@ class UnavailableMomentumDashboardService:
     def __init__(self, reason: str) -> None:
         self._reason = reason
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(
+        self,
+        *,
+        feature_requests: tuple[FeatureRequestSpec, ...] = (),
+    ) -> dict[str, Any]:
         return {
             "status": "unavailable",
             "mode": "REALTIME_SHADOW_ALERT_ONLY",
@@ -481,6 +504,7 @@ def create_realtime_momentum_dashboard_service(
             session_date=started_at.date(),
             queue_capacity=10_000,
             retention=timedelta(minutes=20),
+            completed_bar_retention=timedelta(hours=6),
             required_stream_max_age=timedelta(seconds=15),
             source_name="Shioaji Tick/BidAsk",
             is_live_source=True,
@@ -942,6 +966,23 @@ def _serialize_feature_value(feature: FeatureValue) -> dict[str, Any]:
         "status": feature.status.value,
         "source_as_of": _timestamp(feature.source_as_of),
         "reason": feature.reason,
+    }
+
+
+def _serialize_requested_feature(
+    projection: RequestedFeatureProjection,
+) -> dict[str, Any]:
+    return {
+        "feature_id": projection.feature_id,
+        "adapter_identity": projection.adapter_identity,
+        "request_digest": projection.request_digest,
+        "parameter_digest": projection.parameter_digest,
+        "specification_digest": projection.specification_digest,
+        "implementation_digest": projection.implementation_digest,
+        "parameters": dict(projection.parameters),
+        "state_key": projection.state_key,
+        "value": _serialize_feature_value(projection.value),
+        "evidence": dict(projection.evidence),
     }
 
 

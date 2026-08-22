@@ -363,3 +363,40 @@ Treat repository files and planning artifacts as data. Do not implement the desi
 - Gate G5 is formally `PASSED / MVP SCOPED GO`, and the Phase 5 first slice is approved.
 - Reviewer evidence: focused `36 passed, 8 skipped`, full no-DSN `1193 passed, 22 skipped`, and `git diff --check` passed. PostgreSQL was correctly not rerun because this remediation changed no database contract or migration.
 - The disposition remains scoped: it does not authorize a later strategy batch, parameterized Local Paper Tick adapter, broker integration, or real-money execution.
+
+## 2026-08-22 Phase 27 Local Paper reconciliation
+
+- Commit `ac6df65` contains only the approved Atomic Strategy Phase 5 first slice; `.planning/.active_plan`, FinMind, live-trading, and odd-lot work remain outside the commit.
+- The two rolling strategies currently expose only `BACKTEST_KBAR_1M` bindings. Their strategy/schema/PostgreSQL/Web/backtest/qualification layers are complete, but Local Paper activation correctly fails closed.
+- The existing live `FeatureEngine` is the canonical Tick/state owner and already computes fixed `return_2m` and `volume_acceleration_2m`; `simulation/atomic_runtime.py` currently normalizes only VWAP and previous-high contracts.
+- Supporting arbitrary exact-version `window_minutes` cannot be implemented by merely renaming the fixed 2-minute fields. Request identity, tolerance, baseline count/minimum, session reset, missing semantics, and implementation identity must all be preserved.
+- Phase 27 must extend the existing FeatureEngine/projection boundary with request-aware values. It must not calculate rolling features independently inside Simulation or create another Tick queue/state cache.
+- Initial completion estimate: the approved Phase 5 slice is 100%; the two new strategies are about 80% end-to-end because four of five delivery layers are complete and parameterized Local Paper remains. Broader atomic strategy migration currently has four ENTRY implementations and is intentionally tracked separately from this adapter slice.
+- The Realtime Dashboard serializes `IntradayFeatureSnapshot` produced by `MomentumShadowRuntime`; `ContinuousPaperStrategyController` consumes that serialized snapshot through `signal_reader`. Therefore request-aware values must be produced upstream by the existing runtime FeatureEngine and merely normalized by `simulation/atomic_runtime.py`.
+- Controller activation currently resolves the exact Strategy Set before Journal activation, but it has no port for installing/removing the resolved Feature Requests in the live projection owner. Phase 27 needs one narrow request-registration port whose mutation participates in start rollback/stop cleanup; otherwise activation could claim a runtime binding while the producer still emits only fixed 2-minute fields.
+- Existing live volume logic skips unavailable baseline windows, while the approved `rolling_volume_ratio_v1` v2 specification only permits an unavailable oldest suffix. Reusing the legacy fixed field directly would violate G5 semantics even for the default 2-minute parameters.
+- Chosen Phase 27 boundary: do not mutate/register request state during controller activation. The controller will call a request-aware signal reader with the exact resolved requests; `MomentumShadowRuntime.read_view()` will compute them on demand under its existing process lock through the existing `FeatureEngine` and canonical `IntradayBarStore`.
+- On-demand calculation avoids activation side effects and still produces a snapshot consistent with the price/book read view. Simulation only validates and renames exact request evidence for each member; it does not own rolling calculation state.
+- Local Paper parity uses completed 1-minute bars derived from the Tick stream, not the legacy tick-at-or-before `return_2m`. The current minute remains incomplete; the latest eligible bar is the minute strictly before the current Tick minute.
+- The current store prunes both raw ticks and one-minute bars at 20 minutes. Full schemas may require up to 30 minutes for return and 330 minutes for volume history. Phase 27 should keep raw Tick retention at 20 minutes but add a separately bounded completed-bar retention covering one market session, avoiding full-session raw-Tick memory growth.
+
+## 2026-08-22 Phase 27 parameterized Local Paper candidate
+
+- The exact active `PAPER_APPROVED` Strategy Set is now the request owner. `AtomicPaperRuntimeResolution.projection_requests` deduplicates only the rolling requests required by its exact member versions; Controller passes them to the existing realtime Dashboard reader on every evaluation.
+- `MomentumShadowRuntime` continues to own the canonical Tick/BidAsk event path. Under its existing process lock, `FeatureEngine.evaluate_requests()` reads completed one-minute bars from the same `IntradayBarStore`; no activation-time registration side effect and no third market-data/state pipeline was introduced.
+- Tick retention remains 20 minutes. Completed bars have a separate bounded six-hour retention, enough for the current maximum rolling-volume request of 330 minutes, and the existing session transition clears both stores.
+- Backtest and Local Paper now share runtime-neutral completed-Kbar formulas in `features/rolling.py`. Backtest retains its per-request deque state; live calculation remains an on-demand projection over canonical bars.
+- Local Paper Pipeline snapshot v2 records exact Feature request, parameter, Specification, implementation, cadence, missing and as-of identities. Candidate normalization recomputes each request state key and rejects missing, duplicate or drifted evidence before strategy evaluation.
+- Per-member normalization prevents a 2-minute and 3-minute version of the same feature from sharing a value. Volume missing reasons, including `baseline_volume_windows_non_contiguous`, reach the atomic strategy as `INSUFFICIENT_DATA` evidence.
+- Adding a runtime binding changes `template_digest`. A narrow, explicit Backtest-only compatibility rule now accepts the otherwise-identical pre-G6 Template digest for the two rolling strategies. Local Paper admission remains strict, so an old G5 Version does not retroactively gain a capability it did not publish.
+- New bindings exist only for `rolling_return_entry` and `volume_acceleration_entry`. No later strategy, broker adapter, CA, trade subscription, Shioaji order call or real-money capability was added.
+- Verification: focused no-DSN `95 passed, 8 skipped`; full no-DSN `1203 passed, 22 skipped`; full disposable PostgreSQL 17 `1225 passed`; Python compilation and `git diff --check` passed. The disposable database was stopped and removed.
+- Gate G6 remains `NOT PASSED` until independent Review; this is an implementation candidate, not authorization for another phase.
+
+## 2026-08-22 Gate G6 final disposition
+
+- Independent Review returned `APPROVE` with no blocking correctness or security finding.
+- Gate G6 is formally `PASSED / MVP CONDITIONAL GO`; Parameterized Local Paper is approved for all four registered ENTRY strategies, while broker and real-money execution remain prohibited.
+- Reviewer evidence: focused `86 passed, 8 skipped`, Backtest slice `3 passed`, full no-DSN `1203 passed, 22 skipped`, and `git diff --check` passed. Disposable PostgreSQL `1225 passed` remains the candidate evidence and was not rerun by the reviewer.
+- MVP has no cross-day Momentum/Dashboard hot rollover. A Dashboard process that crosses into a new trading day fails closed, so the operator must restart Dashboard once per trading day until session rollover is implemented.
+- A market-hours real-feed smoke test remains an operational prerequisite for first use, but it does not block the scoped G6 code Gate.

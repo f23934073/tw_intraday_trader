@@ -13,6 +13,7 @@ from candidate.models import CandidateSource
 from candidate.pool import CandidatePool, CandidatePoolConfig
 from candidate.sources import CandidateDiscovery
 from config.momentum import QuoteSubscriptionMode, SubscriptionCapacityConfig
+from features.specifications import FeatureRequestSpec
 from market_data.events import EventEnvelope, InstrumentReference
 from market_data.health import DataHealthReason, DataHealthState
 from market_data.ingestion import QueueOverflowError
@@ -292,7 +293,14 @@ def test_enriched_8039_stream_reaches_accelerating_shadow_projection():
 
     snapshot = runtime.snapshot()
     projection = runtime.projection("8039")
-    read_view = runtime.read_view(("8039",))
+    request = FeatureRequestSpec(
+        "rolling_return_v1",
+        {"window_minutes": 2},
+    )
+    read_view = runtime.read_view(
+        ("8039",),
+        feature_requests=(request,),
+    )
 
     assert snapshot.mode == "REALTIME_SHADOW_ALERT_ONLY"
     assert snapshot.covered_symbols == ("8039",)
@@ -324,6 +332,10 @@ def test_enriched_8039_stream_reaches_accelerating_shadow_projection():
     assert read_view.books[0][0] == "8039"
     assert read_view.books[0][1] is not None
     assert read_view.books[0][1].best_ask is not None
+    assert read_view.requested_features[0][0] == "8039"
+    assert read_view.requested_features[0][1][0].request_digest == (
+        request.request_digest
+    )
 
     runtime.close()
 

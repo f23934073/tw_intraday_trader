@@ -517,6 +517,11 @@ def get_automated_strategy_controller() -> ContinuousPaperStrategyController:
                 flow=composition.strategy_paper_flow,
                 projection_reader=get_simulation_service().projection,
                 signal_reader=get_momentum_dashboard_service().snapshot,
+                atomic_signal_reader=lambda requests: (
+                    get_momentum_dashboard_service().snapshot(
+                        feature_requests=requests
+                    )
+                ),
                 calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
                 clock=composition.clock,
                 atomic_resolver=lambda strategy_set_version_id: (

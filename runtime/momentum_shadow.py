@@ -17,7 +17,11 @@ from config.momentum import (
     QuoteSubscriptionMode,
 )
 from features.engine import FeatureEngine
-from features.models import FeatureEvaluationContext
+from features.models import (
+    FeatureEvaluationContext,
+    RequestedFeatureProjection,
+)
+from features.specifications import FeatureRequestSpec
 from market_data.events import EventEnvelope, MarketStreamKind, TickEvent
 from market_data.health import (
     DataHealth,
@@ -75,6 +79,7 @@ class MomentumShadowRuntimeConfig:
     worker_poll_interval: float = 0.05
     background_worker: bool = True
     aggressor_mapping_verified: bool = False
+    completed_bar_retention: timedelta | None = None
 
     def __post_init__(self) -> None:
         if not self.version.strip():
@@ -85,6 +90,13 @@ class MomentumShadowRuntimeConfig:
             raise ValueError("Shadow queue capacity must be positive")
         if self.retention < timedelta(minutes=20):
             raise ValueError("Shadow retention must be at least 20 minutes")
+        if (
+            self.completed_bar_retention is not None
+            and self.completed_bar_retention < self.retention
+        ):
+            raise ValueError(
+                "completed_bar_retention cannot be shorter than retention"
+            )
         if self.required_stream_max_age <= timedelta(0):
             raise ValueError("required_stream_max_age must be positive")
         if not self.source_name.strip():
@@ -159,6 +171,9 @@ class MomentumShadowReadView:
     miss_reason_by_symbol: tuple[tuple[str, MissReason], ...]
     pending_alerts: tuple[MomentumAlert, ...]
     books: tuple[tuple[str, BidAskEvent | None], ...] = ()
+    requested_features: tuple[
+        tuple[str, tuple[RequestedFeatureProjection, ...]], ...
+    ] = ()
 
 
 class MomentumShadowRuntime:
@@ -193,6 +208,7 @@ class MomentumShadowRuntime:
         self._bars = IntradayBarStore(
             config.session_date,
             retention=config.retention,
+            bar_retention=config.completed_bar_retention,
         )
         self._books = OrderBookStore(
             config.session_date,
@@ -421,6 +437,7 @@ class MomentumShadowRuntime:
     def read_view(
         self,
         expected_symbols: tuple[str, ...] | list[str],
+        feature_requests: tuple[FeatureRequestSpec, ...] = (),
     ) -> MomentumShadowReadView:
         """Capture runtime metadata, rows, misses, and alerts atomically."""
         normalized = tuple(
@@ -438,6 +455,17 @@ class MomentumShadowRuntime:
             books = tuple(
                 (symbol, self._books.latest(symbol)) for symbol in normalized
             )
+            requested_features = tuple(
+                (
+                    symbol,
+                    self._evaluate_requested_features(
+                        symbol,
+                        projection,
+                        feature_requests,
+                    ),
+                )
+                for symbol, projection in projections
+            )
             misses = tuple(
                 (symbol, reason)
                 for symbol, projection in projections
@@ -452,7 +480,24 @@ class MomentumShadowRuntime:
                 miss_reason_by_symbol=misses,
                 pending_alerts=self._projections.pending_alerts(),
                 books=books,
+                requested_features=requested_features,
             )
+
+    def _evaluate_requested_features(
+        self,
+        symbol: str,
+        projection: MomentumProjection | None,
+        requests: tuple[FeatureRequestSpec, ...],
+    ) -> tuple[RequestedFeatureProjection, ...]:
+        if projection is None or not requests:
+            return ()
+        current_tick = self._bars.latest_tick_at_or_before(
+            symbol,
+            projection.as_of,
+        )
+        if current_tick is None:
+            return ()
+        return self._features.evaluate_requests(current_tick, requests)
 
     def _build_snapshot(self) -> MomentumShadowSnapshot:
         with self._state_lock:

@@ -330,3 +330,30 @@
 - PostgreSQL was not rerun because the remediation changed no database contract or migration.
 - This disposition does not include a later strategy batch, parameterized Local Paper Tick adapter, Shioaji/broker integration, CA, trade subscription, or real-money execution.
 - Post-commit document cross-check found two stale Implementation Plan header statements that still described Phase 5 as unauthorized. They were corrected within the same scoped payload before finalizing the commit; no product scope changed.
+
+## 2026-08-22 — Phase 5 committed and Phase 27 started
+
+- Created scoped commit `ac6df65 feat(strategy): add parameterized rolling strategies` with 20 Atomic Strategy files. Verified the payload excludes `.planning/.active_plan`, FinMind, live-trading, and odd-lot changes.
+- The user explicitly requested the next phase after the commit. Based on the previously stated highest priority, Phase 27 targets parameterized Local Paper support for the two approved rolling strategies before adding more backtest-only strategies.
+- Current live reconciliation shows one canonical `FeatureEngine` with fixed 2-minute fields and a Local Paper normalization boundary that only supports VWAP/previous-high. The next change must extend that existing owner with request-aware output, not add a separate Feature calculator.
+- Realtime path traced as `MomentumShadowRuntime FeatureEngine -> IntradayFeatureSnapshot -> RealtimeMomentumDashboardService serialization -> ContinuousPaperStrategyController -> AtomicPaper normalization`. Exact-set activation currently has no request-registration port, so this must be added before declaring Local Paper bindings.
+- Extracted the approved completed-1m rolling formulas into runtime-neutral `features/rolling.py`; the backtest state owner now delegates to it. This creates one shared formula/gap contract for Backtest and Local Paper without moving state into Simulation.
+- Refactor regression: Phase 5/Feature Request tests remain green at `15 passed`.
+- Gate G6 is `NOT PASSED`; no broker adapter, CA, trade subscription, Shioaji order call, or real-money capability is authorized.
+
+## 2026-08-22 — Phase 27 implementation candidate ready
+
+- Added request-aware rolling return and volume acceleration to the existing live `FeatureEngine`/Tick-to-1m-bar path, with bounded completed-bar retention and shared completed-Kbar formulas.
+- Added exact request/specification/implementation/state-key evidence through Dashboard serialization and per-member Atomic Local Paper normalization.
+- Enabled `LOCAL_PAPER_TICK_BIDASK` only for the two G5 rolling strategies; exact identity drift and volume gaps fail closed.
+- Preserved pre-G6 rolling Versions for Backtest replay through an explicit backtest-only digest compatibility rule; old Versions remain ineligible for Local Paper until republished with the current Template.
+- Verification completed: focused no-DSN `95 passed, 8 skipped`; full no-DSN `1203 passed, 22 skipped`; full disposable PostgreSQL 17 `1225 passed`; compilation and whitespace checks passed.
+- Stopped and removed both disposable G6 PostgreSQL clusters; no development or production database was accessed.
+- **Status:** Gate G6 implementation candidate ready for independent Review. Gate G6 remains `NOT PASSED`; no next strategy batch or broker/real-money work is authorized.
+
+## 2026-08-22 — Gate G6 approved
+
+- Independent Review returned `APPROVE`; Gate G6 is `PASSED / MVP CONDITIONAL GO` and Parameterized Local Paper is approved.
+- Updated the Implementation Plan and README to list all four Local Paper ENTRY strategies and to require a daily Dashboard restart until cross-day hot rollover exists.
+- Recorded reviewer evidence: focused `86 passed, 8 skipped`, Backtest slice `3 passed`, full no-DSN `1203 passed, 22 skipped`, and `git diff --check` passed. Candidate disposable PostgreSQL evidence remains `1225 passed`.
+- The first market-hours real-feed smoke remains an operational task. No broker, CA, trade subscription, Shioaji order, or real-money capability was authorized or added.

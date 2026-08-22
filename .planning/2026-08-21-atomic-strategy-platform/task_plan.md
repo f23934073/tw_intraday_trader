@@ -6,7 +6,7 @@ Produce a repository-grounded, implementation-ready plan for a PostgreSQL-only, 
 
 ## Current Phase
 
-Phase 26 complete; Phase 5 first slice approved; Gate G5 PASSED / MVP SCOPED GO
+Phase 27 parameterized Local Paper Tick approved; Gate G6 PASSED / MVP CONDITIONAL GO
 
 ## Implementation Gate
 
@@ -24,7 +24,8 @@ Gate rules:
 
 - Contract Gate G0 and implementation Gates G1/G2 are passed. Gate G3 is `PASSED / MVP CONDITIONAL GO` under the frozen single-user/manual-review constraints recorded in Phase 20.
 - Closed blockers are not reopened without new contradictory evidence.
-- Gate G4 is `PASSED / MVP CONDITIONAL GO`; Phase 5 first slice is `APPROVED` and Gate G5 is `PASSED / MVP SCOPED GO`. This approval does not include later strategy batches, a parameterized Local Paper Tick adapter, Shioaji/broker orders, CA, trade subscription, or real-money execution.
+- Gate G4 is `PASSED / MVP CONDITIONAL GO`; Phase 5 first slice is `APPROVED` and Gate G5 is `PASSED / MVP SCOPED GO`.
+- Gate G6 is `PASSED / MVP CONDITIONAL GO`; Parameterized Local Paper is approved for the four registered ENTRY strategies. Dashboard/Momentum runtime has no cross-day hot rollover, so the single-user MVP must restart Dashboard once per trading day. Broker transport, CA, trade subscription, Shioaji orders, and real-money execution remain prohibited.
 
 ## Phases
 
@@ -306,6 +307,19 @@ Gate rules:
 - [x] Run focused/full/static verification, update Gate evidence, and submit the candidate for a short G5 re-review; do not begin the next strategy batch.
 - **Status:** complete — independent Review approved Gate G5 / MVP SCOPED GO; later strategies and broker/real-money execution are not part of this Gate
 
+### Phase 27: Parameterized Local Paper Tick features
+
+- [x] Commit the approved Phase 5 first slice without `.planning/.active_plan`, FinMind, live-trading, or odd-lot changes.
+- [x] Record current completion: the Phase 5 slice is complete, while the two rolling strategies remain backtest-only until a real parameterized Local Paper adapter exists.
+- [x] Reconcile exact-version Feature Requests with the existing canonical FeatureEngine/Tick store and Local Paper projection; do not introduce a third market-data or rolling-state pipeline.
+- [x] Define request-aware Local Paper Feature contracts, runtime identities, session reset, exact completed-Kbar anchors, freshness, and volume-gap semantics matching the approved specifications.
+- [x] Activate only the exact Feature Requests required by the selected PAPER_APPROVED Strategy Set and bind them into the activation snapshot/evidence.
+- [x] Add Local Paper runtime bindings for rolling return and volume acceleration only after real request-aware values are available; unsupported/drifted requests must fail closed.
+- [x] Add golden tests for 2m/3m separation, session reset, freshness, volume middle-gap rejection, activation replay, and exact-set composition.
+- [x] Run focused/full/PostgreSQL-when-relevant/static verification and submit a Gate G6 candidate; do not add another strategy batch or broker execution.
+- [x] Record independent Review approval, document the daily Dashboard restart limitation, and update the Local Paper strategy list to all four ENTRY strategies.
+- **Status:** complete — Gate G6 PASSED / MVP CONDITIONAL GO; Parameterized Local Paper approved, broker/real-money execution prohibited
+
 ## Decisions Made
 
 | Decision | Rationale |
@@ -409,6 +423,7 @@ Gate rules:
 | Phase 4 registry inspection requested non-existent `strategy_catalog/registry.py` | 1 | No file changed; the executable allowlist owner is `atomic_strategies/registry.py`, while catalog metadata lives in `strategy_catalog/drafts.py` and the PostgreSQL repository. |
 | Phase 4 source search assumed a top-level `momentum/` package | 1 | No file changed; the live Momentum projection and canonical FeatureEngine integration are owned by `dashboard/momentum.py`. |
 | Initial Phase 5 inspection requested non-existent `atomic_strategies/contracts.py` and top-level strategy modules | 1 | No file changed; corrected the inspection to `atomic_strategies/protocol.py` and `atomic_strategies/entries/*.py`. |
+| Combined G6 documentation patch targeted README twice, which `apply_patch` rejected | 1 | No file changed; split the documentation update so each file is targeted once. |
 
 ## Non-goals
 

@@ -36,11 +36,21 @@ class IntradayBar:
 class IntradayBarStore:
     """Apply monotonic common-lot ticks without double-counting volume."""
 
-    def __init__(self, session_date: date, *, retention: timedelta) -> None:
+    def __init__(
+        self,
+        session_date: date,
+        *,
+        retention: timedelta,
+        bar_retention: timedelta | None = None,
+    ) -> None:
         if retention < timedelta(minutes=20):
             raise ValueError("intraday retention must be at least 20 minutes")
+        resolved_bar_retention = bar_retention or retention
+        if resolved_bar_retention < retention:
+            raise ValueError("bar retention cannot be shorter than Tick retention")
         self._session_date = session_date
         self._retention = retention
+        self._bar_retention = resolved_bar_retention
         self._bars: dict[tuple[str, datetime], IntradayBar] = {}
         self._ticks: dict[str, list[TickEvent]] = {}
         self._seen_event_ids: set[str] = set()
@@ -242,7 +252,8 @@ class IntradayBarStore:
                 self._ticks[symbol] = kept
             else:
                 self._ticks.pop(symbol, None)
-        cutoff_minute = cutoff.replace(second=0, microsecond=0)
+        bar_cutoff = latest_event_time - self._bar_retention
+        cutoff_minute = bar_cutoff.replace(second=0, microsecond=0)
         self._bars = {
             key: bar
             for key, bar in self._bars.items()

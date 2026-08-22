@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any, Mapping
 
 from market_data.health import DataHealthSnapshot, DataHealthState
 
@@ -45,6 +46,35 @@ class FeatureValue:
     @property
     def is_valid(self) -> bool:
         return self.status is FeatureStatus.VALID
+
+
+@dataclass(frozen=True)
+class RequestedFeatureProjection:
+    feature_id: str
+    adapter_identity: str
+    request_digest: str
+    parameter_digest: str
+    specification_digest: str
+    implementation_digest: str
+    parameters: Mapping[str, Any]
+    state_key: str
+    value: FeatureValue
+    evidence: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for raw, field_name in (
+            (self.feature_id, "feature_id"),
+            (self.adapter_identity, "adapter_identity"),
+            (self.request_digest, "request_digest"),
+            (self.parameter_digest, "parameter_digest"),
+            (self.specification_digest, "specification_digest"),
+            (self.implementation_digest, "implementation_digest"),
+            (self.state_key, "state_key"),
+        ):
+            if not raw.strip():
+                raise ValueError(f"{field_name} must not be empty")
+        object.__setattr__(self, "parameters", dict(self.parameters))
+        object.__setattr__(self, "evidence", dict(self.evidence))
 
 
 @dataclass(frozen=True)

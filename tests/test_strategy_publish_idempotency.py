@@ -245,7 +245,10 @@ def test_phase5_templates_sync_to_postgresql_with_parameter_bindings(
     assert rolling[1][0]["parameter_bindings"] == {
         "window_minutes": "window_minutes"
     }
-    assert set(rolling[2]) == {"BACKTEST_KBAR_1M"}
+    assert set(rolling[2]) == {
+        "BACKTEST_KBAR_1M",
+        "LOCAL_PAPER_TICK_BIDASK",
+    }
 
 
 def test_first_publish_replays_and_seals_draft_in_one_postgresql_transaction(
