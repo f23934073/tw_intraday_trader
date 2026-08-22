@@ -6,6 +6,9 @@ import pytest
 
 from atomic_strategies.entries.above_vwap import AboveVwapEntryStrategy
 from atomic_strategies.entries.ema_crossover import EmaCrossoverEntryStrategy
+from atomic_strategies.entries.bollinger_lower_reentry import (
+    BollingerLowerReentryEntryStrategy,
+)
 from atomic_strategies.entries.rolling_return import RollingReturnEntryStrategy
 from atomic_strategies.entries.opening_range_breakout import (
     OpeningRangeBreakoutEntryStrategy,
@@ -194,4 +197,26 @@ def test_rsi_feature_specification_freezes_wilder_session_prefix() -> None:
     )
     assert specification.warmup_semantics == (
         "RSI_PERIOD_PLUS_ONE_CONTIGUOUS_BARS_FROM_09_00"
+    )
+
+
+def test_bollinger_specification_freezes_reentry_and_session_prefix() -> None:
+    requests = resolve_feature_requests(
+        BollingerLowerReentryEntryStrategy.template,
+        {"bollinger_period": 10, "stddev_multiplier": "1.5"},
+    )
+    registry = FeatureSpecificationRegistry()
+    registry.validate_requests(requests)
+    specification = registry.get("bollinger_lower_reentry_v1")
+
+    assert requests[0].parameters == {
+        "bollinger_period": 10,
+        "stddev_multiplier": "1.5",
+    }
+    assert specification.unit == "BOOLEAN"
+    assert specification.as_of_semantics == (
+        "PREVIOUS_AND_CURRENT_COMPLETED_CLOSE_AGAINST_OWN_LOWER_BAND"
+    )
+    assert specification.warmup_semantics == (
+        "BOLLINGER_PERIOD_PLUS_ONE_CONTIGUOUS_BARS_FROM_09_00"
     )

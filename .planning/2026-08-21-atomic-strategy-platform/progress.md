@@ -427,3 +427,23 @@
 - Independent Review returned `APPROVE`; Gate G9 is `PASSED / MVP SCOPED GO` and RSI implementation is approved.
 - Reviewer verification: RSI focused `45 passed`, full no-DSN `1233 passed, 22 skipped`, Python compilation, and `git diff --check` passed. PostgreSQL was correctly not rerun for this non-persistence slice.
 - Scoped commit preparation continues to exclude `.planning/.active_plan`, FinMind, live-trading, and odd-lot changes. No push, Bollinger, Exit, broker, or real-money action is included in the G9 approval.
+
+## 2026-08-22 — G9 committed and Phase 31 started
+
+- Created scoped commit `cbbf0ed feat(strategy): add atomic RSI oversold`; it was not pushed and unrelated worktree changes remain untouched.
+- Completion report: all seven currently approved ENTRY strategies are complete for their Backtest/Local Paper scope. Remaining roadmap items are additional independent strategies, independent Exit strategies, market-hours smoke, Dashboard cross-day rollover, and data contracts for distance-to-limit/external-ratio; broker/real-money remains prohibited.
+- Selected `bollinger_lower_reentry_entry` as the eighth Atomic ENTRY strategy. It remains independent from RSI and receives its own immutable parameters, Feature identity, evidence, and Gate G10 review.
+- Gate G10 remains `NOT PASSED` until implementation, regression evidence, and independent Review are complete.
+- Added the Phase 31 golden suite before product code. Initial collection failed with the expected missing `atomic_strategies.entries.bollinger_lower_reentry` module, proving the new atomic condition was not accidentally satisfied by the legacy combined RSI/Bollinger strategy.
+- Implemented the independent Bollinger Template/kernel, one population-variance session-prefix formula, Feature Specification, both request adapters, Local Paper admission, Registry, and Web allowlist.
+- Core Bollinger/Web tests are green at `27 passed`; exact kernel boolean validation and exact Local Paper period/multiplier normalization expanded the focused scope to `48 passed`.
+- Cross-strategy focused regression is green at `83 passed`. Full no-DSN regression is green at `1246 passed, 22 skipped`.
+- Python compilation and `git diff --check` pass. No PostgreSQL schema/repository contract changed, so no new PostgreSQL integration claim is made.
+- **Status:** Phase 31 Bollinger implementation candidate complete; Gate G10 remains `NOT PASSED` pending independent Review. No Exit, broker, CA, trade subscription, Shioaji order, or real-money capability was added.
+
+## 2026-08-22 — Gate G10 approved
+
+- Independent Review returned `APPROVE`; Gate G10 is `PASSED / MVP SCOPED GO` and Bollinger implementation is approved.
+- Reviewer verification: Bollinger focused `49 passed`, full no-DSN `1246 passed, 22 skipped`, Python compilation, and `git diff --check` passed. PostgreSQL was correctly not rerun for this non-persistence slice.
+- Added `BollingerReentryFeatureValue` to the FeatureEngine result type union as a commit-time non-runtime repair requested by Review.
+- Scoped commit preparation continues to exclude `.planning/.active_plan`, FinMind, live-trading, and odd-lot changes. No push, Exit, broker, or real-money action is included in the G10 approval.

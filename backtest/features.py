@@ -10,6 +10,10 @@ from typing import Any, Mapping
 
 from backtest.domain import HistoricalBar, digest
 from backtest.indicators import bollinger_bands, rsi_from_averages, true_range
+from features.bollinger import (
+    BOLLINGER_SESSION_BAR_CAPACITY,
+    evaluate_bollinger_lower_reentry,
+)
 from features.ema import EMA_SESSION_BAR_CAPACITY, evaluate_ema_cross_up
 from features.rolling import evaluate_completed_bars, required_bar_capacity
 from features.opening_range import (
@@ -130,6 +134,11 @@ class CompletedKbarFeatureState:
             feature = evaluate_ema_cross_up(parameters, tuple(series.bars))
         elif feature_id == "wilder_rsi_v1":
             feature = evaluate_wilder_rsi(parameters, tuple(series.bars))
+        elif feature_id == "bollinger_lower_reentry_v1":
+            feature = evaluate_bollinger_lower_reentry(
+                parameters,
+                tuple(series.bars),
+            )
         else:
             feature = evaluate_completed_bars(
                 feature_id,
@@ -151,6 +160,8 @@ class CompletedKbarFeatureState:
             return EMA_SESSION_BAR_CAPACITY
         if feature_id == "wilder_rsi_v1":
             return RSI_SESSION_BAR_CAPACITY
+        if feature_id == "bollinger_lower_reentry_v1":
+            return BOLLINGER_SESSION_BAR_CAPACITY
         return required_bar_capacity(feature_id, parameters)
 
 

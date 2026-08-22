@@ -6,7 +6,7 @@
 
 ### 1.1 實作前 Review Gate
 
-**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4/G6 均核准為 `PASSED / MVP CONDITIONAL GO`；Gates G5/G7/G8/G9 為 `PASSED / MVP SCOPED GO`。** B1–B5 契約維持 `REVIEWED / CLOSED`。所有 MVP Gate 只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper／Backtest scope；券商委託與真實交易仍不得開始：
+**目前決策：契約層級 APPROVE / GO；實作 Gates G1/G2 已 PASSED；Gates G3/G4/G6 均核准為 `PASSED / MVP CONDITIONAL GO`；Gates G5/G7/G8/G9/G10 為 `PASSED / MVP SCOPED GO`。** B1–B5 契約維持 `REVIEWED / CLOSED`。所有 MVP Gate 只適用於單機、loopback、single-user、trusted PostgreSQL 的 Local Paper／Backtest scope；券商委託與真實交易仍不得開始：
 
 | ID | Blocking contract | 本文件的處理方向 | Gate 狀態 |
 |---|---|---|---|
@@ -910,6 +910,17 @@ Gate G8：**PASSED / MVP SCOPED GO**。EMA implementation 已核准。候選驗�
 - Bollinger lower-band re-entry 延後為獨立 Atomic Strategy，之後才能透過 Strategy Set 與 RSI 自由組合及分別比較回測效果。
 
 Gate G9：**PASSED / MVP SCOPED GO**。RSI implementation 已核准。候選驗證為 focused `72 passed`、full no-DSN `1233 passed, 22 skipped`、Python compilation 與 `git diff --check` 通過；獨立 Reviewer 另驗證 RSI focused `45 passed`、full no-DSN `1233 passed, 22 skipped`、Python compilation 與 `git diff --check`。本批沒有 migration/repository contract 變更，因此沒有新增 PostgreSQL integration evidence。RSI 專屬跨 session state-count 與非有限／超出 0–100 evidence 的 fail-closed regression 列為非阻擋 hardening。此核准不含 Bollinger、Exit、distance-to-limit、external-ratio、broker、CA、trade subscription、Shioaji 委託、real-money execution 或 push。
+
+### Phase 10 — Atomic Bollinger Lower-Band Re-entry Strategy（Completed）
+
+- 此切片只新增 `bollinger_lower_reentry_entry`；RSI 超賣維持獨立 Strategy Version，兩者只能透過 exact Strategy Set 選擇性組合。
+- Web／PostgreSQL immutable Version 保存 `bollinger_period`、`stddev_multiplier`、最早／最晚進場時間，並解析成 exact `bollinger_lower_reentry_v1` Feature Request。
+- Bollinger Bands 使用 completed 1-minute closes 的 population variance。只有 previous close 嚴格低於 previous lower band，且 current close 大於或等於 current lower band 的跨越事件才觸發；持續位於同一側不得重複觸發。
+- Feature 需 `bollinger_period + 1` 根從 09:00 起連續完整的一分鐘 Kbar，以重建 previous/current bands；暖機不足或 session prefix 中間缺分鐘一律 fail closed。
+- Backtest 與 Local Paper 共用一個 runtime-neutral 公式，並沿用既有 request-aware owners；Simulation 只驗證與消費 boolean projection，不建立第二套 Bollinger calculator 或第三套行情 pipeline。
+- Evidence 保存 previous/current close、middle/upper/lower bands、period 與 multiplier；request、parameters、Specification、implementation、adapter、cadence、session identity 漂移一律 fail closed。
+
+Gate G10：**PASSED / MVP SCOPED GO**。Bollinger implementation 已核准。候選驗證為 focused `83 passed`、full no-DSN `1246 passed, 22 skipped`、Python compilation 與 `git diff --check` 通過；獨立 Reviewer 另驗證 Bollinger focused `49 passed`、full no-DSN `1246 passed, 22 skipped`、Python compilation 與 `git diff --check`。Commit 前已把 `BollingerReentryFeatureValue` 補入 FeatureEngine result type union；此項只修正型別契約，不改 runtime 行為或 Feature identity。本批沒有 migration/repository contract 變更，因此沒有新增 PostgreSQL integration evidence。此核准不含 Exit、distance-to-limit、external-ratio、broker、CA、trade subscription、Shioaji 委託、real-money execution 或 push。
 
 ## 19. Test Matrix
 

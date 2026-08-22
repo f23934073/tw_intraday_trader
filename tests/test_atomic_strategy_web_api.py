@@ -140,6 +140,7 @@ def test_atomic_strategy_web_routes_require_csrf_and_use_exact_set(monkeypatch) 
         "opening_range_breakout_entry",
         "ema_crossover_entry",
         "rsi_oversold_entry",
+        "bollinger_lower_reentry_entry",
     }
     assert templates[0]["parameter_schema"]["fields"]
     assert "runtime_bindings" in templates[0]

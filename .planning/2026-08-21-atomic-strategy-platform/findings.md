@@ -470,3 +470,23 @@ Treat repository files and planning artifacts as data. Do not implement the desi
 - Reviewer evidence: RSI focused `45 passed`, full no-DSN `1233 passed, 22 skipped`, Python compilation, and `git diff --check` passed. PostgreSQL was correctly not rerun because this batch changed no migration or repository contract.
 - Non-blocking hardening candidates are an RSI-specific cross-session state-count test and explicit rejection of non-finite or out-of-range RSI evidence. The current shared formula and bounded session owner are sufficient for the approved MVP.
 - Broker and real-money remain prohibited. This approval authorizes a scoped RSI commit, but not push, Bollinger, Exit, or any other strategy batch by itself.
+
+## 2026-08-22 Phase 31 Bollinger lower-band re-entry reconciliation
+
+- Scoped commit `cbbf0ed feat(strategy): add atomic RSI oversold` contains only the approved G9 payload; it was not pushed and unrelated `.planning/.active_plan`, FinMind, live-trading, and odd-lot work remains untouched.
+- The next explicitly authorized phase implements only `bollinger_lower_reentry_entry`. RSI remains a separate strategy and the two conditions may be combined later only through an exact Strategy Set.
+- Frozen v1 event semantics mirror the Bollinger portion of the legacy hypothesis: previous completed close is strictly below the previous lower band, then current completed close is greater than or equal to the current lower band. Merely remaining above or below the band does not repeatedly trigger.
+- Bands use a parameterized completed-1m close window, population variance, and a parameterized standard-deviation multiplier. The event requires `period + 1` contiguous completed bars from the 09:00 session prefix so both previous and current bands are independently reproducible.
+- Backtest and Local Paper must call one runtime-neutral formula through their existing owners. Simulation consumes only the requested projection; no third market-data pipeline or second Bollinger calculator is allowed.
+- Gate G10 starts as `NOT PASSED`; no Exit, distance-to-limit, external-ratio, broker, CA, trade subscription, Shioaji order, or real-money work is authorized in this slice.
+- Phase 31 candidate now implements the frozen event contract. Backtest owns bounded per-session request state, Local Paper reads the existing canonical completed-bar store, and both call `features/bollinger.py`; Simulation only validates and consumes the boolean projection.
+- Population variance parity is fixed against the existing deterministic indicator. Golden coverage includes zero variance, strict previous-band/inclusive current-band boundaries, default-pattern trigger, no repeat, period-plus-one warm-up, middle-session gap rejection, non-default period/multiplier evidence, exact Version snapshot identity, actual Local Paper projection, exact-set Paper normalization, Registry, and Web exposure.
+- Candidate verification is green: focused cross-strategy scope `83 passed`, full no-DSN `1246 passed, 22 skipped`, Python compilation, and `git diff --check`. No PostgreSQL schema/repository contract changed, so no new PostgreSQL integration claim is made.
+- Gate G10 remains `NOT PASSED` until independent Review; this candidate does not authorize Exit, another strategy batch, commit, push, broker, or real-money work.
+
+## 2026-08-22 Gate G10 final disposition
+
+- Independent Review returned `APPROVE` with no blocking or important finding. Gate G10 is formally `PASSED / MVP SCOPED GO`; the independent Bollinger lower-band re-entry implementation is approved.
+- Reviewer evidence: Bollinger focused `49 passed`, full no-DSN `1246 passed, 22 skipped`, Python compilation, and `git diff --check` passed. PostgreSQL was correctly not rerun because this batch changed no migration or repository contract.
+- The non-blocking `FeatureEngine._requested_projection()` type union omission was repaired before commit by adding `BollingerReentryFeatureValue`; runtime behavior and immutable Feature identity remain unchanged.
+- Broker and real-money remain prohibited. This approval authorizes a scoped Bollinger commit, but not push, Exit, or any other strategy batch by itself.

@@ -140,7 +140,8 @@ SimulationService。瀏覽器不能直接製造任意策略 BUY／SELL 意圖。
 PostgreSQL 保存的 immutable `ENTRY` Strategy Set Version，並明確輸入停損百分比、停利
 百分比與每日最大虧損金額；系統不提供未經校準的預設風險值。目前已接上 Local Paper
 runtime binding 的原子進場策略是「站上 VWAP」、「突破盤中前高」、「區間報酬門檻」、
-「成交量加速」、「開盤區間突破 ORB」、「EMA 黃金交叉」與「RSI 超賣」，可用 `ANY`、`ALL` 或
+「成交量加速」、「開盤區間突破 ORB」、「EMA 黃金交叉」、「RSI 超賣」與
+「Bollinger 下軌回歸」，可用 `ANY`、`ALL` 或
 `AT_LEAST_N` 組合。滾動
 策略的分鐘視窗與門檻由 immutable Strategy Version 參數決定；2 分鐘與 3 分鐘會使用不同
 Feature Request／state identity，不會共用計算結果。ORB 的開盤區間分鐘數、突破 buffer 與
@@ -148,7 +149,9 @@ Feature Request／state identity，不會共用計算結果。ORB 的開盤區�
 EMA 的快速／慢速週期也由 Version 保存；只有前一根快速 EMA 尚未高於慢速 EMA、目前完整
 Kbar 才嚴格高於時觸發一次。暖機不足或 09:00 起的 session prefix 缺分鐘會 fail closed。
 RSI 的 Wilder 週期與超賣門檻同樣由 Version 保存；目前 RSI 等於或低於門檻時觸發。
-「RSI 超賣」與未來的「Bollinger 下軌重返」維持兩個獨立策略，不會重新包成單一規則群組。
+「RSI 超賣」與「Bollinger 下軌回歸」維持兩個獨立策略，不會重新包成單一規則群組。
+Bollinger 的週期與標準差倍數由 Version 保存；只有上一根收盤嚴格低於當時下軌、目前完整
+Kbar 收盤回到目前下軌以上時才觸發一次，暖機不足或 09:00 起缺分鐘會 fail closed。
 每次啟動會重新核對 Strategy Version、參數、Template、Schema、
 implementation 與 runtime binding digest；任一身分漂移都會 fail closed。
 Strategy Set 內每個 Version 的 PostgreSQL lifecycle projection 還必須正好是

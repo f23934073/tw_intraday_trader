@@ -357,6 +357,43 @@ class FeatureSpecificationRegistry:
                     },
                 ),
             ),
+            FeatureSpecification(
+                feature_id="bollinger_lower_reentry_v1",
+                unit="BOOLEAN",
+                cadence="COMPLETED_KBAR_1M",
+                completed_data_only=True,
+                session_reset=True,
+                warmup_bars=21,
+                missing_semantics=(
+                    "INSUFFICIENT_DATA_UNLESS_CONTIGUOUS_SESSION_OPEN_PREFIX"
+                ),
+                as_of_semantics=(
+                    "PREVIOUS_AND_CURRENT_COMPLETED_CLOSE_AGAINST_OWN_LOWER_BAND"
+                ),
+                implementation_digest=hashlib.sha256(
+                    b"completed-kbar-bollinger-lower-reentry-feature-implementation-v1"
+                ).hexdigest(),
+                warmup_semantics=(
+                    "BOLLINGER_PERIOD_PLUS_ONE_CONTIGUOUS_BARS_FROM_09_00"
+                ),
+                request_parameter_schema=ParameterSchema(
+                    version="bollinger-lower-reentry-feature-request-v1",
+                    fields={
+                        "bollinger_period": {
+                            "type": "integer",
+                            "minimum": 2,
+                            "maximum": 120,
+                            "default": 20,
+                        },
+                        "stddev_multiplier": {
+                            "type": "decimal",
+                            "minimum": "0.1",
+                            "maximum": "10",
+                            "default": "2",
+                        },
+                    },
+                ),
+            ),
         )
         self._specifications = {item.feature_id: item for item in specifications}
 

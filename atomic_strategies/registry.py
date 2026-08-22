@@ -6,6 +6,9 @@ from typing import Iterable
 
 from atomic_strategies.entries.above_vwap import AboveVwapEntryStrategy
 from atomic_strategies.entries.breakout_previous_high import BreakoutPreviousHighEntryStrategy
+from atomic_strategies.entries.bollinger_lower_reentry import (
+    BollingerLowerReentryEntryStrategy,
+)
 from atomic_strategies.entries.ema_crossover import EmaCrossoverEntryStrategy
 from atomic_strategies.entries.opening_range_breakout import (
     OpeningRangeBreakoutEntryStrategy,
@@ -30,6 +33,7 @@ class AtomicStrategyRegistry:
                 OpeningRangeBreakoutEntryStrategy(),
                 EmaCrossoverEntryStrategy(),
                 RsiOversoldEntryStrategy(),
+                BollingerLowerReentryEntryStrategy(),
             )
         )
         self._strategies = {item.template.strategy_id: item for item in items}

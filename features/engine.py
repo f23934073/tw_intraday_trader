@@ -14,6 +14,12 @@ from features.models import (
     IntradayFeatureSnapshot,
     RequestedFeatureProjection,
 )
+from features.bollinger import (
+    BOLLINGER_SESSION_BAR_CAPACITY,
+    BollingerBar,
+    BollingerReentryFeatureValue,
+    evaluate_bollinger_lower_reentry,
+)
 from features.ema import (
     EMA_SESSION_BAR_CAPACITY,
     EmaBar,
@@ -252,6 +258,19 @@ class FeatureEngine:
                     request.parameters,
                     bars,
                 )
+            elif request.feature_id == "bollinger_lower_reentry_v1":
+                capacity = BOLLINGER_SESSION_BAR_CAPACITY
+                bars = tuple(
+                    BollingerBar(
+                        timestamp=item.minute,
+                        close=item.close,
+                    )
+                    for item in source_bars[-capacity:]
+                )
+                result = evaluate_bollinger_lower_reentry(
+                    request.parameters,
+                    bars,
+                )
             else:
                 capacity = required_bar_capacity(
                     request.feature_id,
@@ -294,6 +313,7 @@ class FeatureEngine:
             | OpeningRangeFeatureValue
             | EmaCrossoverFeatureValue
             | RsiFeatureValue
+            | BollingerReentryFeatureValue
         ),
         source_as_of: datetime,
     ) -> RequestedFeatureProjection:

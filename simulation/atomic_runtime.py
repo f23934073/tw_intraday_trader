@@ -42,6 +42,7 @@ REQUESTED_PROJECTION_FEATURE_IDS = frozenset(
         "opening_range_high_v1",
         "ema_cross_up_v1",
         "wilder_rsi_v1",
+        "bollinger_lower_reentry_v1",
     }
 )
 
