@@ -524,6 +524,189 @@
     automated capture as requiring explicit user confirmation until the app
     automation service can be updated successfully.
 
+### Phase 13o: recurring trading-session scheduling (2026-08-22)
+
+- **Status:** in_progress
+- User authorized scheduling only the quote-evidence collection campaign.
+- Confirmed the existing close heartbeat is still active and its 13:00 trigger
+  cannot produce the required 13:30-boundary observation. The replacement
+  campaign will use the unchanged cohort/schema/quality gates, require an
+  explicit open-session check, and schedule opening, continuous, and
+  boundary-crossing close observations. It remains Tick/BidAsk-only with
+  `subscribe_trade=False`; broker/account collection and all Portfolio work
+  remain excluded.
+- The native automation service is unavailable (`No handler registered`), after
+  two prior pause attempts stalled. Repository inspection found the reviewed
+  `ReviewedEquityCalendar` and confirmed that the raw quote CLI does not
+  enforce cohort/calendar/window constraints. Next: add a small testable
+  runner that validates all of those constraints before loading the quote
+  capture path, then install a local scheduler only after verification.
+
+### Phase 13o: runner and launchd definition verified (2026-08-22)
+
+- Added `market_data/freshness_calibration_schedule.py` and the
+  `scripts/run_scheduled_quote_freshness.py` CLI. A reviewed-calendar decision
+  happens before manifest parsing, NTP, and any live-capture callable. The
+  runner permits only the frozen 2886/6863/1530 cohort, requires five
+  read-only NTP successes, and leaves a JSON outcome record for every run.
+- Added an exact macOS launchd definition with three starts: 09:15 opening,
+  10:00 continuous, and 13:15 close (20 minutes to observe the 13:30
+  boundary). It delegates to the runner, which remains the calendar gate.
+- Verification: `plutil -lint` passed; focused schedule/freshness/calendar
+  tests passed (`14 passed in 0.08s`); a 2026-08-22 Saturday CLI smoke wrote
+  `NO_CAPTURE_NON_TRADING_DAY` without running NTP or Shioaji; `git diff
+  --check` passed.
+- Next: copy/bootstrap the verified user-level LaunchAgent and inspect its
+  loaded state. This is the only remaining scheduling step; it does not
+  authorize broker/account evidence or Portfolio Phase 1.
+
+### Phase 13o: launchd installed and smoke-verified (2026-08-22)
+
+- Installed the verified plist at
+  `/Users/stevehuang-work/Library/LaunchAgents/com.stevehuang.tw-intraday-trader.freshness-calibration.plist`
+  and bootstrapped it as the current user. `launchctl print` confirms the
+  09:15, 10:00, and 13:15 calendar triggers, working directory, Taiwan time
+  zone, and one subsequently completed smoke run.
+- The manual smoke intentionally ran at 09:47 rather than a scheduled minute.
+  It wrote `NO_CAPTURE_OFF_SCHEDULE`, contained no NTP preflight field, and
+  did not initialize Shioaji. This validates the installed service follows the
+  same fail-closed runner. A separate CLI smoke already proved the scheduled
+  Saturday path returns `NO_CAPTURE_NON_TRADING_DAY` without provider work.
+- Phase 13o is complete. Future expected behavior is data-only artifacts on
+  reviewed trading days; every artifact still requires the existing quality
+  review. The Mac must remain logged in and awake around the configured times;
+  a late wake fails closed rather than backfilling a different market window.
+
+### Phase 13p: accelerated quote cadence (2026-08-22)
+
+- **Status:** in_progress
+- User requested an earlier completion path. The safe in-scope response is to
+  increase same-day quote observations only: add one opening and two
+  continuous 15-minute windows while preserving the frozen cohort, collector,
+  schema, and quality gates. Cross-date evidence, source-clock disposition,
+  broker/account evidence, threshold review, and Portfolio Phase 1 remain
+  unchanged gates.
+- Updated the runner and launchd definition, then verified `plutil -lint`,
+  focused evidence tests (`15 passed in 0.05s`), and `git diff --check`.
+  Rebootstrapped the same user-level LaunchAgent; `launchctl print` confirms
+  all six expected triggers. No quote capture was manually started and no
+  broker/account API was called.
+- **Status:** complete
+
+### Phase 13q: automated post-capture evidence QA (2026-08-22)
+
+- **Status:** in_progress
+- User authorized completing remaining in-scope work. The next slice reuses
+  existing immutable artifact inspection to emit per-capture quality summaries
+  and fail closed on a structurally invalid artifact. It is evidence tooling
+  only: thresholds remain unset, final review stays human-owned, and no
+  broker/account or Portfolio path is introduced.
+- Inspected the artifact schema and retained close evidence. The QA summary can
+  check all required structural dimensions from immutable fields: digest/schema,
+  per-symbol TIC/QUO acknowledgement, per-row lifecycle state, six-group
+  coverage, callback errors, monotonic regressions, and source-clock skew.
+- Initial QA tests exposed a stale hard-coded schema string in the new fixture;
+  no live capture ran. The fixture now imports the collector's schema constant
+  before verification is retried.
+- The first correction used the similarly named quote-parity schema rather than
+  the Freshness collector schema. Located the collector-owned constant and
+  corrected the fixture import; no artifact or live API call occurred.
+- QA verification passed (`17 passed in 0.09s`) and a Saturday scheduler smoke
+  again returned `NO_CAPTURE_NON_TRADING_DAY` without NTP or provider work.
+  Backfilled structural QA over all eight retained artifacts and published
+  `research/freshness_calibration/reviews/2026-08-22_post_capture_qa_backfill.md`.
+  Results agree with prior review and retain all thresholds as unset.
+- Added an immutable-byte recheck before summary generation and a regression
+  test that invalid evidence raises without rewriting the raw file. Final
+  verification passed: focused QA/schedule/freshness/calendar tests
+  `18 passed in 0.06s`; Saturday smoke remained `NO_CAPTURE_NON_TRADING_DAY`;
+  `git diff --check` passed. Phase 13q is complete.
+
+### Phase 13r: broker/account read-only evidence (2026-08-22)
+
+- **Status:** in_progress
+- The owner explicitly authorized read-only broker/account freshness evidence
+  and confirmed local Shioaji credentials exist. The approved boundary is
+  positions, accounting, and account/buying-power-like reads only; it excludes
+  submit, cancel, CA, trade callbacks, and action-like order refresh.
+- Started a separate evidence-only design rather than changing the existing
+  market-data provider or Portfolio surfaces. The artifact will be redacted
+  and integrity-checked; all thresholds remain unset.
+- An initial code-path audit found no current broker/account freshness adapter.
+  It also confirmed that a locally cached order list cannot establish broker
+  order freshness without the excluded provider refresh, so that evidence kind
+  will be retained as an explicit availability constraint.
+- The worktree contains broad unrelated product, dashboard, backtest, strategy,
+  and planning changes across 45 files. Phase 13r will create only its new
+  calibration module/script/tests/docs and will not reformat or absorb those
+  concurrent changes.
+- Restored the active Phase 13 evidence context for the one-time frozen close
+  heartbeat. The worktree remains broadly dirty and the heartbeat scope is
+  quote-only; this execution will neither use nor modify the new broker/account
+  collector, and it retains every threshold as unset.
+- Frozen close heartbeat disposition: host time was `2026-08-22 13:01 +08:00
+  Sat`, so the reviewed calendar requires `NO_CAPTURE`. Completed the required
+  five read-only NTP samples (each selected a valid source; +0.405 to +0.407
+  ms offset) but did not initialize Shioaji or enter any quote/account/order/CA
+  path. Published
+  `research/freshness_calibration/reviews/2026-08-22_1301_close_no_capture_review.md`;
+  no quote artifact exists and all artifact-quality checks are N/A rather than
+  treated as pass.
+- Inspected the installed Shioaji 1.7.2 method signatures without logging in.
+  The synchronous, callback-free read signatures are available for positions,
+  profit/loss, and account balance; `update_status` exists but remains
+  explicitly out of scope because it refreshes order state. The configured
+  `SJ_SIMULATION` runtime value must be captured as an environment label rather
+  than guessed from existing quote artifacts.
+- Reconfirmed the quote collector's evidence conventions: immutable exclusive
+  JSON creation, a SHA-256 inspector, timezone-aware receipt timestamps, and
+  explicit limitations. Phase 13r will use the same integrity/redaction shape
+  in a separate module rather than extend the quote schema with account data.
+- Added the separate broker/account collector, CLI, capture contract, and
+  isolated fakes. Focused verification passed: `22 passed in 0.09s` across the
+  new capture and existing quote/calendar evidence tests; Python compilation
+  and scoped `git diff --check` also passed. No Shioaji login or broker/account
+  endpoint was called during this verification.
+- Corrected the CA-required classification so a provider rejection is retained
+  as `CA_REQUIRED_BUT_PROHIBITED` rather than being overwritten by the separate
+  buying-power limitation. Focused tests still pass (`22 passed in 0.08s`).
+- First Saturday CLI smoke failed before SDK import/login because it referenced
+  a non-existent calendar constructor. No provider call, credentials, or
+  account data was involved; the exact failure is logged in `task_plan.md` and
+  needs the established calendar-loading path before a different retry.
+- Reused the established `ReviewedEquityCalendar.from_path(...)` construction
+  and reran the smoke. It returned `NO_CAPTURE_NON_TRADING_DAY` at
+  2026-08-22 10:21 +08:00 with `provider_called=false`; focused tests still
+  passed (`22 passed in 0.07s`). This proves the collector fails closed before
+  importing Shioaji or reading credentials on a closed date.
+- Reviewed the existing local quote launchd shape. Phase 13r will use a
+  separate user-level job and a calendar/time-gated wrapper, so a late wake or
+  manual off-window invocation cannot silently become an unlabelled broker
+  evidence sample. The accelerated plan is five short, non-overlapping
+  observations per reviewed trading day: 09:35, 10:30, 11:30, 12:30, and 13:20
+  Asia/Taipei. Each sample has three endpoint calls and one explicit orders
+  gap; it stays far below the documented burst limit because calls are spaced
+  through the session.
+- Added the separate broker/account scheduler, scheduled runner, five-window
+  launchd template, contract/README update, and fail-closed schedule tests.
+  Verification passed: `24 passed in 0.09s`, Python compilation, plist syntax,
+  and scoped whitespace validation. A Saturday 09:35 scheduled smoke wrote a
+  `NO_CAPTURE_NON_TRADING_DAY` run record with `provider_called=false`; it did
+  not import Shioaji or read credentials.
+- Installed `/Users/stevehuang-work/Library/LaunchAgents/com.stevehuang.tw-intraday-trader.broker-account-freshness.plist`
+  as the separate user-level service
+  `com.stevehuang.tw-intraday-trader.broker-account-freshness`. `launchctl`
+  confirms all five exact calendar triggers, the repository working directory,
+  and the bounded runner command. It has `runs=0` and remains inactive until a
+  future trigger; installation itself made no Shioaji login, account read,
+  callback, CA, order, or cancellation call.
+- Rechecked the capture choices against the current primary Shioaji accounting
+  and order-status documentation. It confirms that positions/profit-loss reads
+  support synchronous no-callback calls and that fresh `Trade` status requires
+  the intentionally excluded `update_status`. `account_balance` reports a
+  settlement-account balance and a provider query-time field, not a documented
+  buying-power authority.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |

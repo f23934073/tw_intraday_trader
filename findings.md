@@ -10,6 +10,80 @@
 - Quote latency and broker/account freshness are separate datasets and analyses. Neither may be inferred from the other.
 - Thresholds remain unset unless immutable captured evidence and data-quality review support them.
 
+## 2026-08-22 — Frozen close-window execution
+
+- The active heartbeat authorizes one bounded quote-only close capture for the
+  pre-frozen cohort `2886:high`, `6863:mid`, `1530:low`. It explicitly excludes
+  broker/account APIs, order APIs, CA, trade callbacks, all execution, and
+  Portfolio Phase 1.
+- This close observation must remain a separate immutable artifact and review.
+  It may improve session-boundary evidence but cannot itself freeze a threshold
+  or change `FreshnessPolicyV1=BLOCKING_EVIDENCE`.
+- The host time at the requested window was `2026-08-22 13:01 +08:00 Sat`, a
+  reviewed non-trading day. Five read-only NTP samples selected successfully
+  (offsets approximately +0.405 to +0.407 ms), but that provenance cannot
+  override the closed-date gate. The run is recorded as `NO_CAPTURE`; no SDK
+  login, quote subscription, broker/account API, order API, CA, or Portfolio
+  work occurred.
+
+## 2026-08-22 — Broker/account read-only evidence authorization
+
+- The owner has now explicitly authorized a strictly read-only broker/account
+  evidence campaign and confirms that local Shioaji credentials are present.
+  This changes only the source-access gate; it does not unblock Portfolio
+  Phase 1 or permit a broker-order integration.
+- The capture must record one distinct, redacted observation per `POSITIONS`,
+  `ORDERS`, `ACCOUNTING`, and `BUYING_POWER` evidence kind. Required metadata
+  remains request start, response receipt, provider `source_as_of_at` when
+  actually supplied, local projection update, outcome, and a sanitized error
+  class. It must not persist credentials, account identifiers, individual
+  positions, balances, PnL, or order details.
+- The local code search confirms the quote path is deliberately
+  `subscribe_trade=False` and there is no dedicated broker-account evidence
+  adapter yet. A capture must therefore be built as a separate calibration
+  artifact, not by reaching through the existing quote provider or changing a
+  product route.
+- Fresh broker-order state normally requires a provider-side order refresh;
+  that action-like call is excluded from this authorization. A local cached
+  order list is not acceptable evidence for broker order freshness, so the
+  initial campaign must record orders as an explicit constrained gap rather
+  than fabricate an observation or infer a threshold.
+- Local SDK inspection identifies Shioaji `1.7.2` and verifies the safe call
+  signatures needed for the capture: `login(..., subscribe_trade=False)`,
+  `list_accounts()`, `list_positions(...)`, `list_profit_loss(...)`, and
+  `account_balance(...)`. Each read method exposes an optional callback, which
+  the collector must leave unset; the collector will time the synchronous
+  response path only. `update_status(...)` is intentionally excluded because
+  it is an action-like order refresh, even though it has no order-placement
+  signature.
+- Existing configuration uses `SJ_SIMULATION=true` by default but permits a
+  real-data source through `SJ_SIMULATION=false`. The new artifact must report
+  that runtime environment as a non-sensitive metadata value and cannot claim
+  simulation merely because the quote path did so in another run.
+- A separate `broker_account_freshness_v1` artifact implementation now exists
+  with exclusive creation and SHA-256 inspection. It records only endpoint
+  shape/count, timing, explicit-as-of availability, guarded outcome, and
+  capability disposition. Focused collector/quote/calendar tests passed
+  (`22 passed in 0.09s`) without an SDK login or account API call.
+- The broker/account campaign now has five reviewed daily windows (09:35,
+  10:30, 11:30, 12:30, 13:20 Asia/Taipei) behind a calendar/time gate that
+  runs before dotenv, SDK import, or provider construction. The Saturday
+  schedule smoke produced a no-capture record with `provider_called=false`;
+  all 24 focused collector/scheduler/quote/calendar tests passed.
+- The corresponding launchd service is installed as
+  `com.stevehuang.tw-intraday-trader.broker-account-freshness` and was verified
+  to contain exactly those five calendar triggers. It is a separate process
+  from the quote collector; `runs=0` immediately after installation confirms
+  no broker/account observation has yet been collected.
+- Revalidated the source boundary against current official Shioaji docs:
+  `list_positions` and `list_profit_loss` are synchronous read APIs when no
+  callback is supplied, while `account_balance` is a stock settlement-account
+  balance endpoint with provider `date` described as query time. The latter is
+  intentionally not promoted to buying-power authority. The official order
+  docs require `update_status` before a cached `Trade` status is fresh, so the
+  current `ORDERS` constrained gap is a source-supported consequence of the
+  no-update-status/no-callback authorization, not a missing implementation.
+
 ### Initial decisions
 
 | Decision | Rationale |
@@ -449,6 +523,91 @@
 - Official Shioaji repository: https://github.com/Sinotrade/Shioaji
 
 ## Visual/Browser Findings
+
+## Freshness Calibration scheduling findings (2026-08-22)
+
+- Official OpenAI guidance distinguishes Codex automations (focused Codex
+  workflows) from ChatGPT Scheduled Tasks. Use the existing Codex automation
+  mechanism for this local-workspace evidence campaign; do not treat a ChatGPT
+  reminder as a reliable local capture runner.
+- The legacy `freshness-close-window-capture` heartbeat remains `ACTIVE` despite
+  two previously stalled native pause attempts. It starts at 13:00 and produces
+  a 13:01–13:16 sample, which cannot observe the required 13:30 boundary.
+- The recurring campaign must make an explicit Taiwan-equity-session decision
+  before any provider login/subscription. A closed session must be recorded as
+  `NO_CAPTURE`, with no Shioaji call. On an open session, it is restricted to
+  the frozen 2886/6863/1530 cohort and Tick/BidAsk only with
+  `subscribe_trade=False`; account, order, CA, trade-callback, and execution
+  APIs remain prohibited.
+- Proposed observation windows are 09:15–09:30 (opening), 10:00–10:15
+  (continuous), and 13:15–13:35 (close boundary). The final interval must
+  cross 13:30; its extra five minutes are an observation window, not a new
+  freshness threshold or Portfolio implementation authorization.
+- `ReviewedEquityCalendar` already gives a reviewed 2026 TWSE calendar with
+  coverage checks and exceptional closures. The scheduling wrapper can use it
+  to fail closed on holidays, weekends, and out-of-coverage dates before it
+  loads the quote-capture function or initializes Shioaji.
+- The existing quote CLI accepts a reviewer-supplied label but does not itself
+  enforce the frozen cohort, reviewed calendar, or capture start time. A small
+  dedicated runner is therefore required to make unattended collection safe.
+- Native `codex_app__automation_update` is not callable in this thread: its
+  view request returned `No handler registered for tool: codex_app.automation_update`.
+  It is the third distinct failure after two earlier stalled pause attempts;
+  do not retry it. A user-authorized local scheduler may be installed only
+  after its fail-closed runner is tested.
+- The user-level launchd job is installed as
+  `com.stevehuang.tw-intraday-trader.freshness-calibration` with all three
+  calendar triggers confirmed by `launchctl print`. A manual smoke produced
+  `NO_CAPTURE_OFF_SCHEDULE` and no `ntp_preflight` field, demonstrating that
+  an unplanned launch does not enter either NTP or quote-provider work.
+- The Mac must remain logged in and awake around each start time. If it wakes
+  outside the scheduled minute, the runner deliberately returns
+  `NO_CAPTURE_OFF_SCHEDULE` rather than backfilling a later, incomparable
+  capture window.
+
+## Freshness Calibration acceleration findings (2026-08-22)
+
+- The only safe acceleration within the authorized evidence scope is more
+  non-overlapping Tick/BidAsk samples on the same reviewed trading day. It can
+  improve opening/continuous coverage but cannot replace evidence from distinct
+  trading dates, source-clock disposition, or separate broker/account evidence.
+- The accelerated schedule will retain the exact frozen cohort and labels and
+  add 09:00–09:15 (`opening`), 11:00–11:15 (`continuous`), and
+  12:00–12:15 (`continuous`) to the existing 09:15–09:30, 10:00–10:15, and
+  13:15–13:35 captures. The intervals do not overlap.
+- Broker/account endpoint collection remains explicitly unapproved. This
+  schedule change must not be interpreted as permission to read any account,
+  order, accounting, or buying-power endpoint.
+- The reloaded launchd service reports exactly six calendar triggers:
+  09:00, 09:15, 10:00, 11:00, 12:00, and 13:15 Asia/Taipei. Each starts one
+  bounded capture only after the runner's reviewed-calendar and NTP gates.
+
+## Automated evidence-QA findings (2026-08-22)
+
+- Existing accepted evidence is structurally trustworthy only after inspecting
+  the immutable artifact's digest/schema, paired acknowledgement, lifecycle,
+  coverage, callback errors, monotonicity, and clock-skew. A capture's own
+  cadence analysis is useful but does not replace those structural checks.
+- The smallest safe acceleration is a post-capture summary written beside the
+  scheduler run record. It may state `REVIEW_REQUIRED` or a structural failure,
+  but must never select a threshold, label a policy frozen, or make a
+  broker/account claim.
+- The capture artifact already stores enough immutable fields to create this
+  summary: `connection_transitions` carries the per-symbol `TIC`/`QUO`
+  acknowledgement evidence, while every observation carries its own
+  connection/subscription state. A missing callback group remains partial
+  coverage, not structural corruption and not a reason to discard the raw
+  artifact.
+- Backfill over all eight retained artifacts matches the current human review:
+  three continuous captures are structurally complete; the early PENDING
+  opening artifact is rejected; early opening and both close artifacts retain
+  partial coverage; and the discovery artifact is excluded from the frozen
+  cohort. Every artifact has zero callback errors and zero callback-monotonic
+  regressions. Clock-skew remains provenance/anomaly evidence only.
+- Post-capture QA now compares the artifact bytes to the inspected SHA-256
+  before summarizing. If an artifact changes or is structurally invalid, the
+  scheduler reports `CAPTURE_INVALID` while leaving the original bytes in
+  place for investigation.
 
 - Official documentation was reviewed as of 2026-08-18; volatile API limits and supported operations should be rechecked at implementation time.
 - Browser verification used the real local Shioaji feed: stream badge, subscription count, advancing quote time, cancel/pending behavior, ask-side fill, position count, bid/ask/current-price fields, and PnL all rendered correctly with no console errors.

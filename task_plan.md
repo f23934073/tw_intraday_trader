@@ -127,6 +127,42 @@ Phase 13 — Freshness Calibration Evidence
 - [x] Produce the initial review report with no threshold candidates and retain `BLOCKING_EVIDENCE`.
 - **Status:** in_progress
 
+### Phase 13o: Trading-session quote-evidence scheduling
+
+- [x] Replace the unavailable legacy automation control plane with an explicitly bounded local campaign runner.
+- [x] Run only after a reviewed Taiwan-equity calendar check; on a closed session, record a no-capture result and make no provider call.
+- [x] Configure immutable-cohort Tick/BidAsk-only captures for opening, continuous, and a close interval that crosses the 13:30 boundary.
+- [x] Preserve the existing artifact schema, collector, quality gate, `subscribe_trade=False`, and all eight thresholds as unset.
+- [x] Keep broker/account evidence excluded pending separate explicit read-only authorization.
+- [x] Install and verify the user-level launchd job.
+- **Status:** complete
+
+### Phase 13p: Accelerated quote-evidence cadence
+
+- [x] Preserve the frozen cohort, labels, collector, schema, and quality gates.
+- [x] Add non-overlapping 15-minute opening/continuous captures to increase per-session coverage without changing threshold selection.
+- [x] Update the local launchd schedule and verify the loaded job has the additional triggers.
+- [x] Keep broker/account APIs, all eight thresholds, and Portfolio Phase 1 out of scope.
+- **Status:** complete
+
+### Phase 13q: Automated post-capture evidence QA
+
+- [x] Reuse the existing immutable artifact inspector; do not calculate or freeze freshness thresholds.
+- [x] Produce a review-ready JSON summary for each scheduled capture: digest/schema, paired acknowledgement, lifecycle, coverage, callback errors, monotonicity, and clock-skew counts.
+- [x] Fail closed when a capture artifact fails structural inspection, while preserving its raw immutable artifact for investigation.
+- [x] Keep qualitative and final policy disposition human-reviewed; do not add broker/account collection or Portfolio code.
+- **Status:** complete
+
+### Phase 13r: Broker/account read-only freshness evidence
+
+- [x] Add calendar/time-gated read-only scheduling for five bounded daily observations and install its separate user-level job.
+- [ ] Capture and separately analyse the four evidence kinds: positions, orders, accounting, and buying power; retain a constrained gap when an allowed source cannot provide one.
+- [x] Preserve no-mutation boundaries: no submit, cancel, order/deal callback, CA activation, or use of an action-like order refresh API.
+- [x] Persist only redacted structural metadata, timings, provider as-of availability, outcome, and an integrity digest; no credentials, account identifiers, positions, balances, or order details.
+- [x] Treat unavailable endpoints or freshness paths as evidence gaps, not as successful observations or substitute thresholds.
+- [ ] Keep all eight FreshnessPolicyV1 thresholds unset and Portfolio Phase 1 blocked pending repeated trading-session observations and review.
+- **Status:** in_progress
+
 ## Key Questions
 
 1. Which parts of the supplied proposal duplicate or conflict with existing repository behavior?
@@ -151,6 +187,8 @@ Phase 13 — Freshness Calibration Evidence
 | Route both browser and future strategy orders through one application service | Prevents UI orders from bypassing Risk, idempotency, Journal, OrderManager, reconciliation, or Broker normalization. |
 | Use Shioaji Tick/BidAsk only as the local simulator's market-data source | The user authorized realtime quote subscriptions, not Shioaji or live-money order submission. |
 | Treat quote and broker/account freshness as separate evidence campaigns | The approved Phase 0 baseline explicitly prohibits deriving broker/account SLA from quote latency. |
+| Collect broker/account evidence under the explicit owner authorization | The source remains read-only: one bounded account scope, `subscribe_trade=False`, no CA, no order mutation/cancellation, no trade callback, and no action-like order refresh. |
+| Mark remotely fresh orders unavailable when their only refresh route is out of scope | A locally cached order list cannot support `broker_orders_stale_after_ms`; it must be recorded as a constrained evidence gap rather than inferred from another source. |
 | Prepare cohort evidence as reviewer-supplied labels, not inferred liquidity facts | The current checkout has no reviewed liquidity ranking data; assigning tiers from reputation would bias the calibration evidence. |
 | Subscribe only held and pending-order symbols | Keeps the stream bounded and avoids turning the dashboard into a full-market realtime scanner. |
 | Complete the Freshness evidence chain before Portfolio Phase 1 | Execute close-window quote evidence, cross-session quote evidence, source-clock disposition, then separately authorized broker/account evidence. Until `FreshnessPolicyV1` is frozen, do not implement migrations, Portfolio core, RiskGate freshness, provisional thresholds, or broker/account reads. |
@@ -177,6 +215,15 @@ Phase 13 — Freshness Calibration Evidence
 | Initial multi-file close-review patch omitted one added-line prefix | 1 | No file changed; split the documentation update into small exact-context patches. |
 | First 2026-08-21 close-review patch repeated the added-line-prefix omission | 2 | No file changed; create the review in smaller audited patch blocks before updating the ledger. |
 | Full-field automation pause update did not return and left the heartbeat active | 1 | Terminated the stalled tool call after status recheck; retry once with the resolved id and minimal pause payload, never by editing the system automation file. |
+| Official-doc search response was a string rather than a result object with `content` | 1 | Serialized the returned value directly; the official Scheduled Tasks guidance was then available. |
+| Native Codex automation view/update had no registered handler | 3 | Do not retry the unavailable service; use a tested, user-authorized local scheduler with calendar gating instead. |
+| Scheduling-progress patch used two update headers for the same file | 2 | Re-read the exact blocks and use one grouped update operation per file. |
+| Initial scheduling-progress patch did not match the current progress context | 1 | Located the precise Phase 13o section before retrying the documentation update. |
+| New post-capture QA fixture used a stale hard-coded capture schema name | 1 | Import the collector's official schema constant so the test follows the runtime contract. |
+| QA fixture imported the similarly named quote-parity schema instead of the Freshness collector schema | 2 | Import `CAPTURE_SCHEMA_VERSION` from `market_data.freshness_calibration`; the two evidence formats are intentionally distinct. |
+| Broker/account Saturday smoke referenced absent `ReviewedEquityCalendar.from_json_document` | 1 | The failure occurred before SDK import/login. Replaced it with the repository-supported `ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH)`; retry returned `NO_CAPTURE_NON_TRADING_DAY` with `provider_called=false`. |
+| Initial post-install planning patch used stale progress context | 1 | No planning file changed. Re-read the exact Phase 13r lines and applied a scoped patch against the live text. |
+| Frozen close-window NTP preflight could not resolve DNS in the sandbox | 1 | Re-ran the same read-only NTP command with approved network access; five selected samples succeeded. Host date was Saturday, so no provider capture was attempted. |
 
 ## Notes
 
@@ -185,3 +232,4 @@ Phase 13 — Freshness Calibration Evidence
 - This slice changes the dashboard from read-only to a clearly labelled local paper-simulation control surface.
 - It may authenticate to Shioaji for market data with `subscribe_trade=False`; it must not activate CA, subscribe to order events, submit broker orders, or expose a live-order configuration value.
 - Phase 13 is calibration-only: it may add evidence capture and analysis artifacts, but it must not implement Portfolio Phase 1 or change frozen domain contracts.
+- Phase 13r begins only because the owner has explicitly authorized the broker/account source as read-only. It must never widen that grant into a broker-order or CA integration.
