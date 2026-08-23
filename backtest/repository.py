@@ -3,12 +3,25 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from contextlib import contextmanager
 from datetime import datetime
 from threading import RLock
 from typing import Any, Iterator, Mapping, Protocol
 
 from backtest.domain import canonical_json
+
+
+_RESULT_CHUNK_FORMAT = "CHUNKED_JSON_V1"
+_RESULT_CHUNK_SIZE = 100
+_RESULT_CHUNK_FIELDS = (
+    "decisions",
+    "fills",
+    "trades",
+    "orders",
+    "daily_equity",
+    "unresolved_positions",
+)
 
 
 class BacktestIdempotencyConflict(ValueError):
@@ -636,6 +649,7 @@ class _JsonBacktestRepository:
 
     def save_result(self, run_id: str, result: Mapping[str, Any]) -> None:
         summary = result["summary"]
+        root, chunk_manifests = _chunked_result_root(result)
         with self._transaction() as cursor:
             self._execute(cursor, "SELECT 1 FROM backtest_runs WHERE run_id = ?", (run_id,))
             if cursor.fetchone() is None:
@@ -652,12 +666,42 @@ class _JsonBacktestRepository:
                 INSERT INTO backtest_results (run_id, result_json, summary_json, created_at)
                 VALUES (?, ?, ?, ?)
                 """,
-                (run_id, _json(result), _json(summary), _now()),
+                (run_id, _json(root), _json(summary), _now()),
             )
-            for decision in result.get("decisions", []):
-                self._execute(
-                    cursor,
-                    "INSERT INTO backtest_decisions (run_id, decision_id, symbol, event_at, side, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
+            for field_name in _RESULT_CHUNK_FIELDS:
+                values = result.get(field_name, [])
+                assert isinstance(values, list)
+                descriptors = chunk_manifests[field_name]
+                for descriptor in descriptors:
+                    sequence = int(descriptor["sequence"])
+                    start = sequence * _RESULT_CHUNK_SIZE
+                    payload = values[start : start + _RESULT_CHUNK_SIZE]
+                    payload_json = _json(payload)
+                    if _sha256_text(payload_json) != descriptor["payload_digest"]:
+                        raise ValueError(
+                            f"回測結果 chunk 在封存期間發生變更：{field_name}:{sequence}"
+                        )
+                    self._execute(
+                        cursor,
+                        """
+                        INSERT INTO backtest_result_chunks (
+                            run_id, field_name, chunk_sequence, item_count,
+                            payload_json, payload_digest
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            run_id,
+                            field_name,
+                            sequence,
+                            int(descriptor["item_count"]),
+                            payload_json,
+                            descriptor["payload_digest"],
+                        ),
+                    )
+            self._execute_many_bounded(
+                cursor,
+                "INSERT INTO backtest_decisions (run_id, decision_id, symbol, event_at, side, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
+                (
                     (
                         run_id,
                         decision["decision_id"],
@@ -665,12 +709,14 @@ class _JsonBacktestRepository:
                         decision["event_at"],
                         decision["side"],
                         _json(decision),
-                    ),
-                )
-            for trade in result.get("trades", []):
-                self._execute(
-                    cursor,
-                    "INSERT INTO backtest_trades (run_id, trade_id, symbol, entry_at, exit_at, net_pnl, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    )
+                    for decision in result.get("decisions", [])
+                ),
+            )
+            self._execute_many_bounded(
+                cursor,
+                "INSERT INTO backtest_trades (run_id, trade_id, symbol, entry_at, exit_at, net_pnl, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
                     (
                         run_id,
                         trade["trade_id"],
@@ -679,14 +725,18 @@ class _JsonBacktestRepository:
                         trade["exit"]["filled_at"],
                         trade["net_pnl"],
                         _json(trade),
-                    ),
-                )
-            for point in result.get("daily_equity", []):
-                self._execute(
-                    cursor,
-                    "INSERT INTO backtest_daily_equity (run_id, session_date, equity, payload_json) VALUES (?, ?, ?, ?)",
-                    (run_id, point["date"], point["equity"], _json(point)),
-                )
+                    )
+                    for trade in result.get("trades", [])
+                ),
+            )
+            self._execute_many_bounded(
+                cursor,
+                "INSERT INTO backtest_daily_equity (run_id, session_date, equity, payload_json) VALUES (?, ?, ?, ?)",
+                (
+                    (run_id, point["date"], point["equity"], _json(point))
+                    for point in result.get("daily_equity", [])
+                ),
+            )
 
     def get_result(self, run_id: str) -> dict[str, Any]:
         with self._cursor() as cursor:
@@ -695,7 +745,23 @@ class _JsonBacktestRepository:
             if raw is None:
                 raise KeyError(f"回測工作尚未產生結果：{run_id}")
             value = self._row(cursor, raw)["result_json"]
-        return _decode_json(value)
+            root = _decode_json(value)
+            storage = root.get("_storage")
+            if storage is None:
+                return root
+            self._execute(
+                cursor,
+                """
+                SELECT field_name, chunk_sequence, item_count,
+                       payload_json, payload_digest
+                FROM backtest_result_chunks
+                WHERE run_id = ?
+                ORDER BY field_name, chunk_sequence
+                """,
+                (run_id,),
+            )
+            rows = [self._row(cursor, item) for item in cursor.fetchall()]
+        return _rebuild_chunked_result(root, rows)
 
     def list_trades(self, run_id: str, *, offset: int = 0, limit: int = 100) -> tuple[list[dict[str, Any]], int]:
         with self._cursor() as cursor:
@@ -766,6 +832,24 @@ class _JsonBacktestRepository:
 
     def _execute(self, cursor: Any, sql: str, values: Any = ()) -> None:
         cursor.execute(sql.replace("?", self._placeholder), values)
+
+    def _execute_many_bounded(
+        self,
+        cursor: Any,
+        sql: str,
+        rows: Iterator[tuple[Any, ...]],
+        *,
+        batch_size: int = 500,
+    ) -> None:
+        query = sql.replace("?", self._placeholder)
+        batch: list[tuple[Any, ...]] = []
+        for row in rows:
+            batch.append(row)
+            if len(batch) == batch_size:
+                cursor.executemany(query, batch)
+                batch.clear()
+        if batch:
+            cursor.executemany(query, batch)
 
     @staticmethod
     def _row(cursor: Any, raw: Any) -> dict[str, Any]:
@@ -840,6 +924,127 @@ def _json(value: Any) -> str:
 
 def _decode_json(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else json.loads(value)
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _chunked_result_root(
+    result: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]]]:
+    """Build a bounded JSON root plus immutable descriptors for large arrays."""
+
+    root = {
+        key: value
+        for key, value in result.items()
+        if key not in _RESULT_CHUNK_FIELDS
+    }
+    manifests: dict[str, list[dict[str, Any]]] = {}
+    fields: dict[str, dict[str, Any]] = {}
+    for field_name in _RESULT_CHUNK_FIELDS:
+        values = result.get(field_name, [])
+        if not isinstance(values, list):
+            raise ValueError(f"回測結果欄位必須是陣列：{field_name}")
+        descriptors: list[dict[str, Any]] = []
+        for sequence, start in enumerate(range(0, len(values), _RESULT_CHUNK_SIZE)):
+            payload = values[start : start + _RESULT_CHUNK_SIZE]
+            descriptors.append(
+                {
+                    "sequence": sequence,
+                    "item_count": len(payload),
+                    "payload_digest": _sha256_text(_json(payload)),
+                }
+            )
+        manifests[field_name] = descriptors
+        fields[field_name] = {
+            "item_count": len(values),
+            "chunk_count": len(descriptors),
+            "chunks": descriptors,
+        }
+    root["_storage"] = {
+        "format": _RESULT_CHUNK_FORMAT,
+        "chunk_size": _RESULT_CHUNK_SIZE,
+        "fields": fields,
+    }
+    return root, manifests
+
+
+def _decode_json_array(value: Any) -> list[Any]:
+    parsed = value if isinstance(value, list) else json.loads(value)
+    if not isinstance(parsed, list):
+        raise ValueError("回測結果 chunk payload 不是陣列")
+    return parsed
+
+
+def _rebuild_chunked_result(
+    root: Mapping[str, Any],
+    rows: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    storage = root.get("_storage")
+    if not isinstance(storage, Mapping) or set(storage) != {
+        "format",
+        "chunk_size",
+        "fields",
+    }:
+        raise ValueError("回測結果 chunk manifest schema 不合法")
+    if storage["format"] != _RESULT_CHUNK_FORMAT:
+        raise ValueError(f"不支援的回測結果格式：{storage['format']}")
+    if storage["chunk_size"] != _RESULT_CHUNK_SIZE:
+        raise ValueError("回測結果 chunk size 與 runtime contract 不一致")
+    fields = storage["fields"]
+    if not isinstance(fields, Mapping) or set(fields) != set(_RESULT_CHUNK_FIELDS):
+        raise ValueError("回測結果 chunk 欄位集合不合法")
+
+    rows_by_field: dict[str, list[Mapping[str, Any]]] = {
+        field_name: [] for field_name in _RESULT_CHUNK_FIELDS
+    }
+    for row in rows:
+        field_name = str(row["field_name"])
+        if field_name not in rows_by_field:
+            raise ValueError(f"回測結果含未知 chunk 欄位：{field_name}")
+        rows_by_field[field_name].append(row)
+
+    rebuilt = {key: value for key, value in root.items() if key != "_storage"}
+    for field_name in _RESULT_CHUNK_FIELDS:
+        manifest = fields[field_name]
+        if not isinstance(manifest, Mapping) or set(manifest) != {
+            "item_count",
+            "chunk_count",
+            "chunks",
+        }:
+            raise ValueError(f"回測結果 chunk manifest 不合法：{field_name}")
+        descriptors = manifest["chunks"]
+        if not isinstance(descriptors, list):
+            raise ValueError(f"回測結果 chunk descriptors 不合法：{field_name}")
+        field_rows = rows_by_field[field_name]
+        if int(manifest["chunk_count"]) != len(descriptors) or len(field_rows) != len(descriptors):
+            raise ValueError(f"回測結果 chunk 數量不一致：{field_name}")
+        values: list[Any] = []
+        for expected_sequence, (descriptor, row) in enumerate(zip(descriptors, field_rows)):
+            if not isinstance(descriptor, Mapping) or set(descriptor) != {
+                "sequence",
+                "item_count",
+                "payload_digest",
+            }:
+                raise ValueError(f"回測結果 chunk descriptor 不合法：{field_name}")
+            sequence = int(row["chunk_sequence"])
+            if sequence != expected_sequence or int(descriptor["sequence"]) != sequence:
+                raise ValueError(f"回測結果 chunk sequence 不連續：{field_name}")
+            payload = _decode_json_array(row["payload_json"])
+            payload_digest = _sha256_text(_json(payload))
+            if (
+                len(payload) != int(row["item_count"])
+                or len(payload) != int(descriptor["item_count"])
+                or str(row["payload_digest"]) != payload_digest
+                or str(descriptor["payload_digest"]) != payload_digest
+            ):
+                raise ValueError(f"回測結果 chunk integrity 驗證失敗：{field_name}:{sequence}")
+            values.extend(payload)
+        if len(values) != int(manifest["item_count"]):
+            raise ValueError(f"回測結果 item count 不一致：{field_name}")
+        rebuilt[field_name] = values
+    return rebuilt
 
 
 def _now() -> str:
@@ -917,6 +1122,15 @@ CREATE TABLE IF NOT EXISTS backtest_results (
     result_json {json_type} NOT NULL,
     summary_json {json_type} NOT NULL,
     created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS backtest_result_chunks (
+    run_id TEXT NOT NULL REFERENCES backtest_results(run_id),
+    field_name TEXT NOT NULL,
+    chunk_sequence INTEGER NOT NULL,
+    item_count INTEGER NOT NULL,
+    payload_json {json_type} NOT NULL,
+    payload_digest TEXT NOT NULL,
+    PRIMARY KEY (run_id, field_name, chunk_sequence)
 );
 CREATE TABLE IF NOT EXISTS backtest_decisions (
     run_id TEXT NOT NULL REFERENCES backtest_runs(run_id),

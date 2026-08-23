@@ -82,8 +82,10 @@ def _activation(manifest: dict[str, object], **overrides: object) -> dict[str, o
 
 def test_binding_migration_uses_the_next_number_and_declares_all_tables() -> None:
     files = migration_files()
-    assert files[-1].name == "012_backtest_dataset_bindings.sql"
-    sql = files[-1].read_text(encoding="utf-8")
+    binding_migration = next(
+        file for file in files if file.name == "012_backtest_dataset_bindings.sql"
+    )
+    sql = binding_migration.read_text(encoding="utf-8")
     for table in (
         "backtest.backtest_dataset_bindings",
         "backtest.backtest_dataset_binding_revisions",

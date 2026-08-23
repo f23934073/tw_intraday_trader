@@ -1,5 +1,23 @@
 # Progress: FinMind Backtest Dataset Bridge
 
+## 2026-08-24 — G5 formal acceptance complete
+
+- Applied `013_backtest_result_chunks.sql` after disposable PostgreSQL
+  validation (`39 passed`). Full no-DSN regression is green at `1339 passed,
+  35 skipped` after adding the migration to the frozen migration inventory.
+- Recovered the first OOM-affected Run as FAILED only after confirming it had
+  no result row, then used the normal CSRF-protected Web retry endpoint with
+  durable idempotency and actor audit.
+- Completed Web Run `run-91ad87981676414da87b928398fa43c9` over all 28,325,340
+  bars. Status is COMPLETED, progress is 1.0, error is null, and result digest
+  is `60c29af24fd67ef9c3952118e3f157f5fab62a81e33a6f9b955bc8b5e76f57bc`.
+- Verified compact chunk root, all chunk digests, normalized row counts, full
+  result reconstruction, recomputed result digest, exact binding/Dataset,
+  proxy amount evidence, Web summary/trade endpoints, audit event, bounded DB
+  resources, and loopback/PostgreSQL-only process sockets.
+- Marked G5 `APPROVED / GATE PASSED`; formal bridge progress is 100%. Local
+  Paper, broker, Shioaji order, and real-money remain outside authorization.
+
 ## 2026-08-23 — G5 Code approval / formal acceptance start
 
 - Independent re-review approved the G5 code remediation; formal progress

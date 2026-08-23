@@ -19,16 +19,16 @@ data/finmind_sponsor/history.sqlite3
 本計畫不把正在寫入的 SQLite 直接交給 Backtest Engine，也不修改
 FinMind downloader 的下載契約。
 
-目前 disposition：`G0 APPROVED / CONTRACT FROZEN`、
-`G1 APPROVED / GATE PASSED`、`G2 APPROVED / GATE PASSED`、
-`G3 APPROVED / GATE PASSED`。已建立並驗證一份正式完整動態
-snapshot artifact；G4 PostgreSQL binding 已補齊 distinct-operation CAS
-並行 regression，且獨立 Review 已核准 `G4 APPROVED / GATE PASSED`；正式
-Gate 進度為 80%。G4 已建立 scoped local commit `2e873cd`。G5 Web Run、
-binding precondition、amount evidence 與 large-run control throttling 已完成 Review
-修復，狀態為 `G5 REMEDIATED / AWAITING RE-REVIEW / GATE NOT PASSED`；尚未使用應用程式 PostgreSQL
-啟用正式 G3 Dataset，也尚未完成該 2,832 萬根 Kbar 的正式 Web Run acceptance。
-本階段仍不修改 Local Paper、broker 或 real-money。
+目前 disposition：`G0 APPROVED / CONTRACT FROZEN`，`G1`～`G5` 全部
+`APPROVED / GATE PASSED`，正式 Gate 進度為 100%。application PostgreSQL
+已綁定正式 G3 Dataset；Web retry Run
+`run-91ad87981676414da87b928398fa43c9` 已完成 28,325,340 根 Kbar，並以
+`CHUNKED_JSON_V1` 封存 135,123 decisions、6,321 trades 與完整 result evidence。
+result digest `60c29af24fd67ef9c3952118e3f157f5fab62a81e33a6f9b955bc8b5e76f57bc`
+已從所有 chunks 完整重建後重算一致。正式 Run 仍是 exploratory：
+`research_eligible=false`、VWAP amount 為 derived proxy，結果 verdict 為
+`INSUFFICIENT_EVIDENCE`，不構成策略升級或交易授權。本階段沒有修改
+Local Paper、broker 或 real-money。
 
 ## 2. 範圍與非目標
 
@@ -675,6 +675,7 @@ Rollback 不刪除 Dataset 或 Runs，只把 default binding 以新 revision 切
 | `backtest/repository.py` | Immutable registration and binding protocol |
 | `backtest/postgres_repository.py` | PostgreSQL transaction/CAS implementation |
 | `backtest/migrations/<next>_backtest_dataset_bindings.sql` | Binding head, revision audit, and durable activation-operation schema after migration-tip preflight |
+| `backtest/migrations/013_backtest_result_chunks.sql` | Bounded immutable result chunks; avoids a single full-result JSONB allocation |
 | `backtest/application.py` | Exact binding resolver and throttled Run control |
 | `dashboard/server.py` | Binding projection and strict Run precondition request fields |
 | `dashboard/static/js/workspaces/backtest.js` | Render server binding and submit its hidden revision/digest preconditions |
@@ -697,6 +698,9 @@ Rollback 不刪除 Dataset 或 Runs，只把 default binding 以新 revision 切
 5. **G4 PostgreSQL Binding** — disposable PostgreSQL registration/concurrency passes.
 6. **G5 Web Full Run** — actual binding is displayed and one full Atomic Run completes
    with bounded control traffic and zero provider/broker calls.
+
+All six gates are passed. The bridge is complete for its frozen exploratory
+scope; this does not authorize Local Paper, broker integration, or real money.
 
 The selector-less Web flow is not deliverable before G4. The bridge is not
 complete before G5.

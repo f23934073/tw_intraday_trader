@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import date, datetime, timedelta
+from time import sleep
 from typing import Any, Mapping
 from uuid import NAMESPACE_URL, uuid4, uuid5
 from zoneinfo import ZoneInfo
@@ -1262,15 +1263,52 @@ class BacktestApplicationService:
             )
             stored = {**raw_result, "summary": summary}
             self._repository.save_result(run_id, stored)
-            self._repository.update_run(run_id, status=RunStatus.COMPLETED.value, progress=1.0, progress_message="回測完成", result_digest=summary["result_digest"])
+            self._persist_terminal_run(
+                run_id,
+                progress_reporter=progress_reporter,
+                status=RunStatus.COMPLETED.value,
+                progress=1.0,
+                progress_message="回測完成",
+                result_digest=summary["result_digest"],
+            )
         except BacktestCancelled:
-            if progress_reporter is not None:
-                progress_reporter.flush()
-            self._repository.update_run(run_id, status=RunStatus.CANCELLED.value, progress_message="回測已取消")
+            self._persist_terminal_run(
+                run_id,
+                progress_reporter=progress_reporter,
+                status=RunStatus.CANCELLED.value,
+                progress_message="回測已取消",
+            )
         except Exception as error:
-            if progress_reporter is not None:
-                progress_reporter.flush()
-            self._repository.update_run(run_id, status=RunStatus.FAILED.value, error_message=str(error), progress_message="回測失敗")
+            self._persist_terminal_run(
+                run_id,
+                progress_reporter=progress_reporter,
+                status=RunStatus.FAILED.value,
+                error_message=str(error),
+                progress_message="回測失敗",
+            )
+
+    def _persist_terminal_run(
+        self,
+        run_id: str,
+        *,
+        progress_reporter: ThrottledProgressReporter | None,
+        **changes: Any,
+    ) -> None:
+        """Survive a bounded PostgreSQL restart without leaving RUNNING state."""
+
+        last_error: Exception | None = None
+        for delay in (0.0, 0.1, 0.25, 0.5, 1.0, 2.0):
+            if delay:
+                sleep(delay)
+            try:
+                if progress_reporter is not None:
+                    progress_reporter.flush()
+                self._repository.update_run(run_id, **changes)
+                return
+            except Exception as error:
+                last_error = error
+        assert last_error is not None
+        raise last_error
 
     def _create_from_config(
         self,

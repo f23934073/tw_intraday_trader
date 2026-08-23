@@ -52,6 +52,7 @@ class _WorkerRepository:
         self.writes: list[dict[str, object]] = []
         self.transitions: list[dict[str, object]] = []
         self.cancel_before_first_transition = False
+        self.terminal_failures_remaining = 0
 
     def get_run(self, run_id: str):
         assert run_id == self.run["run_id"]
@@ -63,6 +64,9 @@ class _WorkerRepository:
 
     def update_run(self, run_id: str, **changes):
         assert run_id == self.run["run_id"]
+        if "status" in changes and self.terminal_failures_remaining:
+            self.terminal_failures_remaining -= 1
+            raise RuntimeError("postgres is restarting")
         self.writes.append({"run_id": run_id, **changes})
         self.run.update(changes)
         return dict(self.run)
@@ -228,6 +232,22 @@ def test_worker_flushes_pending_progress_before_terminal_status(
         if write.get("status") == expected_status
     )
     assert pending_write_index < terminal_write_index
+
+
+def test_worker_retries_terminal_status_after_transient_database_restart(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    service, repository = _worker_service(tmp_path, RuntimeError("engine failed"))
+    repository.terminal_failures_remaining = 3
+    delays: list[float] = []
+    monkeypatch.setattr("backtest.application.sleep", delays.append)
+
+    service._run_backtest("worker-control-run")
+
+    assert repository.run["status"] == "FAILED"
+    assert repository.run["error_message"] == "engine failed"
+    assert delays == [0.1, 0.25, 0.5]
 
 
 def test_worker_status_cas_preserves_cancellation_committed_before_preflight(

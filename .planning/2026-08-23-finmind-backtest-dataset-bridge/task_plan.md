@@ -12,11 +12,10 @@ FinMind history.sqlite3
 → Web Atomic Backtest
 ```
 
-G1 through G4 are approved. The reviewed G4 scope was committed locally as
-`2e873cd`; G5 Code Review is now approved. The user explicitly authorized a
-scoped G5 commit followed by application-environment activation and the formal
-full-Dataset Web Run. Local Paper, broker, and real-money behavior remain
-unauthorized or outside this slice.
+G1 through G5 are approved. G4 was committed as `2e873cd`; the reviewed G5 code
+was committed as `2fc06b9`. Formal application-environment activation and the
+full-Dataset Web Run are complete. Local Paper, broker, and real-money behavior
+remain unauthorized or outside this slice.
 
 ## Current Status
 
@@ -26,8 +25,8 @@ unauthorized or outside this slice.
 - G3 Full Artifact: approved / gate passed
 - G4 PostgreSQL Binding: approved / gate passed
 - G5 Code Review: approved
-- G5 Formal Gate: authorized end-to-end acceptance in progress / not passed
-- Formal Gate progress: 80%
+- G5 Formal Gate: approved / gate passed
+- Formal Gate progress: 100%
 
 ## Review Findings Closure
 
@@ -170,7 +169,7 @@ Status: CODE REVIEW APPROVED / FORMAL GATE NOT PASSED
 
 ### Phase 6 — Large-run operational throttling
 
-Status: COMPLETE / REVIEW REMEDIATED / G5 GATE NOT PASSED
+Status: COMPLETE / G5 GATE PASSED
 
 - [x] Keep cheap in-process cancellation checks at the existing event cadence.
 - [x] Poll durable Run cancellation state at most once per configured monotonic
@@ -183,17 +182,17 @@ Status: COMPLETE / REVIEW REMEDIATED / G5 GATE NOT PASSED
 
 ### Phase 7 — End-to-end acceptance
 
-Status: AUTHORIZED / IN PROGRESS
+Status: COMPLETE / G5 GATE PASSED
 
 - [x] Run focused no-DSN tests.
 - [x] Run disposable PostgreSQL migration/concurrency tests.
 - [x] Materialize one real full semantic snapshot and record its dynamic
       evidence.
-- [ ] Register and activate the exact Dataset in PostgreSQL.
+- [x] Register and activate the exact Dataset in PostgreSQL.
 - [x] Confirm the Web projection displays the transaction-bound Dataset identity
       in focused API/UI tests.
-- [ ] Complete one Atomic Run against the bound full Dataset.
-- [ ] Verify no FinMind, Shioaji, account, broker order, CA, or trade
+- [x] Complete one Atomic Run against the bound full Dataset.
+- [x] Verify no FinMind, Shioaji, account, broker order, CA, or trade
       subscription call occurs during backtest.
 
 ## Gates

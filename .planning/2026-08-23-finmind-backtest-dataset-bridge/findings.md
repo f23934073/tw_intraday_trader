@@ -1,5 +1,40 @@
 # Findings: FinMind Backtest Dataset Bridge
 
+## G5 Formal Gate passed — 2026-08-24
+
+- The first formal Run completed all 28,325,340 bars but PostgreSQL was
+  OOM-killed while parsing the legacy single full-result JSONB INSERT. The
+  engine result itself was complete; no result row was committed and the Run
+  was recovered from orphaned `CANCELLING` to `FAILED` with an exact
+  no-result precondition.
+- Root cause was duplicate monolithic persistence: the same decisions, trades,
+  and daily equity were embedded in `backtest_results.result_json` and then
+  inserted again into normalized tables. The PostgreSQL log identified the
+  failing `INSERT INTO backtest_results` statement.
+- `CHUNKED_JSON_V1` now stores a compact immutable root plus 100-item chunks
+  with sequence, count, and SHA-256 evidence. Legacy full JSON results remain
+  readable. A bounded terminal retry also survives a short PostgreSQL restart
+  without silently leaving RUNNING state.
+- The Web retry `run-91ad87981676414da87b928398fa43c9` completed successfully
+  with result digest
+  `60c29af24fd67ef9c3952118e3f157f5fab62a81e33a6f9b955bc8b5e76f57bc`.
+  Full reconstruction independently recomputed the same digest.
+- Persisted evidence: 135,123 decisions, 12,642 fills, 6,321 trades, 135,123
+  orders, 727 daily-equity points, zero unresolved positions; compact root
+  size 214,827 bytes and largest JSONB chunk 84,585 bytes.
+- The exact Dataset digest, binding revision 1, derived VWAP proxy contract,
+  Feature input digest, Web retry actor/idempotency audit, and normalized trade
+  pagination all verified. PostgreSQL cgroup `oom_kill` remained at the single
+  historical event; the acceptance time window had no recovery/OOM log.
+- Dashboard process sockets were limited to loopback port 8011 and application
+  PostgreSQL port 5090. It ran with `PROVIDER=mock`, incremental sync disabled,
+  memory trading journal, and one worker; no FinMind, Shioaji, CA, account,
+  trade subscription, or broker call was possible or observed.
+- The strategy result itself is intentionally not promoted: Dataset
+  `research_eligible=false`, verdict `INSUFFICIENT_EVIDENCE`, full net P&L
+  `-9,869,688.99`, and max drawdown `98.70%`. This does not block the G5 bridge
+  infrastructure Gate and does block research promotion.
+
 ## G5 Code Review approved / formal acceptance authorized — 2026-08-23
 
 - Independent short re-review approved all three code remediations with no new
