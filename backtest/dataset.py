@@ -109,6 +109,90 @@ class _CadenceEvidence:
         return profile, tuple(capabilities), summary
 
 
+class _BoundedCadenceEvidence:
+    """Cadence evidence that retains only the current session per symbol."""
+
+    def __init__(self) -> None:
+        self._current: dict[str, tuple[date, datetime, int]] = {}
+        self._session_count = 0
+        self._intraday_session_count = 0
+        self._max_bars_per_session = 0
+        self._gap_seconds: Counter[int] = Counter()
+        self._minute_aligned = True
+        self._taipei_timezone = True
+
+    def add(self, bar: HistoricalBar) -> None:
+        session_date = bar.session_date or bar.timestamp.date()
+        current = self._current.get(bar.symbol)
+        if current is None or current[0] != session_date:
+            if current is not None:
+                if session_date < current[0]:
+                    raise ValueError("Kbar session date must be monotonic per symbol")
+                self._finish_session(current[2])
+            self._current[bar.symbol] = (session_date, bar.timestamp, 1)
+        else:
+            seconds = int((bar.timestamp - current[1]).total_seconds())
+            if seconds <= 0:
+                raise ValueError("Kbar timestamps must increase within a session")
+            self._gap_seconds[seconds] += 1
+            self._current[bar.symbol] = (session_date, bar.timestamp, current[2] + 1)
+        self._minute_aligned = self._minute_aligned and (
+            bar.timestamp.second == 0 and bar.timestamp.microsecond == 0
+        )
+        self._taipei_timezone = self._taipei_timezone and (
+            bar.timestamp.utcoffset() == timedelta(hours=8)
+        )
+
+    def result(self) -> tuple[str, tuple[str, ...], dict[str, Any]]:
+        for _session_date, _last_timestamp, count in self._current.values():
+            self._finish_session(count)
+        self._current.clear()
+        total_gaps = sum(self._gap_seconds.values())
+        dominant_seconds: int | None = None
+        dominant_count = 0
+        if self._gap_seconds:
+            dominant_seconds, dominant_count = self._gap_seconds.most_common(1)[0]
+        dominant_ratio = dominant_count / total_gaps if total_gaps else 0.0
+        capabilities = ["OHLCV"]
+        if (
+            self._intraday_session_count
+            and self._minute_aligned
+            and self._taipei_timezone
+        ):
+            capabilities.extend(("KBAR_INTRADAY", "SESSION_BOUNDARIES"))
+        if (
+            self._intraday_session_count
+            and self._minute_aligned
+            and self._taipei_timezone
+            and dominant_seconds == 60
+            and dominant_ratio >= 0.80
+        ):
+            capabilities.append("KBAR_1M")
+        if "KBAR_1M" in capabilities:
+            profile = "KBAR_1M_V1"
+        elif "KBAR_INTRADAY" in capabilities:
+            profile = "KBAR_INTRADAY_V1"
+        else:
+            profile = "KBAR_DAILY_TEST_V1"
+        summary = {
+            "method": "SYMBOL_SESSION_GAP_V1",
+            "session_count": self._session_count,
+            "intraday_session_count": self._intraday_session_count,
+            "max_bars_per_session": self._max_bars_per_session,
+            "observed_gap_count": total_gaps,
+            "dominant_interval_seconds": dominant_seconds,
+            "dominant_interval_ratio": dominant_ratio,
+            "minute_aligned": self._minute_aligned,
+            "taipei_timezone": self._taipei_timezone,
+        }
+        return profile, tuple(capabilities), summary
+
+    def _finish_session(self, count: int) -> None:
+        self._session_count += 1
+        self._intraday_session_count += count > 1
+        self._max_bars_per_session = max(self._max_bars_per_session, count)
+
+
 def _taipei_timestamp(timestamp: datetime) -> datetime:
     """Canonicalize a Provider Kbar event time to Taiwan market time."""
 
@@ -171,6 +255,10 @@ class DatasetManifest:
     price_adjustment_policy: str | None = None
     corporate_action_adjusted: bool | None = None
     volume_contract: Mapping[str, Any] | None = None
+    amount_contract: Mapping[str, Any] | None = None
+    source_snapshot_digest: str | None = None
+    plan_identity: Mapping[str, Any] | None = None
+    plan_identity_digest: str | None = None
 
     @property
     def manifest_digest(self) -> str:
@@ -220,6 +308,14 @@ class DatasetManifest:
             value["corporate_action_adjusted"] = self.corporate_action_adjusted
         if self.volume_contract is not None:
             value["volume_contract"] = dict(self.volume_contract)
+        if self.amount_contract is not None:
+            value["amount_contract"] = dict(self.amount_contract)
+        if self.source_snapshot_digest is not None:
+            value["source_snapshot_digest"] = self.source_snapshot_digest
+        if self.plan_identity is not None:
+            value["plan_identity"] = dict(self.plan_identity)
+        if self.plan_identity_digest is not None:
+            value["plan_identity_digest"] = self.plan_identity_digest
         if include_digest:
             value["manifest_digest"] = self.manifest_digest
         return value
@@ -284,6 +380,26 @@ class DatasetManifest:
             volume_contract=(
                 dict(value["volume_contract"])
                 if value.get("volume_contract") is not None
+                else None
+            ),
+            amount_contract=(
+                dict(value["amount_contract"])
+                if value.get("amount_contract") is not None
+                else None
+            ),
+            source_snapshot_digest=(
+                str(value["source_snapshot_digest"])
+                if value.get("source_snapshot_digest") is not None
+                else None
+            ),
+            plan_identity=(
+                dict(value["plan_identity"])
+                if value.get("plan_identity") is not None
+                else None
+            ),
+            plan_identity_digest=(
+                str(value["plan_identity_digest"])
+                if value.get("plan_identity_digest") is not None
                 else None
             ),
         )
@@ -626,6 +742,38 @@ class HistoricalDatasetCatalog:
                 line = raw_line.decode("utf-8").strip()
                 if line:
                     yield HistoricalBar.from_dict(json.loads(line))
+        if checksum.hexdigest() != expected_checksum:
+            raise ValueError(f"資料集 {dataset_id} checksum 不符，拒絕回測")
+
+    def _iter_canonical_payload(
+        self,
+        dataset_id: str,
+        filename: str,
+        expected_checksum: str,
+    ) -> Iterator[HistoricalBar]:
+        """Yield only exact canonical JSONL bytes for immutable replay checks."""
+
+        path = self._dataset_dir(dataset_id) / filename
+        if not path.is_file():
+            raise ValueError(f"資料集 {dataset_id} 缺少 {filename}")
+        checksum = hashlib.sha256()
+        with path.open("rb") as handle:
+            for raw_line in handle:
+                checksum.update(raw_line)
+                try:
+                    bar = HistoricalBar.from_dict(json.loads(raw_line))
+                except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
+                    raise ValueError(
+                        f"FinMind Dataset {dataset_id} payload is not canonical JSONL"
+                    ) from error
+                canonical_line = (
+                    canonical_json(bar.to_dict()) + "\n"
+                ).encode("utf-8")
+                if raw_line != canonical_line:
+                    raise ValueError(
+                        f"FinMind Dataset {dataset_id} payload canonical bytes conflict"
+                    )
+                yield bar
         if checksum.hexdigest() != expected_checksum:
             raise ValueError(f"資料集 {dataset_id} checksum 不符，拒絕回測")
 
@@ -1070,6 +1218,270 @@ class HistoricalDatasetCatalog:
         except Exception:
             shutil.rmtree(temporary_dir, ignore_errors=True)
             raise
+
+    def create_finmind_snapshot_dataset(
+        self,
+        *,
+        dataset_id: str,
+        symbol_streams: Iterable[Iterable[HistoricalBar]],
+        created_at: datetime,
+        source: str,
+        requested_symbols: tuple[str, ...],
+        expected_bar_count: int,
+        start_date: str,
+        end_date: str,
+        issues: tuple[str, ...],
+        volume_contract: Mapping[str, Any],
+        amount_contract: Mapping[str, Any],
+        source_snapshot_digest: str,
+        plan_identity: Mapping[str, Any],
+        plan_identity_digest: str,
+        required_free_bytes: int | None = None,
+    ) -> DatasetManifest:
+        """Seal a reviewed FinMind plan as a timestamp-major immutable Dataset."""
+
+        expected_dataset_id = (
+            "dataset-finmind-sponsor-sha256-" + source_snapshot_digest
+        )
+        if dataset_id != expected_dataset_id:
+            raise ValueError("FinMind dataset ID does not match source snapshot digest")
+        if len(source_snapshot_digest) != 64 or any(
+            value not in "0123456789abcdef" for value in source_snapshot_digest
+        ):
+            raise ValueError("FinMind source snapshot digest must be lowercase SHA-256")
+        observed_plan_digest = hashlib.sha256(
+            canonical_json(plan_identity).encode("utf-8")
+        ).hexdigest()
+        if observed_plan_digest != plan_identity_digest:
+            raise ValueError("FinMind plan identity digest mismatch")
+        if created_at.tzinfo is None or created_at.utcoffset() is None:
+            raise ValueError("FinMind manifest created_at must include timezone")
+        if expected_bar_count < 1:
+            raise ValueError("不可建立空的 FinMind 歷史資料集")
+        requested_symbol_set = set(requested_symbols)
+        if (
+            not requested_symbol_set
+            or len(requested_symbol_set) != len(requested_symbols)
+            or tuple(sorted(requested_symbol_set)) != requested_symbols
+        ):
+            raise ValueError("FinMind requested symbols must be unique and sorted")
+
+        expected = {
+            "dataset_id": dataset_id,
+            "created_at": created_at,
+            "source": source,
+            "requested_symbols": tuple(requested_symbols),
+            "expected_bar_count": expected_bar_count,
+            "start_date": start_date,
+            "end_date": end_date,
+            "issues": tuple(issues),
+            "volume_contract": dict(volume_contract),
+            "amount_contract": dict(amount_contract),
+            "source_snapshot_digest": source_snapshot_digest,
+            "plan_identity": dict(plan_identity),
+            "plan_identity_digest": plan_identity_digest,
+        }
+        streams = tuple(iter(stream) for stream in symbol_streams)
+        final_dir = self._dataset_dir(dataset_id)
+        if final_dir.exists():
+            return self._verify_finmind_snapshot_dataset(
+                expected,
+                expected_bars=heapq.merge(*streams, key=self._event_key),
+            )
+        if required_free_bytes is not None:
+            if required_free_bytes < 1:
+                raise ValueError("FinMind disk preflight bytes must be positive")
+            if shutil.disk_usage(self._root).free < required_free_bytes:
+                raise ValueError("FinMind Dataset disk space is insufficient")
+
+        temporary_dir = self._root / f".{dataset_id}.{uuid4().hex}.tmp"
+        temporary_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            checksum = hashlib.sha256()
+            bar_count = 0
+            observed_symbols: set[str] = set()
+            symbol_last_timestamps: dict[str, datetime] = {}
+            cadence = _BoundedCadenceEvidence()
+            previous_key: tuple[datetime, str] | None = None
+            with (temporary_dir / "bars.jsonl").open("xb") as handle:
+                for bar in heapq.merge(*streams, key=self._event_key):
+                    key = self._event_key(bar)
+                    if previous_key is not None and key <= previous_key:
+                        raise ValueError(
+                            f"FinMind Kbar order or uniqueness conflict: {bar.symbol} "
+                            f"{bar.timestamp.isoformat()}"
+                        )
+                    if bar.symbol not in requested_symbol_set:
+                        raise ValueError(
+                            f"FinMind Kbar symbol is outside the plan: {bar.symbol}"
+                        )
+                    if not bar.name.strip() or not bar.market.strip():
+                        raise ValueError(
+                            f"FinMind Kbar reference metadata is incomplete: {bar.symbol}"
+                        )
+                    payload = (canonical_json(bar.to_dict()) + "\n").encode("utf-8")
+                    handle.write(payload)
+                    checksum.update(payload)
+                    previous_key = key
+                    bar_count += 1
+                    observed_symbols.add(bar.symbol)
+                    symbol_last_timestamps[bar.symbol] = bar.timestamp
+                    cadence.add(bar)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if bar_count != expected_bar_count:
+                raise ValueError("FinMind Dataset bar count does not match the plan")
+            if not observed_symbols.issubset(requested_symbol_set):
+                raise ValueError("FinMind Dataset observed symbols do not match the plan")
+            profile, capabilities, cadence_summary = cadence.result()
+            manifest = DatasetManifest(
+                dataset_id=dataset_id,
+                created_at=created_at,
+                source=source,
+                profile=profile,
+                capabilities=capabilities,
+                start_date=start_date,
+                end_date=end_date,
+                requested_symbols=requested_symbols,
+                observed_symbols=tuple(sorted(observed_symbols)),
+                bar_count=bar_count,
+                bars_sha256=checksum.hexdigest(),
+                universe_scope="CURRENT_SNAPSHOT",
+                research_eligible=False,
+                issues=issues,
+                payload_order=_TIMESTAMP_SYMBOL_ORDER,
+                symbol_last_timestamps=tuple(
+                    (symbol, timestamp.isoformat())
+                    for symbol, timestamp in sorted(symbol_last_timestamps.items())
+                ),
+                universe_selection="FINMIND_COMPLETE_SYMBOLS_V1",
+                cadence_summary=cadence_summary,
+                volume_contract=dict(volume_contract),
+                amount_contract=dict(amount_contract),
+                source_snapshot_digest=source_snapshot_digest,
+                plan_identity=dict(plan_identity),
+                plan_identity_digest=plan_identity_digest,
+            )
+            (temporary_dir / "manifest.json").write_text(
+                canonical_json(manifest.to_dict()) + "\n",
+                encoding="utf-8",
+            )
+            try:
+                os.rename(temporary_dir, final_dir)
+            except OSError:
+                if not final_dir.is_dir():
+                    raise
+                shutil.rmtree(temporary_dir, ignore_errors=True)
+                return self._verify_finmind_snapshot_dataset(
+                    expected,
+                    expected_bars_sha256=checksum.hexdigest(),
+                )
+            return manifest
+        except BaseException:
+            shutil.rmtree(temporary_dir, ignore_errors=True)
+            raise
+
+    def _verify_finmind_snapshot_dataset(
+        self,
+        expected: Mapping[str, Any],
+        *,
+        expected_bars: Iterable[HistoricalBar] | None = None,
+        expected_bars_sha256: str | None = None,
+    ) -> DatasetManifest:
+        dataset_id = str(expected["dataset_id"])
+        manifest_path = self._dataset_dir(dataset_id) / "manifest.json"
+        try:
+            raw_manifest_bytes = manifest_path.read_bytes()
+            raw_manifest = json.loads(raw_manifest_bytes)
+        except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
+            raise ValueError(
+                f"FinMind Dataset {dataset_id} has an invalid manifest"
+            ) from error
+        if not isinstance(raw_manifest, Mapping):
+            raise ValueError(f"FinMind Dataset {dataset_id} manifest must be an object")
+        manifest = DatasetManifest.from_dict(raw_manifest)
+        if raw_manifest.get("manifest_digest") != manifest.manifest_digest:
+            raise ValueError(f"FinMind Dataset {dataset_id} manifest digest conflict")
+        expected_manifest_bytes = (
+            canonical_json(manifest.to_dict()) + "\n"
+        ).encode("utf-8")
+        if raw_manifest_bytes != expected_manifest_bytes:
+            raise ValueError(
+                f"FinMind Dataset {dataset_id} manifest schema or canonical bytes conflict"
+            )
+        immutable_checks = {
+            "dataset_id": manifest.dataset_id,
+            "created_at": manifest.created_at,
+            "source": manifest.source,
+            "requested_symbols": manifest.requested_symbols,
+            "expected_bar_count": manifest.bar_count,
+            "start_date": manifest.start_date,
+            "end_date": manifest.end_date,
+            "issues": manifest.issues,
+            "volume_contract": manifest.volume_contract,
+            "amount_contract": manifest.amount_contract,
+            "source_snapshot_digest": manifest.source_snapshot_digest,
+            "plan_identity": manifest.plan_identity,
+            "plan_identity_digest": manifest.plan_identity_digest,
+        }
+        if immutable_checks != dict(expected):
+            raise ValueError(f"FinMind Dataset {dataset_id} immutable identity conflict")
+        if (
+            manifest.storage_format != "JSONL_FULL_V1"
+            or manifest.payload_order != _TIMESTAMP_SYMBOL_ORDER
+            or manifest.universe_scope != "CURRENT_SNAPSHOT"
+            or manifest.research_eligible
+            or manifest.universe_selection != "FINMIND_COMPLETE_SYMBOLS_V1"
+        ):
+            raise ValueError(f"FinMind Dataset {dataset_id} storage contract conflict")
+
+        cadence = _BoundedCadenceEvidence()
+        observed_symbols: set[str] = set()
+        watermarks: dict[str, datetime] = {}
+        previous_key: tuple[datetime, str] | None = None
+        expected_iterator = iter(expected_bars) if expected_bars is not None else None
+        missing = object()
+        count = 0
+        for bar in self._iter_canonical_payload(
+            dataset_id,
+            "bars.jsonl",
+            manifest.bars_sha256,
+        ):
+            if expected_iterator is not None:
+                expected_bar = next(expected_iterator, missing)
+                if expected_bar is missing or bar != expected_bar:
+                    raise ValueError(
+                        f"FinMind Dataset {dataset_id} payload/source conflict"
+                    )
+            key = self._event_key(bar)
+            if previous_key is not None and key <= previous_key:
+                raise ValueError(f"FinMind Dataset {dataset_id} order conflict")
+            previous_key = key
+            count += 1
+            observed_symbols.add(bar.symbol)
+            watermarks[bar.symbol] = bar.timestamp
+            cadence.add(bar)
+        if expected_iterator is not None and next(expected_iterator, missing) is not missing:
+            raise ValueError(f"FinMind Dataset {dataset_id} payload/source conflict")
+        profile, capabilities, cadence_summary = cadence.result()
+        if (
+            count != manifest.bar_count
+            or (
+                expected_bars_sha256 is not None
+                and manifest.bars_sha256 != expected_bars_sha256
+            )
+            or tuple(sorted(observed_symbols)) != manifest.observed_symbols
+            or tuple(
+                (symbol, timestamp.isoformat())
+                for symbol, timestamp in sorted(watermarks.items())
+            )
+            != manifest.symbol_last_timestamps
+            or profile != manifest.profile
+            or capabilities != manifest.capabilities
+            or cadence_summary != manifest.cadence_summary
+        ):
+            raise ValueError(f"FinMind Dataset {dataset_id} payload evidence conflict")
+        return manifest
 
     def create_incremental_dataset(
         self,

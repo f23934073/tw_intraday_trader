@@ -1,0 +1,303 @@
+# Findings: FinMind Backtest Dataset Bridge
+
+## Gate status
+
+- 2026-08-23 Review approved `G0 APPROVED / CONTRACT FROZEN` with no remaining
+  blocking or important findings.
+- Independent Review approved `G1 APPROVED / GATE PASSED` after verifying the
+  identity and backup return-boundary fixes.
+- The user explicitly authorized continuing into G2 small bounded-memory
+  materialization.
+- Independent Review returned G2 to `REQUEST CHANGES`: existing replay accepted
+  non-canonical payload bytes after digest rewrite and ignored unknown manifest
+  fields. The scoped remediation now requires exact canonical raw JSONL lines
+  and exact canonical manifest bytes reconstructed from the known schema.
+- The follow-up independent Review found no blocker or actionable finding and
+  approved `G2 APPROVED / GATE PASSED`. G3～G5 remain unauthorized.
+- G3 full materialization, PostgreSQL registration/binding, Web integration,
+  Local Paper, broker, and real-money work remain outside authorized scope.
+
+## Current repository seams
+
+- `backtest.finmind_history.FinMindHistoryStore` owns the mutable, WAL-backed
+  acquisition database and verifies raw plus canonical partition digests.
+- `backtest.dataset.HistoricalDatasetCatalog` owns immutable Backtest Dataset
+  files and ordered streaming into the existing Backtest Engine.
+- `backtest.application.BacktestApplicationService` currently chooses READY
+  Datasets independently and prioritizes `research_eligible=true`.
+- The selector-less Web projection separately guesses the preferred Dataset,
+  so it can disagree with the Dataset ultimately selected by the server.
+- PostgreSQL stores Dataset manifests and immutable Runs, but there is no
+  durable default Dataset binding.
+- Existing Dataset registration uses an upsert shape; the bridge needs an
+  immutable compare-and-register path rather than overwrite semantics.
+- G1 can remain surgical: add `backtest/finmind_snapshot.py`, one planning CLI,
+  and focused tests while reusing the existing SQLite schema and canonical
+  partition verification rules from `backtest.finmind_history`.
+- The acquisition schema stores jobs, calendar raw evidence, partitions, and
+  first/last event boundaries needed by the frozen semantic projection.
+
+## G2 implementation findings
+
+- `HistoricalDatasetCatalog.create_provider_dataset_from_partitions()` already
+  streams without loading the full Dataset, but it seals `SYMBOL_TIMESTAMP`,
+  uses `datetime.now()` for manifest creation, returns any existing directory
+  without integrity comparison, and lacks FinMind plan/amount lineage. Changing
+  that legacy method would risk unrelated provider workflows, so G2 needs a
+  dedicated timestamp-major immutable sealing entry point on the same catalog.
+- `DatasetManifest` already supports `volume_contract`, but not the frozen
+  `amount_contract`, source snapshot digest, or canonical plan identity
+  projection/digest. G2 must add optional fields so legacy manifest digests stay
+  unchanged when those fields are absent.
+- The G1 reader currently validates partition payloads during inspection but
+  does not yet expose the planned per-symbol bar iterator. G2 must add that
+  read-only iterator and reuse the same raw/canonical verification path before
+  the k-way merge.
+- FinMind normalization already returns canonical `HistoricalBar` values and
+  supports explicit `name`/`market`; the G2 iterator can therefore decode each
+  included raw partition once, revalidate its canonical digest/count/boundary,
+  and enrich it from the frozen reference mapping without another conversion
+  pipeline.
+- The frozen execute contract requires both physical handoff verification and
+  semantic identity recomputation. G2 can call the existing reader against the
+  copied snapshot/reference and compare the recomputed `identity` plus digest
+  before any Dataset directory is published.
+- The implemented replay path compares an existing payload against newly
+  streamed source bars, not only against a self-consistent rewritten manifest;
+  a payload plus checksum/manifest tamper therefore fails closed.
+- The replay path also rejects byte-level JSONL differences such as blank lines
+  and rejects unknown manifest keys such as locators, even when an attacker
+  rewrites the stored checksums consistently.
+
+## Review-time source observations
+
+The acquisition store is live. Observations are not acceptance constants:
+
+| Observation time | Complete symbols | Complete bars | READY | EMPTY | Global INVALID |
+|---|---:|---:|---:|---:|---:|
+| Reviewer probe | 159 | 25,030,469 | 115,651 | 73 | 1 |
+| Plan-remediation probe | 160 | 25,159,169 | 116,247 | 73 | 1 |
+| Second-review observation | 161 | 25,313,015 | not fixed | not fixed | not fixed |
+
+The change during Review confirms that the materializer must first take one
+consistent source snapshot and derive all counts from that snapshot.
+
+At G1 implementation start, the live store contains many small jobs sharing the
+same source/version/date/calendar/volume contract plus incomplete jobs. This
+confirms the reader must merge compatible jobs by semantic contract rather than
+require one terminal job or use job status as the selection authority.
+
+## Revised identity decision
+
+`source_snapshot_digest` is computed from the sorted semantic projection of
+included inputs, not from SQLite file bytes, acquisition audit timestamps, or
+wall-clock execution time.
+The projection includes:
+
+- source and source version;
+- requested start/end dates;
+- calendar canonical digest;
+- one required `TaiwanStockInfo` raw-body digest and its mapping-contract
+  version;
+- the sorted per-symbol `(symbol, selected_date, name, market)` reference
+  projection;
+- canonical volume and amount contracts;
+- every included `(symbol, session_date, status, bar_count,
+  canonical_sha256, first_event_at, last_event_at)`;
+- all contributing source job IDs for lineage.
+
+`snapshot_identity_at` is the maximum included `last_event_at`, which is
+already part of that projection. `DatasetManifest.created_at` is exactly this
+value. Partition `created_at` and `updated_at` remain acquisition audit fields
+and do not enter Dataset identity. Therefore changing only acquisition timing
+cannot change Dataset ID or manifest digest.
+
+If the final Dataset directory already exists, the materializer must verify
+the stored source snapshot digest, payload checksum, bar count, ordering, and
+manifest digest, then return that manifest unchanged. It must never regenerate
+`created_at` or overwrite an existing directory.
+
+## Plan-to-execute handoff
+
+The reviewed full workflow uses a durable handoff rather than two independent
+reads of the live acquisition database:
+
+- `--plan --snapshot-out <sqlite> --plan-out <json>` creates one SQLite online
+  backup and a canonical plan artifact.
+- The plan records plan identity separately from copied-file handoff SHA-256,
+  semantic source digest, dynamic counts, and external raw-artifact digests.
+- `--execute --plan-file <json>` opens only the copied SQLite file named by the
+  plan, verifies both file and semantic digests, and never reopens live
+  `history.sqlite3`.
+- A missing, changed, or semantically different snapshot fails closed.
+- Activation uses the same plan artifact; immutable provenance saves only plan
+  identity, while handoff/locator details remain operation audit.
+
+The plan artifact is now split into canonical `identity`, non-identity
+`handoff_evidence`, non-authoritative `locators`, and host-specific
+`operation_audit`. `plan_identity_digest` hashes only semantic identity.
+`copied_sqlite_sha256` belongs only to handoff evidence and proves that execute
+opened the exact snapshot approved by that plan invocation. Dataset manifest
+stores neither handoff evidence nor paths. A separately planned SQLite rebuild
+may have different whole-file bytes but the same semantic/manifest identity;
+effective paths and file-byte evidence remain operation audit only.
+
+## G1 implementation shape
+
+- The reader will open copied SQLite files with `mode=ro`; it will not construct
+  `FinMindHistoryStore`, because that acquisition adapter creates schema and
+  configures WAL.
+- Online backup publishes a new snapshot path and refuses to overwrite an
+  existing path.
+- The live store currently has one valid semantic job family plus a job without
+  calendar evidence. G1 will exclude structurally unsupported/missing-calendar
+  jobs with reason codes and fail closed if more than one fully formed semantic
+  job family exists instead of choosing one silently.
+- READY and EMPTY partitions are revalidated from compressed raw response bytes,
+  including raw digest, canonical digest, count, session, and event boundaries.
+  INVALID/missing/extra sessions exclude the symbol; conflicting duplicate
+  identities fail the whole plan.
+- `TaiwanStockInfo` mapping uses the frozen latest-date and unique
+  `(stock_name,type)` rule directly; no market-value artifact is needed.
+- G1 will expose saved-plan integrity and physical handoff verification without
+  adding `--execute` or Dataset materialization early.
+- Frozen semantic inputs and included partition lineage belong in immutable
+  identity. Excluded/incomplete progress belongs in a separately digested
+  `selection_audit`; otherwise one Dataset ID can map to different future
+  manifest digests.
+- The CLI exposes only `--plan`; `--execute` is intentionally absent until the
+  materialization gate rather than presenting a verification-only command as a
+  completed materializer.
+- `identity.counts` is now recalculated solely from included partitions;
+  compatible jobs, excluded jobs/symbols, and snapshot-observed selection
+  counts live under separately digested `selection_audit` and cannot change the
+  Dataset ID or plan identity.
+- Backup and plan publication now catch `BaseException` and compare filesystem
+  identity before cleanup, so an interruption removes only artifacts published
+  by that invocation and never an existing/replacement path.
+- The CLI cannot acquire ownership after `backup_source()` returns because that
+  leaves one unprotected call/assignment boundary. The token must instead be
+  registered by backup publication itself into caller-owned state before the
+  protected backup call returns.
+- `backup_source()` now invokes a caller-provided ownership callback immediately
+  after atomic publication while still inside its `BaseException` cleanup
+  region. If callback registration itself is interrupted, backup removes the
+  hard-linked destination; if backup returns and a wrapper interrupts, the CLI
+  already holds the inode token and removes the unpaired snapshot.
+
+## Reference metadata decision
+
+`TaiwanStockInfo` is required because `name` and `market` are serialized into
+the current bar payload. It is identity-affecting, not optional UI decoration.
+
+- CLI requires `--stock-info-raw <TaiwanStockInfo_*.json.gz>` during planning.
+- The canonical digest is SHA-256 of the decompressed raw response body; gzip
+  container bytes and the filename are not authoritative.
+- Per included symbol, use the latest valid-date rows in that exact artifact,
+  keep only `type in {twse,tpex}`, require one unique `(stock_name,type)` after
+  ignoring duplicate industry-category rows, and map markets to `TWSE`/`TPEX`.
+- Missing or ambiguous included symbols fail the whole plan; names are never
+  silently replaced by the symbol and markets are never left blank.
+- Raw digest, declared Dataset name, mapping contract version, and sorted
+  per-symbol mapping enter the semantic source projection. Market-value
+  metadata does not affect bar payload and is not independently resolved by
+  the bridge.
+- This is current descriptive metadata, not point-in-time identity, so the
+  Dataset carries `REFERENCE_METADATA_CURRENT_NOT_PIT`.
+
+The checked-in content-addressed raw artifact has only `status`, `msg`, and
+`data` envelope keys; it does not self-identify its FinMind Dataset name. The
+contract therefore validates the response/row schema and freezes
+`reference.dataset=TaiwanStockInfo` in the plan input. A read-only coverage
+probe found all 167 symbols currently present in acquisition partitions in the
+artifact's valid TWSE/TPEX symbol set; this observation is not a completion
+gate and mapping ambiguity still must be checked by the plan reader.
+The same raw artifact currently has zero latest-date symbols with more than one
+unique `(stock_name,type)` identity under the frozen mapping rule.
+
+The authoritative reference projection is the sorted per-symbol list of
+`(symbol, selected_date, normalized_name, normalized_market)`. There is no
+single identity-bearing metadata as-of date; min/max dates are derived display
+summaries only.
+
+## Dataset ID decision
+
+The ID is `dataset-finmind-sponsor-sha256-` followed by the complete lowercase
+64-hex `source_snapshot_digest`. Truncation and collision fallbacks are not
+allowed; same ID with different immutable digests is corruption and fails
+closed.
+
+## Default binding activation decision
+
+Activation requires caller `expected_binding_revision`, an activation
+idempotency key, actor, and change note. Revision `0` means no current binding;
+the first mutation creates revision `1`. PostgreSQL serializes the binding name
+even before a row exists, rechecks durable operations under that lock, and
+applies strict CAS. Stale revision returns 409. Same target with current
+revision records a no-op result without incrementing revision. Same-key/same-
+digest response-loss retry replays the original result; same key with a
+different request digest conflicts.
+
+## Binding TOCTOU decision
+
+The browser submits `expected_binding_revision` and
+`expected_dataset_digest` from the server projection. A new Run transaction
+must match both or return `409 ATOMIC_BACKTEST_BINDING_CHANGED`; it must never
+silently follow a newly switched binding. Same-key/same-request-digest replay
+is resolved before current binding lookup and returns the original Run.
+
+## Revised cross-job duplicate decision
+
+The semantic identity is `(symbol, session_date)` across all compatible jobs.
+
+- Equal `canonical_sha256`, status, bar count, and first/last event boundaries:
+  emit one canonical partition and retain every contributing job ID in
+  lineage.
+- Different canonical digest or incompatible metadata: fail the complete
+  snapshot. Do not prefer a newer job, completed job, larger payload, or first
+  row.
+- A partial duplicate cannot make an incomplete symbol complete unless its
+  full exact-date set passes the same merged identity checks.
+
+## Revised volume and amount decision
+
+- The new canonical enum token is `COMMON_LOTS`, matching the acquisition
+  store's frozen value.
+- Existing daily manifests using `COMMON_LOT` remain byte/digest compatible.
+  Readers may expose an explicit legacy alias mapping, but old manifests are
+  not rewritten and new materialization never emits the singular token.
+- FinMind `amount=close*volume` is recorded as
+  `DERIVED_CLOSE_X_VOLUME_PROXY`; it is useful for the existing VWAP ratio but
+  must not be described as actual turnover.
+
+The MVP explicitly permits `above_vwap_entry` on this exploratory Dataset.
+The resulting value is labelled a completed-1m close-volume proxy, not exchange
+VWAP. Dataset manifest, immutable Run snapshot, Feature input/evaluation
+evidence, and comparability identity retain the exact amount contract and its
+digest. Missing or unknown amount semantics fail closed, and Qualification
+continues to reject the Dataset because `research_eligible=false`.
+This requires a runtime-specific preflight: generic `OHLCV` does not prove a
+known VWAP weight source. The Backtest adapter accepts the frozen proxy kind,
+labels it explicitly, and rejects missing/unknown kinds before Run creation;
+Local Paper retains its separate runtime binding and source semantics.
+
+## Revised operational-control decision
+
+The Engine may continue calling cheap callbacks every 128 bars, but those
+callbacks cannot each touch PostgreSQL.
+
+- A monotonic-time `RunControlProbe` caches durable cancellation status and
+  polls PostgreSQL no more than once per second by default.
+- A progress reporter writes no more than once per second or on a configured
+  minimum progress delta, and always writes terminal state.
+- Cancellation latency is bounded by the poll interval plus one local event
+  checkpoint.
+- These operational clocks do not enter the deterministic Run result.
+
+## Migration collision
+
+`backtest/migrations/011_strategy_set_archives.sql` currently exists as
+untracked concurrent work. The bridge plan does not allocate or write a new
+migration until Phase 0 confirms whether 011 is retained. If retained, the
+binding migration is the next available number; if it changes, the bridge uses
+the actual current tip rather than a hard-coded filename.
