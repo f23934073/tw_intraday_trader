@@ -20,10 +20,10 @@ data/finmind_sponsor/history.sqlite3
 FinMind downloader 的下載契約。
 
 目前 disposition：`G0 APPROVED / CONTRACT FROZEN`、
-`G1 APPROVED / GATE PASSED`、`G2 APPROVED / GATE PASSED`。本次實作只
-包含小型 saved-plan materialization、deterministic immutable Dataset replay
-與 bounded-memory/conflict tests；不執行正式完整 snapshot，不修改
-PostgreSQL、Web、Local Paper、broker，亦不提前進入 G3～G5。
+`G1 APPROVED / GATE PASSED`、`G2 APPROVED / GATE PASSED`、
+`G3 APPROVED / GATE PASSED`。已建立並驗證一份正式完整動態
+snapshot artifact；G4 PostgreSQL binding 與 G5 Web Run 仍未授權。
+本階段不修改 PostgreSQL、Web、Local Paper、broker 或 real-money。
 
 ## 2. 範圍與非目標
 

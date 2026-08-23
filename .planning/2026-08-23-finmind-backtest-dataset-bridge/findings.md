@@ -1,5 +1,59 @@
 # Findings: FinMind Backtest Dataset Bridge
 
+## 2026-08-23 — G3 approved
+
+- Independent Review found no G3 blocker and approved
+  `G3 APPROVED / GATE PASSED`; formal Gate progress is now 60%.
+- Review independently confirmed canonical manifest/schema/identity, exact
+  28,325,340-line payload and SHA-256, full saved-plan replay, all 182 observed
+  symbols, fail-closed exclusion of 8 incomplete symbols, and no matching
+  temporary Dataset residue.
+- Dataset limitations remain explicit and non-blocking:
+  `research_eligible=false`, close-volume amount proxy, current-snapshot
+  survivorship, partial universe, raw unadjusted prices, and current non-PIT
+  reference metadata.
+- G4 PostgreSQL registration/default binding and G5 Web integration remain
+  unauthorized; the Web backtest bridge is not yet deliverable.
+
+## 2026-08-23 — G3 execution boundary
+
+- The user explicitly authorized the next step after the G0–G2 scoped commit.
+- G3 means one dynamic full snapshot of the currently complete semantic
+  selection. Incomplete or incompatible symbols remain excluded evidence; they
+  must not be silently included or used to block identity stability.
+- The saved plan, copied SQLite source, and immutable Dataset must remain one
+  verified handoff. PostgreSQL registration, default binding, Web, Local Paper,
+  broker, and real-money paths remain prohibited in this slice.
+- G3 preflight found the live source at
+  `data/finmind_sponsor/history.sqlite3` (410,701,824 bytes) and the frozen
+  reference artifact at
+  `data/finmind_sponsor/universes/raw/TaiwanStockInfo_0353f33f0b2f36a12bf0c9d30a802423352ba460f6e113012e7ff5f32b5315ad.json.gz`.
+- The workspace filesystem reported about 74 GiB available before planning;
+  the saved plan's own dynamic output estimate remains authoritative.
+- The G3 saved plan selected 182 complete symbols and 28,325,340 bars from
+  132,314 partitions (132,234 READY and 80 EMPTY), while retaining 8 excluded
+  symbols as selection-audit evidence.
+- The plan estimated 9,192,825,060 output bytes and recorded 79,580,540,928
+  available bytes, so the frozen preflight passed before materialization.
+- Frozen identity: source digest
+  `88712fb2b5e7def4f87948f0e7c584d6b9fe89f87ebff0d5e214386ecbda37e6`,
+  plan identity digest
+  `b72f4f6479b59acc71d5dedf780fc15c281b829bf6e645822dbd79ed27af15b6`.
+- Full materialization atomically published the exact Dataset ID with no
+  temporary directory left beside it. The manifest records 28,325,340 bars,
+  182 requested/observed symbols, `TIMESTAMP_SYMBOL` order, and
+  `research_eligible=false`.
+- Independent filesystem readback found exactly 28,325,340 JSONL lines and
+  SHA-256
+  `216d306d2df5ec3f6221e6e96c3998129774c966f844e9d923634d96f275c31d`,
+  matching the immutable manifest. Manifest digest is
+  `ced1e2d7c95f8f5bd402556b022eeecdf771deedd410e3319618b9d96a141b29`.
+- A second execution of the exact saved plan took the existing-artifact replay
+  path and completed successfully after full canonical source/payload, order,
+  cadence, watermark, symbol, count, and digest verification. It returned the
+  same Dataset, payload, manifest, and plan identity digests without publishing
+  a replacement artifact.
+
 ## Gate status
 
 - 2026-08-23 Review approved `G0 APPROVED / CONTRACT FROZEN` with no remaining

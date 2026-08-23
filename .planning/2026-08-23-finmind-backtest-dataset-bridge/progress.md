@@ -1,5 +1,56 @@
 # Progress: FinMind Backtest Dataset Bridge
 
+## 2026-08-23 — G3 approved
+
+- Independent Review found no blocker and approved
+  `G3 APPROVED / GATE PASSED`; formal Gate progress is now 60%.
+- Review evidence reconfirmed the canonical manifest, 28,325,340-line payload,
+  exact SHA-256, approximately 16-minute full replay, 182 observed symbols,
+  fail-closed exclusion of 8 incomplete symbols, and absence of matching
+  temporary Dataset directories.
+- Recorded the approval in the implementation plan and task plan only. G4–G5
+  remain unauthorized; no PostgreSQL, Web, trading, commit, or push action was
+  performed.
+
+## 2026-08-23 — G3 full artifact start
+
+- User authorized the next phase after local commit `9aa81eb`.
+- Marked G3 Full Artifact `AUTHORIZED / IN PROGRESS`; G4 PostgreSQL and G5 Web
+  remain unauthorized.
+- Success requires a live online-backup plan, dynamic count/disk evidence,
+  complete materialization from that exact saved snapshot, and independent
+  readback verification before G3 may be submitted for Review.
+- No PostgreSQL, Web, Local Paper, broker, real-money, commit, or push is
+  included in this phase.
+- Preflight located the 410,701,824-byte live SQLite source and the frozen
+  TaiwanStockInfo artifact. About 74 GiB was available on the output
+  filesystem before planning.
+- A read-only `ps` probe was denied by the sandbox. It is not required because
+  the implementation uses SQLite online backup; the command was not retried.
+- Published the exact G3 plan/copy pair under
+  `data/backtest/finmind_plans/g3_20260823T1730+0800/`.
+- Dynamic plan evidence: 182 included symbols, 8 excluded symbols, 28,325,340
+  bars, 132,314 included partitions, 9,192,825,060 expected output bytes, and
+  79,580,540,928 bytes available. Disk preflight is sufficient.
+- Executed the exact saved plan and atomically published
+  `dataset-finmind-sponsor-sha256-88712fb2b5e7def4f87948f0e7c584d6b9fe89f87ebff0d5e214386ecbda37e6`.
+- CLI execution completed with bar count 28,325,340, payload SHA-256
+  `216d306d2df5ec3f6221e6e96c3998129774c966f844e9d923634d96f275c31d`,
+  and manifest digest
+  `ced1e2d7c95f8f5bd402556b022eeecdf771deedd410e3319618b9d96a141b29`.
+- Independent `wc -l` and `shasum -a 256` readback matched the manifest exactly;
+  the final directory exists and no matching temporary directory remains.
+- Re-executed the exact saved plan against the already published artifact. The
+  full idempotent replay verifier passed after comparing all canonical source
+  and payload rows plus ordering, cadence, watermarks, symbols, count, and
+  digests; it returned the same identities without replacement publication.
+- Marked Phase 3 complete and G3 `IMPLEMENTATION CANDIDATE / AWAITING REVIEW`.
+  G4–G5 remain unauthorized and no PostgreSQL, Web, trading, commit, or push
+  action was performed.
+- Post-materialization focused regression passed: `43 passed in 0.51s`.
+  Python compilation and `git diff --check` also passed. The published Dataset
+  occupies about 5.5 GiB and the immutable plan/copy evidence about 431 MiB.
+
 ## 2026-08-23 — G2 approved
 
 - Independent Review confirmed both replay-verifier remediations and found no

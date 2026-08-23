@@ -12,17 +12,17 @@ FinMind history.sqlite3
 → Web Atomic Backtest
 ```
 
-The original planning task is complete. G1 and G2 are approved; the completed
-G2 small bounded-memory implementation did not
-run the full live snapshot, mutate PostgreSQL, or change Web, Local Paper,
-broker, or real-money behavior.
+The original planning task is complete. G1, G2, and G3 are approved. G4
+PostgreSQL binding and G5 Web Run remain unauthorized. PostgreSQL, Web, Local
+Paper, broker, and real-money behavior remain outside the completed G3 slice.
 
 ## Current Status
 
 - G0 Contract Review: approved / contract frozen
 - G1 Snapshot Reader: approved / gate passed
 - G2 Small Materialization: approved / gate passed
-- G3～G5: not authorized
+- G3 Full Artifact: approved / gate passed
+- G4～G5: not authorized
 
 ## Review Findings Closure
 
@@ -110,12 +110,14 @@ broker, or real-money behavior.
 
 ### Phase 3 — Full snapshot materialization
 
-- [ ] Run `--plan` against the copied source snapshot.
-- [ ] Record dynamic included/excluded counts and required disk estimate.
-- [ ] Materialize the complete selected snapshot to a temporary directory.
-- [ ] Verify payload order, count, checksum, source snapshot digest, and
+Status: COMPLETE / G3 APPROVED / GATE PASSED
+
+- [x] Run `--plan` against the copied source snapshot.
+- [x] Record dynamic included/excluded counts and required disk estimate.
+- [x] Materialize the complete selected snapshot to a temporary directory.
+- [x] Verify payload order, count, checksum, source snapshot digest, and
       manifest digest before atomic publication.
-- [ ] Do not register or activate an incomplete artifact.
+- [x] Do not register or activate an incomplete artifact.
 
 ### Phase 4 — PostgreSQL immutable registration and default binding
 
@@ -198,6 +200,7 @@ broker, or real-money behavior.
 | Review-time counts changed from 159 to 160 while acquisition continued | 1 | Treat all counts as snapshot output and keep observations out of fixed acceptance gates |
 | Initial patch did not match one findings paragraph | 1 | No files changed; split the update into exact smaller patches |
 | Combined remediation patch targeted one file twice | 1 | No files changed; consolidated each file into one atomic patch update |
+| Sandbox denied `ps` during G3 preflight | 1 | Process enumeration is unnecessary; rely on SQLite online backup and source mtime evidence |
 | Reviewer observed 161 symbols after plan remediation | 1 | Keep the observation as evidence only; no gate compares against it |
 | Repository search used an unmatched `requirements*.txt` zsh glob | 1 | The search made no changes; subsequent searches use `rg --files` or quoted explicit paths |
 | One parallel source read used a misspelled repository path | 1 | Retried once with the verified workspace path; no write occurred |
