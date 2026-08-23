@@ -38,8 +38,10 @@ class SimulationOrder:
     filled_price: Decimal | None = None
     filled_quantity: int = 0
     filled_notional: Decimal = Decimal("0")
+    filled_commission: Decimal = Decimal("0")
     last_fill_price: Decimal | None = None
     last_fill_quantity: int = 0
+    last_fill_commission: Decimal = Decimal("0")
     fill_sequence: int = 0
     reason: str | None = None
     strategy_id: str | None = None
@@ -75,5 +77,6 @@ class SimulationPosition:
     quantity: int
     average_price: Decimal
     owner_origin: str
+    commission_cost: Decimal = Decimal("0")
     owner_strategy_id: str | None = None
     owner_strategy_version: str | None = None

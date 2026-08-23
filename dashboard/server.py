@@ -5,15 +5,15 @@ from __future__ import annotations
 import asyncio
 import csv
 import secrets
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime
 from ipaddress import ip_address
 from io import StringIO
 from pathlib import Path
 from threading import RLock
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Iterator, Literal
 from urllib.parse import urlsplit
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from fastapi import (
     FastAPI,
@@ -36,6 +36,7 @@ from backtest.repository import BacktestIdempotencyConflict
 from backtest.scheduler import AfterCloseIncrementalScheduler
 from config import backtest as backtest_settings
 from config import twse_calendar_2026
+from config.local_paper import LOCAL_PAPER_SETTINGS_PATH
 from config.momentum_stream import MOMENTUM_STREAM_CONFIG
 from dashboard.momentum import (
     RealtimeMomentumDashboardService,
@@ -64,6 +65,12 @@ from simulation.service import (
     SimulationStateError,
     SimulationValidationError,
 )
+from simulation.settings import (
+    JsonLocalPaperSettingsRepository,
+    LocalPaperSettings,
+    LocalPaperSettingsConflict,
+    LocalPaperSettingsState,
+)
 from simulation.strategy_flow import StrategyPaperFlowService
 from atomic_strategies.registry import AtomicStrategyRegistry
 from strategy_catalog.application import AtomicStrategyCatalogService, build_atomic_strategy_service
@@ -81,6 +88,7 @@ from strategy_catalog.web_projection import (
     template_projection,
     version_projection,
 )
+from trading.local_paper import session_archive_record
 
 STATIC_DIR = Path(__file__).parent / "static"
 SIMULATION_STREAM_PATH = "/ws/simulation/projection"
@@ -101,6 +109,7 @@ _backtest_service: BacktestApplicationService | None = None
 _atomic_strategy_service: AtomicStrategyCatalogService | None = None
 _incremental_scheduler: AfterCloseIncrementalScheduler | None = None
 _automated_strategy_controller: ContinuousPaperStrategyController | None = None
+_local_paper_settings_repository: JsonLocalPaperSettingsRepository | None = None
 _local_paper_kill_switch = LocalPaperKillSwitch()
 _runtime_composition_lock = RLock()
 _atomic_strategy_csrf_token = secrets.token_urlsafe(32)
@@ -261,6 +270,23 @@ class SimulationCancelRequest(BaseModel):
 class SimulationRetryRequest(BaseModel):
     idempotency_key: str
     limit_price: float | None = None
+
+
+class LocalPaperSettingsUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision: int = Field(ge=0)
+    starting_cash_twd: str
+    max_daily_buy_notional_twd: str
+    commission_rate: str
+    minimum_commission_twd: str = "0"
+
+
+class LocalPaperSettingsApplyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision: int = Field(ge=0)
+    confirm_reset: bool = False
 
 
 class AutomatedStrategyStartRequest(BaseModel):
@@ -449,6 +475,16 @@ class AtomicBacktestRunRequest(StrictRequest):
     actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
 
 
+def get_local_paper_settings_repository() -> JsonLocalPaperSettingsRepository:
+    global _local_paper_settings_repository
+    with _runtime_composition_lock:
+        if _local_paper_settings_repository is None:
+            _local_paper_settings_repository = JsonLocalPaperSettingsRepository(
+                LOCAL_PAPER_SETTINGS_PATH
+            )
+        return _local_paper_settings_repository
+
+
 def get_runtime_composition() -> RuntimeComposition:
     """建立一次本機 composition；保留舊 globals 供測試注入相容。"""
     global _composition, _provider, _service, _simulation_service
@@ -469,15 +505,29 @@ def get_runtime_composition() -> RuntimeComposition:
             return current
 
         provider = _provider or build_provider()
+        settings_state = get_local_paper_settings_repository().load()
         _composition = RuntimeComposition.create(
             provider,
             dashboard_service=_service,
             simulation_service=_simulation_service,
+            local_paper_settings=settings_state.active,
+            local_paper_settings_revision=(
+                settings_state.active_settings_revision
+            ),
+            local_paper_session_id=settings_state.active_session_id,
         )
         _provider = _composition.provider
         _service = _composition.dashboard_service
         _simulation_service = _composition.simulation_service
         return _composition
+
+
+@contextmanager
+def runtime_composition_lease() -> Iterator[None]:
+    """Keep runtime lookup and one complete stateful operation atomic."""
+
+    with _runtime_composition_lock:
+        yield
 
 
 def get_market_provider() -> MarketDataProvider:
@@ -744,7 +794,9 @@ def _record_catalog_mutation_failure(
 
 def _dashboard_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
     """避免改寫 DashboardService 快取，附加本機模擬投影。"""
-    return {**snapshot, "simulation": get_simulation_service().projection()}
+    with runtime_composition_lease():
+        projection = get_simulation_service().projection()
+    return {**snapshot, "simulation": projection}
 
 
 @app.get("/", include_in_schema=False)
@@ -765,8 +817,11 @@ def provider_usage_status() -> dict[str, Any]:
 @app.post("/api/dashboard/refresh")
 def refresh_dashboard_snapshot() -> dict[str, Any]:
     snapshot = get_dashboard_service().refresh()
-    get_simulation_service().refresh_quotes()
-    return _dashboard_payload(snapshot)
+    with runtime_composition_lease():
+        simulation = get_simulation_service()
+        simulation.refresh_quotes()
+        projection = simulation.projection()
+    return {**snapshot, "simulation": projection}
 
 
 @app.get("/api/dashboard/candidates/{symbol}/history")
@@ -927,13 +982,214 @@ async def _close_websocket(websocket: WebSocket, *, code: int) -> None:
 @app.get("/api/simulation/session")
 def simulation_session() -> dict[str, Any]:
     """讀取本機紙上模擬 session，不會呼叫券商或資料來源。"""
-    return get_simulation_service().session()
+    with runtime_composition_lease():
+        return get_simulation_service().session()
+
+
+def _local_paper_settings_payload(
+    state: LocalPaperSettingsState,
+) -> dict[str, Any]:
+    with runtime_composition_lease():
+        simulation = get_simulation_service()
+        active_orders = [
+            order
+            for order in simulation.orders()
+            if order["status"] in {"SUBMITTED", "PENDING", "PARTIALLY_FILLED"}
+        ]
+        positions = simulation.positions()
+        strategy_running = bool(
+            _automated_strategy_controller is not None
+            and _automated_strategy_controller.status().get("state") == "RUNNING"
+        )
+        return {
+            **state.to_dict(),
+            "active_settings_digest": state.active.digest,
+            "draft_settings_digest": state.draft.digest,
+            "has_unapplied_changes": state.active != state.draft,
+            "apply_blockers": {
+                "automated_strategy_running": strategy_running,
+                "active_order_count": len(active_orders),
+                "position_count": len(positions),
+                "requires_reset_confirmation": bool(active_orders or positions),
+            },
+            "csrf_token": _atomic_strategy_csrf_token,
+            "safety": "只設定本機紙上模擬，不會修改券商帳戶或送出真實委託。",
+        }
+
+
+@app.get("/api/simulation/settings")
+def local_paper_settings() -> dict[str, Any]:
+    with runtime_composition_lease():
+        return _local_paper_settings_payload(
+            get_local_paper_settings_repository().load()
+        )
+
+
+@app.put("/api/simulation/settings")
+def update_local_paper_settings(
+    payload: LocalPaperSettingsUpdateRequest,
+    request: Request,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    with runtime_composition_lease():
+        try:
+            settings = LocalPaperSettings.from_mapping(payload.model_dump())
+            state = get_local_paper_settings_repository().save_draft(
+                settings,
+                expected_revision=payload.revision,
+                updated_at=datetime.now().astimezone(),
+            )
+        except LocalPaperSettingsConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return _local_paper_settings_payload(state)
+
+
+def _replacement_composition(
+    current: RuntimeComposition,
+    *,
+    settings: LocalPaperSettings,
+    settings_revision: int,
+    session_id: str,
+) -> RuntimeComposition:
+    return RuntimeComposition.create(
+        current.provider,
+        dashboard_service=current.dashboard_service,
+        premarket_service=current.premarket_service,
+        premarket_artifacts=current.premarket_artifacts,
+        clock=current.clock,
+        journal=current.journal,
+        projections=current.projections,
+        local_paper_settings=settings,
+        local_paper_settings_revision=settings_revision,
+        local_paper_session_id=session_id,
+        start_simulation_streaming=False,
+    )
+
+
+@app.post("/api/simulation/settings/apply")
+def apply_local_paper_settings(
+    payload: LocalPaperSettingsApplyRequest,
+    request: Request,
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    global _composition, _simulation_service, _automated_strategy_controller
+
+    _require_atomic_mutation(request, x_strategy_csrf)
+    with _runtime_composition_lock:
+        repository = get_local_paper_settings_repository()
+        state = repository.load()
+        if state.revision != payload.revision:
+            raise HTTPException(status_code=409, detail="本機模擬設定版本已更新")
+        current = get_runtime_composition()
+        if (
+            _automated_strategy_controller is not None
+            and _automated_strategy_controller.status().get("state") == "RUNNING"
+        ):
+            raise HTTPException(status_code=409, detail="請先停止自動模擬策略")
+        active_orders = [
+            order
+            for order in current.simulation_service.orders()
+            if order["status"] in {"SUBMITTED", "PENDING", "PARTIALLY_FILLED"}
+        ]
+        positions = current.simulation_service.positions()
+        if (active_orders or positions) and not payload.confirm_reset:
+            raise HTTPException(
+                status_code=409,
+                detail="目前仍有委託或持倉，套用前必須明確確認重建模擬帳戶",
+            )
+
+        next_session_id = f"local-paper-runtime-{uuid4().hex}"
+        replacement: RuntimeComposition | None = None
+        activated: LocalPaperSettingsState | None = None
+        old_stream_was_active = bool(
+            current.simulation_service.session().get("streaming")
+        )
+        old_stream_suspended = False
+        replacement_stream_activated = False
+        try:
+            replacement = _replacement_composition(
+                current,
+                settings=state.draft,
+                settings_revision=state.draft_settings_revision,
+                session_id=next_session_id,
+            )
+            if old_stream_was_active:
+                old_stream_suspended = True
+                current.simulation_service.suspend_streaming()
+            replacement.simulation_service.activate_streaming()
+            replacement_stream_activated = True
+            activated = repository.activate_draft(
+                expected_revision=state.revision,
+                updated_at=current.clock.now(),
+                session_id=next_session_id,
+            )
+            current.journal.append(
+                session_archive_record(
+                    session_id=state.active_session_id,
+                    replacement_session_id=next_session_id,
+                    replacement_settings_digest=state.draft.digest,
+                    active_order_count=len(active_orders),
+                    position_count=len(positions),
+                    occurred_at=current.clock.now(),
+                )
+            )
+        except Exception as error:
+            rollback_error: Exception | None = None
+            if replacement is not None and replacement_stream_activated:
+                try:
+                    replacement.simulation_service.suspend_streaming()
+                except Exception as stream_error:
+                    rollback_error = stream_error
+            if old_stream_suspended:
+                try:
+                    current.simulation_service.activate_streaming()
+                except Exception as stream_error:
+                    rollback_error = rollback_error or stream_error
+            if activated is not None:
+                try:
+                    repository.restore_active(
+                        state,
+                        expected_revision=activated.revision,
+                        updated_at=current.clock.now(),
+                    )
+                except Exception as restore_error:
+                    rollback_error = rollback_error or restore_error
+            if replacement is not None:
+                close_replacement = getattr(
+                    replacement.simulation_service,
+                    "close",
+                    None,
+                )
+                if callable(close_replacement):
+                    try:
+                        close_replacement()
+                    except Exception as close_error:
+                        rollback_error = rollback_error or close_error
+            if rollback_error is not None:
+                raise RuntimeError(
+                    "本機模擬設定套用失敗，且 runtime rollback 未完成"
+                ) from rollback_error
+            raise
+
+        assert replacement is not None
+        assert activated is not None
+        _composition = replacement
+        _simulation_service = replacement.simulation_service
+        _automated_strategy_controller = None
+        close_simulation = getattr(current.simulation_service, "close", None)
+        if callable(close_simulation):
+            close_simulation()
+        return _local_paper_settings_payload(activated)
 
 
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:
     """Liveness without provider, broker account, or order API calls."""
-    session = get_simulation_service().session()
+    with runtime_composition_lease():
+        session = get_simulation_service().session()
     return {
         "status": "ok",
         "mode": session["mode"],
@@ -944,7 +1200,8 @@ def healthz() -> dict[str, Any]:
 @app.get("/readyz")
 def readyz(response: Response) -> dict[str, Any]:
     """Fail closed only when the simulation quote ingress has overflowed."""
-    session = get_simulation_service().session()
+    with runtime_composition_lease():
+        session = get_simulation_service().session()
     ready = session["stream_health"] == "HEALTHY"
     if not ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -960,7 +1217,8 @@ def readyz(response: Response) -> dict[str, Any]:
 @app.get("/api/simulation/projection")
 def simulation_projection() -> dict[str, Any]:
     """一次讀取本機投影；不輪詢 Shioaji snapshot 或帳務 API。"""
-    return get_simulation_service().projection()
+    with runtime_composition_lease():
+        return get_simulation_service().projection()
 
 
 @app.websocket(SIMULATION_STREAM_PATH)
@@ -977,7 +1235,7 @@ async def simulation_projection_stream(websocket: WebSocket) -> None:
     last_sent_at = 0.0
     try:
         while True:
-            projection = get_simulation_service().projection()
+            projection = await asyncio.to_thread(simulation_projection)
             sampled_at = loop.time()
             if projection != last_projection:
                 revision += 1
@@ -1033,13 +1291,15 @@ async def _send_simulation_message(
 @app.get("/api/simulation/orders")
 def simulation_orders() -> dict[str, Any]:
     """讀取本機委託投影，不會呼叫券商或資料來源。"""
-    return {"orders": get_simulation_service().orders()}
+    with runtime_composition_lease():
+        return {"orders": get_simulation_service().orders()}
 
 
 @app.get("/api/simulation/positions")
 def simulation_positions() -> dict[str, Any]:
     """讀取本機已成交持倉投影，不會呼叫券商或資料來源。"""
-    return {"positions": get_simulation_service().positions()}
+    with runtime_composition_lease():
+        return {"positions": get_simulation_service().positions()}
 
 
 @app.post("/api/simulation/orders", status_code=status.HTTP_201_CREATED)
@@ -1049,14 +1309,15 @@ def submit_simulation_order(
 ) -> dict[str, Any]:
     """送出本機紙上模擬委託；絕不呼叫 Shioaji 下單 API。"""
     try:
-        order, idempotent = get_local_paper_command_service().submit_order(
-            symbol=request.symbol,
-            side=request.side,
-            quantity_shares=request.quantity_shares,
-            lots=request.lots,
-            limit_price=request.limit_price,
-            idempotency_key=request.idempotency_key,
-        )
+        with runtime_composition_lease():
+            order, idempotent = get_local_paper_command_service().submit_order(
+                symbol=request.symbol,
+                side=request.side,
+                quantity_shares=request.quantity_shares,
+                lots=request.lots,
+                limit_price=request.limit_price,
+                idempotency_key=request.idempotency_key,
+            )
     except SimulationValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except SimulationStateError as error:
@@ -1075,10 +1336,11 @@ def cancel_simulation_order(
 ) -> dict[str, Any]:
     """取消仍在等待的本機紙上模擬委託。"""
     try:
-        order, idempotent = get_local_paper_command_service().cancel_order(
-            order_id,
-            request.idempotency_key,
-        )
+        with runtime_composition_lease():
+            order, idempotent = get_local_paper_command_service().cancel_order(
+                order_id,
+                request.idempotency_key,
+            )
     except SimulationValidationError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except SimulationStateError as error:
@@ -1100,11 +1362,12 @@ def retry_simulation_order(
 ) -> dict[str, Any]:
     """Retry the unfilled remainder as one bounded successor paper order."""
     try:
-        order, idempotent = get_local_paper_command_service().retry_order(
-            order_id,
-            request.idempotency_key,
-            limit_price=request.limit_price,
-        )
+        with runtime_composition_lease():
+            order, idempotent = get_local_paper_command_service().retry_order(
+                order_id,
+                request.idempotency_key,
+                limit_price=request.limit_price,
+            )
     except SimulationValidationError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except SimulationStateError as error:
@@ -1118,7 +1381,8 @@ def retry_simulation_order(
 @app.get("/api/simulation/automated-strategy")
 def automated_strategy_status() -> dict[str, Any]:
     """Read the process-local automated paper-strategy state."""
-    return get_automated_strategy_controller().status()
+    with runtime_composition_lease():
+        return get_automated_strategy_controller().status()
 
 
 @app.post(
@@ -1135,7 +1399,8 @@ def start_automated_strategy(
     _require_atomic_mutation(http_request, x_strategy_csrf)
     try:
         config = AutomatedStrategyConfig.create(**request.model_dump())
-        result = get_automated_strategy_controller().start(config)
+        with runtime_composition_lease():
+            result = get_automated_strategy_controller().start(config)
         response.status_code = status.HTTP_201_CREATED
         return result
     except ValueError as error:
@@ -1152,7 +1417,8 @@ def stop_automated_strategy(
     """Stop producing new intents; existing local-paper positions are retained."""
     _require_atomic_mutation(request, x_strategy_csrf)
     try:
-        return get_automated_strategy_controller().stop()
+        with runtime_composition_lease():
+            return get_automated_strategy_controller().stop()
     except AutomatedStrategyStateError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
 
@@ -1166,7 +1432,8 @@ def engage_automated_strategy_kill_switch(
     """Emergency-stop every process-local automated Local Paper intent."""
 
     _require_atomic_mutation(request, x_strategy_csrf)
-    return get_automated_strategy_controller().engage_kill_switch(payload.reason)
+    with runtime_composition_lease():
+        return get_automated_strategy_controller().engage_kill_switch(payload.reason)
 
 
 @app.post("/api/simulation/automated-strategy/kill-switch/reset")
@@ -1177,7 +1444,8 @@ def reset_automated_strategy_kill_switch(
     """Explicitly clear the kill switch without restarting a strategy."""
 
     _require_atomic_mutation(request, x_strategy_csrf)
-    return get_automated_strategy_controller().reset_kill_switch()
+    with runtime_composition_lease():
+        return get_automated_strategy_controller().reset_kill_switch()
 
 
 # ---------------------------------------------------------------------------

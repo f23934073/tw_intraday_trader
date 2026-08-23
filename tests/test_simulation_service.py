@@ -120,6 +120,82 @@ def test_pending_buy_reservation_blocks_aggregate_overcommit_and_releases_on_can
     assert service.session()["available_cash"] == 150_000.0
 
 
+def test_daily_buy_limit_is_separate_from_cash_and_sell_does_not_restore_it():
+    service = SimulationService(
+        MockProvider(),
+        starting_cash=1_000_000,
+        max_daily_buy_notional=200_000,
+    )
+    bought, _ = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price=106,
+        idempotency_key="daily-buy",
+    )
+    sold, _ = service.submit_order(
+        symbol="3231",
+        side="SELL",
+        lots=1,
+        limit_price=100,
+        idempotency_key="daily-sell",
+    )
+    rejected, _ = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price=106,
+        idempotency_key="daily-rebuy",
+    )
+
+    assert bought["status"] == "FILLED"
+    assert sold["status"] == "FILLED"
+    assert rejected["status"] == "REJECTED"
+    assert rejected["reason"] == "每日買入額度不足"
+    assert service.session()["daily_filled_buy_notional"] == 105_500.0
+    assert service.session()["daily_remaining_buy_notional"] == 94_500.0
+
+
+def test_commission_is_reserved_and_applied_to_cash_and_realized_pnl():
+    service = SimulationService(
+        MockProvider(),
+        starting_cash=1_000_000,
+        commission_rate="0.001425",
+        minimum_commission="20",
+    )
+    pending, _ = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price=100,
+        idempotency_key="fee-pending",
+    )
+
+    assert pending["status"] == "PENDING"
+    assert service.session()["reserved_cash"] == 100_142.5
+    service.cancel_order(pending["order_id"], "fee-pending-cancel")
+
+    bought, _ = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price=106,
+        idempotency_key="fee-buy",
+    )
+    sold, _ = service.submit_order(
+        symbol="3231",
+        side="SELL",
+        lots=1,
+        limit_price=100,
+        idempotency_key="fee-sell",
+    )
+
+    assert bought["last_fill_commission"] == 150.34
+    assert sold["last_fill_commission"] == 150.34
+    assert service.session()["available_cash"] == 999_699.32
+    assert service.positions() == []
+
+
 def test_sell_cannot_exceed_holdings_and_realizes_pnl_after_fill():
     service = SimulationService(MockProvider(), starting_cash=300_000)
     service.submit_order(

@@ -128,6 +128,10 @@ def _risk_snapshot_payload(snapshot: RiskSnapshot) -> dict[str, object]:
         "pending_buy_shares": snapshot.pending_buy_shares,
         "pending_sell_shares": snapshot.pending_sell_shares,
         "daily_realized_pnl": str(snapshot.daily_realized_pnl),
+        "daily_filled_buy_notional": str(
+            snapshot.daily_filled_buy_notional
+        ),
+        "pending_buy_notional": str(snapshot.pending_buy_notional),
         "daily_loss": (
             str(snapshot.daily_loss) if snapshot.daily_loss is not None else None
         ),

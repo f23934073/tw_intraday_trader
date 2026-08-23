@@ -10,10 +10,10 @@ WORKSPACES = STATIC / "js" / "workspaces"
 
 
 def test_dashboard_layout_loads_external_css_and_one_module_entrypoint() -> None:
-    assert '<link rel="stylesheet" href="/static/css/dashboard.css">' in HTML
+    assert '<link rel="stylesheet" href="/static/css/dashboard.css?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1">' in HTML
     assert (
         '<script type="module" '
-        'src="/static/js/app.js?v=20260821-atomic-strategy-v2"></script>'
+        'src="/static/js/app.js?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1"></script>'
     ) in HTML
     assert "<style>" not in HTML
     assert "<script>" not in HTML
@@ -30,7 +30,7 @@ def test_entrypoint_composes_workspace_modules_instead_of_embedding_them() -> No
         assert f'./workspaces/{module}.js' in APP
         source = (WORKSPACES / f"{module}.js").read_text(encoding="utf-8")
         assert factory in source
-    assert len(APP.splitlines()) < 550
+    assert len(APP.splitlines()) < 575
 
 
 def test_workspace_factories_declare_cross_workspace_dependencies() -> None:
@@ -73,7 +73,7 @@ def test_simulation_workspace_exposes_explicit_automated_strategy_controls() -> 
     assert "stopAutomatedStrategy" in simulation
     assert "pollAutomatedStrategyStatus" in APP
     assert (
-        './workspaces/simulation.js?v=20260822-share-native-v1'
+        './workspaces/simulation.js?v=20260823-local-paper-settings-v1'
         in APP
     )
 

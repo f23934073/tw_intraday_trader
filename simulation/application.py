@@ -40,8 +40,10 @@ from trading.risk import (
 class LocalPaperTerminalOutcomeRecorder(CommandOutcomeRecorder):
     """Persist fills and simulator-level rejections after a command is handled."""
 
-    def __init__(self) -> None:
-        self._fill_recorder = LocalPaperFillOutcomeRecorder()
+    def __init__(self, *, settings_digest: str | None = None) -> None:
+        self._fill_recorder = LocalPaperFillOutcomeRecorder(
+            settings_digest=settings_digest
+        )
 
     def records_for(
         self,
@@ -87,14 +89,18 @@ class LocalPaperCommandService:
         journal: JournalRepository,
         session_id: str,
         clock: Clock,
+        settings_digest: str | None = None,
     ) -> None:
         self._simulation = simulation
         self._journal = journal
         self._session_id = session_id
+        self._settings_digest = settings_digest
         self._clock = clock
         self._lock = RLock()
         self._commands_by_key: dict[str, OrderCommand] = {}
-        self._outcome_recorder = LocalPaperTerminalOutcomeRecorder()
+        self._outcome_recorder = LocalPaperTerminalOutcomeRecorder(
+            settings_digest=settings_digest
+        )
         self._handler = LocalPaperSimulationCommandAdapter(simulation)
         self._base_risk_policy = RiskPolicy(
             version="local-paper-risk-v1",
@@ -102,6 +108,11 @@ class LocalPaperCommandService:
             max_order_notional=simulation.starting_cash,
             max_position_notional=simulation.starting_cash,
             max_daily_loss=simulation.starting_cash,
+            max_daily_buy_notional=simulation.max_daily_buy_notional,
+            commission_rate=simulation.settings.commission_rate,
+            minimum_commission=(
+                simulation.settings.minimum_commission_twd
+            ),
             require_fresh_book=simulation.requires_fresh_book,
             max_book_age_seconds=simulation.max_book_age_seconds,
             fresh_book_sides=frozenset({CommandSide.SELL}),
@@ -188,6 +199,11 @@ class LocalPaperCommandService:
             max_order_notional=self._base_risk_policy.max_order_notional,
             max_position_notional=self._base_risk_policy.max_position_notional,
             max_daily_loss=effective_limit,
+            max_daily_buy_notional=(
+                self._base_risk_policy.max_daily_buy_notional
+            ),
+            commission_rate=self._base_risk_policy.commission_rate,
+            minimum_commission=self._base_risk_policy.minimum_commission,
             require_fresh_book=self._base_risk_policy.require_fresh_book,
             max_book_age_seconds=self._base_risk_policy.max_book_age_seconds,
             fresh_book_sides=frozenset(CommandSide),
@@ -534,6 +550,7 @@ class LocalPaperCommandService:
                 self._journal,
                 session_id=self._session_id,
                 starting_cash=self._simulation.starting_cash,
+                settings_digest=self._settings_digest,
             )
         except Exception as error:
             raise SimulationStateError(
@@ -559,6 +576,10 @@ class LocalPaperCommandService:
             pending_buy_shares=int(raw["pending_buy_shares"]),
             pending_sell_shares=int(raw["pending_sell_shares"]),
             daily_realized_pnl=Decimal(raw["daily_realized_pnl"]),
+            daily_filled_buy_notional=Decimal(
+                raw["daily_filled_buy_notional"]
+            ),
+            pending_buy_notional=Decimal(raw["pending_buy_notional"]),
             same_side_pending_order=(
                 reject_same_side_pending
                 and (

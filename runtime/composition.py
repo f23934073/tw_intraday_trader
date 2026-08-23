@@ -20,6 +20,7 @@ from runtime.ports import JournalRepository, OrderCommandHandler, ProjectionRepo
 from runtime.trading_persistence import build_journal_repository
 from simulation.application import LocalPaperCommandService
 from simulation.service import SimulationService
+from simulation.settings import LocalPaperSettings, SETTINGS_SCHEMA_VERSION
 from simulation.strategy_flow import StrategyPaperFlowService
 from trading.journal import JournalSession
 from trading.local_paper import (
@@ -29,6 +30,69 @@ from trading.local_paper import (
     rebuild_local_paper_projection,
     write_local_paper_checkpoint,
 )
+
+
+_LEGACY_LOCAL_PAPER_SESSION_ID = "local-paper-runtime-v1"
+_FEE_ROUNDING_POLICY = "ROUND_HALF_UP_0.01_TWD"
+_SETTINGS_BINDING_METADATA_KEYS = frozenset(
+    {
+        "settings_revision",
+        "settings_digest",
+        "max_daily_buy_notional",
+        "commission_rate",
+        "minimum_commission",
+        "fee_rounding_policy",
+    }
+)
+
+
+def _settings_metadata(
+    settings: LocalPaperSettings,
+    *,
+    revision: int,
+) -> dict[str, object]:
+    serialized = settings.to_dict()
+    return {
+        "settings_schema": SETTINGS_SCHEMA_VERSION,
+        "settings_revision": revision,
+        "settings_digest": settings.digest,
+        "starting_cash": serialized["starting_cash_twd"],
+        "max_daily_buy_notional": serialized["max_daily_buy_notional_twd"],
+        "commission_rate": serialized["commission_rate"],
+        "minimum_commission": serialized["minimum_commission_twd"],
+        "fee_rounding_policy": _FEE_ROUNDING_POLICY,
+        "execution_boundary": "LOCAL_ONLY",
+    }
+
+
+def _validate_session_settings(
+    session: JournalSession,
+    *,
+    settings: LocalPaperSettings,
+    revision: int,
+) -> bool:
+    """Return whether this is a settings-bound session or fail closed."""
+
+    expected = _settings_metadata(settings, revision=revision)
+    metadata = session.metadata
+    if "settings_schema" not in metadata:
+        if _SETTINGS_BINDING_METADATA_KEYS.intersection(metadata):
+            raise ValueError("local-paper settings conflicts with Journal")
+        if (
+            session.session_id != _LEGACY_LOCAL_PAPER_SESSION_ID
+            or session.mode != "LOCAL_PAPER_SIMULATION"
+            or revision != 0
+            or settings != LocalPaperSettings.defaults()
+            or metadata.get("starting_cash") != expected["starting_cash"]
+            or metadata.get("execution_boundary", "LOCAL_ONLY") != "LOCAL_ONLY"
+        ):
+            raise ValueError("local-paper legacy settings conflicts with Journal")
+        return False
+    if session.mode != "LOCAL_PAPER_SIMULATION" or any(
+        metadata.get(key) != value for key, value in expected.items()
+    ):
+        raise ValueError("local-paper settings conflicts with Journal")
+    return True
 
 
 @dataclass
@@ -59,8 +123,19 @@ class RuntimeComposition:
         journal: JournalRepository | None = None,
         projections: ProjectionRepository | None = None,
         persistence_config: TradingPersistenceConfig | None = None,
+        local_paper_settings: LocalPaperSettings | None = None,
+        local_paper_settings_revision: int = 0,
+        local_paper_session_id: str = "local-paper-runtime-v1",
+        start_simulation_streaming: bool = True,
     ) -> "RuntimeComposition":
         """Build one LOCAL_PAPER composition without broker-order I/O."""
+
+        if (
+            isinstance(local_paper_settings_revision, bool)
+            or not isinstance(local_paper_settings_revision, int)
+            or local_paper_settings_revision < 0
+        ):
+            raise ValueError("local_paper_settings_revision must be non-negative")
 
         resolved_clock = clock or SystemClock()
         resolved_premarket_artifacts = (
@@ -86,20 +161,30 @@ class RuntimeComposition:
             if journal is not None
             else build_journal_repository(resolved_persistence)
         )
+        resolved_settings = local_paper_settings or LocalPaperSettings.defaults()
         resolved_simulation = simulation_service or SimulationService(
             provider,
+            starting_cash=resolved_settings.starting_cash_twd,
+            max_daily_buy_notional=(
+                resolved_settings.max_daily_buy_notional_twd
+            ),
+            commission_rate=resolved_settings.commission_rate,
+            minimum_commission=resolved_settings.minimum_commission_twd,
             clock=resolved_clock,
+            start_streaming=start_simulation_streaming,
         )
-        local_paper_session_id = "local-paper-runtime-v1"
         local_paper_session = resolved_journal.session(local_paper_session_id)
+        settings_bound = True
         if local_paper_session is None:
             local_paper_session = JournalSession(
                 session_id=local_paper_session_id,
                 started_at=resolved_clock.now(),
                 mode="LOCAL_PAPER_SIMULATION",
                 metadata={
-                    "starting_cash": str(resolved_simulation.starting_cash),
-                    "execution_boundary": "LOCAL_ONLY",
+                    **_settings_metadata(
+                        resolved_simulation.settings,
+                        revision=local_paper_settings_revision,
+                    ),
                     "journal_backend": (
                         "INJECTED"
                         if journal is not None
@@ -108,14 +193,19 @@ class RuntimeComposition:
                     "restart_policy": "RESUME_CHECKPOINTED_LOCAL_PAPER_SESSION",
                 },
             )
-        elif local_paper_session.metadata.get("starting_cash") != str(
-            resolved_simulation.starting_cash
-        ):
-            if simulation_service is None:
-                resolved_simulation.close()
-            if journal is None:
-                resolved_journal.close()
-            raise ValueError("local-paper recovery starting_cash conflicts with Journal")
+        else:
+            try:
+                settings_bound = _validate_session_settings(
+                    local_paper_session,
+                    settings=resolved_simulation.settings,
+                    revision=local_paper_settings_revision,
+                )
+            except Exception:
+                if simulation_service is None:
+                    resolved_simulation.close()
+                if journal is None:
+                    resolved_journal.close()
+                raise
         try:
             resolved_journal.start_session(local_paper_session)
             existing_records = resolved_journal.records(local_paper_session.session_id)
@@ -124,6 +214,11 @@ class RuntimeComposition:
                     resolved_journal,
                     session_id=local_paper_session.session_id,
                     starting_cash=resolved_simulation.starting_cash,
+                    settings_digest=(
+                        resolved_simulation.settings.digest
+                        if settings_bound
+                        else None
+                    ),
                 )
                 resolved_simulation.restore_state(
                     cash=recovered.cash,
@@ -133,6 +228,7 @@ class RuntimeComposition:
                             "name": position.name,
                             "quantity": position.quantity_shares,
                             "average_price": position.average_price,
+                            "commission_cost": position.commission_cost,
                             "owner_origin": position.owner_origin,
                             "owner_strategy_id": position.owner_strategy_id,
                             "owner_strategy_version": position.owner_strategy_version,
@@ -158,12 +254,22 @@ class RuntimeComposition:
                         is not None
                         else None
                     ),
+                    daily_filled_buy_notional=(
+                        recovered.buy_notional_for_date(
+                            resolved_clock.session_date()
+                        )
+                    ),
                 )
             else:
                 write_local_paper_checkpoint(
                     resolved_journal,
                     session_id=local_paper_session.session_id,
                     starting_cash=resolved_simulation.starting_cash,
+                    settings_digest=(
+                        resolved_simulation.settings.digest
+                        if settings_bound
+                        else None
+                    ),
                 )
                 baseline = resolved_simulation.daily_baseline()
                 resolved_journal.append(
@@ -181,12 +287,22 @@ class RuntimeComposition:
                     resolved_journal,
                     session_id=local_paper_session.session_id,
                     starting_cash=resolved_simulation.starting_cash,
+                    settings_digest=(
+                        resolved_simulation.settings.digest
+                        if settings_bound
+                        else None
+                    ),
                 )
             local_paper_commands = LocalPaperCommandService(
                 simulation=resolved_simulation,
                 journal=resolved_journal,
                 session_id=local_paper_session.session_id,
                 clock=resolved_clock,
+                settings_digest=(
+                    resolved_simulation.settings.digest
+                    if settings_bound
+                    else None
+                ),
             )
         except Exception:
             if simulation_service is None:

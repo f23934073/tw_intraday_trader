@@ -16,12 +16,15 @@ from trading.journal import (
     JournalRepository,
     ProjectionCheckpoint,
 )
+from trading.canonical_values import canonical_decimal_string
 from trading.risk import OrderCommand
 
 
 LOCAL_PAPER_FILL_KIND = "local_paper_fill.v1"
+LOCAL_PAPER_FILL_V2_KIND = "local_paper_fill.v2"
 LOCAL_PAPER_ORDER_STATE_KIND = "local_paper_order_state.v1"
 LOCAL_PAPER_DAILY_BASELINE_KIND = "local_paper_daily_baseline.v1"
+LOCAL_PAPER_SESSION_ARCHIVE_KIND = "local_paper_session_archive.v1"
 LOCAL_PAPER_PROJECTION_NAME = "local_paper.v1"
 
 
@@ -42,6 +45,7 @@ class LocalPaperFill:
     side: LocalPaperSide
     quantity_shares: int
     fill_price: Decimal
+    commission: Decimal = Decimal("0")
     owner_origin: str = "MANUAL_WEB"
     owner_strategy_id: str | None = None
     owner_strategy_version: str | None = None
@@ -57,19 +61,22 @@ class LocalPaperFill:
             raise ValueError("quantity_shares must be positive")
         if self.fill_price <= 0:
             raise ValueError("fill_price must be positive")
+        if self.commission < 0:
+            raise ValueError("commission must not be negative")
 
     @classmethod
     def from_record(cls, record: JournalRecord) -> "LocalPaperFill":
-        if record.kind != LOCAL_PAPER_FILL_KIND:
+        if record.kind not in {LOCAL_PAPER_FILL_KIND, LOCAL_PAPER_FILL_V2_KIND}:
             raise ValueError("record is not a local-paper fill")
         try:
-            return cls(
+            fill = cls(
                 order_id=str(record.payload["order_id"]),
                 symbol=str(record.payload["symbol"]),
                 name=str(record.payload["name"]),
                 side=LocalPaperSide(str(record.payload["side"])),
                 quantity_shares=int(record.payload["quantity_shares"]),
                 fill_price=Decimal(str(record.payload["fill_price"])),
+                commission=Decimal(str(record.payload.get("commission", "0"))),
                 owner_origin=str(record.payload.get("owner_origin", "MANUAL_WEB")),
                 owner_strategy_id=(
                     str(record.payload["owner_strategy_id"])
@@ -82,6 +89,28 @@ class LocalPaperFill:
                     else None
                 ),
             )
+            if record.kind == LOCAL_PAPER_FILL_V2_KIND:
+                gross_notional = Decimal(str(record.payload["gross_notional"]))
+                net_cash_effect = Decimal(str(record.payload["net_cash_effect"]))
+                cumulative_commission = Decimal(
+                    str(record.payload["cumulative_order_commission"])
+                )
+                settings_digest = str(record.payload["settings_digest"])
+                expected_gross = fill.fill_price * fill.quantity_shares
+                expected_net = (
+                    -expected_gross - fill.commission
+                    if fill.side is LocalPaperSide.BUY
+                    else expected_gross - fill.commission
+                )
+                if (
+                    gross_notional != expected_gross
+                    or net_cash_effect != expected_net
+                    or cumulative_commission < fill.commission
+                    or len(settings_digest) != 64
+                ):
+                    raise ValueError("invalid local-paper v2 accounting evidence")
+                int(settings_digest, 16)
+            return fill
         except (InvalidOperation, KeyError, TypeError, ValueError) as error:
             raise ProjectionRecoveryError(
                 f"invalid local-paper fill record {record.record_id}"
@@ -95,6 +124,7 @@ class LocalPaperPosition:
     quantity_shares: int
     average_price: Decimal
     owner_origin: str = "MANUAL_WEB"
+    commission_cost: Decimal = Decimal("0")
     owner_strategy_id: str | None = None
     owner_strategy_version: str | None = None
 
@@ -103,6 +133,7 @@ def journal_record_from_simulation_order(
     order: Mapping[str, object],
     *,
     session_id: str,
+    settings_digest: str | None = None,
 ) -> JournalRecord | None:
     """Convert a legacy full-fill payload into one immutable Journal record."""
 
@@ -126,6 +157,7 @@ def journal_record_from_simulation_order(
             side=LocalPaperSide(str(order["side"])),
             quantity_shares=fill_quantity,
             fill_price=fill_price,
+            commission=Decimal(str(order.get("last_fill_commission") or "0")),
             owner_origin=str(order.get("origin", "MANUAL_WEB")),
             owner_strategy_id=(
                 str(order["strategy_id"])
@@ -140,6 +172,26 @@ def journal_record_from_simulation_order(
         )
     except (InvalidOperation, KeyError, TypeError, ValueError) as error:
         raise ProjectionRecoveryError("invalid simulation fill payload") from error
+    normalized_settings_digest: str | None = None
+    if settings_digest is not None:
+        normalized_settings_digest = str(settings_digest).strip().lower()
+        try:
+            if len(normalized_settings_digest) != 64:
+                raise ValueError("settings digest must be SHA-256")
+            int(normalized_settings_digest, 16)
+        except ValueError as error:
+            raise ProjectionRecoveryError("invalid settings digest") from error
+    gross_notional = fill.quantity_shares * fill.fill_price
+    cumulative_order_commission = Decimal(
+        str(order.get("filled_commission") or "0")
+    )
+    if cumulative_order_commission < fill.commission:
+        raise ProjectionRecoveryError("invalid cumulative order commission")
+    net_cash_effect = (
+        -gross_notional - fill.commission
+        if fill.side is LocalPaperSide.BUY
+        else gross_notional - fill.commission
+    )
     provenance: dict[str, object] = {}
     provenance_fields = (
         "fill_source",
@@ -163,7 +215,11 @@ def journal_record_from_simulation_order(
     return JournalRecord(
         record_id=f"local-paper-fill:{order_id}:{occurred_at.isoformat()}",
         session_id=session_id,
-        kind=LOCAL_PAPER_FILL_KIND,
+        kind=(
+            LOCAL_PAPER_FILL_V2_KIND
+            if normalized_settings_digest is not None
+            else LOCAL_PAPER_FILL_KIND
+        ),
         occurred_at=occurred_at,
         payload={
             "order_id": fill.order_id,
@@ -172,6 +228,19 @@ def journal_record_from_simulation_order(
             "side": fill.side.value,
             "quantity_shares": fill.quantity_shares,
             "fill_price": str(fill.fill_price),
+            **(
+                {
+                    "gross_notional": canonical_decimal_string(gross_notional),
+                    "commission": canonical_decimal_string(fill.commission),
+                    "net_cash_effect": canonical_decimal_string(net_cash_effect),
+                    "cumulative_order_commission": canonical_decimal_string(
+                        cumulative_order_commission
+                    ),
+                    "settings_digest": normalized_settings_digest,
+                }
+                if normalized_settings_digest is not None
+                else {}
+            ),
             "fill_sequence": fill_sequence,
             "owner_origin": fill.owner_origin,
             "owner_strategy_id": fill.owner_strategy_id,
@@ -217,8 +286,10 @@ def order_state_record_from_simulation_order(
         "filled_price",
         "filled_quantity",
         "filled_amount",
+        "filled_commission",
         "last_fill_price",
         "last_fill_quantity",
+        "last_fill_commission",
         "fill_sequence",
         "reason",
         "attempt",
@@ -274,8 +345,51 @@ def daily_baseline_record(
     )
 
 
+def session_archive_record(
+    *,
+    session_id: str,
+    replacement_session_id: str,
+    replacement_settings_digest: str,
+    active_order_count: int,
+    position_count: int,
+    occurred_at: datetime,
+) -> JournalRecord:
+    """Record the successful replacement of one local-paper session."""
+
+    normalized_replacement = replacement_session_id.strip()
+    normalized_digest = replacement_settings_digest.strip().lower()
+    if not normalized_replacement:
+        raise ValueError("replacement_session_id must not be empty")
+    if active_order_count < 0 or position_count < 0:
+        raise ValueError("archive counts must not be negative")
+    try:
+        if len(normalized_digest) != 64:
+            raise ValueError("settings digest must be SHA-256")
+        int(normalized_digest, 16)
+    except ValueError as error:
+        raise ValueError("replacement_settings_digest must be SHA-256") from error
+    return JournalRecord(
+        record_id=f"local-paper-session-archive:{normalized_replacement}",
+        session_id=session_id,
+        kind=LOCAL_PAPER_SESSION_ARCHIVE_KIND,
+        occurred_at=occurred_at,
+        payload={
+            "status": "ARCHIVED",
+            "replacement_session_id": normalized_replacement,
+            "replacement_settings_digest": normalized_digest,
+            "active_order_count": active_order_count,
+            "position_count": position_count,
+        },
+        idempotency_scope=f"{session_id}:local-paper-session-archive",
+        idempotency_key=normalized_replacement,
+    )
+
+
 class LocalPaperFillOutcomeRecorder:
     """Record every fill delta and every acknowledged simulator state."""
+
+    def __init__(self, *, settings_digest: str | None = None) -> None:
+        self._settings_digest = settings_digest
 
     def records_for(
         self,
@@ -285,6 +399,7 @@ class LocalPaperFillOutcomeRecorder:
         fill_record = journal_record_from_simulation_order(
             handler_result,
             session_id=command.session_id,
+            settings_digest=self._settings_digest,
         )
         records: list[JournalRecord] = []
         if fill_record is not None:
@@ -320,13 +435,27 @@ class LocalPaperProjection:
     cutover.
     """
 
-    def __init__(self, *, starting_cash: Decimal) -> None:
+    def __init__(
+        self,
+        *,
+        starting_cash: Decimal,
+        settings_digest: str | None = None,
+    ) -> None:
         if starting_cash <= 0:
             raise ValueError("starting_cash must be positive")
+        if settings_digest is not None:
+            try:
+                if len(settings_digest) != 64:
+                    raise ValueError("settings digest must be SHA-256")
+                int(settings_digest, 16)
+            except ValueError as error:
+                raise ValueError("settings_digest must be SHA-256") from error
         self._starting_cash = starting_cash
+        self._settings_digest = settings_digest
         self._cash = starting_cash
         self._positions: dict[str, LocalPaperPosition] = {}
         self._realized_pnl: dict[str, Decimal] = {}
+        self._buy_notional_by_date: dict[date, Decimal] = {}
         self._last_sequence = 0
 
     @property
@@ -343,6 +472,9 @@ class LocalPaperProjection:
     def realized_pnl(self, symbol: str) -> Decimal:
         return self._realized_pnl.get(symbol, Decimal("0"))
 
+    def buy_notional_for_date(self, trading_date: date) -> Decimal:
+        return self._buy_notional_by_date.get(trading_date, Decimal("0"))
+
     @property
     def positions(self) -> tuple[LocalPaperPosition, ...]:
         return tuple(sorted(self._positions.values(), key=lambda item: item.symbol))
@@ -354,14 +486,30 @@ class LocalPaperProjection:
     def apply(self, result: JournalAppendResult) -> None:
         if result.sequence <= self._last_sequence:
             raise ProjectionRecoveryError("Journal sequence must be strictly increasing")
-        if result.record.kind == LOCAL_PAPER_FILL_KIND:
-            self._apply_fill(LocalPaperFill.from_record(result.record))
+        if result.record.kind in {LOCAL_PAPER_FILL_KIND, LOCAL_PAPER_FILL_V2_KIND}:
+            if self._settings_digest is not None and (
+                result.record.kind != LOCAL_PAPER_FILL_V2_KIND
+                or result.record.payload.get("settings_digest")
+                != self._settings_digest
+            ):
+                raise ProjectionRecoveryError(
+                    "Journal fill settings digest conflicts with session"
+                )
+            self._apply_fill(
+                LocalPaperFill.from_record(result.record),
+                occurred_at=result.record.occurred_at,
+            )
         self._last_sequence = result.sequence
 
     @property
     def digest(self) -> str:
         payload = {
             "starting_cash": str(self._starting_cash),
+            **(
+                {"settings_digest": self._settings_digest}
+                if self._settings_digest is not None
+                else {}
+            ),
             "cash": str(self._cash),
             "last_sequence": self._last_sequence,
             "positions": [
@@ -370,6 +518,11 @@ class LocalPaperProjection:
                     "name": position.name,
                     "quantity_shares": position.quantity_shares,
                     "average_price": str(position.average_price),
+                    **(
+                        {"commission_cost": str(position.commission_cost)}
+                        if position.commission_cost != 0
+                        else {}
+                    ),
                     "owner_origin": position.owner_origin,
                     "owner_strategy_id": position.owner_strategy_id,
                     "owner_strategy_version": position.owner_strategy_version,
@@ -385,11 +538,11 @@ class LocalPaperProjection:
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
 
-    def _apply_fill(self, fill: LocalPaperFill) -> None:
+    def _apply_fill(self, fill: LocalPaperFill, *, occurred_at: datetime) -> None:
         value = fill.quantity_shares * fill.fill_price
         current = self._positions.get(fill.symbol)
         if fill.side is LocalPaperSide.BUY:
-            if value > self._cash:
+            if value + fill.commission > self._cash:
                 raise ProjectionRecoveryError("Journal fill exceeds available cash")
             if current is None:
                 self._positions[fill.symbol] = LocalPaperPosition(
@@ -398,6 +551,7 @@ class LocalPaperProjection:
                     quantity_shares=fill.quantity_shares,
                     average_price=fill.fill_price,
                     owner_origin=fill.owner_origin,
+                    commission_cost=fill.commission,
                     owner_strategy_id=fill.owner_strategy_id,
                     owner_strategy_version=fill.owner_strategy_version,
                 )
@@ -414,21 +568,37 @@ class LocalPaperProjection:
                     average_price=(
                         current.average_price * current.quantity_shares + value
                     ) / quantity,
+                    commission_cost=current.commission_cost + fill.commission,
                 )
-            self._cash -= value
+            self._cash -= value + fill.commission
+            trading_date = occurred_at.date()
+            self._buy_notional_by_date[trading_date] = (
+                self._buy_notional_by_date.get(trading_date, Decimal("0"))
+                + value
+            )
             return
 
         if current is None or current.quantity_shares < fill.quantity_shares:
             raise ProjectionRecoveryError("Journal sell fill exceeds held quantity")
-        self._cash += value
-        self._realized_pnl[fill.symbol] = self.realized_pnl(fill.symbol) + (
-            fill.fill_price - current.average_price
-        ) * fill.quantity_shares
+        allocated_buy_commission = (
+            current.commission_cost * fill.quantity_shares / current.quantity_shares
+        )
+        self._cash += value - fill.commission
+        self._realized_pnl[fill.symbol] = (
+            self.realized_pnl(fill.symbol)
+            + (fill.fill_price - current.average_price) * fill.quantity_shares
+            - allocated_buy_commission
+            - fill.commission
+        )
         remaining = current.quantity_shares - fill.quantity_shares
         if remaining == 0:
             del self._positions[fill.symbol]
         else:
-            self._positions[fill.symbol] = replace(current, quantity_shares=remaining)
+            self._positions[fill.symbol] = replace(
+                current,
+                quantity_shares=remaining,
+                commission_cost=current.commission_cost - allocated_buy_commission,
+            )
 
 
 def rebuild_local_paper_projection(
@@ -436,6 +606,7 @@ def rebuild_local_paper_projection(
     *,
     session_id: str,
     starting_cash: Decimal,
+    settings_digest: str | None = None,
     require_checkpoint: bool = True,
 ) -> LocalPaperProjection:
     """Replay one session and fail closed when its checkpoint is untrustworthy."""
@@ -444,7 +615,10 @@ def rebuild_local_paper_projection(
     if require_checkpoint and checkpoint is None:
         raise ProjectionRecoveryError("local-paper recovery requires a checkpoint")
 
-    projection = LocalPaperProjection(starting_cash=starting_cash)
+    projection = LocalPaperProjection(
+        starting_cash=starting_cash,
+        settings_digest=settings_digest,
+    )
     checkpoint_digest = projection.digest if checkpoint and checkpoint.journal_sequence == 0 else None
     for result in journal.records(session_id):
         projection.apply(result)
@@ -565,6 +739,7 @@ def write_local_paper_checkpoint(
     *,
     session_id: str,
     starting_cash: Decimal,
+    settings_digest: str | None = None,
 ) -> LocalPaperProjection:
     """Write one checkpoint after a full deterministic Journal replay.
 
@@ -573,10 +748,21 @@ def write_local_paper_checkpoint(
     selected only by the composition root.
     """
 
+    resolved_settings_digest = settings_digest
+    if resolved_settings_digest is None:
+        session = journal.session(session_id)
+        if (
+            session is not None
+            and session.metadata.get("settings_schema") is not None
+        ):
+            resolved_settings_digest = str(
+                session.metadata.get("settings_digest") or ""
+            )
     projection = rebuild_local_paper_projection(
         journal,
         session_id=session_id,
         starting_cash=starting_cash,
+        settings_digest=resolved_settings_digest,
         require_checkpoint=False,
     )
     journal.save_checkpoint(

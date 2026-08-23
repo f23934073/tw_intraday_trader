@@ -3,19 +3,22 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from decimal import Decimal
-from threading import Barrier, Lock
+from threading import Barrier, Event, Lock, RLock
 from time import sleep
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import pytest
 from fastapi import Request, Response
 from fastapi.testclient import TestClient
 
 import dashboard.server as server
 from dashboard.service import DashboardService
+from market_data.models import RealtimeQuoteUpdate
 from market_data.provider import MarketDataUsage, MockProvider
 from runtime.composition import RuntimeComposition
 from simulation.continuous_strategy import AutomatedStrategyConfig
+from simulation.settings import JsonLocalPaperSettingsRepository
 
 
 class FixedClock:
@@ -50,11 +53,13 @@ class FakeChangingSimulationProjection:
 
 
 class CountingStreamingProvider(MockProvider):
-    def __init__(self) -> None:
+    def __init__(self, *, fail_on_start_call: int | None = None) -> None:
         super().__init__()
         self._stream_lock = Lock()
         self._handler = None
         self.start_calls = 0
+        self.stop_calls = 0
+        self.fail_on_start_call = fail_on_start_call
 
     def supports_streaming_quotes(self) -> bool:
         return True
@@ -62,6 +67,8 @@ class CountingStreamingProvider(MockProvider):
     def start_quote_stream(self, handler) -> None:
         with self._stream_lock:
             self.start_calls += 1
+            if self.start_calls == self.fail_on_start_call:
+                raise RuntimeError("stream start failed")
             if self._handler is not None and self._handler is not handler:
                 raise RuntimeError("stream handler already registered")
             self._handler = handler
@@ -72,7 +79,25 @@ class CountingStreamingProvider(MockProvider):
 
     def stop_quote_stream(self) -> None:
         with self._stream_lock:
+            self.stop_calls += 1
             self._handler = None
+
+
+class ContentionObservingRLock:
+    """Behavior-compatible RLock that exposes cross-thread contention."""
+
+    def __init__(self) -> None:
+        self._lock = RLock()
+        self.contended = Event()
+
+    def __enter__(self):
+        if not self._lock.acquire(blocking=False):
+            self.contended.set()
+            self._lock.acquire()
+        return self
+
+    def __exit__(self, *_args) -> None:
+        self._lock.release()
 
 
 class FakeAutomatedStrategyController:
@@ -167,6 +192,398 @@ def test_submit_simulation_order_route_returns_local_filled_order(monkeypatch):
     assert payload["idempotent"] is False
     assert payload["order"]["status"] == "FILLED"
     assert server.simulation_positions()["positions"][0]["symbol"] == "3231"
+
+
+def test_settings_page_api_persists_draft_and_applies_new_local_session(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    provider = CountingStreamingProvider()
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", provider)
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+    monkeypatch.setattr(server, "_automated_strategy_controller", None)
+    monkeypatch.setattr(
+        server,
+        "_local_paper_settings_repository",
+        JsonLocalPaperSettingsRepository(tmp_path / "settings.json"),
+    )
+    monkeypatch.setattr(
+        server.backtest_settings,
+        "BACKTEST_INCREMENTAL_SYNC_ENABLED",
+        False,
+    )
+
+    with TestClient(server.app) as client:
+        initial = client.get("/api/simulation/settings").json()
+        old_session_id = initial["active_session_id"]
+        token = initial["csrf_token"]
+        drafted_response = client.put(
+            "/api/simulation/settings",
+            headers={"X-Strategy-CSRF": token},
+            json={
+                "revision": initial["revision"],
+                "starting_cash_twd": "12000000",
+                "max_daily_buy_notional_twd": "2500000",
+                "commission_rate": "0.001425",
+                "minimum_commission_twd": "20",
+            },
+        )
+        drafted = drafted_response.json()
+        before_apply = client.get("/api/simulation/session").json()
+        applied_response = client.post(
+            "/api/simulation/settings/apply",
+            headers={"X-Strategy-CSRF": token},
+            json={"revision": drafted["revision"], "confirm_reset": False},
+        )
+        applied = applied_response.json()
+        after_apply = client.get("/api/simulation/session").json()
+        active_composition = server.get_runtime_composition()
+        active_session = active_composition.journal.session(
+            applied["active_session_id"]
+        )
+        old_record_kinds = [
+            result.record.kind
+            for result in active_composition.journal.records(old_session_id)
+        ]
+
+    assert drafted_response.status_code == 200
+    assert drafted["has_unapplied_changes"] is True
+    assert before_apply["starting_cash"] == 10_000_000.0
+    assert applied_response.status_code == 200
+    assert applied["has_unapplied_changes"] is False
+    assert after_apply["starting_cash"] == 12_000_000.0
+    assert after_apply["max_daily_buy_notional"] == 2_500_000.0
+    assert after_apply["commission_rate"] == 0.001425
+    assert active_session is not None
+    assert active_session.metadata["settings_schema"] == "local-paper-settings-v1"
+    assert active_session.metadata["settings_revision"] == drafted["draft_settings_revision"]
+    assert "local_paper_session_archive.v1" in old_record_kinds
+    assert provider.start_calls == 2
+    assert after_apply["streaming"] is True
+
+
+def test_settings_apply_waits_for_old_runtime_command_and_rechecks_blockers(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    lifecycle_lock = ContentionObservingRLock()
+    repository = JsonLocalPaperSettingsRepository(tmp_path / "settings.json")
+    monkeypatch.setattr(server, "_runtime_composition_lock", lifecycle_lock)
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", MockProvider())
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+    monkeypatch.setattr(server, "_automated_strategy_controller", None)
+    monkeypatch.setattr(server, "_local_paper_settings_repository", repository)
+    monkeypatch.setattr(
+        server.backtest_settings,
+        "BACKTEST_INCREMENTAL_SYNC_ENABLED",
+        False,
+    )
+
+    command_entered = Event()
+    release_command = Event()
+    with TestClient(server.app) as client:
+        initial = client.get("/api/simulation/settings").json()
+        drafted = client.put(
+            "/api/simulation/settings",
+            headers={"X-Strategy-CSRF": initial["csrf_token"]},
+            json={
+                "revision": initial["revision"],
+                "starting_cash_twd": "12000000",
+                "max_daily_buy_notional_twd": "2500000",
+                "commission_rate": "0.001425",
+                "minimum_commission_twd": "20",
+            },
+        ).json()
+        old_session_id = initial["active_session_id"]
+        old_composition = server.get_runtime_composition()
+        original_submit = old_composition.local_paper_commands.submit_order
+
+        def paused_submit(**kwargs):
+            command_entered.set()
+            if not release_command.wait(timeout=2):
+                raise AssertionError("timed out waiting to release old runtime command")
+            return original_submit(**kwargs)
+
+        monkeypatch.setattr(
+            old_composition.local_paper_commands,
+            "submit_order",
+            paused_submit,
+        )
+        lifecycle_lock.contended.clear()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            order_future = executor.submit(
+                client.post,
+                "/api/simulation/orders",
+                json={
+                    "symbol": "3231",
+                    "side": "BUY",
+                    "quantity_shares": 1_000,
+                    "limit_price": "106",
+                    "idempotency_key": "settings-apply-runtime-lease",
+                },
+            )
+            assert command_entered.wait(timeout=1)
+            apply_future = executor.submit(
+                client.post,
+                "/api/simulation/settings/apply",
+                headers={"X-Strategy-CSRF": initial["csrf_token"]},
+                json={
+                    "revision": drafted["revision"],
+                    "confirm_reset": False,
+                },
+            )
+            apply_waited_for_command = lifecycle_lock.contended.wait(timeout=1)
+            release_command.set()
+            order_response = order_future.result(timeout=2)
+            apply_response = apply_future.result(timeout=2)
+
+        assert apply_waited_for_command is True
+        assert order_response.status_code == 201
+        assert order_response.json()["order"]["status"] == "FILLED"
+        assert apply_response.status_code == 409
+        assert "確認重建模擬帳戶" in apply_response.json()["detail"]
+        assert server.get_runtime_composition() is old_composition
+        assert all(
+            result.record.kind != "local_paper_session_archive.v1"
+            for result in old_composition.journal.records(old_session_id)
+        )
+
+        confirmed_response = client.post(
+            "/api/simulation/settings/apply",
+            headers={"X-Strategy-CSRF": initial["csrf_token"]},
+            json={
+                "revision": drafted["revision"],
+                "confirm_reset": True,
+            },
+        )
+        old_record_kinds = [
+            result.record.kind
+            for result in old_composition.journal.records(old_session_id)
+        ]
+
+    assert confirmed_response.status_code == 200
+    assert old_record_kinds[-1] == "local_paper_session_archive.v1"
+
+
+def test_settings_api_rejects_sub_cent_minimum_commission(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", MockProvider())
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+    monkeypatch.setattr(server, "_automated_strategy_controller", None)
+    monkeypatch.setattr(
+        server,
+        "_local_paper_settings_repository",
+        JsonLocalPaperSettingsRepository(tmp_path / "settings.json"),
+    )
+    monkeypatch.setattr(
+        server.backtest_settings,
+        "BACKTEST_INCREMENTAL_SYNC_ENABLED",
+        False,
+    )
+
+    with TestClient(server.app) as client:
+        initial = client.get("/api/simulation/settings").json()
+        response = client.put(
+            "/api/simulation/settings",
+            headers={"X-Strategy-CSRF": initial["csrf_token"]},
+            json={
+                "revision": initial["revision"],
+                "starting_cash_twd": "10000000",
+                "max_daily_buy_notional_twd": "2000000",
+                "commission_rate": "0.001425",
+                "minimum_commission_twd": "0.001",
+            },
+        )
+
+    assert response.status_code == 422
+    assert "0.01 元為單位" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "failure_stage",
+    ["replacement", "activation", "archive"],
+)
+def test_settings_apply_failure_keeps_exact_old_runtime_live(
+    monkeypatch,
+    tmp_path,
+    failure_stage,
+) -> None:
+    repository = JsonLocalPaperSettingsRepository(tmp_path / "settings.json")
+    provider = CountingStreamingProvider()
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", provider)
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+    monkeypatch.setattr(server, "_automated_strategy_controller", None)
+    monkeypatch.setattr(server, "_local_paper_settings_repository", repository)
+    monkeypatch.setattr(
+        server.backtest_settings,
+        "BACKTEST_INCREMENTAL_SYNC_ENABLED",
+        False,
+    )
+
+    with TestClient(server.app, raise_server_exceptions=False) as client:
+        initial = client.get("/api/simulation/settings").json()
+        drafted = client.put(
+            "/api/simulation/settings",
+            headers={"X-Strategy-CSRF": initial["csrf_token"]},
+            json={
+                "revision": initial["revision"],
+                "starting_cash_twd": "11000000",
+                "max_daily_buy_notional_twd": "2100000",
+                "commission_rate": "0.001425",
+                "minimum_commission_twd": "20",
+            },
+        ).json()
+        current = server.get_runtime_composition()
+        old_simulation = current.simulation_service
+        close_calls = 0
+        original_close = old_simulation.close
+
+        def track_old_close() -> None:
+            nonlocal close_calls
+            close_calls += 1
+            original_close()
+
+        monkeypatch.setattr(old_simulation, "close", track_old_close)
+        if failure_stage == "replacement":
+            monkeypatch.setattr(
+                server,
+                "_replacement_composition",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("replacement failed")
+                ),
+            )
+        elif failure_stage == "activation":
+            monkeypatch.setattr(
+                repository,
+                "activate_draft",
+                lambda **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("activation failed")
+                ),
+            )
+        else:
+            original_append = current.journal.append
+
+            def fail_archive(record):
+                if record.kind == "local_paper_session_archive.v1":
+                    raise RuntimeError("archive failed")
+                return original_append(record)
+
+            monkeypatch.setattr(current.journal, "append", fail_archive)
+
+        response = client.post(
+            "/api/simulation/settings/apply",
+            headers={"X-Strategy-CSRF": initial["csrf_token"]},
+            json={"revision": drafted["revision"], "confirm_reset": False},
+        )
+
+        assert response.status_code == 500
+        assert server._composition is current
+        assert server._simulation_service is old_simulation
+        assert close_calls == 0
+        assert old_simulation.session()["starting_cash"] == 10_000_000.0
+        assert provider.start_calls == (
+            1 if failure_stage == "replacement" else 3
+        )
+        assert provider._handler.__self__ is old_simulation
+        assert repository.load().active_session_id == initial["active_session_id"]
+
+
+def test_settings_apply_stream_handoff_failure_reactivates_old_runtime(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    repository = JsonLocalPaperSettingsRepository(tmp_path / "settings.json")
+    provider = CountingStreamingProvider(fail_on_start_call=2)
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", provider)
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+    monkeypatch.setattr(server, "_automated_strategy_controller", None)
+    monkeypatch.setattr(server, "_local_paper_settings_repository", repository)
+    monkeypatch.setattr(
+        server.backtest_settings,
+        "BACKTEST_INCREMENTAL_SYNC_ENABLED",
+        False,
+    )
+
+    with TestClient(server.app, raise_server_exceptions=False) as client:
+        initial = client.get("/api/simulation/settings").json()
+        drafted = client.put(
+            "/api/simulation/settings",
+            headers={"X-Strategy-CSRF": initial["csrf_token"]},
+            json={
+                "revision": initial["revision"],
+                "starting_cash_twd": "11000000",
+                "max_daily_buy_notional_twd": "2100000",
+                "commission_rate": "0.001425",
+                "minimum_commission_twd": "20",
+            },
+        ).json()
+        current = server.get_runtime_composition()
+        old_simulation = current.simulation_service
+        old_simulation.watch_quote(owner_id="handoff-test", symbol="3231")
+        quote_at = datetime.now(ZoneInfo("Asia/Taipei"))
+        old_simulation.receive_quote_update(
+            RealtimeQuoteUpdate(
+                symbol="3231",
+                kind="BIDASK",
+                exchange_timestamp=quote_at,
+                received_at=quote_at,
+                bid_price=105.0,
+                ask_price=105.5,
+                bid_volume_lots=10,
+                ask_volume_lots=12,
+            )
+        )
+        for _ in range(50):
+            quote_before_handoff = old_simulation.quote_watch_status(
+                owner_id="handoff-test",
+                symbol="3231",
+            )
+            if quote_before_handoff["bid_price"] == "105.0":
+                break
+            sleep(0.01)
+        assert quote_before_handoff["bid_price"] == "105.0"
+        response = client.post(
+            "/api/simulation/settings/apply",
+            headers={"X-Strategy-CSRF": initial["csrf_token"]},
+            json={"revision": drafted["revision"], "confirm_reset": False},
+        )
+
+        assert response.status_code == 500
+        assert server._composition is current
+        assert server._simulation_service is old_simulation
+        assert old_simulation.session()["streaming"] is True
+        assert old_simulation.session()["subscribed_symbols"] == ["3231"]
+        assert old_simulation.session()["watched_symbols"] == ["3231"]
+        quote_after_rollback = old_simulation.quote_watch_status(
+            owner_id="handoff-test",
+            symbol="3231",
+        )
+        assert quote_after_rollback["bid_price"] == quote_before_handoff["bid_price"]
+        assert quote_after_rollback["ask_price"] == quote_before_handoff["ask_price"]
+        assert (
+            quote_after_rollback["book_received_at"]
+            == quote_before_handoff["book_received_at"]
+        )
+        assert provider.start_calls == 3
+        assert provider._handler.__self__ is old_simulation
+        assert repository.load().active_session_id == initial["active_session_id"]
+        assert all(
+            result.record.kind != "local_paper_session_archive.v1"
+            for result in current.journal.records(initial["active_session_id"])
+        )
 
 
 def test_submit_simulation_order_route_accepts_odd_lot_shares(monkeypatch) -> None:

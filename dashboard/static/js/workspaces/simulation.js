@@ -17,6 +17,19 @@ export function createSimulationWorkspace(context) {
   const positionsToggle = document.getElementById("positions-toggle");
   const positionsDrawer = document.getElementById("positions-drawer");
   const positionsPanel = document.getElementById("positions-panel");
+  const simulationSettingsToggle = document.getElementById("simulation-settings-toggle");
+  const simulationSettingsDrawer = document.getElementById("simulation-settings-drawer");
+  const simulationSettingsPanel = document.getElementById("simulation-settings-panel");
+  const simulationSettingsForm = document.getElementById("simulation-settings-form");
+  const simulationSettingsSave = document.getElementById("simulation-settings-save");
+  const simulationSettingsApply = document.getElementById("simulation-settings-apply");
+  const simulationSettingsActive = document.getElementById("simulation-settings-active");
+  const simulationSettingsMessage = document.getElementById("simulation-settings-message");
+  const simulationSettingsError = document.getElementById("simulation-settings-error");
+  const simulationStartingCash = document.getElementById("simulation-starting-cash");
+  const simulationDailyBuyLimit = document.getElementById("simulation-daily-buy-limit");
+  const simulationCommissionRate = document.getElementById("simulation-commission-rate");
+  const simulationMinimumCommission = document.getElementById("simulation-minimum-commission");
   const automatedStrategyForm = document.getElementById("automated-strategy-form");
   const automatedStrategySet = document.getElementById("automated-strategy-set");
   const automatedStopLoss = document.getElementById("automated-stop-loss");
@@ -31,6 +44,7 @@ export function createSimulationWorkspace(context) {
   const automatedStrategyError = document.getElementById("automated-strategy-error");
   let automatedStrategyCsrf = "";
   let pendingAutomatedStartKey = "";
+  let localPaperSettings = null;
 
       async function loadAutomatedStrategySecurity() {
         const response = await fetch("/api/atomic-strategies/capabilities", { cache: "no-store" });
@@ -213,11 +227,117 @@ export function createSimulationWorkspace(context) {
         document.getElementById("order-count").textContent = String((simulation.orders || []).filter((order) => isActiveSimulationOrder(order.status)).length);
         document.getElementById("overview-position-count").textContent = String((simulation.positions || []).length);
         document.getElementById("overview-order-count").textContent = String((simulation.orders || []).filter((order) => isActiveSimulationOrder(order.status)).length);
+        const dailyReservedBuyNotional = Number(session.daily_reserved_buy_notional || 0);
+        const commissionInclusiveCashReservation = Number(session.reserved_cash || 0);
+        const reservationLabels = [
+          dailyReservedBuyNotional > 0
+            ? `今日掛單保留買入額度：${formatNumber(dailyReservedBuyNotional, 0)} 元`
+            : null,
+          commissionInclusiveCashReservation > 0
+            ? `含手續費現金保留：${formatNumber(commissionInclusiveCashReservation, 0)} 元`
+            : null,
+        ].filter(Boolean).join("；");
         document.getElementById("order-preview").textContent = latestAlert
           ? `委託警示：${latestAlert.message || latestAlert.code}（${formatOrderTime(latestAlert.created_at)}）`
           : session.available_cash === null || session.available_cash === undefined
             ? "買進以賣一、賣出以買一判斷模擬成交；未達限價則保留在委託清單。"
-            : `可用虛擬現金：${formatNumber(session.available_cash, 0)} 元${Number(session.reserved_cash || 0) > 0 ? `（已保留 ${formatNumber(session.reserved_cash, 0)} 元掛單額度）` : ""}。買進以賣一、賣出以買一判斷模擬成交。`;
+            : `可用虛擬現金：${formatNumber(session.available_cash, 0)} 元；今日剩餘買入額度：${formatNumber(session.daily_remaining_buy_notional, 0)} 元${reservationLabels ? `；${reservationLabels}` : ""}。買進以賣一、賣出以買一判斷模擬成交。`;
+      }
+
+      function renderLocalPaperSettings(payload) {
+        localPaperSettings = payload;
+        const active = payload.active || {};
+        const draft = payload.draft || active;
+        const blockers = payload.apply_blockers || {};
+        simulationStartingCash.value = draft.starting_cash_twd || "";
+        simulationDailyBuyLimit.value = draft.max_daily_buy_notional_twd || "";
+        simulationCommissionRate.value = String(Number(draft.commission_rate || 0) * 100);
+        simulationMinimumCommission.value = draft.minimum_commission_twd || "0";
+        simulationSettingsActive.textContent = `目前套用：起始現金 ${formatNumber(active.starting_cash_twd, 0)} 元；每日買入 ${formatNumber(active.max_daily_buy_notional_twd, 0)} 元；手續費 ${formatNumber(Number(active.commission_rate || 0) * 100, 4)}%；最低 ${formatNumber(active.minimum_commission_twd, 2)} 元。`;
+        simulationSettingsApply.disabled = blockers.automated_strategy_running || !payload.has_unapplied_changes;
+        simulationSettingsMessage.textContent = payload.has_unapplied_changes
+          ? "草稿尚未套用。套用會建立新的模擬帳戶。"
+          : "目前沒有未套用的設定。";
+        simulationSettingsMessage.classList.add("visible");
+      }
+
+      async function loadLocalPaperSettings() {
+        const response = await fetch("/api/simulation/settings", { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+        renderLocalPaperSettings(payload);
+        return payload;
+      }
+
+      async function saveLocalPaperSettings(event) {
+        event.preventDefault();
+        simulationSettingsError.style.display = "none";
+        if (!localPaperSettings) return;
+        simulationSettingsSave.disabled = true;
+        simulationSettingsSave.textContent = "儲存中…";
+        try {
+          const response = await fetch("/api/simulation/settings", {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Strategy-CSRF": localPaperSettings.csrf_token
+            },
+            body: JSON.stringify({
+              revision: localPaperSettings.revision,
+              starting_cash_twd: simulationStartingCash.value,
+              max_daily_buy_notional_twd: simulationDailyBuyLimit.value,
+              commission_rate: String(Number(simulationCommissionRate.value) / 100),
+              minimum_commission_twd: simulationMinimumCommission.value
+            })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+          renderLocalPaperSettings(payload);
+          simulationSettingsMessage.textContent = "設定草稿已儲存，尚未影響目前帳戶。";
+        } catch (error) {
+          simulationSettingsError.textContent = `無法儲存設定：${error.message}`;
+          simulationSettingsError.style.display = "block";
+        } finally {
+          simulationSettingsSave.disabled = false;
+          simulationSettingsSave.textContent = "儲存設定草稿";
+        }
+      }
+
+      async function applyLocalPaperSettings() {
+        simulationSettingsError.style.display = "none";
+        if (!localPaperSettings) return;
+        const blockers = localPaperSettings.apply_blockers || {};
+        const requiresConfirmation = Boolean(blockers.requires_reset_confirmation);
+        if (requiresConfirmation && !window.confirm(`目前有 ${blockers.active_order_count || 0} 筆委託、${blockers.position_count || 0} 個持倉。確定封存目前 session 並建立新模擬帳戶？`)) return;
+        simulationSettingsApply.disabled = true;
+        simulationSettingsApply.textContent = "套用中…";
+        try {
+          const response = await fetch("/api/simulation/settings/apply", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Strategy-CSRF": localPaperSettings.csrf_token
+            },
+            body: JSON.stringify({
+              revision: localPaperSettings.revision,
+              confirm_reset: requiresConfirmation
+            })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+          renderLocalPaperSettings(payload);
+          await loadSimulationProjection();
+          simulationSettingsMessage.textContent = "新設定已套用，新的本機模擬帳戶已建立。";
+        } catch (error) {
+          simulationSettingsError.textContent = `無法套用設定：${error.message}`;
+          simulationSettingsError.style.display = "block";
+        } finally {
+          simulationSettingsApply.textContent = "套用並建立新帳戶";
+          simulationSettingsApply.disabled = Boolean(
+            localPaperSettings?.apply_blockers?.automated_strategy_running
+            || !localPaperSettings?.has_unapplied_changes
+          );
+        }
       }
 
       function renderPositions(positions) {
@@ -572,6 +692,26 @@ export function createSimulationWorkspace(context) {
         }
       }
 
+      function setSimulationSettingsDrawer(open) {
+        if (open) setWorkspace("simulation-settings");
+        else setWorkspace("overview");
+        simulationSettingsDrawer.classList.toggle("open", open);
+        simulationSettingsDrawer.setAttribute("aria-hidden", String(!open));
+        simulationSettingsToggle.setAttribute("aria-expanded", String(open));
+        if (open) {
+          loadLocalPaperSettings().catch((error) => {
+            simulationSettingsError.textContent = `無法讀取設定：${error.message}`;
+            simulationSettingsError.style.display = "block";
+          });
+          requestAnimationFrame(() => simulationSettingsPanel.focus());
+        } else {
+          simulationSettingsToggle.focus();
+        }
+      }
+
+      simulationSettingsForm.addEventListener("submit", saveLocalPaperSettings);
+      simulationSettingsApply.addEventListener("click", applyLocalPaperSettings);
+
       function pollSimulationProjection() {
         if (document.visibilityState !== "visible") return;
         if (simulationSocketIsOpen()) return;
@@ -583,5 +723,5 @@ export function createSimulationWorkspace(context) {
       }
 
 
-  return { renderSimulation, renderPositions, renderOrders, renderDataHealth, renderAutomatedStrategy, openOrderTicket, setOrdersDrawer, setPositionsDrawer, loadSimulationProjection, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, submitAutomatedStrategy, stopAutomatedStrategy, cancelSimulationOrder, retrySimulationOrder };
+  return { renderSimulation, renderPositions, renderOrders, renderDataHealth, renderAutomatedStrategy, openOrderTicket, setOrdersDrawer, setPositionsDrawer, setSimulationSettingsDrawer, loadSimulationProjection, loadLocalPaperSettings, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, submitAutomatedStrategy, stopAutomatedStrategy, cancelSimulationOrder, retrySimulationOrder };
 }

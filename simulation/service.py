@@ -22,10 +22,12 @@ from simulation.models import (
     SimulationOrder,
     SimulationPosition,
 )
+from simulation.settings import LocalPaperSettings
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
 _DEFAULT_STARTING_CASH = Decimal("10000000")
+_DEFAULT_DAILY_BUY_NOTIONAL = Decimal("2000000")
 _DEFAULT_QUOTE_QUEUE_CAPACITY = 1_024
 _DEFAULT_PENDING_TIMEOUT_SECONDS = 30
 _DEFAULT_ORDER_EXPIRY_SECONDS = 120
@@ -78,22 +80,38 @@ class SimulationService:
         provider: MarketDataProvider,
         starting_cash: Decimal | float | int = _DEFAULT_STARTING_CASH,
         *,
+        max_daily_buy_notional: Decimal | float | int = _DEFAULT_DAILY_BUY_NOTIONAL,
+        commission_rate: Decimal | float | int | str = Decimal("0"),
+        minimum_commission: Decimal | float | int | str = Decimal("0"),
         quote_queue_capacity: int = _DEFAULT_QUOTE_QUEUE_CAPACITY,
         max_book_age_seconds: int = EXECUTABLE_BOOK_MAX_AGE_SECONDS,
         pending_timeout_seconds: int = _DEFAULT_PENDING_TIMEOUT_SECONDS,
         order_expiry_seconds: int = _DEFAULT_ORDER_EXPIRY_SECONDS,
         max_retry_attempts: int = _DEFAULT_MAX_RETRY_ATTEMPTS,
         clock: Clock | None = None,
+        start_streaming: bool = True,
     ) -> None:
-        normalized_starting_cash = self._money(starting_cash, "starting_cash")
-        if normalized_starting_cash <= 0:
-            raise ValueError("starting_cash 必須是大於 0 的有限數字")
+        settings = LocalPaperSettings(
+            starting_cash_twd=self._money(starting_cash, "starting_cash"),
+            max_daily_buy_notional_twd=self._money(
+                max_daily_buy_notional,
+                "max_daily_buy_notional",
+            ),
+            commission_rate=self._money(commission_rate, "commission_rate"),
+            minimum_commission_twd=self._money(
+                minimum_commission,
+                "minimum_commission",
+            ),
+        )
+        normalized_starting_cash = settings.starting_cash_twd
         if (
             isinstance(quote_queue_capacity, bool)
             or not isinstance(quote_queue_capacity, int)
             or quote_queue_capacity <= 0
         ):
             raise ValueError("quote_queue_capacity 必須是大於 0 的整數")
+        if not isinstance(start_streaming, bool):
+            raise ValueError("start_streaming 必須是布林值")
         if (
             isinstance(max_book_age_seconds, bool)
             or not isinstance(max_book_age_seconds, int)
@@ -119,6 +137,9 @@ class SimulationService:
         if not self._provider_identity:
             raise ValueError("provider identity must not be empty")
         self._starting_cash = normalized_starting_cash
+        self._settings = settings
+        self._max_daily_buy_notional = settings.max_daily_buy_notional_twd
+        self._daily_filled_buy_notional = Decimal("0")
         self._cash = normalized_starting_cash
         self._max_book_age_seconds = max_book_age_seconds
         self._pending_timeout_seconds = pending_timeout_seconds
@@ -139,38 +160,35 @@ class SimulationService:
         self._subscription_lock = RLock()
         self._stream_capable = provider.supports_streaming_quotes()
         self._streaming_enabled = False
+        self._owns_quote_stream = False
         self._stream_error: str | None = None
         self._quote_ingress_blocked = False
         self._subscribed_symbols: set[str] = set()
         self._quote_watch_by_owner: dict[str, str] = {}
+        self._quote_queue_capacity = quote_queue_capacity
         self._quote_updates: Queue[RealtimeQuoteUpdate | None] = Queue(
-            maxsize=quote_queue_capacity
+            maxsize=self._quote_queue_capacity
         )
         self._quote_worker: Thread | None = None
         self._terminal_order_handler: Callable[[dict[str, Any]], None] | None = None
         self._daily_baseline_handler: Callable[[dict[str, Any]], None] | None = None
         self._pending_daily_baselines: list[dict[str, Any]] = []
 
-        if self._stream_capable:
-            self._quote_worker = Thread(
-                target=self._run_quote_worker,
-                name="simulation-quote-worker",
-                daemon=True,
-            )
-            self._quote_worker.start()
-            try:
-                self._provider.start_quote_stream(self.receive_quote_update)
-                self._streaming_enabled = True
-            except Exception as error:
-                self._stream_error = f"無法啟動 Shioaji Tick／BidAsk：{error}"
-                self._quote_updates.put(None)
-                self._quote_worker.join(timeout=1)
-                self._quote_worker = None
+        if self._stream_capable and start_streaming:
+            self._activate_streaming(fail_closed=False)
 
     @property
     def starting_cash(self) -> Decimal:
         """Expose immutable starting cash for the command facade and Journal."""
         return self._starting_cash
+
+    @property
+    def max_daily_buy_notional(self) -> Decimal:
+        return self._max_daily_buy_notional
+
+    @property
+    def settings(self) -> LocalPaperSettings:
+        return self._settings
 
     @property
     def requires_fresh_book(self) -> bool:
@@ -192,6 +210,92 @@ class SimulationService:
         with self._lock:
             self._terminal_order_handler = handler
 
+    def activate_streaming(self) -> None:
+        """Start quote ownership and report Provider handoff failures."""
+
+        self._activate_streaming(fail_closed=True)
+
+    def suspend_streaming(self) -> None:
+        """Release Provider ownership while preserving recoverable runtime state."""
+
+        self._deactivate_streaming(clear_runtime_state=False)
+
+    def _activate_streaming(self, *, fail_closed: bool) -> None:
+        """Start the worker/callback pair with optional startup degradation."""
+
+        if not self._stream_capable or self._streaming_enabled:
+            return
+        self._quote_updates = Queue(maxsize=self._quote_queue_capacity)
+        worker = Thread(
+            target=self._run_quote_worker,
+            name="simulation-quote-worker",
+            daemon=True,
+        )
+        self._quote_worker = worker
+        worker.start()
+        try:
+            self._provider.start_quote_stream(self.receive_quote_update)
+            self._owns_quote_stream = True
+            self._streaming_enabled = True
+            self._stream_error = None
+            self._sync_quote_subscriptions(fail_closed=True)
+        except Exception as error:
+            try:
+                self._provider.stop_quote_stream()
+            except Exception:
+                pass
+            self._owns_quote_stream = False
+            self._streaming_enabled = False
+            try:
+                self._stop_quote_worker()
+            except SimulationStateError:
+                pass
+            message = f"無法啟動 Shioaji Tick／BidAsk：{error}"
+            self._stream_error = message
+            if fail_closed:
+                raise SimulationStateError(message) from error
+            return
+
+    def _stop_quote_worker(self) -> None:
+        worker = self._quote_worker
+        if worker is None:
+            return
+        try:
+            self._quote_updates.put(None, timeout=2)
+        except Full as error:
+            message = "即時行情 worker 無法排入關閉訊號"
+            self._stream_error = message
+            raise SimulationStateError(message) from error
+        worker.join(timeout=5)
+        if worker.is_alive():
+            message = "即時行情 worker 未在關閉期限內排空佇列"
+            self._stream_error = message
+            raise SimulationStateError(message)
+        self._quote_worker = None
+
+    def _deactivate_streaming(self, *, clear_runtime_state: bool) -> None:
+        if not self._stream_capable:
+            return
+        with self._lock:
+            self._streaming_enabled = False
+        provider_error: Exception | None = None
+        try:
+            if self._owns_quote_stream:
+                self._provider.stop_quote_stream()
+        except Exception as error:
+            provider_error = error
+        finally:
+            self._owns_quote_stream = False
+            with self._lock:
+                self._subscribed_symbols.clear()
+                if clear_runtime_state:
+                    self._quote_watch_by_owner.clear()
+            self._stop_quote_worker()
+        if provider_error is not None:
+            message = f"無法停止 Shioaji Tick／BidAsk：{provider_error}"
+            self._stream_error = message
+            raise SimulationStateError(message) from provider_error
+
     def set_daily_baseline_handler(
         self,
         handler: Callable[[dict[str, Any]], None] | None,
@@ -212,6 +316,10 @@ class SimulationService:
         with self._lock:
             market_value = self._market_value()
             reserved_cash = self._reserved_cash()
+            reserved_buy_notional = self._daily_reserved_buy_notional()
+            used_buy_notional = (
+                self._daily_filled_buy_notional + reserved_buy_notional
+            )
             available_cash = self._cash - reserved_cash
             received_times = [
                 quote.received_at
@@ -235,11 +343,27 @@ class SimulationService:
                 "label": label,
                 "ordering_enabled": True,
                 "starting_cash": float(self._starting_cash),
+                "max_daily_buy_notional": float(self._max_daily_buy_notional),
+                "commission_rate": float(self._settings.commission_rate),
+                "minimum_commission": float(
+                    self._settings.minimum_commission_twd
+                ),
                 "trading_date": self._trading_date.isoformat(),
                 "opening_equity": float(self._opening_equity),
                 "daily_loss_includes_unrealized": True,
                 "available_cash": float(available_cash),
                 "reserved_cash": float(reserved_cash),
+                "daily_filled_buy_notional": float(
+                    self._daily_filled_buy_notional
+                ),
+                "daily_reserved_buy_notional": float(reserved_buy_notional),
+                "daily_used_buy_notional": float(used_buy_notional),
+                "daily_remaining_buy_notional": float(
+                    max(
+                        Decimal("0"),
+                        self._max_daily_buy_notional - used_buy_notional,
+                    )
+                ),
                 "market_value": float(market_value),
                 "equity": float(self._cash + market_value),
                 "quote_mode": (
@@ -290,6 +414,7 @@ class SimulationService:
         realized_pnl_by_symbol: dict[str, Decimal],
         order_states: list[dict[str, Any]],
         daily_baseline: dict[str, Any] | None = None,
+        daily_filled_buy_notional: Decimal = Decimal("0"),
     ) -> None:
         """Restore one checkpoint-verified local-paper projection before use."""
 
@@ -297,6 +422,10 @@ class SimulationService:
             if self._orders or self._positions or self._cash != self._starting_cash:
                 raise SimulationStateError("本機模擬已有狀態，禁止重複復原")
             self._cash = self._money(cash, "restored.cash")
+            self._daily_filled_buy_notional = self._money(
+                daily_filled_buy_notional,
+                "restored.daily_filled_buy_notional",
+            )
             self._realized_pnl_by_symbol = {
                 self._normalize_symbol(symbol): self._money(value, "restored.realized_pnl")
                 for symbol, value in realized_pnl_by_symbol.items()
@@ -309,6 +438,10 @@ class SimulationService:
                     quantity=int(raw["quantity"]),
                     average_price=self._money(raw["average_price"], "restored.average_price"),
                     owner_origin=str(raw.get("owner_origin") or "MANUAL_WEB"),
+                    commission_cost=self._money(
+                        raw.get("commission_cost") or 0,
+                        "restored.commission_cost",
+                    ),
                     owner_strategy_id=(
                         str(raw["owner_strategy_id"])
                         if raw.get("owner_strategy_id") is not None
@@ -355,12 +488,20 @@ class SimulationService:
                         raw.get("filled_amount") or 0,
                         "restored.filled_amount",
                     ),
+                    filled_commission=self._money(
+                        raw.get("filled_commission") or 0,
+                        "restored.filled_commission",
+                    ),
                     last_fill_price=(
                         self._money(raw["last_fill_price"], "restored.last_fill_price")
                         if raw.get("last_fill_price") is not None
                         else None
                     ),
                     last_fill_quantity=int(raw.get("last_fill_quantity") or 0),
+                    last_fill_commission=self._money(
+                        raw.get("last_fill_commission") or 0,
+                        "restored.last_fill_commission",
+                    ),
                     fill_sequence=int(raw.get("fill_sequence") or 0),
                     reason=(str(raw["reason"]) if raw.get("reason") is not None else None),
                     attempt=int(raw.get("attempt") or 1),
@@ -385,7 +526,7 @@ class SimulationService:
                 self._quotes.setdefault(order.symbol, _QuoteState())
                 if order.status in _ACTIVE_ORDER_STATUSES and order.side is OrderSide.BUY:
                     self._reserved_buy_notional_by_order[order.order_id] = (
-                        order.remaining_quantity * order.limit_price
+                        self._order_cash_reservation(order)
                     )
                 recovered_alert = {
                     "ORDER_TIMEOUT": "ORDER_TIMEOUT_CANCELLED",
@@ -485,6 +626,7 @@ class SimulationService:
                 current_price = self._current_price(position)
                 market_value = position.quantity * current_price
                 unrealized_pnl = position.quantity * (current_price - position.average_price)
+                unrealized_pnl -= position.commission_cost
                 quote_at = None
                 if quote is not None:
                     quote_at = quote.received_at
@@ -496,6 +638,7 @@ class SimulationService:
                         "name": position.name,
                         "quantity": position.quantity,
                         "average_price": float(position.average_price),
+                        "commission_cost": float(position.commission_cost),
                         "current_price": float(current_price),
                         "market_value": float(market_value),
                         "unrealized_pnl": float(unrealized_pnl),
@@ -637,11 +780,27 @@ class SimulationService:
                         order,
                         "同股票已有不同歸屬的買進委託，禁止跨 owner 保留或合併",
                     )
-                reserved = order.quantity * order.limit_price
-                if order.status is OrderStatus.SUBMITTED and reserved > self._available_cash():
+                reserved_buy_notional = order.quantity * order.limit_price
+                reserved_cash = self._order_cash_reservation(order)
+                daily_used = (
+                    self._daily_filled_buy_notional
+                    + self._daily_reserved_buy_notional(
+                        exclude_order_id=order.order_id
+                    )
+                    + reserved_buy_notional
+                )
+                if (
+                    order.status is OrderStatus.SUBMITTED
+                    and daily_used > self._max_daily_buy_notional
+                ):
+                    self._reject(order, "每日買入額度不足")
+                elif (
+                    order.status is OrderStatus.SUBMITTED
+                    and reserved_cash > self._available_cash()
+                ):
                     self._reject(order, "可用虛擬現金不足")
                 elif order.status is OrderStatus.SUBMITTED:
-                    self._reserved_buy_notional_by_order[order.order_id] = reserved
+                    self._reserved_buy_notional_by_order[order.order_id] = reserved_cash
             else:
                 position = self._positions.get(order.symbol)
                 if (
@@ -890,27 +1049,7 @@ class SimulationService:
 
     def close(self) -> None:
         """停止行情訂閱並依序處理已排入的 quote updates。"""
-        if not self._stream_capable:
-            return
-        try:
-            self._provider.stop_quote_stream()
-        finally:
-            self._streaming_enabled = False
-            with self._lock:
-                self._subscribed_symbols.clear()
-                self._quote_watch_by_owner.clear()
-            worker = self._quote_worker
-            if worker is not None:
-                try:
-                    self._quote_updates.put(None, timeout=2)
-                except Full:
-                    self._stream_error = "即時行情 worker 無法排入關閉訊號"
-                    return
-                worker.join(timeout=5)
-                if worker.is_alive():
-                    self._stream_error = "即時行情 worker 未在關閉期限內排空佇列"
-                else:
-                    self._quote_worker = None
+        self._deactivate_streaming(clear_runtime_state=True)
 
     def _get_stock(self, symbol: str) -> StockData:
         try:
@@ -1007,7 +1146,11 @@ class SimulationService:
             return 0
         if order.side is OrderSide.BUY:
             fill_amount = quantity * fill_price
-            if fill_amount > self._cash:
+            cumulative_gross = order.filled_notional + fill_amount
+            cumulative_commission = self._settings.commission_for(cumulative_gross)
+            incremental_commission = cumulative_commission - order.filled_commission
+            cash_debit = fill_amount + incremental_commission
+            if cash_debit > self._cash:
                 self._reject(
                     order,
                     "目前報價造成可用虛擬現金不足",
@@ -1022,6 +1165,7 @@ class SimulationService:
                     quantity=quantity,
                     average_price=fill_price,
                     owner_origin=order.origin,
+                    commission_cost=incremental_commission,
                     owner_strategy_id=order.strategy_id,
                     owner_strategy_version=order.strategy_version,
                 )
@@ -1034,8 +1178,10 @@ class SimulationService:
                     position.average_price * position.quantity
                     + fill_price * quantity
                 ) / total_quantity
+                position.commission_cost += incremental_commission
                 position.quantity = total_quantity
-            self._cash -= fill_amount
+            self._cash -= cash_debit
+            self._daily_filled_buy_notional += fill_amount
         else:
             position = self._positions.get(order.symbol)
             if position is None or position.quantity < quantity:
@@ -1045,21 +1191,35 @@ class SimulationService:
                 )
                 return 0
 
-            realized_pnl = (fill_price - position.average_price) * quantity
+            fill_amount = quantity * fill_price
+            cumulative_gross = order.filled_notional + fill_amount
+            cumulative_commission = self._settings.commission_for(cumulative_gross)
+            incremental_commission = cumulative_commission - order.filled_commission
+            allocated_buy_commission = (
+                position.commission_cost * quantity / position.quantity
+            )
+            realized_pnl = (
+                (fill_price - position.average_price) * quantity
+                - allocated_buy_commission
+                - incremental_commission
+            )
             self._realized_pnl_by_symbol[order.symbol] = (
                 self._realized_pnl_by_symbol.get(order.symbol, Decimal("0"))
                 + realized_pnl
             )
             position.quantity -= quantity
-            self._cash += quantity * fill_price
+            position.commission_cost -= allocated_buy_commission
+            self._cash += fill_amount - incremental_commission
             if position.quantity == 0:
                 del self._positions[order.symbol]
 
         order.filled_notional += fill_price * quantity
+        order.filled_commission += incremental_commission
         order.filled_quantity += quantity
         order.filled_price = order.filled_notional / order.filled_quantity
         order.last_fill_price = fill_price
         order.last_fill_quantity = quantity
+        order.last_fill_commission = incremental_commission
         order.fill_sequence += 1
         if order.remaining_quantity == 0:
             order.status = OrderStatus.FILLED
@@ -1068,7 +1228,7 @@ class SimulationService:
             order.status = OrderStatus.PARTIALLY_FILLED
             if order.side is OrderSide.BUY:
                 self._reserved_buy_notional_by_order[order.order_id] = (
-                    order.remaining_quantity * order.limit_price
+                    self._order_cash_reservation(order)
                 )
         now = self._now()
         order.updated_at = (
@@ -1233,7 +1393,7 @@ class SimulationService:
             ),
         }
 
-    def _sync_quote_subscriptions(self) -> None:
+    def _sync_quote_subscriptions(self, *, fail_closed: bool = False) -> None:
         if not self._streaming_enabled:
             return
         with self._subscription_lock:
@@ -1246,6 +1406,8 @@ class SimulationService:
             except Exception as error:
                 with self._lock:
                     self._stream_error = f"Shioaji 即時行情訂閱失敗：{error}"
+                if fail_closed:
+                    raise
                 return
             with self._lock:
                 self._subscribed_symbols = set(subscribed)
@@ -1371,6 +1533,7 @@ class SimulationService:
             self._realized_pnl_by_symbol.values(),
             Decimal("0"),
         )
+        self._daily_filled_buy_notional = Decimal("0")
         self._trading_date = trading_date
         self._pending_daily_baselines.append(self._daily_baseline_payload())
 
@@ -1432,12 +1595,14 @@ class SimulationService:
             "updated_at": order.updated_at.isoformat(),
             "filled_price": float(order.filled_price) if order.filled_price is not None else None,
             "filled_quantity": order.filled_quantity,
+            "filled_commission": float(order.filled_commission),
             "last_fill_price": (
                 float(order.last_fill_price)
                 if order.last_fill_price is not None
                 else None
             ),
             "last_fill_quantity": order.last_fill_quantity,
+            "last_fill_commission": float(order.last_fill_commission),
             "fill_sequence": order.fill_sequence,
             "filled_amount": (
                 float(order.filled_notional)
@@ -1515,6 +1680,8 @@ class SimulationService:
                     Decimal("0"),
                 )
                 - self._opening_realized_pnl,
+                "daily_filled_buy_notional": self._daily_filled_buy_notional,
+                "pending_buy_notional": self._daily_reserved_buy_notional(),
                 "daily_loss": max(
                     Decimal("0"),
                     self._opening_equity - (self._cash + self._market_value()),
@@ -1584,6 +1751,33 @@ class SimulationService:
 
     def _reserved_cash(self) -> Decimal:
         return sum(self._reserved_buy_notional_by_order.values(), Decimal("0"))
+
+    def _daily_reserved_buy_notional(
+        self,
+        *,
+        exclude_order_id: str | None = None,
+    ) -> Decimal:
+        return sum(
+            (
+                order.remaining_quantity * order.limit_price
+                for order in self._orders.values()
+                if order.side is OrderSide.BUY
+                and order.status in _ACTIVE_ORDER_STATUSES
+                and order.order_id != exclude_order_id
+            ),
+            Decimal("0"),
+        )
+
+    def _order_cash_reservation(self, order: SimulationOrder) -> Decimal:
+        remaining_gross = order.remaining_quantity * order.limit_price
+        projected_commission = self._settings.commission_for(
+            order.filled_notional + remaining_gross
+        )
+        remaining_commission = max(
+            Decimal("0"),
+            projected_commission - order.filled_commission,
+        )
+        return remaining_gross + remaining_commission
 
     def _available_cash(self) -> Decimal:
         return self._cash - self._reserved_cash()

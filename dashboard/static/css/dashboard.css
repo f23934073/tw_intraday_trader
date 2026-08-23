@@ -76,6 +76,7 @@
       .nav-item:hover { background: var(--surface-soft); border-color: var(--line); color: var(--text); }
       .nav-item.active { background: color-mix(in srgb, var(--blue) 13%, var(--surface)); border-color: color-mix(in srgb, var(--blue) 35%, var(--line)); color: var(--blue); }
       .nav-item-icon { align-items: center; background: color-mix(in srgb, var(--muted) 12%, var(--surface)); border-radius: 6px; display: inline-flex; flex: 0 0 24px; font-size: 12px; height: 24px; justify-content: center; }
+      .nav-item-icon svg { fill: none; height: 14px; stroke: currentColor; stroke-linecap: round; stroke-width: 1.8; width: 14px; }
       .nav-item.active .nav-item-icon { background: color-mix(in srgb, var(--blue) 18%, var(--surface)); }
       .nav-item-copy { display: grid; gap: 2px; min-width: 0; }
       .nav-item-copy strong { color: inherit; font-size: 13px; font-weight: 600; }

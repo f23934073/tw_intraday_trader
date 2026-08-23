@@ -31,7 +31,23 @@ def test_snapshot_refresh_is_in_the_overview_data_status_card() -> None:
 def test_simulation_ui_exposes_reserved_cash_and_fail_closed_quote_health() -> None:
     assert 'session.stream_health === "BLOCKED"' in SIMULATION
     assert "行情保護已阻擋下單" in SIMULATION
-    assert "已保留 ${formatNumber(session.reserved_cash, 0)} 元掛單額度" in SIMULATION
+    assert "commissionInclusiveCashReservation" in SIMULATION
+    assert "含手續費現金保留" in SIMULATION
+
+
+def test_local_paper_settings_page_exposes_cash_daily_limit_and_commission() -> None:
+    assert "本機模擬設定" in HTML
+    assert 'id="simulation-starting-cash"' in HTML
+    assert 'id="simulation-daily-buy-limit"' in HTML
+    assert 'id="simulation-commission-rate"' in HTML
+    assert 'id="simulation-minimum-commission"' in HTML
+    assert 'fetch("/api/simulation/settings"' in SIMULATION
+    assert 'fetch("/api/simulation/settings/apply"' in SIMULATION
+    assert "今日剩餘買入額度" in SIMULATION
+    assert "session.daily_reserved_buy_notional" in SIMULATION
+    assert "今日掛單保留買入額度" in SIMULATION
+    assert "含手續費現金保留" in SIMULATION
+    assert '"simulation-settings"' in APP
 
 
 def test_simulation_positions_use_websocket_with_http_fallback() -> None:
@@ -40,7 +56,8 @@ def test_simulation_positions_use_websocket_with_http_fallback() -> None:
     assert 'state.simulationSocketState = "fallback"' in SIMULATION
     assert "if (simulationSocketIsOpen()) return;" in SIMULATION
     assert "loadSnapshot(false).finally(bootstrapSimulationStream)" in APP
-    assert "/static/js/app.js?v=20260821-atomic-strategy-v2" in HTML
+    assert "/static/js/app.js?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1" in HTML
+    assert '"./workspaces/simulation.js?v=20260823-local-paper-settings-v1"' in APP
 
 
 def test_pending_simulation_orders_explain_live_quote_state() -> None:

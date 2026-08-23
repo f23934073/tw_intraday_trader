@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="台股盤中掃描、候選評分與持倉風險監控儀表板">
     <title>台股盤中雷達</title>
-    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1">
   </head>
   <body>
     <main class="app-shell">
@@ -45,6 +45,9 @@
           </button>
           <button class="nav-item" id="positions-toggle" data-workspace="positions" type="button" aria-label="持倉" aria-controls="positions-drawer" aria-expanded="false">
             <span class="nav-item-icon" aria-hidden="true">▣</span><span class="nav-item-copy"><strong>持倉</strong><small>成交部位與損益</small></span><span class="positions-count" id="position-count">—</span>
+          </button>
+          <button class="nav-item" id="simulation-settings-toggle" data-workspace="simulation-settings" type="button" aria-label="本機模擬設定" aria-controls="simulation-settings-drawer" aria-expanded="false">
+            <span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6"/></svg></span><span class="nav-item-copy"><strong>模擬設定</strong><small>現金、每日額度與手續費</small></span>
           </button>
         </nav>
         <div class="sidebar-spacer"></div>
@@ -184,6 +187,36 @@
         <div class="position-list" id="position-list" aria-live="polite">
           <p class="empty">正在讀取模擬持倉資料…</p>
         </div>
+      </aside>
+    </div>
+
+    <div class="position-drawer" id="simulation-settings-drawer" aria-hidden="true">
+      <button class="drawer-backdrop" id="simulation-settings-backdrop" type="button" aria-label="關閉本機模擬設定"></button>
+      <aside class="drawer-panel" id="simulation-settings-panel" aria-labelledby="simulation-settings-heading" aria-modal="true" role="dialog" tabindex="-1">
+        <div class="drawer-heading">
+          <div>
+            <div class="kicker">LOCAL_PAPER_SIMULATION</div>
+            <h2 id="simulation-settings-heading">本機模擬設定</h2>
+          </div>
+          <button class="drawer-close" id="simulation-settings-close" type="button" aria-label="關閉本機模擬設定">×</button>
+        </div>
+        <p class="order-note" id="simulation-settings-active">正在讀取目前套用設定…</p>
+        <form class="order-form" id="simulation-settings-form">
+          <div class="order-fields">
+            <div class="order-field"><label for="simulation-starting-cash">模擬起始現金（元）</label><input id="simulation-starting-cash" min="1" step="1" type="number" required></div>
+            <div class="order-field"><label for="simulation-daily-buy-limit">每日買入額度（元）</label><input id="simulation-daily-buy-limit" min="1" step="1" type="number" required></div>
+            <div class="order-field"><label for="simulation-commission-rate">買賣手續費率（%）</label><input id="simulation-commission-rate" min="0" max="1" step="0.0001" type="number" required></div>
+            <div class="order-field"><label for="simulation-minimum-commission">每筆最低手續費（元）</label><input id="simulation-minimum-commission" min="0" step="0.01" type="number" required></div>
+          </div>
+          <p class="order-note">每日額度只計成交與掛單的買入總額；手續費另計入可用現金。賣出不會補回今日買入額度。</p>
+          <p class="order-note">儲存只更新草稿；套用會建立新的本機模擬帳戶。舊委託、持倉與 Journal 仍留在原 session，不會改寫歷史。</p>
+          <p class="order-message" id="simulation-settings-message" role="status"></p>
+          <p class="error" id="simulation-settings-error" role="alert"></p>
+          <div class="automated-strategy-actions">
+            <button class="order-submit" id="simulation-settings-save" type="submit">儲存設定草稿</button>
+            <button class="automated-strategy-stop" id="simulation-settings-apply" type="button">套用並建立新帳戶</button>
+          </div>
+        </form>
       </aside>
     </div>
 
@@ -447,6 +480,6 @@
       </aside>
     </div>
 
-    <script type="module" src="/static/js/app.js?v=20260821-atomic-strategy-v2"></script>
+    <script type="module" src="/static/js/app.js?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1"></script>
   </body>
 </html>

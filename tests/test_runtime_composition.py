@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 import pytest
 
@@ -12,8 +13,13 @@ from config.trading_persistence import (
 )
 from runtime.composition import RuntimeComposition
 from runtime.in_memory import InMemoryJournalRepository, InMemoryProjectionRepository
+from simulation.settings import LocalPaperSettings
 from trading.journal import JournalRecord, JournalSession
-from trading.local_paper import LOCAL_PAPER_PROJECTION_NAME
+from trading.local_paper import (
+    LOCAL_PAPER_FILL_KIND,
+    LOCAL_PAPER_PROJECTION_NAME,
+    write_local_paper_checkpoint,
+)
 
 
 class CloseTrackingJournal(InMemoryJournalRepository):
@@ -94,6 +100,165 @@ def test_composition_closes_a_lifecycle_aware_journal() -> None:
     composition.close()
 
     assert journal.closed is True
+
+
+def test_settings_bound_session_recovery_validates_complete_policy() -> None:
+    journal = InMemoryJournalRepository()
+    initial = LocalPaperSettings.from_mapping(
+        {
+            "starting_cash_twd": "10000000",
+            "max_daily_buy_notional_twd": "200000",
+            "commission_rate": "0.001425",
+            "minimum_commission_twd": "20",
+        }
+    )
+    RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        local_paper_settings=initial,
+        local_paper_settings_revision=7,
+        local_paper_session_id="local-paper-settings-bound-test",
+    )
+    session = journal.session("local-paper-settings-bound-test")
+
+    assert session is not None
+    assert session.metadata["settings_schema"] == "local-paper-settings-v1"
+    assert session.metadata["settings_revision"] == 7
+    assert session.metadata["settings_digest"] == initial.digest
+
+    changed = LocalPaperSettings.from_mapping(
+        {
+            "starting_cash_twd": "10000000",
+            "max_daily_buy_notional_twd": "999999",
+            "commission_rate": "0.002",
+            "minimum_commission_twd": "30",
+        }
+    )
+    with pytest.raises(ValueError, match="settings conflicts with Journal"):
+        RuntimeComposition.create(
+            MockProvider(),
+            journal=journal,
+            local_paper_settings=changed,
+            local_paper_settings_revision=7,
+            local_paper_session_id="local-paper-settings-bound-test",
+        )
+    with pytest.raises(ValueError, match="settings conflicts with Journal"):
+        RuntimeComposition.create(
+            MockProvider(),
+            journal=journal,
+            local_paper_settings=initial,
+            local_paper_settings_revision=8,
+            local_paper_session_id="local-paper-settings-bound-test",
+        )
+
+
+def test_legacy_default_session_uses_explicit_compatibility_policy() -> None:
+    journal = InMemoryJournalRepository()
+    journal.start_session(
+        JournalSession(
+            session_id="local-paper-runtime-v1",
+            started_at=datetime.fromisoformat("2026-08-18T09:00:00+08:00"),
+            mode="LOCAL_PAPER_SIMULATION",
+            metadata={"starting_cash": "10000000"},
+        )
+    )
+
+    composition = RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        local_paper_settings_revision=0,
+    )
+
+    assert composition.local_paper_commands.session_id == "local-paper-runtime-v1"
+
+
+def test_real_legacy_session_metadata_recovers_v1_fill_and_checkpoint() -> None:
+    journal = InMemoryJournalRepository()
+    session_id = "local-paper-runtime-v1"
+    occurred_at = datetime.fromisoformat("2026-08-18T09:00:00+08:00")
+    journal.start_session(
+        JournalSession(
+            session_id=session_id,
+            started_at=occurred_at,
+            mode="LOCAL_PAPER_SIMULATION",
+            metadata={
+                "starting_cash": "10000000",
+                "execution_boundary": "LOCAL_ONLY",
+                "journal_backend": "INJECTED",
+                "restart_policy": "RESUME_CHECKPOINTED_LOCAL_PAPER_SESSION",
+            },
+        )
+    )
+    journal.append(
+        JournalRecord(
+            record_id="legacy-fill-1",
+            session_id=session_id,
+            kind=LOCAL_PAPER_FILL_KIND,
+            occurred_at=occurred_at,
+            payload={
+                "order_id": "legacy-order-1",
+                "symbol": "2330",
+                "name": "台積電",
+                "side": "BUY",
+                "quantity_shares": 100,
+                "fill_price": "10",
+            },
+        )
+    )
+    write_local_paper_checkpoint(
+        journal,
+        session_id=session_id,
+        starting_cash=Decimal("10000000"),
+    )
+
+    composition = RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        local_paper_settings_revision=0,
+    )
+
+    assert composition.simulation_service.session()["available_cash"] == 9_999_000.0
+    assert composition.simulation_service.positions()[0]["quantity"] == 100
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("settings_revision", 0),
+        ("settings_digest", "0" * 64),
+        ("max_daily_buy_notional", "2000000"),
+        ("commission_rate", "0"),
+        ("minimum_commission", "0"),
+        ("fee_rounding_policy", "ROUND_HALF_UP_0.01_TWD"),
+    ],
+)
+def test_legacy_session_with_partial_new_settings_binding_fails_closed(
+    field_name: str,
+    field_value: object,
+) -> None:
+    journal = InMemoryJournalRepository()
+    metadata: dict[str, object] = {
+        "starting_cash": "10000000",
+        "execution_boundary": "LOCAL_ONLY",
+        "journal_backend": "INJECTED",
+        "restart_policy": "RESUME_CHECKPOINTED_LOCAL_PAPER_SESSION",
+        field_name: field_value,
+    }
+    journal.start_session(
+        JournalSession(
+            session_id="local-paper-runtime-v1",
+            started_at=datetime.fromisoformat("2026-08-18T09:00:00+08:00"),
+            mode="LOCAL_PAPER_SIMULATION",
+            metadata=metadata,
+        )
+    )
+
+    with pytest.raises(ValueError, match="settings conflicts with Journal"):
+        RuntimeComposition.create(
+            MockProvider(),
+            journal=journal,
+            local_paper_settings_revision=0,
+        )
 
 
 def test_build_provider_defaults_to_mock_without_provider_environment(

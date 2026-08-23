@@ -182,6 +182,8 @@ def test_command_journal_evidence_preserves_complete_risk_snapshot() -> None:
         "pending_buy_shares": 2000,
         "pending_sell_shares": 500,
         "daily_realized_pnl": "-12.34",
+        "daily_filled_buy_notional": "0",
+        "pending_buy_notional": "0",
         "daily_loss": "34.56",
         "same_side_pending_order": False,
         "book_age_seconds": 7,

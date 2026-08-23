@@ -15,6 +15,7 @@ from runtime.composition import RuntimeComposition
 from simulation import SimulationStateError
 from simulation.application import LocalPaperCommandService
 from simulation.service import SimulationService
+from simulation.settings import LocalPaperSettings
 from trading.journal import InMemoryJournalRepository, JournalRecord, JournalSession
 from trading.local_paper import (
     latest_local_paper_daily_baseline,
@@ -525,6 +526,49 @@ def test_same_day_restart_preserves_realized_pnl_against_opening_baseline() -> N
     assert restored.simulation_service.risk_snapshot("3231")[
         "daily_realized_pnl"
     ] == Decimal("-100.0")
+
+
+def test_restart_restores_commission_cash_and_daily_buy_usage() -> None:
+    clock = MutableClock()
+    journal = InMemoryJournalRepository()
+    settings = LocalPaperSettings.from_mapping(
+        {
+            "starting_cash_twd": "1000000",
+            "max_daily_buy_notional_twd": "200000",
+            "commission_rate": "0.001425",
+            "minimum_commission_twd": "20",
+        }
+    )
+    first = RuntimeComposition.create(
+        MockProvider(),
+        clock=clock,
+        journal=journal,
+        local_paper_settings=settings,
+        local_paper_session_id="fee-recovery-test",
+    )
+    order, _ = first.local_paper_commands.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price="106",
+        idempotency_key="fee-recovery-buy",
+    )
+    first.close()
+
+    restored = RuntimeComposition.create(
+        MockProvider(),
+        clock=clock,
+        journal=journal,
+        local_paper_settings=settings,
+        local_paper_session_id="fee-recovery-test",
+    )
+    session = restored.simulation_service.session()
+
+    assert order["last_fill_commission"] == 150.34
+    assert session["available_cash"] == 894_349.66
+    assert session["daily_filled_buy_notional"] == 105_500.0
+    assert restored.simulation_service.positions()[0]["commission_cost"] == 150.34
+    restored.close()
 
 
 def test_restart_marks_approved_command_without_acknowledgement_for_recovery() -> None:

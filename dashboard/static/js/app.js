@@ -1,5 +1,5 @@
 import { createCandidateWorkspace } from "./workspaces/candidates.js";
-import { createSimulationWorkspace } from "./workspaces/simulation.js?v=20260822-share-native-v1";
+import { createSimulationWorkspace } from "./workspaces/simulation.js?v=20260823-local-paper-settings-v1";
 import { createMomentumWorkspace } from "./workspaces/momentum.js";
 import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260821-atomic-strategy-v2";
 
@@ -133,6 +133,10 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260821-ato
       const positionsPanel = document.getElementById("positions-panel");
       const positionsClose = document.getElementById("positions-close");
       const positionsBackdrop = document.getElementById("positions-backdrop");
+      const simulationSettingsToggle = document.getElementById("simulation-settings-toggle");
+      const simulationSettingsDrawer = document.getElementById("simulation-settings-drawer");
+      const simulationSettingsClose = document.getElementById("simulation-settings-close");
+      const simulationSettingsBackdrop = document.getElementById("simulation-settings-backdrop");
       const strategyToggle = document.getElementById("strategy-toggle");
       const strategyCatalogDrawer = document.getElementById("strategy-catalog-drawer");
       const strategyCatalogPanel = document.getElementById("strategy-catalog-panel");
@@ -185,7 +189,8 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260821-ato
         backtest: ["研究工具", "歷史回測", "資料準備、策略組合、結果與比較"],
         orders: ["本機紙上模擬", "委託", "查看送出、成交、取消與拒絕的委託"],
         "order-ticket": ["本機紙上模擬", "模擬下單", "建立只存在本機記憶體的限價委託"],
-        positions: ["本機紙上模擬", "持倉", "查看已成交部位、行情與未實現損益"]
+        positions: ["本機紙上模擬", "持倉", "查看已成交部位、行情與未實現損益"],
+        "simulation-settings": ["本機紙上模擬", "模擬設定", "設定現金、每日買入額度與手續費"]
       };
 
       function setWorkspace(workspace) {
@@ -207,15 +212,16 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260821-ato
         const drawerNames = {
           orders: ["orders", "order-ticket"],
           positions: ["positions"],
+          settings: ["simulation-settings"],
           strategy: ["strategy"],
           backtest: ["backtest"]
         };
         Object.entries(drawerNames).forEach(([drawerName, workspaceNames]) => {
-          const drawer = { orders: ordersDrawer, positions: positionsDrawer, strategy: strategyCatalogDrawer, backtest: backtestDrawer }[drawerName];
+          const drawer = { orders: ordersDrawer, positions: positionsDrawer, settings: simulationSettingsDrawer, strategy: strategyCatalogDrawer, backtest: backtestDrawer }[drawerName];
           if (!workspaceNames.includes(workspace)) {
             drawer.classList.remove("open");
             drawer.setAttribute("aria-hidden", "true");
-            const toggle = { orders: ordersToggle, positions: positionsToggle, strategy: strategyToggle, backtest: backtestToggle }[drawerName];
+            const toggle = { orders: ordersToggle, positions: positionsToggle, settings: simulationSettingsToggle, strategy: strategyToggle, backtest: backtestToggle }[drawerName];
             toggle.setAttribute("aria-expanded", "false");
           }
         });
@@ -301,7 +307,7 @@ const momentum = createMomentumWorkspace({ state, services, escapeHtml, formatNu
 const backtest = createBacktestWorkspace({ state, escapeHtml, formatNumber, newIdempotencyKey, setWorkspace });
 Object.assign(services, candidates, simulation, momentum, backtest);
 const { getVisibleCandidates, renderCandidates, selectCandidate, renderCandidateDetail, loadSelectedHistory } = candidates;
-const { renderSimulation, renderPositions, renderOrders, renderDataHealth, openOrderTicket, setOrdersDrawer, setPositionsDrawer, loadSimulationProjection, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, cancelSimulationOrder } = simulation;
+const { renderSimulation, renderPositions, renderOrders, renderDataHealth, openOrderTicket, setOrdersDrawer, setPositionsDrawer, setSimulationSettingsDrawer, loadSimulationProjection, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, cancelSimulationOrder } = simulation;
 const { renderMomentum, syncMomentumDialog, openMomentumDialog, closeMomentumDialog, openOrderTicketFromMomentum, bootstrapMomentumStream, checkMomentumHeartbeat, pollMomentumProjection } = momentum;
 const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, refreshBacktestWorkspace, startBacktestDatasetSync, submitBacktestRun, cloneBacktestRun, compareBacktestRuns, pollBacktestWorkspace } = backtest;
 
@@ -480,6 +486,9 @@ const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, ref
       });
       positionsClose.addEventListener("click", () => setPositionsDrawer(false));
       positionsBackdrop.addEventListener("click", () => setPositionsDrawer(false));
+      simulationSettingsToggle.addEventListener("click", () => setSimulationSettingsDrawer(true));
+      simulationSettingsClose.addEventListener("click", () => setSimulationSettingsDrawer(false));
+      simulationSettingsBackdrop.addEventListener("click", () => setSimulationSettingsDrawer(false));
       strategyToggle.addEventListener("click", async () => {
         setStrategyCatalogDrawer(true);
         await refreshStrategyCatalog();
@@ -518,6 +527,8 @@ const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, ref
           setOrdersDrawer(false);
         } else if (positionsDrawer.classList.contains("open")) {
           setPositionsDrawer(false);
+        } else if (simulationSettingsDrawer.classList.contains("open")) {
+          setSimulationSettingsDrawer(false);
         }
       });
       document.addEventListener("visibilitychange", () => {

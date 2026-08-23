@@ -1,4 +1,5 @@
 from datetime import datetime
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -137,6 +138,64 @@ def test_cash_position_and_pending_constraints_reject_manual_buy() -> None:
 
     assert decision.status is RiskDecisionStatus.BLOCKED
     assert RiskReason.PENDING_ORDER_DUPLICATE in decision.reasons
+
+
+def test_daily_buy_limit_aggregates_fills_reservations_and_new_buy() -> None:
+    policy = replace(POLICY, max_daily_buy_notional=Decimal("200000"))
+
+    at_limit = RiskGate(policy).evaluate(
+        command(quantity=500, price="100"),
+        snapshot(
+            daily_filled_buy_notional=Decimal("100000"),
+            pending_buy_notional=Decimal("50000"),
+        ),
+        evaluated_at=AT,
+    )
+    over_limit = RiskGate(policy).evaluate(
+        command(quantity=501, price="100"),
+        snapshot(
+            daily_filled_buy_notional=Decimal("100000"),
+            pending_buy_notional=Decimal("50000"),
+        ),
+        evaluated_at=AT,
+    )
+
+    assert at_limit.status is RiskDecisionStatus.APPROVED
+    assert over_limit.status is RiskDecisionStatus.REJECTED
+    assert over_limit.reasons == (RiskReason.DAILY_BUY_NOTIONAL_LIMIT,)
+
+
+def test_daily_buy_limit_does_not_block_sell() -> None:
+    policy = replace(POLICY, max_daily_buy_notional=Decimal("200000"))
+
+    decision = RiskGate(policy).evaluate(
+        command(side=CommandSide.SELL, quantity=1000, price="100"),
+        snapshot(
+            current_position_shares=1000,
+            daily_filled_buy_notional=Decimal("200000"),
+        ),
+        evaluated_at=AT,
+    )
+
+    assert decision.status is RiskDecisionStatus.APPROVED
+
+
+def test_buy_cash_gate_includes_configured_commission() -> None:
+    policy = replace(
+        POLICY,
+        max_order_notional=Decimal("200000"),
+        commission_rate=Decimal("0.001425"),
+        minimum_commission=Decimal("20"),
+    )
+
+    decision = RiskGate(policy).evaluate(
+        command(quantity=1000, price="100"),
+        snapshot(available_cash=Decimal("100100")),
+        evaluated_at=AT,
+    )
+
+    assert decision.status is RiskDecisionStatus.REJECTED
+    assert decision.reasons == (RiskReason.INSUFFICIENT_CASH,)
 
 
 def test_sell_cannot_exceed_position_after_pending_sells() -> None:

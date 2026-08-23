@@ -233,3 +233,69 @@ def test_non_filled_legacy_simulation_payload_is_not_journaled() -> None:
     )
 
     assert journal_record_from_simulation_order(submitted, session_id=SESSION_ID) is None
+
+
+def test_settings_bound_zero_fee_fill_writes_complete_v2_evidence() -> None:
+    service = SimulationService(MockProvider(), starting_cash=Decimal("300000"))
+    order, _ = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price=106,
+        idempotency_key="settings-bound-v2-zero-fee",
+    )
+    settings_digest = "a" * 64
+
+    record = journal_record_from_simulation_order(
+        order,
+        session_id=SESSION_ID,
+        settings_digest=settings_digest,
+    )
+
+    assert record is not None
+    assert record.kind == "local_paper_fill.v2"
+    assert record.payload["gross_notional"] == "105500"
+    assert record.payload["commission"] == "0"
+    assert record.payload["net_cash_effect"] == "-105500"
+    assert record.payload["cumulative_order_commission"] == "0"
+    assert record.payload["settings_digest"] == settings_digest
+
+    result = journal().append(record)
+    projection = LocalPaperProjection(
+        starting_cash=Decimal("300000"),
+        settings_digest="b" * 64,
+    )
+    with pytest.raises(
+        ProjectionRecoveryError,
+        match="settings digest conflicts with session",
+    ):
+        projection.apply(result)
+
+
+def test_settings_bound_fee_fill_writes_net_and_cumulative_commission() -> None:
+    service = SimulationService(
+        MockProvider(),
+        starting_cash=Decimal("300000"),
+        commission_rate=Decimal("0.001425"),
+        minimum_commission=Decimal("20"),
+    )
+    order, _ = service.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price=106,
+        idempotency_key="settings-bound-v2-fee",
+    )
+
+    record = journal_record_from_simulation_order(
+        order,
+        session_id=SESSION_ID,
+        settings_digest="c" * 64,
+    )
+
+    assert record is not None
+    assert record.kind == "local_paper_fill.v2"
+    assert record.payload["gross_notional"] == "105500"
+    assert record.payload["commission"] == "150.34"
+    assert record.payload["net_cash_effect"] == "-105650.34"
+    assert record.payload["cumulative_order_commission"] == "150.34"

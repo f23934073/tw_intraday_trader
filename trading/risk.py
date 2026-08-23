@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from enum import StrEnum
 
 from trading.canonical_values import canonical_decimal_string
@@ -55,6 +55,7 @@ class RiskReason(StrEnum):
     INSUFFICIENT_POSITION = "INSUFFICIENT_POSITION"
     PENDING_ORDER_DUPLICATE = "PENDING_ORDER_DUPLICATE"
     DAILY_LOSS_LIMIT = "DAILY_LOSS_LIMIT"
+    DAILY_BUY_NOTIONAL_LIMIT = "DAILY_BUY_NOTIONAL_LIMIT"
     BOOK_UNAVAILABLE = "BOOK_UNAVAILABLE"
     BOOK_STALE = "BOOK_STALE"
 
@@ -108,6 +109,9 @@ class RiskPolicy:
     max_order_notional: Decimal
     max_position_notional: Decimal
     max_daily_loss: Decimal
+    max_daily_buy_notional: Decimal | None = None
+    commission_rate: Decimal = Decimal("0")
+    minimum_commission: Decimal = Decimal("0")
     require_fresh_book: bool = False
     max_book_age_seconds: int = 15
     fresh_book_sides: frozenset[CommandSide] = frozenset(CommandSide)
@@ -122,6 +126,15 @@ class RiskPolicy:
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be positive")
+        if (
+            self.max_daily_buy_notional is not None
+            and self.max_daily_buy_notional <= 0
+        ):
+            raise ValueError("max_daily_buy_notional must be positive")
+        if not Decimal("0") <= self.commission_rate <= Decimal("0.01"):
+            raise ValueError("commission_rate must be between 0 and 0.01")
+        if self.minimum_commission < 0:
+            raise ValueError("minimum_commission must not be negative")
         if self.max_book_age_seconds < 0:
             raise ValueError("max_book_age_seconds must not be negative")
         if not self.fresh_book_sides.issubset(frozenset(CommandSide)):
@@ -153,6 +166,8 @@ class RiskSnapshot:
     pending_buy_shares: int
     pending_sell_shares: int
     daily_realized_pnl: Decimal
+    daily_filled_buy_notional: Decimal = Decimal("0")
+    pending_buy_notional: Decimal = Decimal("0")
     same_side_pending_order: bool = False
     book_age_seconds: int | None = None
     daily_loss: Decimal | None = None
@@ -166,6 +181,11 @@ class RiskSnapshot:
             raise ValueError("position and pending quantities must not be negative")
         if self.daily_loss is not None and self.daily_loss < 0:
             raise ValueError("daily_loss must not be negative")
+        if min(
+            self.daily_filled_buy_notional,
+            self.pending_buy_notional,
+        ) < 0:
+            raise ValueError("daily BUY notional values must not be negative")
 
 
 @dataclass(frozen=True)
@@ -178,7 +198,7 @@ class RiskDecision:
 
 
 def _risk_policy_payload(policy: RiskPolicy) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "version": policy.version,
         "allow_strategy_origin": policy.allow_strategy_origin,
         "max_order_notional": canonical_decimal_string(
@@ -192,6 +212,18 @@ def _risk_policy_payload(policy: RiskPolicy) -> dict[str, object]:
         "max_book_age_seconds": policy.max_book_age_seconds,
         "fresh_book_sides": sorted(side.value for side in policy.fresh_book_sides),
     }
+    if policy.max_daily_buy_notional is not None:
+        payload["max_daily_buy_notional"] = canonical_decimal_string(
+            policy.max_daily_buy_notional
+        )
+    if policy.commission_rate != 0 or policy.minimum_commission != 0:
+        payload["commission_rate"] = canonical_decimal_string(
+            policy.commission_rate
+        )
+        payload["minimum_commission"] = canonical_decimal_string(
+            policy.minimum_commission
+        )
+    return payload
 
 
 @dataclass(frozen=True)
@@ -405,9 +437,24 @@ class RiskGate:
 
         notional = command.quantity_shares * command.limit_price
         if command.side is CommandSide.BUY:
+            if (
+                self._policy.max_daily_buy_notional is not None
+                and snapshot.daily_filled_buy_notional
+                + snapshot.pending_buy_notional
+                + notional
+                > self._policy.max_daily_buy_notional
+            ):
+                rejected.append(RiskReason.DAILY_BUY_NOTIONAL_LIMIT)
             if notional > self._policy.max_order_notional:
                 rejected.append(RiskReason.ORDER_NOTIONAL_LIMIT)
-            if notional > snapshot.available_cash:
+            commission = max(
+                self._policy.minimum_commission,
+                (notional * self._policy.commission_rate).quantize(
+                    Decimal("0.01"),
+                    rounding=ROUND_HALF_UP,
+                ),
+            )
+            if notional + commission > snapshot.available_cash:
                 rejected.append(RiskReason.INSUFFICIENT_CASH)
             position_notional = (
                 snapshot.current_position_shares
