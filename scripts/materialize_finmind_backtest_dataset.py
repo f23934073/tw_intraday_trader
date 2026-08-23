@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from backtest.dataset import DatasetManifest, HistoricalDatasetCatalog  # noqa: E402
+from backtest.dataset_binding import ATOMIC_BACKTEST_DEFAULT  # noqa: E402
 from backtest.finmind_history import TAIPEI  # noqa: E402
 from backtest.finmind_snapshot import (  # noqa: E402
     FinMindSemanticSnapshotReader,
@@ -194,6 +195,52 @@ def _resolve_execute_path(
     return Path(str(locators[field])).resolve()
 
 
+def activate_default_binding(
+    *,
+    manifest: DatasetManifest,
+    expected_revision: int,
+    idempotency_key: str,
+    actor: str,
+    change_note: str,
+    postgres_dsn: str,
+) -> dict[str, object]:
+    """Register and bind one verified manifest without a SQLite fallback."""
+
+    if not postgres_dsn.strip():
+        raise RuntimeError("BACKTEST_DATABASE_URL is required for activation")
+    if manifest.plan_identity_digest is None:
+        raise ValueError("FinMind Dataset is missing plan identity digest")
+    try:
+        import psycopg
+    except ImportError as error:
+        raise RuntimeError("psycopg is required for Dataset activation") from error
+    from backtest.postgres_repository import PostgresBacktestRepository
+
+    connection = psycopg.connect(postgres_dsn)
+    repository = PostgresBacktestRepository(connection)
+    try:
+        _dataset, registration_replayed = repository.register_immutable_dataset(
+            manifest.to_dict()
+        )
+        binding, activation_replayed = repository.activate_dataset_binding(
+            binding_name=ATOMIC_BACKTEST_DEFAULT,
+            dataset_id=manifest.dataset_id,
+            dataset_digest=manifest.manifest_digest,
+            plan_identity_digest=manifest.plan_identity_digest,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            actor_id=actor,
+            change_note=change_note,
+        )
+        return {
+            "activation_replayed": activation_replayed,
+            "binding": binding,
+            "registration_replayed": registration_replayed,
+        }
+    finally:
+        repository.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="建立或封存 FinMind 歷史資料的一致性快照"
@@ -215,12 +262,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plan-out", type=Path)
     parser.add_argument("--plan-file", type=Path)
     parser.add_argument("--snapshot-file", type=Path)
+    parser.add_argument("--activate-default", action="store_true")
+    parser.add_argument("--expected-binding-revision", type=int)
+    parser.add_argument("--activation-idempotency-key")
+    parser.add_argument("--change-note")
     parser.add_argument(
         "--dataset-root",
         type=Path,
         default=Path(os.environ.get("BACKTEST_DATA_DIR", "data/backtest")),
     )
-    parser.add_argument("--actor", default="local-researcher")
+    parser.add_argument("--actor")
     return parser
 
 
@@ -238,7 +289,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             stock_info_raw=args.stock_info_raw,
             snapshot_out=args.snapshot_out,
             plan_out=args.plan_out,
-            actor=args.actor,
+            actor=args.actor or "local-researcher",
         )
         identity = plan.identity
         counts = identity["counts"]
@@ -257,13 +308,36 @@ def main(argv: Sequence[str] | None = None) -> None:
     else:
         if args.plan_file is None:
             parser.error("--execute requires --plan-file")
+        if args.activate_default:
+            if args.expected_binding_revision is None:
+                parser.error(
+                    "--activate-default requires --expected-binding-revision"
+                )
+            if not str(args.activation_idempotency_key or "").strip():
+                parser.error(
+                    "--activate-default requires --activation-idempotency-key"
+                )
+            if not str(args.change_note or "").strip():
+                parser.error("--activate-default requires --change-note")
+            if not str(args.actor or "").strip():
+                parser.error("--activate-default requires --actor")
         manifest = execute_snapshot_plan(
             plan_file=args.plan_file,
             dataset_root=args.dataset_root,
             snapshot_file=args.snapshot_file,
             stock_info_raw=args.stock_info_raw,
         )
-        output = manifest.to_dict()
+        if args.activate_default:
+            output = activate_default_binding(
+                manifest=manifest,
+                expected_revision=args.expected_binding_revision,
+                idempotency_key=args.activation_idempotency_key,
+                actor=args.actor,
+                change_note=args.change_note,
+                postgres_dsn=os.environ.get("BACKTEST_DATABASE_URL", ""),
+            )
+        else:
+            output = manifest.to_dict()
     print(json.dumps(output, ensure_ascii=False, sort_keys=True), flush=True)
 
 

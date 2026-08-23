@@ -263,6 +263,26 @@ BACKTEST_DATABASE_URL='postgresql://user:password@host:5432/tw_backtest' python3
 
 驗證通過後才設定 `BACKTEST_DATABASE_BACKEND=postgresql`。若已另有 PostgreSQL backup／restore 能力，可以移除舊 SQLite；不可讓 SQLite 與 PostgreSQL 同時 claim 新工作。
 
+FinMind snapshot 封存完成後，可用 saved plan 重新驗證完整 artifact，再以
+PostgreSQL-only transaction 註冊 immutable Dataset 並切換預設回測 binding：
+
+```bash
+BACKTEST_DATABASE_URL='postgresql://user:password@host:5432/tw_backtest' \
+  .venv/bin/python scripts/materialize_finmind_backtest_dataset.py \
+  --execute \
+  --plan-file data/backtest/finmind_plans/<operation>/snapshot-plan.json \
+  --activate-default \
+  --expected-binding-revision 0 \
+  --activation-idempotency-key <stable-key> \
+  --actor local-researcher \
+  --change-note 'activate verified FinMind snapshot'
+```
+
+首次 binding 的 expected revision 是 `0`；之後必須使用目前 revision。相同
+idempotency key 與相同 request 會回放原結果，相同 target 搭配新 key 是不增加
+revision 的 no-op，stale revision 或不同 request 重用同 key 都會 fail closed。
+這條 activation 不支援 SQLite fallback，也不會啟動 Web Run、Local Paper 或券商下單。
+
 原子策略平台的 Template、Draft、immutable Version、Publish event/state/outbox、Publish operation、mutation audit 與 exact-version Strategy Set 固定使用 PostgreSQL；這些 mutation 不支援 SQLite，也不會在 PostgreSQL unavailable 時 fallback。Dashboard handler 與背景 backtest worker 透過 bounded PostgreSQL connection pool 在每次 operation checkout，各 transaction 不共用單一 connection／rollback 狀態。
 
 Dashboard 啟動後，可用以下歷史回測流程：

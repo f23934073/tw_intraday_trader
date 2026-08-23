@@ -1,5 +1,104 @@
 # Progress: FinMind Backtest Dataset Bridge
 
+## 2026-08-23 — G4 commit packaging / G5 authorization
+
+- User explicitly requested a scoped G4 commit and authorized G5 only after
+  that commit is created.
+- Started shared-worktree payload inspection. The G4 commit must exclude
+  Local Paper, Strategy Set archive, `.planning/.active_plan`, and all other
+  concurrent changes; no push is authorized.
+- Mixed files requiring partial staging were identified:
+  `backtest/repository.py`, `README.md`, the migration expectation tests, and
+  `tests/test_strategy_publish_idempotency.py`. G4-only files can be staged
+  whole; concurrent archive and Local Paper changes must remain unstaged.
+- The staged index will be reviewed independently before commit, including
+  migration numbering and the current eight-strategy registry assertion.
+- Built the scoped G4 index: 14 files, with partial hunks for the mixed files.
+  `011_strategy_set_archives.sql`, archive tests, Local Paper settings, and all
+  other concurrent work remain unstaged. `git diff --cached --check` passes.
+- G5 implementation remains pending until the reviewed G4 payload is committed.
+
+## 2026-08-23 — G4 implementation start
+
+- Independent re-review approved `G4 APPROVED / GATE PASSED` with no remaining
+  blocker. Formal Gate progress is now 80%.
+- Recorded reviewer evidence: no-DSN `8 passed, 7 skipped`, migration
+  `6 passed, 1 skipped`, collected PostgreSQL scope 15 tests with candidate
+  evidence `15 passed`, plus compilation, CLI help, and `git diff --check`.
+- This approval update changes planning documents only. No database,
+  application activation, G5 work, commit, or push was performed.
+- Independent Review returned G4 to `REQUEST CHANGES / GATE NOT PASSED` because
+  concurrent activation only covered same-key replay, not distinct-operation
+  CAS contention.
+- Started the single-blocker remediation. Scope is one PostgreSQL regression
+  using different keys/targets with the same expected revision, plus focused
+  disposable-PostgreSQL verification. G5 and Local Paper remain untouched.
+- Added the exact distinct-operation race regression with two registered target
+  Datasets, two idempotency keys, one shared expected revision `0`, and a
+  two-worker barrier. It asserts one `BOUND` result, one revision conflict,
+  head revision `1`, and exactly one binding/revision/operation row.
+- The first PostgreSQL execution reached the intended one-success/one-conflict
+  assertions, then failed only because the fixture inspection connection had
+  not set `search_path` while the new count queries used unqualified table
+  names. The count assertions now explicitly use the `backtest` schema.
+- Reviewer-specified distinct-operation race passed `1 passed`. Complete G4
+  focused PostgreSQL passed `15 passed`; G4 plus migration scope passed
+  `22 passed`.
+- Focused no-DSN remains `8 passed, 7 skipped`, where all seven skips are
+  explicit PostgreSQL tests. Compilation and `git diff --check` pass.
+- Stopped and automatically removed the disposable PostgreSQL container. No
+  development or production database was accessed.
+- Marked G4 `REMEDIATED / AWAITING RE-REVIEW`. G5 remains unauthorized; no
+  product logic, Local Paper code, commit, or push was added in remediation.
+
+- Committed the four G3 approval/evidence documents as local commit `8beca2b`
+  (`docs(backtest): record FinMind full artifact gate`); no push was performed.
+- User then explicitly authorized G4 PostgreSQL immutable registration and
+  `ATOMIC_BACKTEST_DEFAULT` binding.
+- Marked G4 `AUTHORIZED / IN PROGRESS`; G5 Web, Local Paper, broker, and
+  real-money remain unauthorized.
+- Preflight reserved migration 012 because concurrent untracked migration 011
+  already exists. Confirmed the PostgreSQL adapter has advisory-lock and
+  transaction-per-checkout infrastructure, while the existing Dataset upsert is
+  mutable and cannot satisfy G4 immutable registration.
+- One read used a nonexistent `backtest/migrations/__init__.py` path; no change
+  occurred, and the inspection was rerun against `backtest/migrations.py`.
+- Added migration 012, the PostgreSQL-only immutable registration/binding
+  contract, activation CLI flags, and focused tests without entering G5.
+- The first focused command referenced a nonexistent standalone
+  `tests/test_finmind_dataset_materializer.py`; materialization coverage lives
+  in `tests/test_finmind_backtest_snapshot.py`. The corrected focused run was
+  `34 passed, 3 skipped`; all skips require PostgreSQL.
+- Python compilation, CLI help, and `git diff --check` passed.
+- A disposable PostgreSQL 17 container was started on loopback only. The first
+  sandboxed test connection was denied by network policy, so the same command
+  was rerun with the approved local-network escalation.
+- The first PostgreSQL run exposed that stored-manifest tampering raised a
+  generic `ValueError`; the read/activation boundary now maps malformed stored
+  evidence to `DatasetBindingIntegrityError`. The corrected focused PostgreSQL
+  suite passed `7 passed`.
+- Added real migration table/constraint/index acceptance and concurrent
+  registration coverage; the expanded PostgreSQL suite passed `9 passed`.
+- The first full no-DSN run intentionally disabled incremental sync, which
+  invalidated two scheduler tests, and exposed two expected-migration-list
+  assertions that still ended at 011. The scheduler environment override was
+  removed and both lists now include migration 012 before the final rerun.
+- One full PostgreSQL run exposed a stale four-Template assertion even though
+  the current registry contains eight approved ENTRY Templates. The test now
+  derives its expected IDs from the registry; the isolated regression passed.
+- Added explicit missing and non-READY Dataset refusal coverage. Final G4
+  focused evidence is `8 passed, 6 skipped` without a DSN and `14 passed`
+  against disposable PostgreSQL 17.
+- Final full evidence is `1309 passed, 29 skipped` without a DSN and
+  `1338 passed` against disposable PostgreSQL 17. Python compilation and
+  `git diff --check` passed.
+- Stopped and automatically removed the loopback-only disposable PostgreSQL
+  container. No development or production database was accessed.
+- One cleanup command used a misspelled workspace path and could not start;
+  rerunning the same `docker stop` from the correct workspace succeeded.
+- Marked G4 `IMPLEMENTATION CANDIDATE / AWAITING REVIEW`; G5 remains
+  unauthorized and no G4 commit or push was created.
+
 ## 2026-08-23 — G3 approved
 
 - Independent Review found no blocker and approved

@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Mapping
 from uuid import uuid4
 
 from backtest.comparability import (
     comparability_contract_digest,
     run_comparability_diff,
     verify_run_identity,
+)
+from backtest.dataset_binding import (
+    DatasetBindingIdempotencyConflict,
+    DatasetBindingIntegrityError,
+    DatasetBindingRevisionConflict,
+    DatasetRegistrationConflict,
+    activation_request,
+    canonical_registration_manifest,
+    require_text,
 )
 from backtest.migrations import apply_migrations
 from backtest.domain import digest
@@ -61,6 +70,270 @@ class PostgresBacktestRepository(_JsonBacktestRepository):
     @property
     def connection_pool(self) -> Any | None:
         return self._pool
+
+    def register_immutable_dataset(
+        self,
+        manifest: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        """Insert one canonical READY Dataset or replay the exact existing row."""
+
+        canonical = canonical_registration_manifest(manifest)
+        dataset_id = str(canonical["dataset_id"])
+        lock_key = self._advisory_lock_key("backtest-dataset:register", dataset_id)
+        with self._transaction() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", (lock_key,))
+            cursor.execute(
+                "SELECT * FROM backtest_datasets WHERE dataset_id = %s FOR UPDATE",
+                (dataset_id,),
+            )
+            raw = cursor.fetchone()
+            if raw is not None:
+                row = self._row(cursor, raw)
+                existing_manifest = _decode_json(row["manifest_json"])
+                if row["status"] != "READY" or existing_manifest != canonical:
+                    raise DatasetRegistrationConflict(
+                        f"immutable Dataset identity conflict: {dataset_id}"
+                    )
+                return self._dataset_payload(row), True
+            cursor.execute(
+                """
+                INSERT INTO backtest_datasets (
+                    dataset_id, status, manifest_json, created_at, updated_at
+                ) VALUES (%s, 'READY', %s::jsonb, %s, CURRENT_TIMESTAMP::text)
+                RETURNING *
+                """,
+                (dataset_id, _json(canonical), canonical["created_at"]),
+            )
+            return self._dataset_payload(self._row(cursor, cursor.fetchone())), False
+
+    def get_dataset_binding(self, binding_name: str) -> dict[str, Any] | None:
+        binding_name = require_text(binding_name, "binding name")
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT binding.*, dataset.status AS dataset_status,
+                       dataset.manifest_json AS dataset_manifest_json
+                FROM backtest_dataset_bindings AS binding
+                JOIN backtest_datasets AS dataset
+                  ON dataset.dataset_id = binding.dataset_id
+                WHERE binding.binding_name = %s
+                """,
+                (binding_name,),
+            )
+            raw = cursor.fetchone()
+            if raw is None:
+                return None
+            return self._verified_binding_payload(self._row(cursor, raw))
+
+    def activate_dataset_binding(
+        self,
+        *,
+        binding_name: str,
+        dataset_id: str,
+        dataset_digest: str,
+        plan_identity_digest: str,
+        expected_revision: int,
+        idempotency_key: str,
+        actor_id: str,
+        change_note: str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Apply one serialized binding mutation with durable response replay."""
+
+        request = activation_request(
+            binding_name=binding_name,
+            dataset_id=dataset_id,
+            dataset_digest=dataset_digest,
+            plan_identity_digest=plan_identity_digest,
+            expected_revision=expected_revision,
+            actor_id=actor_id,
+            change_note=change_note,
+        )
+        idempotency_key = require_text(idempotency_key, "idempotency key")
+        request_digest = digest(request)
+        lock_key = self._advisory_lock_key(
+            "backtest-dataset-binding:activate",
+            str(request["binding_name"]),
+        )
+        with self._transaction() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", (lock_key,))
+            cursor.execute(
+                """
+                SELECT request_digest, result_json, result_digest
+                FROM backtest_dataset_binding_operations
+                WHERE binding_name = %s AND idempotency_key = %s
+                """,
+                (request["binding_name"], idempotency_key),
+            )
+            replay = cursor.fetchone()
+            if replay is not None:
+                replay_row = self._row(cursor, replay)
+                if str(replay_row["request_digest"]) != request_digest:
+                    raise DatasetBindingIdempotencyConflict(
+                        "Dataset binding idempotency key request conflict"
+                    )
+                result = _decode_json(replay_row["result_json"])
+                if digest(result) != str(replay_row["result_digest"]):
+                    raise DatasetBindingIntegrityError(
+                        "Dataset binding operation result digest conflict"
+                    )
+                return result, True
+
+            cursor.execute(
+                """
+                SELECT * FROM backtest_dataset_bindings
+                WHERE binding_name = %s
+                FOR UPDATE
+                """,
+                (request["binding_name"],),
+            )
+            raw_head = cursor.fetchone()
+            head = self._row(cursor, raw_head) if raw_head is not None else None
+            current_revision = int(head["revision"]) if head is not None else 0
+            if int(request["expected_revision"]) != current_revision:
+                raise DatasetBindingRevisionConflict(
+                    "DATASET_BINDING_REVISION_CONFLICT: "
+                    f"expected {request['expected_revision']}, current {current_revision}"
+                )
+
+            cursor.execute(
+                "SELECT * FROM backtest_datasets WHERE dataset_id = %s FOR SHARE",
+                (request["dataset_id"],),
+            )
+            raw_dataset = cursor.fetchone()
+            if raw_dataset is None:
+                raise KeyError(f"Dataset is not registered: {request['dataset_id']}")
+            dataset_row = self._row(cursor, raw_dataset)
+            if dataset_row["status"] != "READY":
+                raise DatasetBindingIntegrityError("bound Dataset is not READY")
+            stored_manifest = self._verified_registered_manifest(
+                dataset_row["manifest_json"]
+            )
+            if (
+                stored_manifest["manifest_digest"] != request["dataset_digest"]
+                or stored_manifest.get("plan_identity_digest")
+                != request["plan_identity_digest"]
+            ):
+                raise DatasetBindingIntegrityError(
+                    "bound Dataset manifest identity conflict"
+                )
+
+            same_target = head is not None and (
+                head["dataset_id"] == request["dataset_id"]
+                and head["dataset_digest"] == request["dataset_digest"]
+                and head["plan_identity_digest"]
+                == request["plan_identity_digest"]
+            )
+            if same_target:
+                result_kind = "NOOP_ALREADY_BOUND"
+                result_revision = current_revision
+            else:
+                result_kind = "BOUND"
+                result_revision = current_revision + 1
+                if head is None:
+                    cursor.execute(
+                        """
+                        INSERT INTO backtest_dataset_bindings (
+                            binding_name, dataset_id, dataset_digest,
+                            plan_identity_digest, revision, actor_id, change_note
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            request["binding_name"],
+                            request["dataset_id"],
+                            request["dataset_digest"],
+                            request["plan_identity_digest"],
+                            result_revision,
+                            request["actor_id"],
+                            request["change_note"],
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE backtest_dataset_bindings
+                        SET dataset_id = %s, dataset_digest = %s,
+                            plan_identity_digest = %s, revision = %s,
+                            actor_id = %s, change_note = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE binding_name = %s AND revision = %s
+                        """,
+                        (
+                            request["dataset_id"],
+                            request["dataset_digest"],
+                            request["plan_identity_digest"],
+                            result_revision,
+                            request["actor_id"],
+                            request["change_note"],
+                            request["binding_name"],
+                            current_revision,
+                        ),
+                    )
+                    if cursor.rowcount != 1:
+                        raise DatasetBindingRevisionConflict(
+                            "Dataset binding head changed during activation"
+                        )
+                cursor.execute(
+                    """
+                    INSERT INTO backtest_dataset_binding_revisions (
+                        binding_name, revision, dataset_id, dataset_digest,
+                        plan_identity_digest, previous_dataset_id,
+                        previous_dataset_digest, actor_id, change_note,
+                        idempotency_key
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        request["binding_name"],
+                        result_revision,
+                        request["dataset_id"],
+                        request["dataset_digest"],
+                        request["plan_identity_digest"],
+                        head["dataset_id"] if head is not None else None,
+                        head["dataset_digest"] if head is not None else None,
+                        request["actor_id"],
+                        request["change_note"],
+                        idempotency_key,
+                    ),
+                )
+
+            result = {
+                "binding_name": request["binding_name"],
+                "dataset_digest": request["dataset_digest"],
+                "dataset_id": request["dataset_id"],
+                "outcome": result_kind,
+                "plan_identity_digest": request["plan_identity_digest"],
+                "request_digest": request_digest,
+                "revision": result_revision,
+            }
+            result_digest = digest(result)
+            cursor.execute(
+                """
+                INSERT INTO backtest_dataset_binding_operations (
+                    binding_name, idempotency_key, request_digest,
+                    expected_revision, target_dataset_id, target_dataset_digest,
+                    target_plan_identity_digest, actor_id, change_note,
+                    result_kind, result_revision, result_json, result_digest
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s::jsonb, %s
+                )
+                """,
+                (
+                    request["binding_name"],
+                    idempotency_key,
+                    request_digest,
+                    request["expected_revision"],
+                    request["dataset_id"],
+                    request["dataset_digest"],
+                    request["plan_identity_digest"],
+                    request["actor_id"],
+                    request["change_note"],
+                    result_kind,
+                    result_revision,
+                    _json(result),
+                    result_digest,
+                ),
+            )
+            return result, False
 
     def cancel_atomic_run(
         self,
@@ -630,6 +903,59 @@ class PostgresBacktestRepository(_JsonBacktestRepository):
             ),
         }
         return verify_qualification_record(payload)
+
+    @staticmethod
+    def _advisory_lock_key(scope: str, identity: str) -> int:
+        lock_digest = hashlib.sha256(
+            f"{scope}\0{identity}".encode("utf-8")
+        ).digest()
+        return int.from_bytes(lock_digest[:8], byteorder="big", signed=True)
+
+    @staticmethod
+    def _verified_binding_payload(row: dict[str, Any]) -> dict[str, Any]:
+        if row["dataset_status"] != "READY":
+            raise DatasetBindingIntegrityError("bound Dataset is not READY")
+        manifest = PostgresBacktestRepository._verified_registered_manifest(
+            row["dataset_manifest_json"]
+        )
+        if (
+            manifest["manifest_digest"] != row["dataset_digest"]
+            or manifest.get("plan_identity_digest")
+            != row["plan_identity_digest"]
+        ):
+            raise DatasetBindingIntegrityError(
+                "Dataset binding head does not match the registered manifest"
+            )
+        created_at = row["created_at"]
+        updated_at = row["updated_at"]
+        return {
+            "actor_id": row["actor_id"],
+            "binding_name": row["binding_name"],
+            "change_note": row["change_note"],
+            "created_at": (
+                created_at.isoformat()
+                if hasattr(created_at, "isoformat")
+                else str(created_at)
+            ),
+            "dataset_digest": row["dataset_digest"],
+            "dataset_id": row["dataset_id"],
+            "plan_identity_digest": row["plan_identity_digest"],
+            "revision": int(row["revision"]),
+            "updated_at": (
+                updated_at.isoformat()
+                if hasattr(updated_at, "isoformat")
+                else str(updated_at)
+            ),
+        }
+
+    @staticmethod
+    def _verified_registered_manifest(value: Any) -> dict[str, Any]:
+        try:
+            return canonical_registration_manifest(_decode_json(value))
+        except (KeyError, TypeError, ValueError) as error:
+            raise DatasetBindingIntegrityError(
+                "registered Dataset manifest integrity conflict"
+            ) from error
 
     def close(self) -> None:
         if self._pool is not None:

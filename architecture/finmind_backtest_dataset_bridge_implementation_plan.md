@@ -22,8 +22,10 @@ FinMind downloader 的下載契約。
 目前 disposition：`G0 APPROVED / CONTRACT FROZEN`、
 `G1 APPROVED / GATE PASSED`、`G2 APPROVED / GATE PASSED`、
 `G3 APPROVED / GATE PASSED`。已建立並驗證一份正式完整動態
-snapshot artifact；G4 PostgreSQL binding 與 G5 Web Run 仍未授權。
-本階段不修改 PostgreSQL、Web、Local Paper、broker 或 real-money。
+snapshot artifact；G4 PostgreSQL binding 已補齊 distinct-operation CAS
+並行 regression，且獨立 Review 已核准 `G4 APPROVED / GATE PASSED`；正式
+Gate 進度為 80%。G5 Web Run 仍未授權。本階段不修改 Web、Local Paper、
+broker 或 real-money，也尚未對應用程式 PostgreSQL 執行正式 Dataset activation。
 
 ## 2. 範圍與非目標
 

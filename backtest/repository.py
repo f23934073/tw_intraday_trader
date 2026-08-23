@@ -55,6 +55,29 @@ class BacktestRepository(Protocol):
     def get_dataset(self, dataset_id: str) -> dict[str, Any]:
         ...
 
+    def register_immutable_dataset(
+        self,
+        manifest: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        ...
+
+    def get_dataset_binding(self, binding_name: str) -> dict[str, Any] | None:
+        ...
+
+    def activate_dataset_binding(
+        self,
+        *,
+        binding_name: str,
+        dataset_id: str,
+        dataset_digest: str,
+        plan_identity_digest: str,
+        expected_revision: int,
+        idempotency_key: str,
+        actor_id: str,
+        change_note: str,
+    ) -> tuple[dict[str, Any], bool]:
+        ...
+
     def upsert_history_partition(self, partition: Mapping[str, Any]) -> None:
         ...
 
@@ -342,6 +365,29 @@ class _JsonBacktestRepository:
             if raw is None:
                 raise KeyError(f"找不到歷史資料集：{dataset_id}")
             return self._dataset_payload(self._row(cursor, raw))
+
+    def register_immutable_dataset(
+        self,
+        manifest: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        raise RuntimeError("immutable Dataset registration requires PostgreSQL")
+
+    def get_dataset_binding(self, binding_name: str) -> dict[str, Any] | None:
+        raise RuntimeError("Dataset binding requires PostgreSQL")
+
+    def activate_dataset_binding(
+        self,
+        *,
+        binding_name: str,
+        dataset_id: str,
+        dataset_digest: str,
+        plan_identity_digest: str,
+        expected_revision: int,
+        idempotency_key: str,
+        actor_id: str,
+        change_note: str,
+    ) -> tuple[dict[str, Any], bool]:
+        raise RuntimeError("Dataset binding activation requires PostgreSQL")
 
     def upsert_history_partition(self, partition: Mapping[str, Any]) -> None:
         """Checkpoint one complete symbol atomically for safe CLI resume."""

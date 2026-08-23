@@ -58,8 +58,8 @@ ATOMIC_INDEXES = (
 
 def test_atomic_strategy_migration_is_numbered_and_owned_by_runner() -> None:
     files = migration_files()
-    assert files[-1].name == "010_backtest_experiment_family_identity.sql"
-    sql = "\n".join(file.read_text(encoding="utf-8") for file in files[-6:])
+    assert files[-1].name == "012_backtest_dataset_bindings.sql"
+    sql = "\n".join(file.read_text(encoding="utf-8") for file in files[-7:])
     for table in ATOMIC_TABLES:
         assert f"backtest.{table}" in sql
 
@@ -83,6 +83,7 @@ def test_atomic_strategy_migration_applies_once_to_postgresql(
     assert "008_backtest_qualification.sql" in first
     assert "009_backtest_experiment_families.sql" in first
     assert "010_backtest_experiment_family_identity.sql" in first
+    assert "012_backtest_dataset_bindings.sql" in first
     assert second == ()
     with postgres_test_connection.cursor() as cursor:
         cursor.execute(

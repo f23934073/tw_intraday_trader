@@ -236,10 +236,7 @@ def test_phase5_templates_sync_to_postgresql_with_parameter_bindings(
         rows = cursor.fetchall()
 
     assert {row[0] for row in rows} == {
-        "above_vwap_entry",
-        "breakout_previous_high_entry",
-        "rolling_return_entry",
-        "volume_acceleration_entry",
+        template.strategy_id for template in registry.templates()
     }
     rolling = next(row for row in rows if row[0] == "rolling_return_entry")
     assert rolling[1][0]["parameter_bindings"] == {

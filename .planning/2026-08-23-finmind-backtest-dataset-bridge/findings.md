@@ -1,5 +1,64 @@
 # Findings: FinMind Backtest Dataset Bridge
 
+## 2026-08-23 — G4 execution boundary
+
+- Independent re-review found no new blocker and approved
+  `G4 APPROVED / GATE PASSED`; formal Gate progress is now 80%.
+- Approval confirms the distinct-target/distinct-key revision-0 race, exact
+  one-success/one-conflict outcome, and single head/revision/operation state.
+- The exact G3 Dataset is still not bound to an application PostgreSQL. That
+  environment activation requires separate authorization and does not itself
+  authorize G5.
+- Independent Review returned `G4 REQUEST CHANGES / GATE NOT PASSED` with one
+  blocker: the existing concurrent activation test uses the same idempotency
+  key and therefore proves durable response-loss replay, not two distinct CAS
+  operations racing from the same expected revision.
+- Remediation is test-only unless the new PostgreSQL regression exposes a
+  product defect. It must use different keys and different targets, assert one
+  `BOUND` result plus one `DatasetBindingRevisionConflict`, and verify exactly
+  one head revision, one revision audit row, and one durable operation row.
+- The new regression passed without a product-code change: the advisory-lock
+  implementation permitted exactly one mutation, and the second distinct
+  operation observed revision `1` and raised `DatasetBindingRevisionConflict`.
+  Database readback confirmed one head, one revision audit, and one operation.
+- G5 remains unauthorized; Local Paper failures in the shared worktree are
+  unrelated and are not part of this remediation.
+
+- User explicitly requested a G3 scoped commit and then authorized G4.
+- G3 approval was committed locally as `8beca2b`; no push was performed.
+- G4 is restricted to PostgreSQL immutable Dataset registration, exact
+  `ATOMIC_BACKTEST_DEFAULT` binding CAS/idempotency/audit, activation CLI, and
+  disposable PostgreSQL tests. G5 Web resolution and all trading paths remain
+  unauthorized.
+- Migration preflight found concurrent untracked
+  `011_strategy_set_archives.sql`; G4 must therefore allocate
+  `012_backtest_dataset_bindings.sql` and preserve the existing 011 work.
+- `backtest_datasets` already exists in PostgreSQL with JSONB manifest storage,
+  but its shared `upsert_dataset()` is mutable. G4 needs a separate
+  PostgreSQL-only insert/verify operation and must not reuse that upsert.
+- `PostgresBacktestRepository` already provides pool-aware transaction checkout
+  and transaction-level advisory-lock patterns suitable for first-create CAS
+  and durable idempotency serialization.
+- `backtest/repository.py` contains unrelated uncommitted
+  `get_run_by_idempotency_key` work. Any G4 edit there must be additive and
+  preserve that diff exactly.
+- G4 uses a distinct `register_immutable_dataset()` path rather than the
+  mutable legacy `upsert_dataset()` path. SQLite implementations fail closed.
+- Binding activation serializes the stable binding name with a PostgreSQL
+  transaction advisory lock, checks durable replay before current revision,
+  and records head/revision/operation in one transaction.
+- Focused no-DSN coverage passes; PostgreSQL concurrency and migration tests
+  remain skipped until a disposable PostgreSQL DSN is supplied.
+- Disposable PostgreSQL 17 later verified migration application, exact
+  registration replay/conflict, first-create CAS, durable replay after head
+  advance, no-op behavior, stale conflict, tamper detection, and concurrent
+  registration/activation. The final full PostgreSQL suite passed.
+- No configured `BACKTEST_DATABASE_URL` was available, so the exact G3 artifact
+  was not installed into an application/development database. This does not
+  block the frozen G4 Gate, whose pass condition is disposable PostgreSQL
+  registration/concurrency; actual environment activation remains an operator
+  action before G5.
+
 ## 2026-08-23 — G3 approved
 
 - Independent Review found no G3 blocker and approved

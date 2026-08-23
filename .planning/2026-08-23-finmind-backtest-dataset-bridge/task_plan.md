@@ -12,9 +12,9 @@ FinMind history.sqlite3
 → Web Atomic Backtest
 ```
 
-The original planning task is complete. G1, G2, and G3 are approved. G4
-PostgreSQL binding and G5 Web Run remain unauthorized. PostgreSQL, Web, Local
-Paper, broker, and real-money behavior remain outside the completed G3 slice.
+The original planning task is complete. G1 through G4 are approved. G5 Web Run,
+application-environment activation, Local Paper, broker, and real-money behavior
+remain unauthorized or outside this slice.
 
 ## Current Status
 
@@ -22,7 +22,9 @@ Paper, broker, and real-money behavior remain outside the completed G3 slice.
 - G1 Snapshot Reader: approved / gate passed
 - G2 Small Materialization: approved / gate passed
 - G3 Full Artifact: approved / gate passed
-- G4～G5: not authorized
+- G4 PostgreSQL Binding: approved / gate passed
+- G5 Web Run: not authorized
+- Formal Gate progress: 80%
 
 ## Review Findings Closure
 
@@ -121,18 +123,24 @@ Status: COMPLETE / G3 APPROVED / GATE PASSED
 
 ### Phase 4 — PostgreSQL immutable registration and default binding
 
-- [ ] Add the next conflict-free numbered migration for
+Status: COMPLETE / G4 APPROVED / GATE PASSED
+
+- [x] Add the next conflict-free numbered migration for
       `backtest_dataset_bindings`.
-- [ ] Add immutable Dataset registration with same-digest replay and
+- [x] Add immutable Dataset registration with same-digest replay and
       different-digest conflict behavior.
-- [ ] Transactionally bind `ATOMIC_BACKTEST_DEFAULT` only to a verified READY
+- [x] Transactionally bind `ATOMIC_BACKTEST_DEFAULT` only to a verified READY
       Dataset and exact manifest digest.
-- [ ] Require expected binding revision, activation idempotency key, actor, and
+- [x] Require expected binding revision, activation idempotency key, actor, and
       change note; first creation uses expected `0` and produces revision `1`.
-- [ ] Freeze stale revision as 409, same-target current-revision as no-op, and
+- [x] Freeze stale revision as 409, same-target current-revision as no-op, and
       durable same-key replay as revision-neutral.
-- [ ] Add PostgreSQL concurrency, replay, conflict, and unavailable tests.
-- [ ] Do not fallback to SQLite.
+- [x] Add PostgreSQL concurrency, replay, conflict, and unavailable tests.
+- [x] Do not fallback to SQLite.
+- [x] Add the missing distinct-operation CAS race regression: two different
+      idempotency keys/targets with expected revision `0` must produce one
+      successful mutation and one `DatasetBindingRevisionConflict`, with one
+      head revision, one revision audit row, and one operation row.
 
 ### Phase 5 — Run resolver and Web projection
 
@@ -163,9 +171,9 @@ Status: COMPLETE / G3 APPROVED / GATE PASSED
 
 ### Phase 7 — End-to-end acceptance
 
-- [ ] Run focused no-DSN tests.
-- [ ] Run disposable PostgreSQL migration/concurrency tests.
-- [ ] Materialize one real full semantic snapshot and record its dynamic
+- [x] Run focused no-DSN tests.
+- [x] Run disposable PostgreSQL migration/concurrency tests.
+- [x] Materialize one real full semantic snapshot and record its dynamic
       evidence.
 - [ ] Register and activate the exact Dataset in PostgreSQL.
 - [ ] Confirm the Web displays the bound Dataset identity.
@@ -204,3 +212,5 @@ Status: COMPLETE / G3 APPROVED / GATE PASSED
 | Reviewer observed 161 symbols after plan remediation | 1 | Keep the observation as evidence only; no gate compares against it |
 | Repository search used an unmatched `requirements*.txt` zsh glob | 1 | The search made no changes; subsequent searches use `rg --files` or quoted explicit paths |
 | One parallel source read used a misspelled repository path | 1 | Retried once with the verified workspace path; no write occurred |
+| G4 inspection used the wrong migration module path | 1 | `backtest.migrations` is implemented by `backtest/migrations.py`; reran the read with the exact file |
+| New CAS regression used unqualified audit table names | 1 | The fixture inspection connection had no repository `search_path`; schema-qualified all three read-only count queries |
