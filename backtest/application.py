@@ -10,7 +10,10 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 from zoneinfo import ZoneInfo
 
 from backtest.dataset import DatasetCancelled, DatasetManifest, HistoricalDatasetCatalog
-from backtest.atomic_strategy_adapter import resolve_atomic_entry_set
+from backtest.atomic_strategy_adapter import (
+    bind_dataset_feature_evidence,
+    resolve_atomic_entry_set,
+)
 from backtest.comparability import (
     comparability_contract_digest,
     run_comparability_diff,
@@ -24,6 +27,13 @@ from backtest.domain import (
     digest,
 )
 from backtest.engine import BacktestCancelled, HistoricalBacktestEngine
+from backtest.feature_adapters import verify_vwap_amount_contract
+from backtest.dataset_binding import (
+    ATOMIC_BACKTEST_DEFAULT,
+    AtomicBacktestBindingChanged,
+    AtomicBacktestBindingUnavailable,
+    DatasetBindingIntegrityError,
+)
 from backtest.historical_download import IncrementalHistoricalSync
 from backtest.metrics import compare_runs, summarize_run
 from backtest.postgres_repository import PostgresBacktestRepository
@@ -37,6 +47,8 @@ from backtest.qualification import (
     research_baseline_identity_digest,
 )
 from backtest.repository import BacktestRepository
+from backtest.repository import BacktestIdempotencyConflict
+from backtest.run_control import DurableRunControlProbe, ThrottledProgressReporter
 from backtest.sqlite_repository import SQLiteBacktestRepository
 from backtest.strategies import StrategyRegistry
 from atomic_strategies.registry import AtomicStrategyRegistry
@@ -474,7 +486,6 @@ class BacktestApplicationService:
     def create_atomic_run(
         self,
         *,
-        dataset_id: str,
         strategy_set_version_id: str,
         starting_cash: str = backtest_settings.BACKTEST_DEFAULT_STARTING_CASH,
         position_fraction: str = backtest_settings.BACKTEST_DEFAULT_POSITION_FRACTION,
@@ -487,18 +498,43 @@ class BacktestApplicationService:
         idempotency_key: str,
         change_note: str = "",
         baseline_run_id: str | None = None,
+        expected_binding_revision: int | None = None,
+        expected_dataset_digest: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
         self._require_enabled()
         repository = self._require_atomic_repository()
-        dataset = self._repository.get_dataset(dataset_id)
-        if dataset["status"] != "READY":
-            raise ValueError("歷史資料集尚未 READY，不能建立回測")
+        key = self._validate_idempotency_key(idempotency_key)
+        request_document = self._atomic_run_request_document(
+            strategy_set_version_id=strategy_set_version_id,
+            starting_cash=starting_cash,
+            position_fraction=position_fraction,
+            commission_rate=commission_rate,
+            sell_tax_rate=sell_tax_rate,
+            slippage_bps=slippage_bps,
+            target_win_rate=target_win_rate,
+            minimum_oos_trades=minimum_oos_trades,
+            max_drawdown_guardrail=max_drawdown_guardrail,
+            change_note=change_note,
+            baseline_run_id=baseline_run_id,
+            expected_binding_revision=expected_binding_revision,
+            expected_dataset_digest=expected_dataset_digest,
+        )
+        request_digest = digest(request_document)
+        replay = self._repository.get_run_by_idempotency_key(key)
+        if replay is not None:
+            verify_run_identity(replay)
+            replay_config = BacktestRunConfig.from_dict(replay["config"])
+            if replay_config.atomic_run_request_digest != request_digest:
+                raise BacktestIdempotencyConflict(
+                    "相同 idempotency key 的 Atomic Run request 不同"
+                )
+            return replay, True
         snapshot = repository.get_strategy_set(strategy_set_version_id)
         resolution = resolve_atomic_entry_set(repository, self._atomic_registry, snapshot)
-        self._validate_strategy_selection(resolution.engine_strategy_set, dataset, registry=resolution.registry)
         baseline: dict[str, Any] | None = None
         research_baseline_digest: str | None = None
         family_id: str | None = None
+        binding_snapshot: dict[str, Any] | None = None
         if baseline_run_id is not None:
             baseline = self._repository.get_run(baseline_run_id)
             verify_run_identity(baseline)
@@ -506,10 +542,63 @@ class BacktestApplicationService:
                 raise ValueError("Experiment Baseline 必須先完成")
             if baseline["config"].get("atomic_strategy_run_snapshot") is None:
                 raise ValueError("Experiment Baseline 必須是 Atomic Run")
+            if baseline["config"].get("dataset_amount_contract") is None:
+                raise ValueError("Experiment Baseline 缺少 G5 Dataset amount evidence")
             research_baseline_digest = research_baseline_identity_digest(
                 baseline["config"]
             )
             family_id = experiment_family_id(research_baseline_digest)
+            dataset_id = str(baseline["dataset_id"])
+            binding_snapshot = (
+                dict(baseline["config"]["dataset_binding_snapshot"])
+                if baseline["config"].get("dataset_binding_snapshot") is not None
+                else None
+            )
+        else:
+            if expected_binding_revision is None or expected_dataset_digest is None:
+                raise AtomicBacktestBindingUnavailable(
+                    "建立 standalone Atomic Run 必須提供 binding revision 與 Dataset digest"
+                )
+            binding = self._repository.get_dataset_binding(ATOMIC_BACKTEST_DEFAULT)
+            if binding is None:
+                raise AtomicBacktestBindingUnavailable(
+                    "ATOMIC_BACKTEST_DEFAULT 尚未設定"
+                )
+            if (
+                binding["revision"] != expected_binding_revision
+                or binding["dataset_digest"] != expected_dataset_digest
+            ):
+                raise AtomicBacktestBindingChanged(
+                    "ATOMIC_BACKTEST_DEFAULT 已變更，請重新整理後再確認"
+                )
+            dataset_id = str(binding["dataset_id"])
+            binding_snapshot = dict(binding)
+        dataset, amount_contract = self._verified_atomic_dataset(
+            dataset_id,
+            resolution.engine_strategy_set,
+            registry=resolution.registry,
+            resolution=resolution,
+        )
+        resolution = self._resolve_bound_atomic_entry_set(
+            snapshot,
+            amount_contract=amount_contract,
+        )
+        if baseline_run_id is not None and (
+            baseline["dataset_digest"] != dataset["manifest_digest"]
+            or baseline["config"].get("dataset_amount_contract") != amount_contract
+        ):
+            raise ValueError("Experiment Baseline Dataset evidence 已漂移")
+        atomic_snapshot = bind_dataset_feature_evidence(
+            resolution.run_snapshot,
+            dataset_id=dataset_id,
+            dataset_digest=str(dataset["manifest_digest"]),
+            amount_contract=amount_contract,
+        )
+        self._validate_strategy_selection(
+            resolution.engine_strategy_set,
+            dataset,
+            registry=resolution.registry,
+        )
         config = BacktestRunConfig(
             dataset_id=dataset_id,
             dataset_digest=str(dataset["manifest_digest"]),
@@ -530,7 +619,11 @@ class BacktestApplicationService:
             baseline_run_id=baseline_run_id,
             research_baseline_digest=research_baseline_digest,
             change_note=change_note,
-            atomic_strategy_run_snapshot=resolution.run_snapshot,
+            atomic_strategy_run_snapshot=atomic_snapshot,
+            atomic_run_request=request_document,
+            atomic_run_request_digest=request_digest,
+            dataset_binding_snapshot=binding_snapshot,
+            dataset_amount_contract=amount_contract,
         )
         if baseline is not None:
             config_diff = run_comparability_diff(baseline["config"], config.to_dict())
@@ -539,7 +632,7 @@ class BacktestApplicationService:
                 raise ValueError(f"Challenger 與 Baseline 不可比較：{fields}")
         record = {
             "run_id": f"run-{uuid4().hex}",
-            "idempotency_key": self._validate_idempotency_key(idempotency_key),
+            "idempotency_key": key,
             "status": RunStatus.QUEUED.value,
             "config": config.to_dict(),
             "config_digest": config.config_digest,
@@ -547,10 +640,124 @@ class BacktestApplicationService:
             "dataset_digest": config.dataset_digest,
             "created_at": _now(),
         }
-        run, idempotent = self._repository.create_run(record)
+        if baseline is None:
+            create_bound = getattr(
+                self._repository, "create_atomic_run_from_binding", None
+            )
+            if not callable(create_bound):
+                raise RuntimeError("standalone Atomic Run binding requires PostgreSQL")
+            run, idempotent = create_bound(
+                record,
+                binding_name=ATOMIC_BACKTEST_DEFAULT,
+                expected_binding_revision=int(expected_binding_revision),
+                expected_dataset_digest=str(expected_dataset_digest),
+                request_digest=request_digest,
+            )
+        else:
+            run, idempotent = self._repository.create_run(record)
         if not idempotent:
             self._executor.submit(self._run_backtest, run["run_id"])
         return run, idempotent
+
+    def atomic_backtest_dataset_status(
+        self,
+        *,
+        strategy_set_version_id: str,
+        baseline_run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Return the exact server-owned Dataset projection used at submit."""
+
+        self._require_enabled()
+        repository = self._require_atomic_repository()
+        snapshot = repository.get_strategy_set(strategy_set_version_id)
+        resolution = resolve_atomic_entry_set(repository, self._atomic_registry, snapshot)
+        binding: dict[str, Any] | None = None
+        if baseline_run_id is not None:
+            baseline = self._repository.get_run(baseline_run_id)
+            verify_run_identity(baseline)
+            if baseline["status"] != RunStatus.COMPLETED.value:
+                raise ValueError("Experiment Baseline 必須先完成")
+            if baseline["config"].get("atomic_strategy_run_snapshot") is None:
+                raise ValueError("Experiment Baseline 必須是 Atomic Run")
+            if baseline["config"].get("dataset_amount_contract") is None:
+                raise ValueError("Experiment Baseline 缺少 G5 Dataset amount evidence")
+            dataset_id = str(baseline["dataset_id"])
+            resolution_mode = "BASELINE_DATASET"
+        else:
+            binding = self._repository.get_dataset_binding(ATOMIC_BACKTEST_DEFAULT)
+            if binding is None:
+                return {
+                    "available": False,
+                    "binding_name": ATOMIC_BACKTEST_DEFAULT,
+                    "code": "DATASET_BINDING_UNAVAILABLE",
+                    "message": "ATOMIC_BACKTEST_DEFAULT 尚未設定",
+                }
+            dataset_id = str(binding["dataset_id"])
+            resolution_mode = "DEFAULT_BINDING"
+        dataset, amount_contract = self._verified_atomic_dataset(
+            dataset_id,
+            resolution.engine_strategy_set,
+            registry=resolution.registry,
+            resolution=resolution,
+        )
+        if baseline_run_id is not None and (
+            baseline["dataset_digest"] != dataset["manifest_digest"]
+            or baseline["config"].get("dataset_amount_contract") != amount_contract
+        ):
+            raise ValueError("Experiment Baseline Dataset evidence 已漂移")
+        return {
+            "available": True,
+            "resolution_mode": resolution_mode,
+            "binding_name": binding["binding_name"] if binding is not None else None,
+            "binding_revision": binding["revision"] if binding is not None else None,
+            "dataset_id": dataset["dataset_id"],
+            "dataset_digest": dataset["manifest_digest"],
+            "source": dataset["source"],
+            "start_date": dataset["start_date"],
+            "end_date": dataset["end_date"],
+            "symbol_count": len(dataset.get("observed_symbols", ())),
+            "bar_count": int(dataset["bar_count"]),
+            "capabilities": list(dataset.get("capabilities", ())),
+            "amount_kind": amount_contract.get("kind") if amount_contract else None,
+            "amount_contract_digest": (
+                amount_contract.get("digest") if amount_contract else None
+            ),
+            "vwap_semantic": (
+                amount_contract.get("vwap_semantic") if amount_contract else None
+            ),
+            "research_eligible": bool(dataset.get("research_eligible")),
+            "issues": list(dataset.get("issues", ())),
+        }
+
+    def _select_ready_dataset(
+        self,
+        strategy_set: StrategySetSnapshot,
+        *,
+        registry: StrategyRegistry,
+    ) -> dict[str, Any]:
+        self._validate_strategy_selection(strategy_set, registry=registry)
+        ready = sorted(
+            (
+                dataset
+                for dataset in self._repository.list_datasets()
+                if dataset["status"] == "READY"
+            ),
+            key=lambda dataset: bool(dataset.get("research_eligible")),
+            reverse=True,
+        )
+        if not ready:
+            raise ValueError("尚無 READY 歷史資料快照，不能建立回測")
+        for dataset in ready:
+            try:
+                self._validate_strategy_selection(
+                    strategy_set,
+                    dataset,
+                    registry=registry,
+                )
+            except ValueError:
+                continue
+            return dataset
+        raise ValueError("目前 READY 歷史資料快照不具備此策略組合所需資料能力")
 
     def list_runs(self) -> list[dict[str, Any]]:
         return self._repository.list_runs()
@@ -961,13 +1168,20 @@ class BacktestApplicationService:
             pass
 
     def _run_backtest(self, run_id: str) -> None:
+        progress_reporter: ThrottledProgressReporter | None = None
         try:
-            self._raise_if_run_cancelling(run_id)
-            self._repository.update_run(run_id, status=RunStatus.PREFLIGHT.value, progress_message="正在驗證資料集與策略版本")
+            self._transition_run_or_cancel(
+                run_id,
+                expected_statuses=(RunStatus.QUEUED.value,),
+                status=RunStatus.PREFLIGHT.value,
+                progress_message="正在驗證資料集與策略版本",
+            )
             run = self._repository.get_run(run_id)
             config = BacktestRunConfig.from_dict(run["config"])
             runtime_registry = self._registry
             runtime_engine = self._engine
+            resolution = None
+            stored_atomic: dict[str, Any] | None = None
             if config.atomic_strategy_run_snapshot is not None:
                 stored_atomic = dict(config.atomic_strategy_run_snapshot)
                 snapshot = ExactStrategySetSnapshot.from_dict(dict(stored_atomic["strategy_set"]))
@@ -976,34 +1190,69 @@ class BacktestApplicationService:
                     self._atomic_registry,
                     snapshot,
                 )
-                if resolution.run_snapshot != stored_atomic:
-                    raise ValueError("atomic backtest run snapshot 已與目前可重建證據不一致")
                 runtime_registry = resolution.registry
                 runtime_engine = HistoricalBacktestEngine(runtime_registry)
-            dataset = self._repository.get_dataset(config.dataset_id)
-            if dataset["status"] != "READY":
-                raise ValueError("歷史資料集已不是 READY，拒絕執行回測")
+            dataset, amount_contract = self._verified_atomic_dataset(
+                config.dataset_id,
+                config.strategy_set,
+                registry=runtime_registry,
+                resolution=resolution,
+            )
             if str(dataset["manifest_digest"]) != config.dataset_digest:
                 raise ValueError("歷史資料集 manifest digest 已變更，拒絕執行回測")
-            self._validate_strategy_selection(config.strategy_set, dataset, registry=runtime_registry)
+            if stored_atomic is not None and resolution is not None:
+                resolution = self._resolve_bound_atomic_entry_set(
+                    snapshot,
+                    amount_contract=amount_contract,
+                )
+                runtime_registry = resolution.registry
+                runtime_engine = HistoricalBacktestEngine(runtime_registry)
+                expected_atomic = (
+                    bind_dataset_feature_evidence(
+                        resolution.run_snapshot,
+                        dataset_id=config.dataset_id,
+                        dataset_digest=config.dataset_digest,
+                        amount_contract=amount_contract,
+                    )
+                    if "dataset_feature_evidence" in stored_atomic
+                    else resolution.run_snapshot
+                )
+                if expected_atomic != stored_atomic:
+                    raise ValueError("atomic backtest run snapshot 已與目前可重建證據不一致")
+                if (
+                    config.dataset_amount_contract is not None
+                    and dict(config.dataset_amount_contract) != amount_contract
+                ):
+                    raise ValueError("Atomic Run Dataset amount evidence 已漂移")
             manifest = self._catalog.get_manifest(config.dataset_id)
-            if manifest.manifest_digest != config.dataset_digest:
-                raise ValueError("本機歷史資料集 manifest digest 已變更，拒絕執行回測")
             bars = self._catalog.iter_bars_ordered(config.dataset_id)
             terminal_timestamps = self._catalog.symbol_last_timestamps(
                 config.dataset_id
             )
-            self._raise_if_run_cancelling(run_id)
-            self._repository.update_run(run_id, status=RunStatus.RUNNING.value, progress_message="正在執行 deterministic Kbar 回測")
+            self._transition_run_or_cancel(
+                run_id,
+                expected_statuses=(RunStatus.PREFLIGHT.value,),
+                status=RunStatus.RUNNING.value,
+                progress_message="正在執行 deterministic Kbar 回測",
+            )
+            progress_reporter = ThrottledProgressReporter(
+                self._repository,
+                run_id,
+            )
+            control_probe = DurableRunControlProbe(
+                self._repository,
+                run_id,
+            )
             engine_result = runtime_engine.run(
                 config=config,
                 bars=bars,
-                progress=lambda value, message: self._repository.update_run(run_id, progress=value, progress_message=message),
-                cancelled=lambda: self._repository.get_run(run_id)["status"] == RunStatus.CANCELLING.value,
+                progress=progress_reporter,
+                cancelled=control_probe,
                 bars_are_ordered=True,
                 total_bars=manifest.bar_count,
                 terminal_timestamp_by_symbol=terminal_timestamps,
             )
+            progress_reporter.flush()
             raw_result = engine_result.to_dict()
             summary = summarize_run(
                 config=config,
@@ -1015,8 +1264,12 @@ class BacktestApplicationService:
             self._repository.save_result(run_id, stored)
             self._repository.update_run(run_id, status=RunStatus.COMPLETED.value, progress=1.0, progress_message="回測完成", result_digest=summary["result_digest"])
         except BacktestCancelled:
+            if progress_reporter is not None:
+                progress_reporter.flush()
             self._repository.update_run(run_id, status=RunStatus.CANCELLED.value, progress_message="回測已取消")
         except Exception as error:
+            if progress_reporter is not None:
+                progress_reporter.flush()
             self._repository.update_run(run_id, status=RunStatus.FAILED.value, error_message=str(error), progress_message="回測失敗")
 
     def _create_from_config(
@@ -1031,6 +1284,8 @@ class BacktestApplicationService:
             atomic_config = deepcopy(dict(config))
             atomic_config["parent_run_id"] = parent_run_id
             atomic_config["change_note"] = change_note
+            atomic_config.pop("atomic_run_request", None)
+            atomic_config.pop("atomic_run_request_digest", None)
             parsed = BacktestRunConfig.from_dict(atomic_config)
             stored_atomic = dict(parsed.atomic_strategy_run_snapshot or {})
             snapshot = ExactStrategySetSnapshot.from_dict(
@@ -1041,20 +1296,37 @@ class BacktestApplicationService:
                 self._atomic_registry,
                 snapshot,
             )
-            if resolution.run_snapshot != stored_atomic:
-                raise ValueError("atomic backtest run snapshot 已與目前可重建證據不一致")
             if resolution.engine_strategy_set != parsed.strategy_set:
                 raise ValueError("atomic backtest strategy set 已與 Run Snapshot 不一致")
-            dataset = self._repository.get_dataset(parsed.dataset_id)
-            if dataset["status"] != "READY":
-                raise ValueError("歷史資料集尚未 READY，不能建立回測")
+            dataset, amount_contract = self._verified_atomic_dataset(
+                parsed.dataset_id,
+                parsed.strategy_set,
+                registry=resolution.registry,
+                resolution=resolution,
+            )
+            resolution = self._resolve_bound_atomic_entry_set(
+                snapshot,
+                amount_contract=amount_contract,
+            )
             if str(dataset["manifest_digest"]) != parsed.dataset_digest:
                 raise ValueError("歷史資料集 manifest digest 已變更，拒絕建立回測")
-            self._validate_strategy_selection(
-                parsed.strategy_set,
-                dataset,
-                registry=resolution.registry,
+            expected_atomic = (
+                bind_dataset_feature_evidence(
+                    resolution.run_snapshot,
+                    dataset_id=parsed.dataset_id,
+                    dataset_digest=parsed.dataset_digest,
+                    amount_contract=amount_contract,
+                )
+                if "dataset_feature_evidence" in stored_atomic
+                else resolution.run_snapshot
             )
+            if expected_atomic != stored_atomic:
+                raise ValueError("atomic backtest run snapshot 已與目前可重建證據不一致")
+            if (
+                parsed.dataset_amount_contract is not None
+                and dict(parsed.dataset_amount_contract) != amount_contract
+            ):
+                raise ValueError("Atomic Run Dataset amount evidence 已漂移")
             record = {
                 "run_id": f"run-{uuid4().hex}",
                 "idempotency_key": self._validate_idempotency_key(idempotency_key),
@@ -1127,6 +1399,79 @@ class BacktestApplicationService:
                     f"資料集缺少 {definition.strategy_id} 所需能力：{'、'.join(missing)}"
                 )
 
+    def _verified_atomic_dataset(
+        self,
+        dataset_id: str,
+        strategy_set: StrategySetSnapshot,
+        *,
+        registry: StrategyRegistry,
+        resolution: Any | None,
+    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        dataset = self._repository.get_dataset(dataset_id)
+        if dataset["status"] != "READY":
+            raise ValueError("歷史資料集尚未 READY，不能建立或執行回測")
+        registered_manifest = DatasetManifest.from_dict(dataset).to_dict()
+        manifest = self._catalog.get_manifest(dataset_id)
+        if manifest.to_dict() != registered_manifest:
+            raise DatasetBindingIntegrityError(
+                "PostgreSQL Dataset 與 filesystem manifest 不一致"
+            )
+        self._validate_strategy_selection(strategy_set, dataset, registry=registry)
+        raw_amount = dataset.get("amount_contract")
+        amount_contract = dict(raw_amount) if isinstance(raw_amount, Mapping) else None
+        if amount_contract is not None:
+            stored_digest = str(amount_contract.get("digest") or "")
+            amount_body = dict(amount_contract)
+            amount_body.pop("digest", None)
+            if not stored_digest or digest(amount_body) != stored_digest:
+                raise ValueError("Dataset amount contract digest 不一致")
+        requires_vwap = bool(
+            resolution is not None
+            and any(
+                request.get("feature_id") == "vwap_session_v1"
+                for strategy in resolution.feature_requests
+                for request in strategy.get("requests", ())
+                if isinstance(request, Mapping)
+            )
+        )
+        if requires_vwap:
+            amount_contract = verify_vwap_amount_contract(amount_contract)
+        return dataset, amount_contract
+
+    @staticmethod
+    def _atomic_run_request_document(
+        *,
+        strategy_set_version_id: str,
+        starting_cash: str,
+        position_fraction: str,
+        commission_rate: str,
+        sell_tax_rate: str,
+        slippage_bps: str,
+        target_win_rate: str,
+        minimum_oos_trades: int,
+        max_drawdown_guardrail: str,
+        change_note: str,
+        baseline_run_id: str | None,
+        expected_binding_revision: int | None,
+        expected_dataset_digest: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "contract_version": "atomic-backtest-run-request-v1",
+            "strategy_set_version_id": str(strategy_set_version_id),
+            "starting_cash": str(starting_cash),
+            "position_fraction": str(position_fraction),
+            "commission_rate": str(commission_rate),
+            "sell_tax_rate": str(sell_tax_rate),
+            "slippage_bps": str(slippage_bps),
+            "target_win_rate": str(target_win_rate),
+            "minimum_oos_trades": int(minimum_oos_trades),
+            "max_drawdown_guardrail": str(max_drawdown_guardrail),
+            "change_note": str(change_note),
+            "baseline_run_id": baseline_run_id,
+            "expected_binding_revision": expected_binding_revision,
+            "expected_dataset_digest": expected_dataset_digest,
+        }
+
     @staticmethod
     def _validate_idempotency_key(value: str) -> str:
         normalized = value.strip()
@@ -1138,6 +1483,20 @@ class BacktestApplicationService:
         if self._atomic_repository is None:
             raise RuntimeError("atomic Strategy Set 回測只支援 PostgreSQL；目前不可用")
         return self._atomic_repository
+
+    def _resolve_bound_atomic_entry_set(
+        self,
+        snapshot: ExactStrategySetSnapshot,
+        *,
+        amount_contract: Mapping[str, Any] | None,
+    ):
+        return resolve_atomic_entry_set(
+            self._require_atomic_repository(),
+            self._atomic_registry,
+            snapshot,
+            dataset_amount_contract=amount_contract,
+            require_dataset_amount_contract=True,
+        )
 
     @staticmethod
     def _require_enabled() -> None:
@@ -1152,9 +1511,27 @@ class BacktestApplicationService:
         age = datetime.now(_TAIPEI) - updated_at.astimezone(_TAIPEI)
         return age <= timedelta(minutes=backtest_settings.BACKTEST_ACTIVE_JOB_STALE_MINUTES)
 
-    def _raise_if_run_cancelling(self, run_id: str) -> None:
-        if self._repository.get_run(run_id)["status"] == RunStatus.CANCELLING.value:
+    def _transition_run_or_cancel(
+        self,
+        run_id: str,
+        *,
+        expected_statuses: tuple[str, ...],
+        status: str,
+        progress_message: str,
+    ) -> None:
+        run, changed = self._repository.transition_run_status(
+            run_id,
+            expected_statuses=expected_statuses,
+            status=status,
+            progress_message=progress_message,
+        )
+        if changed:
+            return
+        if run["status"] == RunStatus.CANCELLING.value:
             raise BacktestCancelled("回測工作已取消")
+        raise RuntimeError(
+            f"回測狀態轉換衝突：預期 {expected_statuses}，實際 {run['status']}"
+        )
 
 
 def _now() -> str:

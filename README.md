@@ -217,12 +217,11 @@ CA、券商委託 callback、`place_order` 或 `subscribe_trade=True`。目前�
 
 ## 歷史回測（資料研究，不會下單）
 
-在儀表板左側點選「歷史回測」，即可開啟整頁研究工作區；工作流程拆成四個 tab：
+在儀表板左側點選「歷史回測」，即可開啟整頁研究工作區；工作流程拆成三個 tab：
 
-1. 準備歷史資料：建立或選擇封存的歷史資料集；按「建立資料集」會在背景透過後端 Provider 下載 Kbar，不會卡住網頁。
-2. 設定策略組合：分別選擇買入與賣出策略，每一側可只選 1 個獨立執行，也可複選多個並設定 `ANY`、`ALL` 或「至少 N 個」條件。
-3. 回測工作與結果：建立回測後，可查看進度、取消、失敗重試、OOS 勝率／信賴區間、損益、回撤、Profit Factor、交易明細與策略歸因。
-4. 比較與資格判定：先比較兩個已完成 Run；正式 qualification 只填固定 train／validation／Primary OOS 日期與 walk-forward folds，attempt history、multiple-testing family 與門檻由伺服器 ledger／policy 產生，再把不可變 evidence 寫入 PostgreSQL。
+1. 設定策略組合：選擇已發布的 exact-version Atomic Strategy Set；歷史資料由背景／CLI 流程管理，Web 不再要求準備或選擇 Dataset。新 standalone Run 只使用 PostgreSQL 的 `ATOMIC_BACKTEST_DEFAULT`，畫面會顯示其 revision、Dataset digest、資料範圍與 VWAP amount semantic，並把相同 revision／digest 當成送出 precondition；binding 改變會回 409，不能 fallback 到其他 READY Dataset。Challenger 沿用 Baseline Dataset，retry／clone 與 response-loss replay 都沿用原 Run Dataset。
+2. 回測工作與結果：建立回測後，可查看進度、取消、失敗重試、OOS 勝率／信賴區間、損益、回撤、Profit Factor、交易明細與策略歸因。
+3. 比較與資格判定：先比較兩個已完成 Run；正式 qualification 只填固定 train／validation／Primary OOS 日期與 walk-forward folds，attempt history、multiple-testing family 與門檻由伺服器 ledger／policy 產生，再把不可變 evidence 寫入 PostgreSQL。
 
 點選交易可查看該筆進出場的主要策略、所有同時觸發策略、門檻與當時觀測值；也可以匯出 CSV。
 
@@ -290,7 +289,7 @@ Dashboard 啟動後，可用以下歷史回測流程：
 1. 開啟左側「策略管理」，選擇伺服器提供的策略 Template；表單欄位、預設值、範圍與單位都由 code-owned Schema 產生。
 2. 儲存 Draft、執行驗證，再 Publish 成不可修改的 Version；參數變更必須複製成新 Draft／Version，不會覆寫舊回測所引用的版本。
 3. 選取一個或多個相同 stage 的精確 Version，建立 `ANY`、`ALL` 或 `AT_LEAST_N` Strategy Set。
-4. 到「歷史回測」選擇 READY 資料集與該 Strategy Set，再送出原子策略回測。Run 會保存完整 Set、Version、Feature Specification、implementation digest 與 as-of semantics；複製或重試也不接受 raw strategy ID 覆寫。建立要接受正式資格判定的 Challenger 時，必須在同一表單選擇一個已完成 Atomic Baseline；伺服器會由 Dataset／config／成本／adapter、精確 Baseline Strategy Version 與研究 protocol 推導穩定的 research-baseline identity，並在建立 Run 的同一個 PostgreSQL transaction 登錄單調 attempt sequence。相同研究基準即使重新執行成不同 Run ID，也會回到同一個 family 與同一份嘗試額度。
+4. 到「歷史回測」選擇該 Strategy Set，再送出原子策略回測。伺服器會在建立 Run 的同一個 PostgreSQL transaction 重新鎖定並驗證 `ATOMIC_BACKTEST_DEFAULT`；不接受瀏覽器指定 Dataset，也不會在 stale precondition 時自動跟隨新 binding。Run 會保存完整 Dataset、binding、amount contract、Set、Version、Feature Specification、implementation digest 與 as-of semantics；`vwap_session_v1` 目前只允許 `DERIVED_CLOSE_X_VOLUME_PROXY`／`COMPLETED_1M_CLOSE_VOLUME_WEIGHTED_PROXY`，因此這份 FinMind 快照仍是探索資料，不是真實成交金額 VWAP。複製或重試不接受 raw strategy ID 覆寫。建立要接受正式資格判定的 Challenger 時，必須在同一表單選擇一個已完成 Atomic Baseline；伺服器會沿用 Baseline Dataset，並由 Dataset／config／成本／adapter、精確 Baseline Strategy Version 與研究 protocol 推導穩定的 research-baseline identity，在建立 Run 的同一個 PostgreSQL transaction 登錄單調 attempt sequence。相同研究基準即使重新執行成不同 Run ID，也會回到同一個 family 與同一份嘗試額度。
 5. 到「比較與資格判定」選取該 Baseline／Challenger，只需填寫研究假設、固定切割與 walk-forward folds。所有 fold OOS 都必須在 Primary OOS 開始前結束，不能重複使用最終 OOS 證據。完整 attempted Run history、family head、Bonferroni alpha／planned attempts 與門檻都由伺服器 ledger/policy 產生，瀏覽器不能覆寫。系統會核對 Run config/result、Run row 與 config 內的 Dataset identity、DatasetManifest、成本／資金／exit contract 與 Feature adapter identity，再建立不可變 qualification；通過只代表可送人工 promotion Review，不會自動啟用策略。Qualification 會保存可驗證 digest 的 immutable family snapshot，detail API 另外提供目前 family linkage，讓 Reviewer 分辨當時 evidence 與後續 hypothesis／qualification 關聯。
 
 目前這條 Phase 3 流程只接歷史回測，ENTRY Set 仍搭配既有伺服器端收盤退出政策；不會啟動本機紙上模擬、模擬交易、Shioaji／券商委託或 real-money execution。固定政策至少要求 Primary OOS 30 筆、10 個獨立交易日、最大回撤 20%，以及至少 2 個位於 Primary OOS 之前的 Walk-forward folds；family alpha 固定 5%、最多 20 次嘗試。新 mutation API 僅接受 loopback client、同源請求、process CSRF token 與 idempotency key，成功與衝突結果都保留 PostgreSQL audit evidence。Qualification persistence 固定使用 PostgreSQL；SQLite 開發模式可繼續使用舊版回測，但畫面會明確顯示不能建立正式資格證據。
@@ -337,9 +336,9 @@ Downloader 會把 Shioaji Kbar 查詢限制在每 10 秒最多 40 次，低於�
 
 舊版 Downloader 已經寫入「資料來源未回傳 Kbar」的工作也可以直接使用新版 `--resume`。新版會保留第一個 0 根異常以前的成功資料，並重抓該異常與後續尾段；不需要刪除資料庫，也不要建立新的 job。不同商品可能因 Provider 可提供的歷史範圍而同時只回傳約一年資料，因此不會只憑共同起始日把非零分區判定為損壞。
 
-SQLite 預設寫入 `data/backtest/backtest.sqlite3`；若有設定 PostgreSQL backend 或 `BACKTEST_DATABASE_URL=postgresql://...`，partition 與工作進度會寫入 PostgreSQL 的 `backtest` schema。全部完成後，script 會以 streaming 方式封存 `bars.jsonl`／`manifest.json`、驗證 SHA-256，並在 `backtest_datasets` 登記為 `READY`；回到網頁按「重新整理」即可選取。
+SQLite 預設寫入 `data/backtest/backtest.sqlite3`；若有設定 PostgreSQL backend 或 `BACKTEST_DATABASE_URL=postgresql://...`，partition 與工作進度會寫入 PostgreSQL 的 `backtest` schema。全部完成後，script 會以 streaming 方式封存 `bars.jsonl`／`manifest.json`、驗證 SHA-256，並在 `backtest_datasets` 登記為 `READY`；之後 Web 建立 Atomic Run 時會自動使用相容的最新快照。
 
-不要同時執行網頁的「建立資料集」與 CLI 全市場下載，否則不同 process 無法共用同一個頻率限制器，也會重複消耗 Provider 額度。舊版已經在執行中的網頁工作沒有資料庫 partition，無法把其中途進度轉成新的 `--resume` 工作；請先在網頁取消，再啟動或接續 CLI。
+不要同時啟動兩個 CLI 全市場下載，否則不同 process 無法共用同一個頻率限制器，也會重複消耗 Provider 額度。既有舊版網頁下載工作若仍在執行，請先透過維運 API 停止，再啟動或接續 CLI。
 
 ### 收盤後自動增量同步
 
@@ -347,7 +346,7 @@ Dashboard process 啟動時會啟用收盤排程。預設每個工作日 `14:30`
 
 第一次仍需先用上述 CLI 完成三年基礎資料集。若完整下載仍在執行，排程會顯示「等待既有下載工作」並持續重試，不會再啟動另一份全市場下載。休市日不會建立空資料集；程式停機數日後再次於收盤時間運行，會從各檔既有 watermark 接續到當天。
 
-排程狀態會顯示在網頁「歷史回測 → 準備歷史資料」，也可以讀取 `GET /api/backtests/datasets/incremental-sync`。若修改設定，需要重新啟動 Dashboard：
+排程狀態可讀取 `GET /api/backtests/datasets/incremental-sync`；歷史回測頁只顯示 READY readiness，不提供資料下載操作。若修改設定，需要重新啟動 Dashboard：
 
 ```bash
 BACKTEST_INCREMENTAL_SYNC_ENABLED=true
@@ -383,7 +382,7 @@ python3 -m pytest -q tests/test_backtest_core.py tests/test_backtest_api.py
 
 透過目前 Provider 直接下載時，只能列出「今天仍存在」的 contracts；系統會把這種資料集標為 `CURRENT_SNAPSHOT`／探索性，並禁止它得到 `RESEARCH_PASS`，避免把 survivorship bias 當成正式勝率證據。要驗證「近三年所有當時可交易的台股」，必須先匯入含 date-effective 上市／下市、商品類型、交易日與調整／參考價資訊的資料集，並將其登錄為 `DATE_EFFECTIVE`。系統已保留這種 immutable import contract；沒有這些歷史 universe 資料時，網頁仍可執行回測，但結果只能用於探索，不能宣稱涵蓋完整市場。
 
-完整資料由受控的 server-side JSONL 匯入，不從瀏覽器上傳。每行必須是 `HistoricalBar.to_dict()` 的 JSON；資料經過 OHLC、時區、重複列與 SHA-256 驗證後，才會出現在網頁的資料集選單：
+完整資料由受控的 server-side JSONL 匯入，不從瀏覽器上傳。每行必須是 `HistoricalBar.to_dict()` 的 JSON；資料經過 OHLC、時區、重複列與 SHA-256 驗證並登記為 READY 後，才會成為 Web 可自動鎖定的回測快照：
 
 ```bash
 python scripts/import_backtest_dataset.py \

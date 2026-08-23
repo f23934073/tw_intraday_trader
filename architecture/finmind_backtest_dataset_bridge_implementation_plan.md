@@ -24,8 +24,11 @@ FinMind downloader 的下載契約。
 `G3 APPROVED / GATE PASSED`。已建立並驗證一份正式完整動態
 snapshot artifact；G4 PostgreSQL binding 已補齊 distinct-operation CAS
 並行 regression，且獨立 Review 已核准 `G4 APPROVED / GATE PASSED`；正式
-Gate 進度為 80%。G5 Web Run 仍未授權。本階段不修改 Web、Local Paper、
-broker 或 real-money，也尚未對應用程式 PostgreSQL 執行正式 Dataset activation。
+Gate 進度為 80%。G4 已建立 scoped local commit `2e873cd`。G5 Web Run、
+binding precondition、amount evidence 與 large-run control throttling 已完成 Review
+修復，狀態為 `G5 REMEDIATED / AWAITING RE-REVIEW / GATE NOT PASSED`；尚未使用應用程式 PostgreSQL
+啟用正式 G3 Dataset，也尚未完成該 2,832 萬根 Kbar 的正式 Web Run acceptance。
+本階段仍不修改 Local Paper、broker 或 real-money。
 
 ## 2. 範圍與非目標
 
@@ -518,6 +521,11 @@ cache，不得每次碰 PostgreSQL。
 - terminal COMPLETED／FAILED／CANCELLED 強制 flush；
 - clock／throttle state 不進 config/result digest。
 
+Worker 的 `QUEUED → PREFLIGHT → RUNNING` 必須使用 repository atomic
+expected-status transition；已提交的 `CANCELLING` 不得被後續 worker write
+覆蓋。CANCELLED／FAILED worker exception paths 必須在 terminal status 前強制
+flush 最新 pending progress。
+
 驗收需計算實際 DB SELECT/UPDATE 數量，證明其隨 wall time／progress delta
 成長，而不是隨 Kbar 數線性成長。
 
@@ -629,6 +637,8 @@ Rollback 不刪除 Dataset 或 Runs，只把 default binding 以新 revision 切
   binding switch；different request digest conflicts。
 - missing/incompatible binding disables submit and explains reason。
 - proxy amount kind/digest is present in Run snapshot and VWAP Feature evidence。
+- VWAP runtime adapter revalidates the exact amount allowlist and its per-bar
+  Feature input digest/evaluation evidence includes amount kind/digest/semantic。
 - Web binding projection labels the VWAP source as close-volume proxy。
 - Runs with different amount-contract digests are not comparable。
 - proxy Dataset remains ineligible for Qualification。
@@ -638,6 +648,7 @@ Rollback 不刪除 Dataset 或 Runs，只把 default binding 以新 revision 切
 - many local callbacks produce bounded SELECT/UPDATE counts。
 - cancellation becomes visible within configured interval。
 - terminal progress always flushes。
+- committed cancellation wins over stale PREFLIGHT/RUNNING worker transitions。
 - monotonic clock rollback is irrelevant。
 - DB poll failure fails closed。
 

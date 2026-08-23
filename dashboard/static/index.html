@@ -285,39 +285,23 @@
           <button class="drawer-close" id="backtest-close" type="button" aria-label="關閉歷史回測工作區">×</button>
         </div>
         <div class="backtest-body">
-          <p class="backtest-intro">在既有資料集上複選買入與賣出策略，使用下一根 Kbar 的成交模型模擬。所有結果、策略版本、成交與調整 lineage 都會保存至回測資料庫。</p>
-          <div class="backtest-notice" id="backtest-notice">正在讀取歷史資料集與回測能力…</div>
+          <p class="backtest-intro">選擇已發布的原子策略組合，使用下一根 Kbar 的成交模型模擬。系統會自動鎖定可用的 READY 歷史快照，所有結果、策略版本、成交與調整 lineage 都會保存至回測資料庫。</p>
+          <div class="backtest-notice" id="backtest-notice">正在讀取策略組合、歷史快照與回測能力…</div>
 
           <div class="workspace-tabs" role="tablist" aria-label="歷史回測工作流程">
-            <button class="workspace-tab active" id="backtest-tab-data" type="button" role="tab" aria-selected="true" aria-controls="backtest-panel-data" data-backtest-tab="data">1. 準備歷史資料</button>
-            <button class="workspace-tab" id="backtest-tab-setup" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-setup" data-backtest-tab="setup">2. 設定策略組合</button>
-            <button class="workspace-tab" id="backtest-tab-runs" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-runs" data-backtest-tab="runs">3. 回測工作與結果</button>
-            <button class="workspace-tab" id="backtest-tab-compare" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-compare" data-backtest-tab="compare">4. 比較與資格判定</button>
+            <button class="workspace-tab active" id="backtest-tab-setup" type="button" role="tab" aria-selected="true" aria-controls="backtest-panel-setup" data-backtest-tab="setup">1. 設定策略組合</button>
+            <button class="workspace-tab" id="backtest-tab-runs" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-runs" data-backtest-tab="runs">2. 回測工作與結果</button>
+            <button class="workspace-tab" id="backtest-tab-compare" type="button" role="tab" aria-selected="false" aria-controls="backtest-panel-compare" data-backtest-tab="compare">3. 比較與資格判定</button>
           </div>
 
           <div class="backtest-grid">
-            <section class="backtest-card tab-panel active" id="backtest-panel-data" role="tabpanel" aria-labelledby="backtest-tab-data" data-backtest-panel="data">
-              <h3 id="backtest-data-heading">1. 準備歷史資料</h3>
-              <p class="backtest-card-copy">從目前 Provider 建立三年 Kbar 資料集會在背景執行。若只含目前仍在市的標的，結果會明確標示 survivorship bias，不能視為正式研究通過。</p>
-              <div class="backtest-notice" id="backtest-incremental-status" role="status">正在讀取收盤後自動增量同步狀態…</div>
-              <div class="backtest-field">
-                <label for="backtest-sync-years">下載年數</label>
-                <select id="backtest-sync-years"><option value="3" selected>3 年</option><option value="1">1 年</option><option value="5">5 年</option></select>
-              </div>
-              <div class="backtest-actions">
-                <button class="backtest-button" id="backtest-sync" type="button">建立資料集</button>
-                <button class="backtest-button secondary" id="backtest-refresh" type="button">重新整理</button>
-              </div>
-              <div class="backtest-list" id="backtest-dataset-list" aria-live="polite"><p class="backtest-empty">尚未讀取資料集。</p></div>
-            </section>
-
-            <section class="backtest-card tab-panel" id="backtest-panel-setup" role="tabpanel" aria-labelledby="backtest-tab-setup" data-backtest-panel="setup">
-              <h3 id="backtest-config-heading">2. 設定策略組合</h3>
-              <p class="backtest-card-copy">優先使用已發布的原子策略組合；每個成員都鎖定不可變版本。下方舊版選擇器保留供既有回測相容。</p>
+            <section class="backtest-card tab-panel active" id="backtest-panel-setup" role="tabpanel" aria-labelledby="backtest-tab-setup" data-backtest-panel="setup">
+              <h3 id="backtest-config-heading">1. 設定策略組合</h3>
+              <p class="backtest-card-copy">使用已發布的原子策略組合；每個成員都鎖定不可變版本。歷史資料由系統管理，不需要在這裡準備或選擇。</p>
               <form class="atomic-launcher" id="atomic-backtest-form">
+                <div class="backtest-notice" id="atomic-backtest-dataset-status" role="status">正在確認 ATOMIC_BACKTEST_DEFAULT…</div>
                 <div class="backtest-form-grid">
                   <div class="backtest-field wide"><label for="atomic-backtest-set">原子策略組合</label><select id="atomic-backtest-set" required><option value="">請先到策略管理建立組合</option></select></div>
-                  <div class="backtest-field wide"><label for="atomic-backtest-dataset">歷史資料集</label><select id="atomic-backtest-dataset" required></select></div>
                   <div class="backtest-field wide"><label for="atomic-backtest-baseline">研究 Baseline（建立 Challenger 時選擇）</label><select id="atomic-backtest-baseline"><option value="">不加入 qualification family</option></select></div>
                   <div class="backtest-field"><label for="atomic-backtest-cash">起始資金（元）</label><input id="atomic-backtest-cash" min="1000" step="1000" type="number" value="10000000"></div>
                   <div class="backtest-field"><label for="atomic-backtest-position-fraction">每檔資金比例</label><input id="atomic-backtest-position-fraction" min="0.01" max="1" step="0.01" type="number" value="0.10"></div>
@@ -326,29 +310,6 @@
                 <div class="backtest-actions"><button class="backtest-button" id="atomic-backtest-submit" type="submit">用原子策略建立回測</button></div>
                 <p class="backtest-card-copy" id="atomic-backtest-message" role="status"></p>
               </form>
-              <details class="legacy-backtest-settings">
-                <summary>舊版固定策略回測</summary>
-              <form id="backtest-run-form">
-                <div class="backtest-form-grid">
-                  <div class="backtest-field wide"><label for="backtest-dataset">資料集</label><select id="backtest-dataset" required></select></div>
-                  <div class="backtest-field"><label for="backtest-entry-policy">買入組合</label><select id="backtest-entry-policy"><option value="ANY">ANY（任一）</option><option value="ALL">ALL（全部）</option><option value="AT_LEAST_N">至少 N 個</option></select></div>
-                  <div class="backtest-field"><label for="backtest-entry-min">買入 N</label><input id="backtest-entry-min" min="1" step="1" type="number" value="1"></div>
-                  <div class="backtest-field"><label for="backtest-exit-policy">賣出組合</label><select id="backtest-exit-policy"><option value="ANY">ANY（任一）</option><option value="ALL">ALL（全部）</option><option value="AT_LEAST_N">至少 N 個</option></select></div>
-                  <div class="backtest-field"><label for="backtest-exit-min">賣出 N</label><input id="backtest-exit-min" min="1" step="1" type="number" value="1"></div>
-                  <div class="backtest-field"><label for="backtest-cash">起始資金（元）</label><input id="backtest-cash" min="1000" step="1000" type="number" value="10000000"></div>
-                  <div class="backtest-field"><label for="backtest-position-fraction">每檔資金比例</label><input id="backtest-position-fraction" min="0.01" max="1" step="0.01" type="number" value="0.10"></div>
-                  <div class="backtest-field"><label for="backtest-win-rate">目標勝率</label><input id="backtest-win-rate" min="0" max="1" step="0.01" type="number" value="0.50"></div>
-                  <div class="backtest-field"><label for="backtest-oos-trades">最少 OOS 交易數</label><input id="backtest-oos-trades" min="1" step="1" type="number" value="30"></div>
-                </div>
-                <div class="strategy-groups">
-                  <div class="strategy-group"><div class="strategy-group-heading"><strong>買入策略</strong><span class="strategy-selection-count" id="backtest-entry-count">尚未選擇</span></div><p class="strategy-selection-help" id="backtest-entry-help">可選 1 個單獨執行，也可複選多個後套用買入組合條件。</p><div id="backtest-entry-strategies"></div></div>
-                  <div class="strategy-group"><div class="strategy-group-heading"><strong>賣出策略</strong><span class="strategy-selection-count" id="backtest-exit-count">尚未選擇</span></div><p class="strategy-selection-help" id="backtest-exit-help">可選 1 個單獨執行，也可複選多個後套用賣出組合條件。</p><div id="backtest-exit-strategies"></div></div>
-                </div>
-                <p class="backtest-card-copy" id="backtest-form-message" role="status"></p>
-                <p class="backtest-card-copy" id="backtest-daily-sma-warning" hidden></p>
-                <div class="backtest-actions"><button class="backtest-button" id="backtest-run-submit" type="submit">建立回測</button></div>
-              </form>
-              </details>
             </section>
 
             <section class="backtest-card wide tab-panel" id="backtest-panel-runs" role="tabpanel" aria-labelledby="backtest-tab-runs" data-backtest-panel="runs">
@@ -361,7 +322,7 @@
             </section>
 
             <section class="backtest-card wide tab-panel" id="backtest-panel-compare" role="tabpanel" aria-labelledby="backtest-tab-compare" data-backtest-panel="compare">
-              <h3 id="backtest-compare-heading">4. Baseline／Challenger 比較</h3>
+              <h3 id="backtest-compare-heading">3. Baseline／Challenger 比較</h3>
               <p class="backtest-card-copy">只能比較相同資料集、成本、資金與執行設定的已完成 run。差異是關聯證據，不等同因果保證。</p>
               <div class="backtest-form-grid">
                 <div class="backtest-field"><label for="backtest-baseline">Baseline</label><select id="backtest-baseline"></select></div>
@@ -370,7 +331,7 @@
               </div>
               <div class="backtest-actions"><button class="backtest-button secondary" id="backtest-clone" type="button">以目前設定複製並調整</button><button class="backtest-button" id="backtest-compare" type="button">比較兩個已完成 Run</button></div>
               <div id="backtest-comparison"></div>
-              <div class="backtest-section-heading"><h3>5. 固定 OOS／Walk-forward 資格判定</h3><span class="panel-count">人工審核 evidence</span></div>
+              <div class="backtest-section-heading"><h3>固定 OOS／Walk-forward 資格判定</h3><span class="panel-count">人工審核 evidence</span></div>
               <p class="backtest-card-copy">資格判定只讀取已完成的 Atomic Runs，保存固定日期、所有嘗試、成本與 Feature 身分。即使通過，也不會自動啟用策略或啟動 Local Paper。</p>
               <form id="backtest-qualification-form">
                 <div class="backtest-form-grid">

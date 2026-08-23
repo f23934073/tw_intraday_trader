@@ -10,6 +10,7 @@ import pytest
 from backtest.dataset import DatasetManifest
 from backtest.dataset_binding import (
     ATOMIC_BACKTEST_DEFAULT,
+    AtomicBacktestBindingChanged,
     DatasetBindingIdempotencyConflict,
     DatasetBindingIntegrityError,
     DatasetBindingRevisionConflict,
@@ -263,6 +264,85 @@ def test_postgres_registration_binding_replay_noop_and_conflicts(
             "SELECT COUNT(*) FROM backtest_dataset_binding_operations"
         )
         assert cursor.fetchone()[0] == 3
+
+
+def test_atomic_run_insert_rechecks_locked_binding_and_replays_before_head(
+    postgres_test_connection,
+) -> None:
+    repository = PostgresBacktestRepository(postgres_test_connection)
+    first = _manifest("run-first")
+    second = _manifest("run-second")
+    repository.register_immutable_dataset(first)
+    repository.register_immutable_dataset(second)
+    repository.activate_dataset_binding(
+        **_activation(first, idempotency_key="bind-run-first")
+    )
+
+    request = {
+        "contract_version": "atomic-backtest-run-request-v1",
+        "expected_binding_revision": 1,
+        "expected_dataset_digest": first["manifest_digest"],
+    }
+    request_digest = digest(request)
+    config = {
+        "dataset_id": first["dataset_id"],
+        "dataset_digest": first["manifest_digest"],
+        "atomic_run_request": request,
+        "atomic_run_request_digest": request_digest,
+    }
+    record = {
+        "run_id": "g5-bound-run-1",
+        "idempotency_key": "g5-bound-run-key-1",
+        "status": "QUEUED",
+        "config": config,
+        "config_digest": digest(config),
+        "dataset_id": first["dataset_id"],
+        "dataset_digest": first["manifest_digest"],
+        "created_at": "2026-08-23T12:00:00+08:00",
+    }
+    created, replayed = repository.create_atomic_run_from_binding(
+        record,
+        binding_name=ATOMIC_BACKTEST_DEFAULT,
+        expected_binding_revision=1,
+        expected_dataset_digest=str(first["manifest_digest"]),
+        request_digest=request_digest,
+    )
+    assert replayed is False
+    assert created["dataset_id"] == first["dataset_id"]
+
+    repository.activate_dataset_binding(
+        **_activation(
+            second,
+            expected_revision=1,
+            idempotency_key="bind-run-second",
+        )
+    )
+    replay, idempotent = repository.create_atomic_run_from_binding(
+        record,
+        binding_name=ATOMIC_BACKTEST_DEFAULT,
+        expected_binding_revision=1,
+        expected_dataset_digest=str(first["manifest_digest"]),
+        request_digest=request_digest,
+    )
+    assert idempotent is True
+    assert replay["run_id"] == created["run_id"]
+
+    stale_record = {
+        **record,
+        "run_id": "g5-bound-run-stale",
+        "idempotency_key": "g5-bound-run-key-stale",
+    }
+    with pytest.raises(AtomicBacktestBindingChanged):
+        repository.create_atomic_run_from_binding(
+            stale_record,
+            binding_name=ATOMIC_BACKTEST_DEFAULT,
+            expected_binding_revision=1,
+            expected_dataset_digest=str(first["manifest_digest"]),
+            request_digest=request_digest,
+        )
+    assert {run["run_id"] for run in repository.list_runs()} == {
+        created["run_id"]
+    }
 
 
 def test_postgres_binding_migration_acceptance(postgres_test_connection) -> None:

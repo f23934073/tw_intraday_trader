@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
 
@@ -15,7 +17,10 @@ from backtest.domain import (
     StrategyEvaluation,
     StrategySetSnapshot,
 )
-from backtest.feature_adapters import CompletedOneMinuteKbarFeatureAdapter
+from backtest.feature_adapters import (
+    CompletedOneMinuteKbarFeatureAdapter,
+    verify_vwap_amount_contract,
+)
 from features.specifications import FeatureRequestSpec, FeatureSpecificationRegistry
 from backtest.strategies import StrategyContext, StrategyRegistry
 from strategy_catalog.domain import StrategyDefinition, StrategySide, StrategySource, StrategyStatus
@@ -39,6 +44,9 @@ class AtomicBacktestStrategyAdapter:
         strategy: AtomicStrategy,
         version: StrategyVersion,
         requests: tuple[FeatureRequestSpec, ...],
+        *,
+        dataset_amount_contract: Mapping[str, object] | None = None,
+        require_dataset_amount_contract: bool = False,
     ) -> None:
         if strategy.template.strategy_id != version.strategy_id:
             raise ValueError("atomic strategy implementation 與 Version strategy_id 不一致")
@@ -54,7 +62,11 @@ class AtomicBacktestStrategyAdapter:
         self._strategy = strategy
         self._version = version
         self._parameters = parameters
-        self._features = CompletedOneMinuteKbarFeatureAdapter(tuple(requests))
+        self._features = CompletedOneMinuteKbarFeatureAdapter(
+            tuple(requests),
+            dataset_amount_contract=dataset_amount_contract,
+            require_dataset_amount_contract=require_dataset_amount_contract,
+        )
         self.selection_id = version.strategy_version_id
         self.definition = StrategyDefinition(
             strategy_id=strategy.template.strategy_id,
@@ -79,6 +91,7 @@ class AtomicBacktestStrategyAdapter:
         self._features.begin_session(session_date.isoformat())
 
     def evaluate(self, context: StrategyContext) -> StrategyEvaluation:
+        features = self._features.normalize(context)
         atomic = self._strategy.evaluate(
             AtomicStrategyContext(
                 strategy_version_id=self._version.strategy_version_id,
@@ -86,9 +99,13 @@ class AtomicBacktestStrategyAdapter:
                 event_at=context.bar.timestamp,
                 current_price=str(context.bar.close),
                 parameters=self._parameters,
-                features=self._features.normalize(context),
+                features=features,
             )
         )
+        observed = dict(atomic.observed)
+        input_evidence = self._features.evaluation_input_evidence(features)
+        if input_evidence is not None:
+            observed["feature_input_evidence"] = input_evidence
         return StrategyEvaluation(
             strategy_id=atomic.strategy_id,
             strategy_name=self.definition.display_name_zh_tw,
@@ -98,7 +115,7 @@ class AtomicBacktestStrategyAdapter:
             symbol=atomic.symbol,
             event_at=atomic.event_at,
             reason=atomic.reason,
-            observed=atomic.observed,
+            observed=observed,
             threshold=atomic.threshold,
             strategy_version_id=atomic.strategy_version_id,
         )
@@ -123,12 +140,56 @@ class AtomicBacktestResolution:
         return value
 
 
+def bind_dataset_feature_evidence(
+    run_snapshot: Mapping[str, object],
+    *,
+    dataset_id: str,
+    dataset_digest: str,
+    amount_contract: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Bind immutable Dataset input semantics to a resolved Atomic snapshot."""
+
+    value = deepcopy(dict(run_snapshot))
+    value.pop("snapshot_digest", None)
+    amount = dict(amount_contract) if amount_contract is not None else None
+    value["dataset_feature_evidence"] = {
+        "dataset_id": dataset_id,
+        "dataset_digest": dataset_digest,
+        "amount_contract": amount,
+    }
+    for strategy in value.get("feature_requests", []):
+        if not isinstance(strategy, dict):
+            continue
+        for request in strategy.get("requests", []):
+            if isinstance(request, dict) and request.get("feature_id") == "vwap_session_v1":
+                verified_amount = verify_vwap_amount_contract(amount)
+                dataset_input_contract = {"amount_contract": verified_amount}
+                existing_contract = request.get("dataset_input_contract")
+                if (
+                    existing_contract is not None
+                    and existing_contract != dataset_input_contract
+                ):
+                    raise ValueError("VWAP runtime Dataset input contract 已漂移")
+                request["dataset_input_contract"] = dataset_input_contract
+                request["feature_input_contract_digest"] = canonical_digest(
+                    {
+                        "request_digest": request["request_digest"],
+                        "adapter_identity": value["feature_adapter_identity"],
+                        "dataset_input_contract": dataset_input_contract,
+                    }
+                )
+    value["snapshot_digest"] = canonical_digest(value)
+    return value
+
+
 def resolve_atomic_entry_set(
     repository: AtomicStrategyRepository,
     atomic_registry: AtomicStrategyRegistry,
     snapshot: ExactStrategySetSnapshot,
     *,
     exit_strategy_ids: tuple[str, ...] = ("end_of_day_exit_v1",),
+    dataset_amount_contract: Mapping[str, object] | None = None,
+    require_dataset_amount_contract: bool = False,
 ) -> AtomicBacktestResolution:
     if snapshot.stage.value != "ENTRY":
         raise ValueError("Phase 1 atomic backtest resolver 只接受 ENTRY Strategy Set")
@@ -152,28 +213,50 @@ def resolve_atomic_entry_set(
         resolved_requests = []
         for request in requests:
             specification = feature_registry.get(request.feature_id)
-            resolved_requests.append(
-                {
-                    "feature_id": request.feature_id,
-                    "parameters": dict(request.parameters),
-                    "parameter_digest": request.parameter_digest,
-                    "request_digest": request.request_digest,
-                    "specification_digest": specification.specification_digest,
-                    "feature_implementation_digest": specification.implementation_digest,
-                    "as_of_semantics": specification.as_of_semantics,
-                    "runtime_identity_digest": request.runtime_identity_digest(
-                        adapter_identity=CompletedOneMinuteKbarFeatureAdapter.identity,
-                        cadence=specification.cadence,
-                    ),
-                }
-            )
+            request_document: dict[str, object] = {
+                "feature_id": request.feature_id,
+                "parameters": dict(request.parameters),
+                "parameter_digest": request.parameter_digest,
+                "request_digest": request.request_digest,
+                "specification_digest": specification.specification_digest,
+                "feature_implementation_digest": specification.implementation_digest,
+                "as_of_semantics": specification.as_of_semantics,
+                "runtime_identity_digest": request.runtime_identity_digest(
+                    adapter_identity=CompletedOneMinuteKbarFeatureAdapter.identity,
+                    cadence=specification.cadence,
+                ),
+            }
+            if request.feature_id == "vwap_session_v1" and (
+                require_dataset_amount_contract or dataset_amount_contract is not None
+            ):
+                verified_amount = verify_vwap_amount_contract(
+                    dataset_amount_contract
+                )
+                dataset_input_contract = {"amount_contract": verified_amount}
+                request_document["dataset_input_contract"] = dataset_input_contract
+                request_document["feature_input_contract_digest"] = canonical_digest(
+                    {
+                        "request_digest": request.request_digest,
+                        "adapter_identity": CompletedOneMinuteKbarFeatureAdapter.identity,
+                        "dataset_input_contract": dataset_input_contract,
+                    }
+                )
+            resolved_requests.append(request_document)
         feature_request_documents.append(
             {
                 "strategy_version_id": version.strategy_version_id,
                 "requests": resolved_requests,
             }
         )
-        adapters.append(AtomicBacktestStrategyAdapter(implementation, version, requests))
+        adapters.append(
+            AtomicBacktestStrategyAdapter(
+                implementation,
+                version,
+                requests,
+                dataset_amount_contract=dataset_amount_contract,
+                require_dataset_amount_contract=require_dataset_amount_contract,
+            )
+        )
     policy = AggregationPolicy(snapshot.policy.value)
     engine_set = StrategySetSnapshot(
         entry_strategy_ids=snapshot.runtime_member_ids,

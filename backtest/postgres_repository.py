@@ -13,6 +13,8 @@ from backtest.comparability import (
     verify_run_identity,
 )
 from backtest.dataset_binding import (
+    AtomicBacktestBindingChanged,
+    AtomicBacktestBindingUnavailable,
     DatasetBindingIdempotencyConflict,
     DatasetBindingIntegrityError,
     DatasetBindingRevisionConflict,
@@ -124,6 +126,112 @@ class PostgresBacktestRepository(_JsonBacktestRepository):
             if raw is None:
                 return None
             return self._verified_binding_payload(self._row(cursor, raw))
+
+    def create_atomic_run_from_binding(
+        self,
+        record: Mapping[str, Any],
+        *,
+        binding_name: str,
+        expected_binding_revision: int,
+        expected_dataset_digest: str,
+        request_digest: str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Insert a standalone Atomic Run under one locked binding head."""
+
+        binding_name = require_text(binding_name, "binding name")
+        idempotency_key = require_text(
+            str(record["idempotency_key"]), "idempotency key"
+        )
+        if expected_binding_revision < 1:
+            raise ValueError("expected binding revision must be positive")
+        if digest(dict(record["config"]).get("atomic_run_request")) != request_digest:
+            raise ValueError("atomic Run request digest does not match config evidence")
+        if dict(record["config"]).get("atomic_run_request_digest") != request_digest:
+            raise ValueError("atomic Run request digest is not preserved in config")
+        lock_key = self._advisory_lock_key(
+            "backtest-run:create:atomic", idempotency_key
+        )
+        with self._transaction() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", (lock_key,))
+            cursor.execute(
+                "SELECT * FROM backtest_runs WHERE idempotency_key = %s FOR UPDATE",
+                (idempotency_key,),
+            )
+            raw_existing = cursor.fetchone()
+            if raw_existing is not None:
+                existing = self._run_payload(self._row(cursor, raw_existing))
+                verify_run_identity(existing)
+                if (
+                    existing["config"].get("atomic_run_request_digest")
+                    != request_digest
+                ):
+                    raise BacktestIdempotencyConflict(
+                        "相同 idempotency key 的 Atomic Run request 不同"
+                    )
+                return existing, True
+
+            cursor.execute(
+                """
+                SELECT binding.*, dataset.status AS dataset_status,
+                       dataset.manifest_json AS dataset_manifest_json
+                FROM backtest_dataset_bindings AS binding
+                JOIN backtest_datasets AS dataset
+                  ON dataset.dataset_id = binding.dataset_id
+                WHERE binding.binding_name = %s
+                FOR UPDATE OF binding
+                """,
+                (binding_name,),
+            )
+            raw_binding = cursor.fetchone()
+            if raw_binding is None:
+                raise AtomicBacktestBindingUnavailable(
+                    f"Dataset binding 不存在：{binding_name}"
+                )
+            binding = self._verified_binding_payload(
+                self._row(cursor, raw_binding)
+            )
+            if (
+                binding["revision"] != expected_binding_revision
+                or binding["dataset_digest"] != expected_dataset_digest
+            ):
+                raise AtomicBacktestBindingChanged(
+                    "ATOMIC_BACKTEST_DEFAULT 已變更，請重新整理後再確認"
+                )
+            if (
+                binding["dataset_id"] != record["dataset_id"]
+                or binding["dataset_digest"] != record["dataset_digest"]
+            ):
+                raise DatasetBindingIntegrityError(
+                    "Atomic Run record 與 locked Dataset binding 不一致"
+                )
+
+            cursor.execute(
+                """
+                INSERT INTO backtest_runs (
+                    run_id, idempotency_key, status, config_json, config_digest,
+                    dataset_id, dataset_digest, progress, progress_message,
+                    created_at, updated_at, error_message, result_digest
+                ) VALUES (
+                    %s, %s, %s, %s::jsonb, %s, %s, %s, 0.0,
+                    '已建立回測工作', %s, %s, NULL, NULL
+                )
+                RETURNING *
+                """,
+                (
+                    record["run_id"],
+                    idempotency_key,
+                    record["status"],
+                    _json(record["config"]),
+                    record["config_digest"],
+                    record["dataset_id"],
+                    record["dataset_digest"],
+                    record["created_at"],
+                    record["created_at"],
+                ),
+            )
+            created = self._run_payload(self._row(cursor, cursor.fetchone()))
+            self._after_run_created(cursor, created)
+            return created, False
 
     def activate_dataset_binding(
         self,

@@ -100,6 +100,19 @@ def _member(version: StrategyVersion, order: int = 0) -> StrategySetMemberSnapsh
     )
 
 
+def _proxy_amount_contract(
+    *,
+    kind: str = "DERIVED_CLOSE_X_VOLUME_PROXY",
+) -> dict[str, object]:
+    contract: dict[str, object] = {
+        "is_actual_turnover": False,
+        "kind": kind,
+        "vwap_semantic": "COMPLETED_1M_CLOSE_VOLUME_WEIGHTED_PROXY",
+    }
+    contract["digest"] = canonical_digest(contract)
+    return contract
+
+
 @pytest.mark.parametrize(
     ("strategy_id", "version_id"),
     (
@@ -140,6 +153,67 @@ def test_each_exact_atomic_entry_runs_independently(
 
     assert entry.triggered_strategy_ids == (version_id,)
     assert entry.primary_strategy_id == version_id
+
+
+def test_vwap_runtime_requires_and_persists_verified_amount_input_evidence() -> None:
+    version = _version("above_vwap_entry", "version-vwap-amount", 1)
+    snapshot = ExactStrategySetSnapshot(
+        strategy_set_version_id="set-vwap-amount",
+        strategy_set_id="set-vwap",
+        version_number=1,
+        display_name_zh_tw="VWAP amount contract",
+        stage=StrategyRole.ENTRY,
+        policy=CompositionPolicy.ANY,
+        members=(_member(version),),
+    )
+    repository = _VersionRepository((version,))
+
+    with pytest.raises(ValueError, match="amount contract"):
+        resolve_atomic_entry_set(
+            repository,
+            AtomicStrategyRegistry(),
+            snapshot,
+            require_dataset_amount_contract=True,
+        )
+    with pytest.raises(ValueError, match="amount contract"):
+        resolve_atomic_entry_set(
+            repository,
+            AtomicStrategyRegistry(),
+            snapshot,
+            dataset_amount_contract=_proxy_amount_contract(kind="UNKNOWN_AMOUNT"),
+            require_dataset_amount_contract=True,
+        )
+
+    amount_contract = _proxy_amount_contract()
+    resolved = resolve_atomic_entry_set(
+        repository,
+        AtomicStrategyRegistry(),
+        snapshot,
+        dataset_amount_contract=amount_contract,
+        require_dataset_amount_contract=True,
+    )
+    request = resolved.run_snapshot["feature_requests"][0]["requests"][0]
+    assert request["dataset_input_contract"]["amount_contract"] == amount_contract
+    assert len(request["feature_input_contract_digest"]) == 64
+    config = BacktestRunConfig(
+        dataset_id="dataset-vwap-amount",
+        dataset_digest="dataset-vwap-amount-digest",
+        strategy_set=resolved.engine_strategy_set,
+        engine_version="backtest-engine-v2",
+        atomic_strategy_run_snapshot=resolved.run_snapshot,
+        dataset_amount_contract=amount_contract,
+        minimum_oos_trades=1,
+    )
+
+    result = HistoricalBacktestEngine(resolved.registry).run(
+        config=config,
+        bars=_bars(),
+    )
+    entry = next(item for item in result.decisions if item.side is StrategySide.ENTRY)
+    evidence = entry.evaluations[0].observed["feature_input_evidence"]
+    assert evidence["dataset_input_contract"]["amount_contract"] == amount_contract
+    assert evidence["feature_id"] == "vwap_session_v1"
+    assert len(evidence["feature_input_digest"]) == 64
 
 
 def test_two_exact_atomic_entries_run_combined_with_version_attribution() -> None:

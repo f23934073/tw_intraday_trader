@@ -10,6 +10,9 @@ from backtest.domain import canonical_json, digest
 _IGNORED_RUN_FIELDS = {
     "strategy_set",
     "atomic_strategy_run_snapshot",
+    "atomic_run_request",
+    "atomic_run_request_digest",
+    "dataset_binding_snapshot",
     "experiment_id",
     "baseline_run_id",
     "research_baseline_digest",
@@ -165,6 +168,9 @@ def baseline_research_config_digest(config: Mapping[str, Any]) -> str:
         "target_win_rate",
         "minimum_oos_trades",
         "max_drawdown_guardrail",
+        "atomic_run_request",
+        "atomic_run_request_digest",
+        "dataset_binding_snapshot",
     }
     projection = {
         key: config.get(key)

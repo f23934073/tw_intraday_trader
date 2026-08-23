@@ -33,6 +33,14 @@ class DatasetBindingIntegrityError(DatasetBindingConflict):
     """The binding, Dataset row, or durable result has drifted."""
 
 
+class AtomicBacktestBindingUnavailable(DatasetBindingConflict):
+    """The required default binding does not exist or cannot be used."""
+
+
+class AtomicBacktestBindingChanged(DatasetBindingConflict):
+    """The browser precondition no longer matches the locked binding head."""
+
+
 def canonical_registration_manifest(
     manifest: Mapping[str, Any],
 ) -> dict[str, Any]:

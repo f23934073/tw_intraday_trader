@@ -1,5 +1,137 @@
 # Findings: FinMind Backtest Dataset Bridge
 
+## G5 Code Review approved / formal acceptance authorized — 2026-08-23
+
+- Independent short re-review approved all three code remediations with no new
+  blocker. G5 Code Review is approved, while the formal Gate remains NOT
+  PASSED at 80%.
+- The user authorized a scoped G5 commit first, then application PostgreSQL
+  registration/activation of the exact G3 Dataset and one complete
+  28,325,340-bar Web Atomic Run.
+- Acceptance must verify the persisted Run Dataset/binding/amount evidence,
+  result digest, bounded DB control traffic, and zero provider/broker calls.
+- Shared-worktree packaging must exclude all concurrent Local Paper, Strategy
+  Set, live-trading, odd-lot, `.planning/.active_plan`, and research changes.
+
+## G5 Review remediation — 2026-08-23
+
+- Independent Review kept G5 at `REQUEST CHANGES / NOT PASSED` and formal
+  progress at 80%.
+- Serialized Run evidence already contains the FinMind amount contract, but
+  the actual `CompletedOneMinuteKbarFeatureAdapter` is still constructed from
+  an unbound `FeatureRequestSpec`. Runtime validation, Feature input identity,
+  and the persisted VWAP evaluation must all carry the verified contract.
+- The worker currently separates status reads from unconditional PREFLIGHT and
+  RUNNING writes. A cancellation committed between those operations can be
+  overwritten; the repository needs an atomic expected-status transition.
+- `ThrottledProgressReporter.flush()` is only called on successful completion.
+  Worker cancellation and exception paths need an explicit terminal flush and
+  worker-level regressions.
+- Remediation remains code-only evidence. Even after it passes, G5 requires a
+  separate re-review and the authorized application binding/full-Dataset Run
+  before the formal Gate can pass.
+- The minimal runtime fix is to construct the Atomic resolution twice: first
+  unbound only to discover requirements, then again with the verified Dataset
+  amount contract for the actual runtime registry and immutable snapshot.
+  `CompletedOneMinuteKbarFeatureAdapter` can reject missing/unknown VWAP
+  contracts during construction and include the contract in its per-bar input
+  digest/evidence without changing the VWAP arithmetic kernel.
+- The shared JSON repository already centralizes `update_run()`, so the smallest
+  cross-backend status fix is a sibling conditional transition method using one
+  `UPDATE ... WHERE status IN (...)`; the worker treats a failed CAS with
+  current `CANCELLING` as cancellation instead of writing over it.
+- `ThrottledProgressReporter` already retains the newest unwritten tuple. The
+  worker can keep a nullable reporter and force `flush()` in both terminal
+  exception handlers, preserving the final pending progress before terminal
+  status without changing deterministic result identity.
+- `StrategyEvaluation.observed` is the existing persisted decision evidence
+  boundary. The Atomic adapter can augment only VWAP evaluations with a
+  canonical `feature_input_evidence` projection containing the normalized
+  input digest and verified amount kind/digest/semantic, while leaving the
+  atomic strategy kernel and Local Paper identity unchanged.
+- Existing direct strategy tests call `resolve_atomic_entry_set()` without a
+  Dataset contract. Preserve this unbound inspection mode, but require the
+  contract whenever `bind_dataset_feature_evidence()` constructs the runnable
+  snapshot and whenever the application builds the actual worker registry.
+- PostgreSQL atomic cancellation already locks and transitions the row to
+  `CANCELLING`; the defect is specifically the worker's later unconditional
+  write. A repository CAS used by both SQLite tests and PostgreSQL production
+  is sufficient, while the existing durable cancel operation remains intact.
+- The worker-control regressions can use a normal non-Atomic Run with a real
+  temporary SQLite repository/catalog and an injected engine. This exercises
+  `_run_backtest()` terminal behavior without requiring PostgreSQL or changing
+  the Atomic persistence contract; the distinct PostgreSQL status CAS remains
+  covered at the shared repository SQL boundary.
+
+## G5 implementation seam audit — 2026-08-23
+
+- `BacktestApplicationService.create_atomic_run()` already contains an early
+  idempotency lookup and Baseline Dataset inheritance seam, but standalone Runs
+  still need the exact binding projection/precondition contract and durable
+  same-key/different-request validation.
+- The worker still calls PostgreSQL-backed progress UPDATE and cancellation
+  SELECT callbacks on the engine's local cadence; both need G5 monotonic
+  throttling wrappers.
+- The Web client still independently chooses a READY/research-eligible Dataset
+  from `/api/backtests/datasets`; this is the frozen wrong-resolver behavior and
+  must be replaced by a server-owned `ATOMIC_BACKTEST_DEFAULT` projection.
+- G5 must preserve concurrent, unrelated edits already present in
+  `backtest/application.py`, `dashboard/server.py`, and
+  `dashboard/static/js/workspaces/backtest.js`.
+- Current early replay only retrieves the Run by key; it does not compare the
+  incoming atomic request digest before skipping binding resolution. G5 needs a
+  canonical request document stored in the immutable Run config so replay can
+  reject same-key/different-precondition requests without consulting the head.
+- Standalone selection still calls `_select_ready_dataset()` and the browser
+  still prefers `research_eligible`; both violate the frozen no-fallback
+  binding contract.
+- `_run_backtest()` currently sends every engine progress callback to
+  `update_run()` and every cancellation callback to `get_run()`. These are the
+  exact G5 control-traffic hot paths.
+- `BacktestRunConfig` has no binding/request/amount evidence fields yet. Adding
+  optional canonical mappings is backward-compatible with legacy Run parsing
+  and makes those projections part of `config_digest`.
+- Atomic retry/clone already operate from the original parsed config and exact
+  Dataset, so they must not be redirected through the current default binding.
+  The standalone create path is the only place that resolves the head.
+- G4 exposes a verified `get_dataset_binding()` projection and immutable
+  Dataset rows. G5 can compose those without a new migration; the application
+  must additionally verify the filesystem manifest and its amount contract.
+- A simple application-level binding read is not sufficient: the frozen G5
+  contract requires the binding head to be revalidated in the same PostgreSQL
+  transaction that inserts the Run. A PostgreSQL-specific create method is
+  needed; SQLite must fail closed for this standalone path.
+- Imported legacy test Datasets do not carry `amount_contract`. That remains
+  acceptable for non-VWAP strategies, but `vwap_session_v1` must explicitly
+  require an allowlisted amount kind and preserve its digest/semantic label in
+  Run evidence.
+- The frozen FinMind allowlist is exact:
+  `DERIVED_CLOSE_X_VOLUME_PROXY` with
+  `COMPLETED_1M_CLOSE_VOLUME_WEIGHTED_PROXY`; the embedded amount digest must
+  equal the digest of the other amount-contract fields.
+- To satisfy Feature-level evidence without changing calculation code, new
+  Atomic snapshots will attach the verified Dataset input contract to each
+  `vwap_session_v1` request and recompute the snapshot digest. Worker preflight
+  will rebuild the same evidence before execution.
+- Comparability already compares all non-ignored top-level config fields. The
+  Dataset amount contract will remain a compared identity; request replay and
+  binding provenance fields will be explicitly ignored so equivalent Baseline
+  reruns do not reset experiment-family identity.
+- Binding drift needs a dedicated HTTP 409 code distinct from generic
+  idempotency conflict; missing backend/binding remains fail closed and the
+  status projection disables launch before mutation.
+- Full no-DSN and disposable-PostgreSQL suites are green. The shared worktree
+  still contains substantial unrelated Local Paper, Strategy Set archive, UI,
+  and research artifact changes; any future G5 commit must again use partial
+  staging for mixed files and must not stage those concurrent scopes.
+- README still described the removed research-eligible/READY ranking behavior;
+  G5 documentation must state exact `ATOMIC_BACKTEST_DEFAULT`, browser
+  preconditions, no fallback, and the VWAP close-volume proxy label.
+- Final code evidence is green, but code Gate and operational acceptance remain
+  distinct: synthetic/disposable binding and complete Atomic Run paths passed;
+  the exact 28,325,340-bar G3 artifact has not been activated or run through an
+  application Web environment. Do not mark G5 passed from the regression alone.
+
 ## 2026-08-23 — G4 execution boundary
 
 - Independent re-review found no new blocker and approved

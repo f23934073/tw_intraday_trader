@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from backtest.comparability import run_comparability_diff
 from backtest.domain import digest
 from backtest.metrics import compare_runs
 from backtest.qualification import (
@@ -375,6 +376,22 @@ def test_regular_compare_uses_the_same_atomic_comparability_contract() -> None:
     assert not_comparable["config_diff"][0]["field"] == (
         "atomic_strategy_run_snapshot.feature_adapter_identity"
     )
+
+
+def test_dataset_amount_contract_digest_is_comparability_identity() -> None:
+    baseline = _run("run-baseline", "set-v1", "strategy-v1")["config"]
+    challenger = _run("run-challenger", "set-v2", "strategy-v2")["config"]
+    baseline["dataset_amount_contract"] = {
+        "kind": "DERIVED_CLOSE_X_VOLUME_PROXY",
+        "digest": "a" * 64,
+    }
+    challenger["dataset_amount_contract"] = {
+        "kind": "DERIVED_CLOSE_X_VOLUME_PROXY",
+        "digest": "b" * 64,
+    }
+
+    differences = run_comparability_diff(baseline, challenger)
+    assert any(item["field"] == "dataset_amount_contract" for item in differences)
 
 
 def test_research_windows_must_fit_the_dataset_manifest() -> None:

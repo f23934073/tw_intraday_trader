@@ -39,9 +39,12 @@ def test_atomic_backtest_launcher_uses_exact_set_not_raw_strategy_ids() -> None:
     assert 'id="atomic-backtest-set"' in HTML
     assert "/api/backtests/runs/atomic" in BACKTEST
     assert "strategy_set_version_id: atomicBacktestSet.value" in BACKTEST
-    assert 'if (atomic) {' in BACKTEST
+    assert 'id="atomic-backtest-dataset"' not in HTML
+    assert "dataset_id: atomicBacktestDataset.value" not in BACKTEST
+    assert 'id="atomic-backtest-dataset-status"' in HTML
+    assert 'if (!atomic) {' in BACKTEST
     assert '"atomic-backtest-clone"' in BACKTEST
-    assert 'starting_cash: document.getElementById("backtest-cash").value' in BACKTEST
+    assert 'starting_cash: document.getElementById("atomic-backtest-cash").value' in BACKTEST
 
 
 def test_backtest_qualification_ui_uses_fixed_windows_and_durable_mutation() -> None:

@@ -75,6 +75,28 @@ class _BacktestProbe:
             raise BacktestIdempotencyConflict("same key, different digest")
         return ({"run_id": "run-atomic-web-1", "status": "QUEUED", "config_digest": "run-digest"}, False)
 
+    def atomic_backtest_dataset_status(self, **kwargs):
+        self.calls.append({"action": "dataset-status", **kwargs})
+        return {
+            "available": True,
+            "resolution_mode": "DEFAULT_BINDING",
+            "binding_name": "ATOMIC_BACKTEST_DEFAULT",
+            "binding_revision": 4,
+            "dataset_id": "dataset-finmind",
+            "dataset_digest": "a" * 64,
+            "source": "FINMIND_SPONSOR_TAIWAN_STOCK_KBAR",
+            "start_date": "2023-08-21",
+            "end_date": "2026-08-21",
+            "symbol_count": 174,
+            "bar_count": 28_325_340,
+            "capabilities": ["OHLCV", "KBAR_1M"],
+            "amount_kind": "DERIVED_CLOSE_X_VOLUME_PROXY",
+            "amount_contract_digest": "b" * 64,
+            "vwap_semantic": "COMPLETED_1M_CLOSE_VOLUME_WEIGHTED_PROXY",
+            "research_eligible": False,
+            "issues": ["AMOUNT_DERIVED_PROXY"],
+        }
+
     def get_run(self, run_id):
         return {
             "run_id": run_id,
@@ -169,6 +191,13 @@ def test_atomic_strategy_web_routes_require_csrf_and_use_exact_set(monkeypatch) 
     assert created.json()["draft"]["draft_id"] == "draft-web-1"
     assert atomic.created[0]["idempotency_key"] == "draft-web-request-1"
 
+    binding = client.get(
+        "/api/backtests/atomic-dataset",
+        params={"strategy_set_version_id": "strategy-set-version-exact-1"},
+    )
+    assert binding.status_code == 200
+    assert binding.json()["binding"]["binding_revision"] == 4
+
     launched = client.post(
         "/api/backtests/runs/atomic",
         headers={
@@ -176,20 +205,29 @@ def test_atomic_strategy_web_routes_require_csrf_and_use_exact_set(monkeypatch) 
             "X-Strategy-CSRF": token,
         },
         json={
-            "dataset_id": "dataset-ready-1",
             "strategy_set_version_id": "strategy-set-version-exact-1",
+            "expected_binding_revision": 4,
+            "expected_dataset_digest": "a" * 64,
         },
     )
     assert launched.status_code == 201
     assert launched.json()["run"]["run_id"] == "run-atomic-web-1"
-    assert backtest.calls[0]["strategy_set_version_id"] == "strategy-set-version-exact-1"
-    assert "entry_strategy_ids" not in backtest.calls[0]
+    create_call = next(item for item in backtest.calls if "idempotency_key" in item)
+    assert create_call["strategy_set_version_id"] == "strategy-set-version-exact-1"
+    assert "dataset_id" not in create_call
+    assert "entry_strategy_ids" not in create_call
+    assert create_call["expected_binding_revision"] == 4
+    assert create_call["expected_dataset_digest"] == "a" * 64
     assert atomic.audit_events[-1]["action"] == "ATOMIC_BACKTEST_RUN_CREATE"
 
     conflict = client.post(
         "/api/backtests/runs/atomic",
         headers={"Idempotency-Key": "atomic-conflict", "X-Strategy-CSRF": token},
-        json={"dataset_id": "dataset-ready-1", "strategy_set_version_id": "set-conflict"},
+        json={
+            "strategy_set_version_id": "set-conflict",
+            "expected_binding_revision": 4,
+            "expected_dataset_digest": "a" * 64,
+        },
     )
     assert conflict.status_code == 409
     assert atomic.audit_events[-1]["outcome"] == "CONFLICT"
@@ -213,7 +251,6 @@ def test_atomic_requests_forbid_unknown_fields_and_protect_run_mutations(monkeyp
         json={
             "dataset_id": "dataset-1",
             "strategy_set_version_id": "set-1",
-            "entry_strategy_ids": ["must-not-be-ignored"],
         },
     )
     assert unknown.status_code == 422

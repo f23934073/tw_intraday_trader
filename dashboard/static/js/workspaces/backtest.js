@@ -37,15 +37,6 @@ export function createBacktestWorkspace(context) {
   const backtestDrawer = document.getElementById("backtest-drawer");
   const backtestPanel = document.getElementById("backtest-panel");
   const backtestNotice = document.getElementById("backtest-notice");
-  const backtestIncrementalStatus = document.getElementById("backtest-incremental-status");
-  const backtestSyncButton = document.getElementById("backtest-sync");
-  const backtestRefreshButton = document.getElementById("backtest-refresh");
-  const backtestSyncYears = document.getElementById("backtest-sync-years");
-  const backtestDatasetList = document.getElementById("backtest-dataset-list");
-  const backtestDataset = document.getElementById("backtest-dataset");
-  const backtestRunForm = document.getElementById("backtest-run-form");
-  const backtestRunSubmit = document.getElementById("backtest-run-submit");
-  const backtestFormMessage = document.getElementById("backtest-form-message");
   const backtestRunList = document.getElementById("backtest-run-list");
   const backtestRunCount = document.getElementById("backtest-run-count");
   const backtestResult = document.getElementById("backtest-result");
@@ -63,11 +54,12 @@ export function createBacktestWorkspace(context) {
   const qualificationList = document.getElementById("qualification-list");
   const atomicBacktestForm = document.getElementById("atomic-backtest-form");
   const atomicBacktestSet = document.getElementById("atomic-backtest-set");
-  const atomicBacktestDataset = document.getElementById("atomic-backtest-dataset");
+  const atomicBacktestDatasetStatus = document.getElementById("atomic-backtest-dataset-status");
   const atomicBacktestBaseline = document.getElementById("atomic-backtest-baseline");
   const atomicBacktestSubmit = document.getElementById("atomic-backtest-submit");
   const atomicBacktestMessage = document.getElementById("atomic-backtest-message");
   const pendingAtomicMutationKeys = createMutationKeyStore(newIdempotencyKey);
+  let pendingAtomicBacktestRequest = null;
   let qualificationFoldSequence = 0;
 
       function formatBacktestPercent(value, digits = 2) {
@@ -307,12 +299,43 @@ export function createBacktestWorkspace(context) {
       }
 
       function renderAtomicLauncherOptions() {
-        const datasetOptions = state.backtest.datasets.map((dataset) => `<option value="${escapeHtml(dataset.dataset_id)}">${escapeHtml(dataset.dataset_id.slice(0, 18))}… · ${escapeHtml(dataset.start_date)} ～ ${escapeHtml(dataset.end_date)}</option>`).join("");
-        atomicBacktestDataset.innerHTML = datasetOptions || '<option value="">請先建立 READY 資料集</option>';
+        const selectedSet = atomicBacktestSet.value;
         atomicBacktestSet.innerHTML = state.strategyCatalog.strategySets.length
           ? state.strategyCatalog.strategySets.map((set) => `<option value="${escapeHtml(set.strategy_set_version_id)}">${escapeHtml(set.display_name_zh_tw)} · ${escapeHtml(set.policy)} · ${set.members.length} 個版本</option>`).join("")
           : '<option value="">請先到策略管理建立組合</option>';
-        atomicBacktestSubmit.disabled = !state.strategyCatalog.atomicAvailable || !state.strategyCatalog.strategySets.length || !state.backtest.datasets.length;
+        if ([...atomicBacktestSet.options].some((option) => option.value === selectedSet)) {
+          atomicBacktestSet.value = selectedSet;
+        }
+        const projection = state.backtest.atomicDataset;
+        if (projection?.available) {
+          const mode = projection.resolution_mode === "BASELINE_DATASET" ? "沿用 Baseline" : `binding r${projection.binding_revision}`;
+          const amount = projection.amount_kind
+            ? ` · VWAP：${escapeHtml(projection.vwap_semantic || projection.amount_kind)}`
+            : "";
+          atomicBacktestDatasetStatus.innerHTML = `<strong>歷史資料已就緒</strong> · ${escapeHtml(mode)}<br><span>${escapeHtml(projection.start_date)} ～ ${escapeHtml(projection.end_date)} · ${Number(projection.symbol_count || 0).toLocaleString("zh-TW")} 檔 · ${Number(projection.bar_count || 0).toLocaleString("zh-TW")} 根 Kbar · ${projection.research_eligible ? "研究資料" : "探索資料"}${amount}</span>`;
+        } else if (projection) {
+          atomicBacktestDatasetStatus.innerHTML = `<strong>目前不可建立回測</strong> · ${escapeHtml(projection.message || "Dataset binding 尚未就緒")}`;
+        } else {
+          atomicBacktestDatasetStatus.innerHTML = "<strong>正在確認 ATOMIC_BACKTEST_DEFAULT…</strong>";
+        }
+        atomicBacktestSubmit.disabled = !state.strategyCatalog.atomicAvailable || !state.strategyCatalog.strategySets.length || !projection?.available;
+      }
+
+      async function refreshAtomicDatasetProjection() {
+        if (!atomicBacktestSet.value) {
+          state.backtest.atomicDataset = null;
+          renderAtomicLauncherOptions();
+          return;
+        }
+        const query = new URLSearchParams({ strategy_set_version_id: atomicBacktestSet.value });
+        if (atomicBacktestBaseline.value) query.set("baseline_run_id", atomicBacktestBaseline.value);
+        try {
+          const payload = await backtestFetch(`/api/backtests/atomic-dataset?${query.toString()}`);
+          state.backtest.atomicDataset = payload.binding;
+        } catch (error) {
+          state.backtest.atomicDataset = { available: false, message: error.message };
+        }
+        renderAtomicLauncherOptions();
       }
 
       function renderAtomicManagement() {
@@ -504,58 +527,6 @@ export function createBacktestWorkspace(context) {
         }
       }
 
-      function selectedBacktestStrategies(side) {
-        return [...document.querySelectorAll(`[data-backtest-strategy="${side}"]:checked`)]
-          .map((input) => input.value);
-      }
-
-      function syncBacktestStrategyControls(side) {
-        const prefix = side === "ENTRY" ? "entry" : "exit";
-        const label = side === "ENTRY" ? "買入" : "賣出";
-        const selectedCount = selectedBacktestStrategies(side).length;
-        const policy = document.getElementById(`backtest-${prefix}-policy`);
-        const minimum = document.getElementById(`backtest-${prefix}-min`);
-        const count = document.getElementById(`backtest-${prefix}-count`);
-        count.textContent = selectedCount === 0
-          ? "尚未選擇"
-          : selectedCount === 1 ? "已選 1 個 · 單一策略" : `已選 ${selectedCount} 個 · 多策略`;
-        minimum.max = String(Math.max(1, selectedCount));
-        if (Number(minimum.value) > Math.max(1, selectedCount)) minimum.value = String(Math.max(1, selectedCount));
-        minimum.disabled = policy.value !== "AT_LEAST_N";
-        minimum.setAttribute("aria-label", `${label}至少觸發策略數`);
-        syncDailySmaExitWarning();
-      }
-
-      function syncDailySmaExitWarning() {
-        const warning = document.getElementById("backtest-daily-sma-warning");
-        if (!warning) return;
-        const dailySmaIds = new Set([
-          "sma_20_60_golden_cross_entry_v1",
-          "sma_20_60_death_cross_exit_v1"
-        ]);
-        const selected = [
-          ...selectedBacktestStrategies("ENTRY"),
-          ...selectedBacktestStrategies("EXIT")
-        ];
-        const hasDailySma = selected.some((strategyId) => dailySmaIds.has(strategyId));
-        const hasEodExit = selected.includes("end_of_day_exit_v1");
-        warning.hidden = !(hasDailySma && hasEodExit);
-        warning.textContent = hasDailySma && hasEodExit
-          ? "提醒：EOD exit 會在每個日 K 收盤平倉，可能不符合 MA 趨勢持有；這不會自動變更你選擇的策略。"
-          : "";
-      }
-
-      function validateBacktestStrategyPolicy(side, selected) {
-        const prefix = side === "ENTRY" ? "entry" : "exit";
-        const label = side === "ENTRY" ? "買入" : "賣出";
-        const policy = document.getElementById(`backtest-${prefix}-policy`).value;
-        const minimum = Number(document.getElementById(`backtest-${prefix}-min`).value);
-        if (!selected.length) throw new Error(`請至少選擇一個${label}策略。`);
-        if (policy === "AT_LEAST_N" && (!Number.isInteger(minimum) || minimum < 1 || minimum > selected.length)) {
-          throw new Error(`${label}的 N 必須介於 1 與已選策略數量 ${selected.length}。`);
-        }
-      }
-
       function setBacktestDrawer(open) {
         if (open) setWorkspace("backtest");
         else setWorkspace("overview");
@@ -572,104 +543,9 @@ export function createBacktestWorkspace(context) {
       function renderBacktestNotice() {
         const capabilities = state.backtest.capabilities;
         if (!capabilities) return;
-        const providerWarning = capabilities.provider_supports_kbars
-          ? "可由目前資料 Provider 準備 Kbar。"
-          : "目前資料 Provider 不支援歷史 Kbar；可改用已匯入資料集。";
-        backtestNotice.innerHTML = `<strong>${escapeHtml(capabilities.database)}</strong> 保存 immutable run、策略版本與交易紀錄。${escapeHtml(providerWarning)}<br>${escapeHtml(capabilities.safety)}`;
-        backtestSyncButton.disabled = !capabilities.enabled || !capabilities.provider_supports_kbars;
-        backtestRunSubmit.disabled = !capabilities.enabled;
-      }
-
-      function renderBacktestIncrementalStatus() {
-        const payload = state.backtest.incrementalSync;
-        if (!payload) return;
-        const schedule = payload.schedule || {};
-        const job = payload.latest_job;
-        const labels = {
-          STOPPED: "尚未啟動",
-          DISABLED: "已停用",
-          WAITING_FOR_CLOSE: "等待收盤",
-          WAITING_FOR_TRADING_DAY: "等待交易日",
-          WAITING_FOR_BASE: "等待初始資料集",
-          BLOCKED_BY_ACTIVE_JOB: "等待既有下載工作",
-          SYNC_IN_PROGRESS: "增量同步中",
-          SUBMITTED: "已提交",
-          COMPLETED: "本日同步完成",
-          ERROR: "排程錯誤"
-        };
-        const scheduleLabel = labels[schedule.state] || schedule.state || "未知";
-        const latest = job
-          ? `<br>最近工作：${escapeHtml(job.job_id)} · ${escapeHtml(backtestStatusLabel(job.status))} · ${escapeHtml(job.progress_message || "")}`
-          : "<br>尚無增量同步紀錄。";
-        backtestIncrementalStatus.innerHTML = `<strong>收盤後自動增量同步：${escapeHtml(scheduleLabel)}</strong> · 每個工作日 ${escapeHtml(schedule.close_time || "14:30")}（${escapeHtml(schedule.timezone || "Asia/Taipei")}）<br>${escapeHtml(schedule.message || "只下載各檔 watermark 之後的新 Kbar；舊資料集保持不變。")} ${latest}`;
-      }
-
-      function renderBacktestSetup(remembered = {}) {
-        const entry = state.backtest.strategies.filter((strategy) => strategy.side === "ENTRY");
-        const exit = state.backtest.strategies.filter((strategy) => strategy.side === "EXIT");
-        const datasets = state.backtest.datasets;
-        const priorDataset = remembered.dataset || backtestDataset.value;
-        const selectedDataset = datasets.find((dataset) => dataset.dataset_id === priorDataset) || datasets[0] || null;
-        const availableCapabilities = new Set(selectedDataset?.capabilities || []);
-        const missingCapabilities = (strategy) => (strategy.required_capabilities || []).filter((capability) => !availableCapabilities.has(capability));
-        const entrySelected = new Set(remembered.entry || selectedBacktestStrategies("ENTRY"));
-        const exitSelected = new Set(remembered.exit || selectedBacktestStrategies("EXIT"));
-        entry.forEach((strategy) => { if (missingCapabilities(strategy).length) entrySelected.delete(strategy.strategy_id); });
-        exit.forEach((strategy) => { if (missingCapabilities(strategy).length) exitSelected.delete(strategy.strategy_id); });
-        if (!entrySelected.size) {
-          const defaultEntry = entry.find((strategy) => strategy.status === "ACTIVE" && !missingCapabilities(strategy).length);
-          if (defaultEntry) entrySelected.add(defaultEntry.strategy_id);
-        }
-        if (!exitSelected.size) {
-          exit.filter((strategy) => strategy.status === "ACTIVE" && !missingCapabilities(strategy).length)
-            .forEach((strategy) => exitSelected.add(strategy.strategy_id));
-        }
-        const renderStrategies = (items, side, selected) => items.map((strategy) => {
-          const missing = missingCapabilities(strategy);
-          const disabledReason = missing.length ? `資料集缺少：${missing.join("、")}` : "";
-          const experimental = strategy.status === "EXPERIMENTAL" ? " · 實驗中" : "";
-          return `
-          <label class="strategy-option" title="${escapeHtml(disabledReason || JSON.stringify(strategy.parameters || {}))}">
-            <input type="checkbox" data-backtest-strategy="${side}" value="${escapeHtml(strategy.strategy_id)}" aria-describedby="backtest-${side === "ENTRY" ? "entry" : "exit"}-help" ${selected.has(strategy.strategy_id) ? "checked" : ""} ${missing.length ? "disabled" : ""}>
-            <span><strong>${escapeHtml(strategy.display_name_zh_tw)}</strong><span>${escapeHtml(strategy.strategy_id)} · ${escapeHtml(strategy.version)} · ${escapeHtml(strategyPhaseLabels[strategy.session_phase] || strategy.session_phase || "全時段")}${escapeHtml(experimental)}${disabledReason ? ` · ${escapeHtml(disabledReason)}` : ""}</span></span>
-          </label>
-        `;
-        }).join("") || '<p class="backtest-empty">沒有可用策略。</p>';
-        document.getElementById("backtest-entry-strategies").innerHTML = renderStrategies(entry, "ENTRY", entrySelected);
-        document.getElementById("backtest-exit-strategies").innerHTML = renderStrategies(exit, "EXIT", exitSelected);
-        document.querySelectorAll("[data-backtest-strategy]").forEach((input) => {
-          input.addEventListener("change", () => syncBacktestStrategyControls(input.dataset.backtestStrategy));
-        });
-        ["ENTRY", "EXIT"].forEach((side) => {
-          const prefix = side === "ENTRY" ? "entry" : "exit";
-          document.getElementById(`backtest-${prefix}-policy`).onchange = () => syncBacktestStrategyControls(side);
-          syncBacktestStrategyControls(side);
-        });
-
-        backtestDataset.innerHTML = datasets.length
-          ? datasets.map((dataset) => `<option value="${escapeHtml(dataset.dataset_id)}">${escapeHtml(dataset.dataset_id.slice(0, 18))}… · ${escapeHtml(dataset.start_date)} ～ ${escapeHtml(dataset.end_date)} · ${dataset.bar_count.toLocaleString("zh-TW")} 根${dataset.research_eligible ? "" : " · exploratory"}</option>`).join("")
-          : '<option value="">請先建立或匯入 READY 資料集</option>';
-        if (selectedDataset) backtestDataset.value = selectedDataset.dataset_id;
-        backtestDataset.onchange = () => renderBacktestSetup({
-          dataset: backtestDataset.value,
-          entry: selectedBacktestStrategies("ENTRY"),
-          exit: selectedBacktestStrategies("EXIT")
-        });
-
-        backtestDatasetList.innerHTML = datasets.length ? datasets.map((dataset) => `
-          <button class="backtest-list-item" type="button" data-backtest-dataset="${escapeHtml(dataset.dataset_id)}">
-            <strong>${escapeHtml(dataset.dataset_id)}</strong>
-            <span>${escapeHtml(dataset.source)} · ${escapeHtml(dataset.profile)} · ${dataset.bar_count.toLocaleString("zh-TW")} 根 · ${dataset.research_eligible ? "可作正式研究檢核" : "探索性（CURRENT_SNAPSHOT）"}</span>
-            <span>能力：${escapeHtml((dataset.capabilities || []).join("、") || "OHLCV 未確認")}${dataset.cadence_summary?.dominant_interval_seconds ? ` · dominant ${escapeHtml(dataset.cadence_summary.dominant_interval_seconds)} 秒` : ""}</span>
-            <span>${escapeHtml(dataset.start_date)} ～ ${escapeHtml(dataset.end_date)}${dataset.storage_format === "JSONL_DELTA_V1" ? ` · 增量 ${Number(dataset.delta_bar_count || 0).toLocaleString("zh-TW")} 根 · parent ${escapeHtml(dataset.parent_dataset_id || "—")}` : " · 完整基礎資料集"}${dataset.issues?.length ? ` · ${escapeHtml(dataset.issues[0])}` : ""}</span>
-          </button>
-        `).join("") : '<p class="backtest-empty">尚未有 READY 資料集。請建立，或使用匯入的 date-effective 資料集。</p>';
-        backtestDatasetList.querySelectorAll("[data-backtest-dataset]").forEach((button) => {
-          button.addEventListener("click", () => {
-            backtestDataset.value = button.dataset.backtestDataset;
-            backtestDataset.dispatchEvent(new Event("change"));
-          });
-        });
+        const projection = state.backtest.atomicDataset;
+        const readiness = projection?.available ? `已鎖定 ${escapeHtml(projection.dataset_id)}` : "預設 Dataset binding 尚未就緒";
+        backtestNotice.innerHTML = `<strong>${escapeHtml(capabilities.database)}</strong> 保存 immutable run、策略版本、資料快照與交易紀錄。${readiness}。<br>${escapeHtml(capabilities.safety)}`;
       }
 
       function renderBacktestRuns() {
@@ -682,7 +558,7 @@ export function createBacktestWorkspace(context) {
             <span>${escapeHtml(run.progress_message || "等待處理")} · ${formatNumber((run.progress || 0) * 100, 0)}%</span>
             <span>${escapeHtml(run.created_at || "")} · ${escapeHtml(run.config?.change_note || "原始設定")}</span>
           </button>
-        `).join("") : '<p class="backtest-empty">尚未建立回測。資料集 READY 後可在上方選擇策略。</p>';
+        `).join("") : '<p class="backtest-empty">尚未建立回測。回到「設定策略組合」即可開始。</p>';
         backtestRunList.querySelectorAll("[data-backtest-run]").forEach((button) => {
           button.addEventListener("click", () => loadBacktestRunDetails(button.dataset.backtestRun));
         });
@@ -900,26 +776,19 @@ export function createBacktestWorkspace(context) {
       }
 
       async function refreshBacktestWorkspace() {
-        const remembered = { dataset: backtestDataset.value, entry: selectedBacktestStrategies("ENTRY"), exit: selectedBacktestStrategies("EXIT") };
-        const [capabilities, incrementalSync, datasetsPayload, strategiesPayload, runsPayload, qualificationPayload] = await Promise.all([
+        const [capabilities, runsPayload, qualificationPayload] = await Promise.all([
           backtestFetch("/api/backtests/capabilities"),
-          backtestFetch("/api/backtests/datasets/incremental-sync"),
-          backtestFetch("/api/backtests/datasets"),
-          backtestFetch("/api/backtests/strategies"),
           backtestFetch("/api/backtests/runs"),
           backtestFetch("/api/backtests/qualifications").catch((error) => ({ qualifications: [], unavailable: error.message }))
         ]);
         state.backtest.capabilities = capabilities;
-        state.backtest.incrementalSync = incrementalSync;
-        state.backtest.datasets = datasetsPayload.datasets || [];
-        state.backtest.strategies = strategiesPayload.strategies || [];
         state.backtest.runs = runsPayload.runs || [];
         state.backtest.qualifications = qualificationPayload.qualifications || [];
         state.backtest.qualificationUnavailable = qualificationPayload.unavailable || null;
         await refreshStrategyCatalog();
+        renderAtomicLauncherOptions();
+        await refreshAtomicDatasetProjection();
         renderBacktestNotice();
-        renderBacktestIncrementalStatus();
-        renderBacktestSetup(remembered);
         renderBacktestRuns();
         const active = state.backtest.runs.find((run) => run.run_id === state.backtest.activeRunId);
         if (!active) {
@@ -978,106 +847,41 @@ export function createBacktestWorkspace(context) {
         }
       }
 
-      async function startBacktestDatasetSync() {
-        backtestSyncButton.disabled = true;
-        backtestSyncButton.textContent = "建立中…";
-        try {
-          const job = await backtestFetch("/api/backtests/datasets/sync", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ years: Number(backtestSyncYears.value) })
-          });
-          backtestFormMessage.textContent = "資料集工作已建立，背景下載中；可繼續操作頁面。";
-          await pollBacktestDatasetJob(job.job_id);
-        } catch (error) {
-          backtestFormMessage.textContent = `無法建立資料集：${error.message}`;
-        } finally {
-          backtestSyncButton.textContent = "建立資料集";
-          backtestSyncButton.disabled = !state.backtest.capabilities?.provider_supports_kbars;
-        }
-      }
-
-      async function pollBacktestDatasetJob(jobId) {
-        for (let attempt = 0; attempt < 720; attempt += 1) {
-          const job = await backtestFetch(`/api/backtests/datasets/jobs/${encodeURIComponent(jobId)}`);
-          backtestFormMessage.textContent = `${backtestStatusLabel(job.status)} · ${job.progress_message || ""} · ${formatNumber((job.progress || 0) * 100, 0)}%`;
-          if (["COMPLETED", "FAILED", "CANCELLED"].includes(job.status)) {
-            await refreshBacktestWorkspace();
-            if (job.status !== "COMPLETED") throw new Error(job.error_message || "資料集工作未完成");
-            return;
-          }
-          await new Promise((resolve) => window.setTimeout(resolve, 2000));
-        }
-        throw new Error("資料集工作等待逾時；工作仍可能在背景繼續，可稍後重新整理。");
-      }
-
-      function backtestRunRequest() {
-        const entry = selectedBacktestStrategies("ENTRY");
-        const exit = selectedBacktestStrategies("EXIT");
-        if (!backtestDataset.value) throw new Error("請先選擇 READY 歷史資料集。");
-        validateBacktestStrategyPolicy("ENTRY", entry);
-        validateBacktestStrategyPolicy("EXIT", exit);
-        return {
-          dataset_id: backtestDataset.value,
-          entry_strategy_ids: entry,
-          exit_strategy_ids: exit,
-          entry_policy: document.getElementById("backtest-entry-policy").value,
-          exit_policy: document.getElementById("backtest-exit-policy").value,
-          entry_min_trigger_count: Number(document.getElementById("backtest-entry-min").value),
-          exit_min_trigger_count: Number(document.getElementById("backtest-exit-min").value),
-          priority_order: [...exit, ...entry],
-          starting_cash: document.getElementById("backtest-cash").value,
-          position_fraction: document.getElementById("backtest-position-fraction").value,
-          target_win_rate: document.getElementById("backtest-win-rate").value,
-          minimum_oos_trades: Number(document.getElementById("backtest-oos-trades").value),
-          idempotency_key: newIdempotencyKey("backtest")
-        };
-      }
-
-      async function submitBacktestRun(event) {
-        event.preventDefault();
-        try {
-          const request = backtestRunRequest();
-          backtestRunSubmit.disabled = true;
-          backtestRunSubmit.textContent = "建立中…";
-          const payload = await backtestFetch("/api/backtests/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) });
-          state.backtest.activeRunId = payload.run.run_id;
-          state.backtest.activeResult = { run: payload.run };
-          backtestFormMessage.textContent = "回測已建立；資料只會從封存資料集讀取。";
-          await refreshBacktestWorkspace();
-          await loadBacktestRunDetails(payload.run.run_id);
-        } catch (error) {
-          backtestFormMessage.textContent = `無法建立回測：${error.message}`;
-        } finally {
-          backtestRunSubmit.disabled = false;
-          backtestRunSubmit.textContent = "建立回測";
-        }
-      }
-
       async function submitAtomicBacktestRun(event) {
         event.preventDefault();
-        if (!atomicBacktestSet.value || !atomicBacktestDataset.value) {
-          atomicBacktestMessage.textContent = "請先選擇策略組合與 READY 歷史資料集。";
+        if (!atomicBacktestSet.value) {
+          atomicBacktestMessage.textContent = "請先選擇策略組合。";
           return;
         }
         atomicBacktestSubmit.disabled = true;
         atomicBacktestSubmit.textContent = "建立中…";
+        const requestBody = pendingAtomicBacktestRequest || {
+          strategy_set_version_id: atomicBacktestSet.value,
+          starting_cash: document.getElementById("atomic-backtest-cash").value,
+          position_fraction: document.getElementById("atomic-backtest-position-fraction").value,
+          change_note: document.getElementById("atomic-backtest-note").value.trim(),
+          baseline_run_id: atomicBacktestBaseline.value || null,
+          expected_binding_revision: state.backtest.atomicDataset?.resolution_mode === "DEFAULT_BINDING" ? state.backtest.atomicDataset.binding_revision : null,
+          expected_dataset_digest: state.backtest.atomicDataset?.resolution_mode === "DEFAULT_BINDING" ? state.backtest.atomicDataset.dataset_digest : null,
+          actor_id: "local-researcher"
+        };
         try {
-          const payload = await atomicMutation("/api/backtests/runs/atomic", "POST", {
-            dataset_id: atomicBacktestDataset.value,
-            strategy_set_version_id: atomicBacktestSet.value,
-            starting_cash: document.getElementById("atomic-backtest-cash").value,
-            position_fraction: document.getElementById("atomic-backtest-position-fraction").value,
-            change_note: document.getElementById("atomic-backtest-note").value.trim(),
-            baseline_run_id: atomicBacktestBaseline.value || null,
-            actor_id: "local-researcher"
-          }, "atomic-backtest");
+          const payload = await atomicMutation("/api/backtests/runs/atomic", "POST", requestBody, "atomic-backtest");
+          pendingAtomicBacktestRequest = null;
           state.backtest.activeRunId = payload.run.run_id;
           state.backtest.activeResult = { run: payload.run };
-          atomicBacktestMessage.textContent = "原子策略回測已建立；Run 已鎖定精確版本與 Feature 證據。";
+          atomicBacktestMessage.textContent = "原子策略回測已建立；Run 已自動鎖定歷史快照、精確版本與 Feature 證據。";
           await refreshBacktestWorkspace();
           await loadBacktestRunDetails(payload.run.run_id);
         } catch (error) {
-          atomicBacktestMessage.textContent = `無法建立原子策略回測：${error.message}`;
+          if (error.httpStatus === 409) {
+            pendingAtomicBacktestRequest = null;
+            await refreshAtomicDatasetProjection();
+            atomicBacktestMessage.textContent = `Dataset binding 已變更，請確認更新後的資料範圍再送出：${error.message}`;
+          } else {
+            if (!error.httpStatus) pendingAtomicBacktestRequest = requestBody;
+            atomicBacktestMessage.textContent = `無法建立原子策略回測：${error.message}`;
+          }
         } finally {
           atomicBacktestSubmit.textContent = "用原子策略建立回測";
           renderAtomicLauncherOptions();
@@ -1098,43 +902,36 @@ export function createBacktestWorkspace(context) {
           await refreshBacktestWorkspace();
           await loadBacktestRunDetails(state.backtest.activeRunId);
         } catch (error) {
-          backtestFormMessage.textContent = `無法${action === "cancel" ? "取消" : "重試"}回測：${error.message}`;
+          atomicBacktestMessage.textContent = `無法${action === "cancel" ? "取消" : "重試"}回測：${error.message}`;
         }
       }
 
       async function cloneBacktestRun() {
         const runId = state.backtest.activeRunId;
         const changeNote = document.getElementById("backtest-change-note").value.trim();
-        if (!runId) { backtestFormMessage.textContent = "請先選擇一個既有回測。"; return; }
-        if (!changeNote) { backtestFormMessage.textContent = "請填寫調整說明，才能建立可比較的 challenger。"; return; }
+        if (!runId) { atomicBacktestMessage.textContent = "請先選擇一個既有回測。"; return; }
+        if (!changeNote) { atomicBacktestMessage.textContent = "請填寫調整說明，才能建立可比較的 challenger。"; return; }
         try {
           const activeRun = state.backtest.activeResult?.run;
           const atomic = Boolean(activeRun?.config?.atomic_strategy_run_snapshot);
-          let payload;
-          if (atomic) {
-            payload = await atomicMutation(`/api/backtests/runs/${encodeURIComponent(runId)}/clone`, "POST", {
-              idempotency_key: null,
-              actor_id: "local-researcher",
-              change_note: changeNote,
-              overrides: {
-                starting_cash: document.getElementById("backtest-cash").value,
-                position_fraction: document.getElementById("backtest-position-fraction").value,
-                target_win_rate: document.getElementById("backtest-win-rate").value,
-                minimum_oos_trades: Number(document.getElementById("backtest-oos-trades").value)
-              }
-            }, "atomic-backtest-clone");
-          } else {
-            const request = backtestRunRequest();
-            payload = await backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/clone`, {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ idempotency_key: newIdempotencyKey("backtest-clone"), change_note: changeNote, overrides: { strategy_set: { entry_strategy_ids: request.entry_strategy_ids, exit_strategy_ids: request.exit_strategy_ids, entry_policy: request.entry_policy, exit_policy: request.exit_policy, entry_min_trigger_count: request.entry_min_trigger_count, exit_min_trigger_count: request.exit_min_trigger_count, priority_order: request.priority_order }, starting_cash: request.starting_cash, position_fraction: request.position_fraction, target_win_rate: request.target_win_rate, minimum_oos_trades: request.minimum_oos_trades } })
-            });
+          if (!atomic) {
+            atomicBacktestMessage.textContent = "舊版 Run 只保留查閱，請用原子策略組合建立新的回測。";
+            return;
           }
+          const payload = await atomicMutation(`/api/backtests/runs/${encodeURIComponent(runId)}/clone`, "POST", {
+            idempotency_key: null,
+            actor_id: "local-researcher",
+            change_note: changeNote,
+            overrides: {
+              starting_cash: document.getElementById("atomic-backtest-cash").value,
+              position_fraction: document.getElementById("atomic-backtest-position-fraction").value
+            }
+          }, "atomic-backtest-clone");
           state.backtest.activeRunId = payload.run.run_id;
           await refreshBacktestWorkspace();
           await loadBacktestRunDetails(payload.run.run_id);
         } catch (error) {
-          backtestFormMessage.textContent = `無法複製回測：${error.message}`;
+          atomicBacktestMessage.textContent = `無法複製回測：${error.message}`;
         }
       }
 
@@ -1203,11 +1000,13 @@ export function createBacktestWorkspace(context) {
         strategySetMinimum.disabled = strategySetPolicy.value !== "AT_LEAST_N";
       });
       atomicBacktestForm?.addEventListener("submit", submitAtomicBacktestRun);
+      atomicBacktestSet?.addEventListener("change", refreshAtomicDatasetProjection);
+      atomicBacktestBaseline?.addEventListener("change", refreshAtomicDatasetProjection);
       qualificationForm?.addEventListener("submit", submitBacktestQualification);
       qualificationAddFold?.addEventListener("click", addQualificationFold);
       addQualificationFold();
       addQualificationFold();
 
 
-  return { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, refreshBacktestWorkspace, startBacktestDatasetSync, submitBacktestRun, cloneBacktestRun, compareBacktestRuns, pollBacktestWorkspace };
+  return { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, refreshBacktestWorkspace, cloneBacktestRun, compareBacktestRuns, pollBacktestWorkspace };
 }

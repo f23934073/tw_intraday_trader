@@ -31,6 +31,12 @@ from fastapi.staticfiles import StaticFiles
 
 from app import build_provider
 from backtest.application import BacktestApplicationService
+from backtest.dataset_binding import (
+    AtomicBacktestBindingChanged,
+    AtomicBacktestBindingUnavailable,
+    DatasetBindingConflict,
+    DatasetBindingIntegrityError,
+)
 from backtest.migrations import apply_migrations
 from backtest.repository import BacktestIdempotencyConflict
 from backtest.scheduler import AfterCloseIncrementalScheduler
@@ -460,7 +466,6 @@ class AtomicStrategySetCreateRequest(StrictRequest):
 
 
 class AtomicBacktestRunRequest(StrictRequest):
-    dataset_id: str
     strategy_set_version_id: str
     starting_cash: str = "10000000"
     position_fraction: str = "0.10"
@@ -472,6 +477,11 @@ class AtomicBacktestRunRequest(StrictRequest):
     max_drawdown_guardrail: str = "0.20"
     change_note: str = ""
     baseline_run_id: str | None = None
+    expected_binding_revision: int | None = Field(default=None, ge=1)
+    expected_dataset_digest: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
     actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
 
 
@@ -687,6 +697,21 @@ def get_incremental_scheduler() -> AfterCloseIncrementalScheduler:
 
 
 def _backtest_http_error(error: Exception) -> HTTPException:
+    if isinstance(error, AtomicBacktestBindingChanged):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "ATOMIC_BACKTEST_BINDING_CHANGED", "message": str(error)},
+        )
+    if isinstance(error, AtomicBacktestBindingUnavailable):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "DATASET_BINDING_UNAVAILABLE", "message": str(error)},
+        )
+    if isinstance(error, DatasetBindingIntegrityError):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "DATASET_BINDING_INTEGRITY_ERROR", "message": str(error)},
+        )
     if isinstance(error, BacktestIdempotencyConflict):
         return HTTPException(
             status_code=409,
@@ -1839,7 +1864,7 @@ def create_atomic_backtest_run(
             actor_id=payload.actor_id,
             operation_scope="backtest-run:create:atomic",
             idempotency_key=key,
-            outcome="CONFLICT" if isinstance(error, (BacktestIdempotencyConflict, StrategyCatalogConflict)) else "FAILED",
+            outcome="CONFLICT" if isinstance(error, (BacktestIdempotencyConflict, StrategyCatalogConflict, DatasetBindingConflict)) else "FAILED",
             request_document=request_document,
             change_note=payload.change_note,
             details={"error_type": type(error).__name__, "message": str(error)},
@@ -1872,6 +1897,22 @@ def create_atomic_backtest_run(
 @app.get("/api/backtests/capabilities")
 def backtest_capabilities() -> dict[str, Any]:
     return get_backtest_service().capabilities()
+
+
+@app.get("/api/backtests/atomic-dataset")
+def atomic_backtest_dataset(
+    strategy_set_version_id: str,
+    baseline_run_id: str | None = None,
+) -> dict[str, Any]:
+    try:
+        return {
+            "binding": get_backtest_service().atomic_backtest_dataset_status(
+                strategy_set_version_id=strategy_set_version_id,
+                baseline_run_id=baseline_run_id,
+            )
+        }
+    except Exception as error:
+        raise _backtest_http_error(error) from error
 
 
 @app.get("/api/strategies")

@@ -1,9 +1,62 @@
 # Progress: FinMind Backtest Dataset Bridge
 
+## 2026-08-23 — G5 Code approval / formal acceptance start
+
+- Independent re-review approved the G5 code remediation; formal progress
+  remains 80% until the exact application binding and full Web Run pass.
+- User authorized a scoped G5 commit, then formal G3 Dataset registration,
+  default activation, full 28,325,340-bar Atomic Run, and evidence audit.
+- Started commit-payload reconstruction against the current shared worktree.
+  No push is authorized, and trading-related scopes remain excluded.
+
+## 2026-08-23 — G5 Review remediation start
+
+- Independent Review returned `G5 REQUEST CHANGES`; formal progress remains
+  80% and no Gate status was advanced.
+- Scoped remediation to three items: runtime VWAP amount-contract validation
+  and evidence, atomic worker status transitions, and terminal progress flush
+  for CANCELLED/FAILED.
+- Success criteria are explicit negative tests for missing/unknown amount
+  contracts, persisted VWAP evidence, an accepted-cancel/worker-transition
+  race, and worker-level cancellation/failure progress preservation.
+- Application activation, full 28,325,340-bar Web Run, Local Paper, broker,
+  real-money, commit, and push remain outside this remediation.
+- Added exact VWAP amount-contract validation to the completed-Kbar Feature
+  adapter, bound the verified contract into runtime construction and per-bar
+  Feature input digests, and persisted the resulting evidence in VWAP strategy
+  evaluations.
+- Added repository-level expected-status CAS for worker PREFLIGHT/RUNNING
+  transitions and changed the worker to reject a conflicting `CANCELLING`
+  state instead of overwriting it.
+- Added forced progress flush in both CANCELLED and FAILED worker paths.
+- First remediation subset passed `6 passed, 3 skipped`; the three skips are
+  PostgreSQL-only binding/CAS cases. Relevant Python compilation also passed.
+- Expanded no-DSN focused scope passed `89 passed, 6 skipped`; direct SQLite
+  CAS plus worker-level terminal flush scope passed `10 passed`.
+- Full no-DSN regression passed `1336 passed, 34 skipped`.
+- Started a loopback-only disposable PostgreSQL 17 container, then focused
+  runtime/CAS verification passed `19 passed` and the complete PostgreSQL suite
+  passed `1370 passed`.
+- Stopped the disposable container; its `--rm` lifecycle removed the test
+  database. No application/development PostgreSQL or formal G3 binding changed.
+- Marked the three findings `REMEDIATED / AWAITING RE-REVIEW`; formal G5 remains
+  NOT PASSED at 80%, and no commit or push was created.
+- Final relevant Python compilation and repository-wide `git diff --check`
+  passed. A final scoped status inspection confirmed only the existing G5
+  candidate files plus this remediation/planning evidence are in scope; shared
+  Local Paper, Strategy Set, live-trading, odd-lot, and research changes remain
+  untouched and unstaged.
+
 ## 2026-08-23 — G4 commit packaging / G5 authorization
 
 - User explicitly requested a scoped G4 commit and authorized G5 only after
   that commit is created.
+- Created local scoped commit `2e873cd` (`feat(backtest): bind immutable
+  FinMind datasets`) after `14 passed, 8 skipped`, relevant compilation, and
+  cached whitespace validation. No push and no application database activation.
+- G5 is now explicitly authorized and implementation has started. Its scope is
+  the selector-less Web Atomic Run resolver, binding preconditions, immutable
+  Dataset evidence, VWAP amount-contract preflight, and bounded control traffic.
 - Started shared-worktree payload inspection. The G4 commit must exclude
   Local Paper, Strategy Set archive, `.planning/.active_plan`, and all other
   concurrent changes; no push is authorized.
@@ -16,7 +69,63 @@
 - Built the scoped G4 index: 14 files, with partial hunks for the mixed files.
   `011_strategy_set_archives.sql`, archive tests, Local Paper settings, and all
   other concurrent work remain unstaged. `git diff --cached --check` passes.
-- G5 implementation remains pending until the reviewed G4 payload is committed.
+- G5 implementation is in progress; application-environment activation, Local
+  Paper, broker, and real-money work remain out of scope.
+- Initial G5 seam audit confirms the current Web launcher still renders an
+  independently guessed preferred READY Dataset and the application still
+  falls back to `_select_ready_dataset()` for standalone Atomic Runs. The
+  existing early Run lookup and Baseline inheritance can be retained but need
+  request-digest and exact binding contracts.
+- The worker's engine callbacks currently issue one durable progress UPDATE and
+  cancellation SELECT on every local callback. Both will be wrapped rather than
+  changing the deterministic engine cadence.
+- Chosen implementation boundary: a new PostgreSQL-only atomic Run creation
+  method will re-check the binding head and Dataset row inside the same
+  transaction as `backtest_runs` insertion. Retry/clone remain on their
+  existing original-config path and never consult the current binding.
+- No G5 migration is required: request/binding/amount evidence will be optional
+  canonical mappings inside `BacktestRunConfig`, covered by the existing config
+  digest and row/config identity verification.
+- Legacy automatic-selection tests are now identified as contract tests that
+  must be replaced: standalone Atomic Runs will require PostgreSQL binding
+  preconditions, while explicit original-Dataset retry/clone behavior remains
+  covered separately.
+- G5 will expose a server-owned binding status endpoint keyed by the selected
+  exact Strategy Set. The browser will hold its revision/digest projection and
+  submit those exact preconditions; it will no longer fetch or rank Dataset
+  rows for launch readiness.
+- First focused execution reached product code successfully: `19 passed,
+  3 skipped, 4 failed`. All four failures are expected stale assertions from
+  the removed automatic READY-Dataset selection and old launcher copy; no new
+  runtime exception or syntax failure was found.
+- Replaced the stale service tests with PostgreSQL-binding fixtures and added
+  response-loss-after-switch, stale-precondition, same-key/different-request,
+  Feature amount evidence, missing amount contract, and bounded control-traffic
+  regressions. PostgreSQL cases remain skip-gated when no test DSN is present.
+- Updated API/UI contract tests for the server-owned projection and exact
+  revision/digest submission. The current no-DSN G5 focused slice is green at
+  `25 passed, 5 skipped` before adding the remaining direct PostgreSQL lock and
+  comparability assertions.
+- Expanded no-DSN G5 scope is green at `44 passed, 13 skipped`. The skips are
+  PostgreSQL-only binding/transaction cases. `TEST_POSTGRES_DSN` is not set;
+  Docker is installed but daemon access requires an explicit sandbox
+  escalation before disposable PostgreSQL verification.
+- Disposable PostgreSQL 17 focused verification passed `27 passed`; full
+  no-DSN regression passed `1330 passed, 33 skipped`; full disposable
+  PostgreSQL regression passed `1363 passed`. The test database/container was
+  stopped and auto-removed, and no application/development database was used.
+- The first PostgreSQL attempt had two teardown errors because two new tests
+  gave the fixture-owned connection to `service.close()`. They were corrected
+  to use independent test connections; product assertions had already passed,
+  and the clean reruns above are the current evidence.
+- Final candidate rerun after adding Baseline/Challenger Dataset inheritance:
+  PostgreSQL focused `27 passed`, disposable PostgreSQL full `1363 passed`.
+  Python compilation, Dashboard JavaScript syntax, and `git diff --check` all
+  pass. The second disposable container was stopped and auto-removed.
+- G5 code is now an implementation candidate awaiting independent Review. The
+  formal Gate remains 80% / G5 NOT YET PASSED because the exact G3 full Dataset
+  has not been activated in an application PostgreSQL environment and its
+  28,325,340-bar Web Run acceptance has not been authorized or executed.
 
 ## 2026-08-23 — G4 implementation start
 
@@ -407,3 +516,36 @@
   own handoff evidence; an independent semantic rebuild requires a new plan.
 - No product code, tests, migration, Dataset, PostgreSQL row, Local Paper, or
   broker behavior was modified.
+### Scoped commit preflight — 2026-08-23
+
+- Confirmed branch `codex/organize-uncommitted-20260821` at `2e873cd` before staging.
+- The shared worktree contains many unrelated Local Paper, live-trading, odd-lot, Strategy Set and research changes; the G5 commit must be reconstructed file-by-file and hunk-by-hunk.
+- A combined diff was too large to review safely, so staging will use focused per-file inspection followed by an exact cached-diff audit.
+- Push remains unauthorized.
+
+### Scoped payload classification
+
+- The amount-contract runtime/evidence changes in `atomic_strategy_adapter.py` and `feature_adapters.py`, Run evidence/domain changes, binding exceptions, repository CAS transitions, bounded control helper, and their tests are all G5 scope.
+- `backtest/application.py` is predominantly G5, but contains an unrelated Strategy Set archive admission check/import that must stay out of this commit.
+- PostgreSQL and generic repository changes are G5 scope: locked binding Run creation, idempotent replay lookup, and atomic status CAS.
+- Dashboard and README files remain mixed and require hunk-level staging.
+
+### Scoped index reconstruction
+
+- Staged the G5 core/domain/repository/control files and focused tests as whole files.
+- Reconstructed `backtest/application.py` so the staged version includes binding/idempotency/amount/CAS changes but excludes the concurrent Strategy Set archive check and import.
+- Reconstructed Dashboard server and historical-backtest HTML/entrypoint/workspace hunks while excluding Local Paper settings and Strategy Management redesign/archive work.
+- Added the response-loss request cache and removed the withdrawn legacy strategy selector only in the staged JavaScript projection.
+- While the scoped index was being reconstructed, another authorized task advanced
+  the shared branch from `2e873cd` to `072c0c5` with a Local Paper commit. The G5
+  patch was rebased through a detached temporary tree object; the shared index was
+  not cleared or overwritten.
+- Resolved the two expected cache-version conflicts by retaining the committed
+  Local Paper asset version while adding the Atomic Backtest module assertion.
+- Finished mixed Web tests and README hunk selection. Strategy Set archive and UI
+  redesign coverage remain outside this commit.
+- Exported the exact alternate-index tree to an isolated directory and verified:
+  focused G5 scope `53 passed, 14 skipped`; full no-DSN `1328 passed, 33 skipped`;
+  Python compilation, Dashboard JavaScript syntax, and cached whitespace all pass.
+- Next: commit the audited alternate-index tree, then begin the separately
+  authorized application PostgreSQL activation and full Web Atomic Run.

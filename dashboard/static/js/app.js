@@ -1,7 +1,7 @@
 import { createCandidateWorkspace } from "./workspaces/candidates.js";
 import { createSimulationWorkspace } from "./workspaces/simulation.js?v=20260823-local-paper-settings-v1";
 import { createMomentumWorkspace } from "./workspaces/momentum.js";
-import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260821-atomic-strategy-v2";
+import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260823-atomic-backtest-auto-dataset-v1";
 
         const state = {
           workspace: "overview",
@@ -45,16 +45,14 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260821-ato
         },
         backtest: {
           capabilities: null,
-          incrementalSync: null,
-          datasets: [],
-          strategies: [],
+          atomicDataset: null,
           runs: [],
           qualifications: [],
           qualificationUnavailable: null,
           activeRunId: null,
           activeResult: null,
           activeTrade: null,
-          activeTab: "data",
+          activeTab: "setup",
           polling: false
         }
       };
@@ -154,15 +152,6 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260821-ato
       const backtestClose = document.getElementById("backtest-close");
       const backtestBackdrop = document.getElementById("backtest-backdrop");
       const backtestNotice = document.getElementById("backtest-notice");
-      const backtestIncrementalStatus = document.getElementById("backtest-incremental-status");
-      const backtestSyncButton = document.getElementById("backtest-sync");
-      const backtestRefreshButton = document.getElementById("backtest-refresh");
-      const backtestSyncYears = document.getElementById("backtest-sync-years");
-      const backtestDatasetList = document.getElementById("backtest-dataset-list");
-      const backtestDataset = document.getElementById("backtest-dataset");
-      const backtestRunForm = document.getElementById("backtest-run-form");
-      const backtestRunSubmit = document.getElementById("backtest-run-submit");
-      const backtestFormMessage = document.getElementById("backtest-form-message");
       const backtestRunList = document.getElementById("backtest-run-list");
       const backtestRunCount = document.getElementById("backtest-run-count");
       const backtestResult = document.getElementById("backtest-result");
@@ -186,7 +175,7 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260821-ato
         candidates: ["工作區", "候選清單", "選擇標的，查看規則分數、盤中快照與 K 線評估"],
         momentum: ["研究工具", "盤中動能", "即時候選策略、規則值與待確認告警"],
         strategy: ["研究工具", "策略管理", "參數草稿、不可變版本、策略組合與歷史回測"],
-        backtest: ["研究工具", "歷史回測", "資料準備、策略組合、結果與比較"],
+        backtest: ["研究工具", "歷史回測", "策略組合、結果與資格比較"],
         orders: ["本機紙上模擬", "委託", "查看送出、成交、取消與拒絕的委託"],
         "order-ticket": ["本機紙上模擬", "模擬下單", "建立只存在本機記憶體的限價委託"],
         positions: ["本機紙上模擬", "持倉", "查看已成交部位、行情與未實現損益"],
@@ -309,7 +298,7 @@ Object.assign(services, candidates, simulation, momentum, backtest);
 const { getVisibleCandidates, renderCandidates, selectCandidate, renderCandidateDetail, loadSelectedHistory } = candidates;
 const { renderSimulation, renderPositions, renderOrders, renderDataHealth, openOrderTicket, setOrdersDrawer, setPositionsDrawer, setSimulationSettingsDrawer, loadSimulationProjection, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, cancelSimulationOrder } = simulation;
 const { renderMomentum, syncMomentumDialog, openMomentumDialog, closeMomentumDialog, openOrderTicketFromMomentum, bootstrapMomentumStream, checkMomentumHeartbeat, pollMomentumProjection } = momentum;
-const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, refreshBacktestWorkspace, startBacktestDatasetSync, submitBacktestRun, cloneBacktestRun, compareBacktestRuns, pollBacktestWorkspace } = backtest;
+const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, refreshBacktestWorkspace, cloneBacktestRun, compareBacktestRuns, pollBacktestWorkspace } = backtest;
 
       function renderPremarketContext(context) {
         const status = context?.health?.state || context?.status || "UNAVAILABLE";
@@ -509,9 +498,6 @@ const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, ref
       });
       backtestClose.addEventListener("click", () => setBacktestDrawer(false));
       backtestBackdrop.addEventListener("click", () => setBacktestDrawer(false));
-      backtestRefreshButton.addEventListener("click", () => refreshBacktestWorkspace().catch((error) => { backtestNotice.textContent = `無法重新整理：${error.message}`; }));
-      backtestSyncButton.addEventListener("click", startBacktestDatasetSync);
-      backtestRunForm.addEventListener("submit", submitBacktestRun);
       backtestCloneButton.addEventListener("click", cloneBacktestRun);
       backtestCompareButton.addEventListener("click", compareBacktestRuns);
       document.addEventListener("keydown", (event) => {

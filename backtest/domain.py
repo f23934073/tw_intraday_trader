@@ -261,6 +261,10 @@ class BacktestRunConfig:
     parent_run_id: str | None = None
     change_note: str = ""
     atomic_strategy_run_snapshot: Mapping[str, Any] | None = None
+    atomic_run_request: Mapping[str, Any] | None = None
+    atomic_run_request_digest: str | None = None
+    dataset_binding_snapshot: Mapping[str, Any] | None = None
+    dataset_amount_contract: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -285,6 +289,39 @@ class BacktestRunConfig:
                 "atomic_strategy_run_snapshot",
                 dict(self.atomic_strategy_run_snapshot),
             )
+        for field_name in (
+            "atomic_run_request",
+            "dataset_binding_snapshot",
+            "dataset_amount_contract",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(self, field_name, dict(value))
+        if (self.atomic_run_request is None) != (self.atomic_run_request_digest is None):
+            raise ValueError("atomic Run request evidence 與 digest 必須同時存在")
+        if self.atomic_run_request_digest is not None:
+            request_digest = str(self.atomic_run_request_digest)
+            if len(request_digest) != 64 or any(
+                character not in "0123456789abcdef" for character in request_digest
+            ):
+                raise ValueError("atomic_run_request_digest 必須是 lowercase SHA-256")
+            if self.atomic_run_request is None or digest(self.atomic_run_request) != request_digest:
+                raise ValueError("atomic Run request digest 與 request evidence 不一致")
+        if self.dataset_binding_snapshot is not None:
+            binding = dict(self.dataset_binding_snapshot)
+            if (
+                binding.get("dataset_id") != self.dataset_id
+                or binding.get("dataset_digest") != self.dataset_digest
+            ):
+                raise ValueError("Dataset binding snapshot 與 Run Dataset identity 不一致")
+            if self.atomic_run_request is not None and self.baseline_run_id is None:
+                if (
+                    self.atomic_run_request.get("expected_binding_revision")
+                    != binding.get("revision")
+                    or self.atomic_run_request.get("expected_dataset_digest")
+                    != self.dataset_digest
+                ):
+                    raise ValueError("Atomic Run binding precondition evidence 不一致")
 
     @property
     def config_digest(self) -> str:
@@ -314,6 +351,14 @@ class BacktestRunConfig:
             value["research_baseline_digest"] = self.research_baseline_digest
         if self.atomic_strategy_run_snapshot is not None:
             value["atomic_strategy_run_snapshot"] = dict(self.atomic_strategy_run_snapshot)
+        if self.atomic_run_request is not None:
+            value["atomic_run_request"] = dict(self.atomic_run_request)
+        if self.atomic_run_request_digest is not None:
+            value["atomic_run_request_digest"] = self.atomic_run_request_digest
+        if self.dataset_binding_snapshot is not None:
+            value["dataset_binding_snapshot"] = dict(self.dataset_binding_snapshot)
+        if self.dataset_amount_contract is not None:
+            value["dataset_amount_contract"] = dict(self.dataset_amount_contract)
         return value
 
     @classmethod
@@ -340,6 +385,26 @@ class BacktestRunConfig:
             atomic_strategy_run_snapshot=(
                 dict(value["atomic_strategy_run_snapshot"])
                 if value.get("atomic_strategy_run_snapshot") is not None
+                else None
+            ),
+            atomic_run_request=(
+                dict(value["atomic_run_request"])
+                if value.get("atomic_run_request") is not None
+                else None
+            ),
+            atomic_run_request_digest=(
+                str(value["atomic_run_request_digest"])
+                if value.get("atomic_run_request_digest") is not None
+                else None
+            ),
+            dataset_binding_snapshot=(
+                dict(value["dataset_binding_snapshot"])
+                if value.get("dataset_binding_snapshot") is not None
+                else None
+            ),
+            dataset_amount_contract=(
+                dict(value["dataset_amount_contract"])
+                if value.get("dataset_amount_contract") is not None
                 else None
             ),
         )

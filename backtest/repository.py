@@ -90,13 +90,37 @@ class BacktestRepository(Protocol):
     def create_run(self, record: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
         ...
 
+    def create_atomic_run_from_binding(
+        self,
+        record: Mapping[str, Any],
+        *,
+        binding_name: str,
+        expected_binding_revision: int,
+        expected_dataset_digest: str,
+        request_digest: str,
+    ) -> tuple[dict[str, Any], bool]:
+        ...
+
     def get_run(self, run_id: str) -> dict[str, Any]:
+        ...
+
+    def get_run_by_idempotency_key(self, idempotency_key: str) -> dict[str, Any] | None:
         ...
 
     def list_runs(self) -> list[dict[str, Any]]:
         ...
 
     def update_run(self, run_id: str, **changes: Any) -> dict[str, Any]:
+        ...
+
+    def transition_run_status(
+        self,
+        run_id: str,
+        *,
+        expected_statuses: tuple[str, ...],
+        status: str,
+        progress_message: str,
+    ) -> tuple[dict[str, Any], bool]:
         ...
 
     def cancel_atomic_run(
@@ -514,6 +538,17 @@ class _JsonBacktestRepository:
             self._after_run_created(cursor, created_payload)
             return created_payload, False
 
+    def create_atomic_run_from_binding(
+        self,
+        record: Mapping[str, Any],
+        *,
+        binding_name: str,
+        expected_binding_revision: int,
+        expected_dataset_digest: str,
+        request_digest: str,
+    ) -> tuple[dict[str, Any], bool]:
+        raise RuntimeError("standalone Atomic Run binding requires PostgreSQL")
+
     def _after_run_created(self, cursor: Any, run: Mapping[str, Any]) -> None:
         """Transactional extension point; SQLite/legacy Runs have no family ledger."""
 
@@ -523,6 +558,18 @@ class _JsonBacktestRepository:
             raw = cursor.fetchone()
             if raw is None:
                 raise KeyError(f"找不到回測工作：{run_id}")
+            return self._run_payload(self._row(cursor, raw))
+
+    def get_run_by_idempotency_key(self, idempotency_key: str) -> dict[str, Any] | None:
+        with self._cursor() as cursor:
+            self._execute(
+                cursor,
+                "SELECT * FROM backtest_runs WHERE idempotency_key = ?",
+                (idempotency_key,),
+            )
+            raw = cursor.fetchone()
+            if raw is None:
+                return None
             return self._run_payload(self._row(cursor, raw))
 
     def list_runs(self) -> list[dict[str, Any]]:
@@ -548,6 +595,44 @@ class _JsonBacktestRepository:
                 raise KeyError(f"找不到回測工作：{run_id}")
             self._execute(cursor, "SELECT * FROM backtest_runs WHERE run_id = ?", (run_id,))
             return self._run_payload(self._row(cursor, cursor.fetchone()))
+
+    def transition_run_status(
+        self,
+        run_id: str,
+        *,
+        expected_statuses: tuple[str, ...],
+        status: str,
+        progress_message: str,
+    ) -> tuple[dict[str, Any], bool]:
+        if not expected_statuses:
+            raise ValueError("expected_statuses 不可為空")
+        placeholders = ", ".join("?" for _ in expected_statuses)
+        with self._transaction() as cursor:
+            self._execute(
+                cursor,
+                f"""
+                UPDATE backtest_runs
+                SET status = ?, progress_message = ?, updated_at = ?
+                WHERE run_id = ? AND status IN ({placeholders})
+                """,
+                (
+                    status,
+                    progress_message,
+                    _now(),
+                    run_id,
+                    *expected_statuses,
+                ),
+            )
+            changed = cursor.rowcount == 1
+            self._execute(
+                cursor,
+                "SELECT * FROM backtest_runs WHERE run_id = ?",
+                (run_id,),
+            )
+            raw = cursor.fetchone()
+            if raw is None:
+                raise KeyError(f"找不到回測工作：{run_id}")
+            return self._run_payload(self._row(cursor, raw)), changed
 
     def save_result(self, run_id: str, result: Mapping[str, Any]) -> None:
         summary = result["summary"]

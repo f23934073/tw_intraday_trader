@@ -12,9 +12,11 @@ FinMind history.sqlite3
 → Web Atomic Backtest
 ```
 
-The original planning task is complete. G1 through G4 are approved. G5 Web Run,
-application-environment activation, Local Paper, broker, and real-money behavior
-remain unauthorized or outside this slice.
+G1 through G4 are approved. The reviewed G4 scope was committed locally as
+`2e873cd`; G5 Code Review is now approved. The user explicitly authorized a
+scoped G5 commit followed by application-environment activation and the formal
+full-Dataset Web Run. Local Paper, broker, and real-money behavior remain
+unauthorized or outside this slice.
 
 ## Current Status
 
@@ -23,7 +25,8 @@ remain unauthorized or outside this slice.
 - G2 Small Materialization: approved / gate passed
 - G3 Full Artifact: approved / gate passed
 - G4 PostgreSQL Binding: approved / gate passed
-- G5 Web Run: not authorized
+- G5 Code Review: approved
+- G5 Formal Gate: authorized end-to-end acceptance in progress / not passed
 - Formal Gate progress: 80%
 
 ## Review Findings Closure
@@ -144,39 +147,51 @@ Status: COMPLETE / G4 APPROVED / GATE PASSED
 
 ### Phase 5 — Run resolver and Web projection
 
-- [ ] Keep response-loss replay on the original Run Dataset.
-- [ ] Keep Challenger Runs on the Baseline Dataset.
-- [ ] Resolve new standalone Atomic Runs exclusively through the default
+Status: CODE REVIEW APPROVED / FORMAL GATE NOT PASSED
+
+- [x] Keep response-loss replay on the original Run Dataset.
+- [x] Keep Challenger Runs on the Baseline Dataset.
+- [x] Resolve new standalone Atomic Runs exclusively through the default
       binding and capability validation.
-- [ ] Fail closed for missing, stale, non-READY, or incompatible bindings.
-- [ ] Make the Web status render the actual binding, not an independently
+- [x] Fail closed for missing, stale, non-READY, or incompatible bindings.
+- [x] Make the Web status render the actual binding, not an independently
       guessed preferred Dataset.
-- [ ] Preserve all Dataset identity in the immutable Run snapshot.
-- [ ] Require `expected_binding_revision` and `expected_dataset_digest` for new
+- [x] Preserve all Dataset identity in the immutable Run snapshot.
+- [x] Require `expected_binding_revision` and `expected_dataset_digest` for new
       standalone Run creation; mismatch returns 409 without creating a Run.
-- [ ] Resolve same-key response-loss replay before reading current binding.
-- [ ] Preserve amount kind/digest in Run, Feature evidence, and comparability.
-- [ ] Add Backtest-runtime `vwap_session_v1` amount-contract preflight; generic
+- [x] Resolve same-key response-loss replay before reading current binding.
+- [x] Preserve amount kind/digest in Run, Feature evidence, and comparability.
+- [x] Add Backtest-runtime `vwap_session_v1` amount-contract preflight; generic
       `OHLCV` alone is insufficient, while Local Paper keeps its own binding.
+- [x] Bind the verified amount contract into the actual Feature runtime,
+      Feature input digest, and persisted VWAP evaluation evidence.
+- [x] Replace worker PREFLIGHT/RUNNING writes with atomic expected-status CAS
+      transitions so an accepted cancellation cannot be overwritten.
 
 ### Phase 6 — Large-run operational throttling
 
-- [ ] Keep cheap in-process cancellation checks at the existing event cadence.
-- [ ] Poll durable Run cancellation state at most once per configured monotonic
+Status: COMPLETE / REVIEW REMEDIATED / G5 GATE NOT PASSED
+
+- [x] Keep cheap in-process cancellation checks at the existing event cadence.
+- [x] Poll durable Run cancellation state at most once per configured monotonic
       interval, default one second.
-- [ ] Write progress at most once per configured interval or meaningful
+- [x] Write progress at most once per configured interval or meaningful
       progress delta; always flush terminal states.
-- [ ] Keep operational timing outside deterministic result/config digests.
-- [ ] Prove timestamp-major payloads avoid external sorting.
+- [x] Force pending progress through worker CANCELLED and FAILED terminal paths.
+- [x] Keep operational timing outside deterministic result/config digests.
+- [x] Prove timestamp-major payloads avoid external sorting.
 
 ### Phase 7 — End-to-end acceptance
+
+Status: AUTHORIZED / IN PROGRESS
 
 - [x] Run focused no-DSN tests.
 - [x] Run disposable PostgreSQL migration/concurrency tests.
 - [x] Materialize one real full semantic snapshot and record its dynamic
       evidence.
 - [ ] Register and activate the exact Dataset in PostgreSQL.
-- [ ] Confirm the Web displays the bound Dataset identity.
+- [x] Confirm the Web projection displays the transaction-bound Dataset identity
+      in focused API/UI tests.
 - [ ] Complete one Atomic Run against the bound full Dataset.
 - [ ] Verify no FinMind, Shioaji, account, broker order, CA, or trade
       subscription call occurs during backtest.
@@ -214,3 +229,5 @@ Status: COMPLETE / G4 APPROVED / GATE PASSED
 | One parallel source read used a misspelled repository path | 1 | Retried once with the verified workspace path; no write occurred |
 | G4 inspection used the wrong migration module path | 1 | `backtest.migrations` is implemented by `backtest/migrations.py`; reran the read with the exact file |
 | New CAS regression used unqualified audit table names | 1 | The fixture inspection connection had no repository `search_path`; schema-qualified all three read-only count queries |
+| Combined remediation patch contained an empty import hunk | 1 | No files changed; split the import, repository, and application edits into independently verifiable patches |
+| Sandbox denied Docker daemon inspection for G5 PostgreSQL verification | 1 | Product/no-DSN tests were unaffected; request the scoped local Docker escalation for a disposable PostgreSQL rerun |

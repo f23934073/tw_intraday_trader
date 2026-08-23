@@ -1,4 +1,4 @@
-"""Static contracts for the historical-backtest strategy selector."""
+"""Static contracts for the Atomic-only historical-backtest workflow."""
 
 from pathlib import Path
 
@@ -10,20 +10,27 @@ APP = (STATIC / "js" / "app.js").read_text(encoding="utf-8")
 BACKTEST = (STATIC / "js" / "workspaces" / "backtest.js").read_text(encoding="utf-8")
 
 
-def test_backtest_selector_explains_and_tracks_single_or_multiple_strategies() -> None:
-    assert "可選 1 個單獨執行，也可複選多個" in HTML
-    assert 'id="backtest-entry-count"' in HTML
-    assert 'id="backtest-exit-count"' in HTML
-    assert "function syncBacktestStrategyControls(side)" in BACKTEST
-    assert 'selectedCount === 1 ? "已選 1 個 · 單一策略"' in BACKTEST
-    assert "`已選 ${selectedCount} 個 · 多策略`" in BACKTEST
+def test_backtest_uses_published_atomic_strategy_sets_only() -> None:
+    assert 'id="atomic-backtest-form"' in HTML
+    assert 'id="atomic-backtest-set"' in HTML
+    assert 'id="backtest-run-form"' not in HTML
+    assert "舊版固定策略回測" not in HTML
+    assert "selectedBacktestStrategies" not in BACKTEST
 
 
-def test_backtest_selector_validates_at_least_n_against_selected_count() -> None:
-    assert "function validateBacktestStrategyPolicy(side, selected)" in BACKTEST
-    assert 'policy === "AT_LEAST_N"' in BACKTEST
-    assert "minimum > selected.length" in BACKTEST
-    assert 'minimum.disabled = policy.value !== "AT_LEAST_N"' in BACKTEST
+def test_backtest_does_not_require_manual_dataset_selection_or_preparation() -> None:
+    for removed_id in (
+        "backtest-tab-data",
+        "backtest-panel-data",
+        "backtest-sync-years",
+        "backtest-sync",
+        "backtest-dataset-list",
+        "atomic-backtest-dataset",
+    ):
+        assert f'id="{removed_id}"' not in HTML
+    assert 'id="atomic-backtest-dataset-status"' in HTML
+    assert "/api/backtests/datasets/sync" not in BACKTEST
+    assert "dataset_id: atomicBacktestDataset.value" not in BACKTEST
 
 
 def test_dashboard_uses_collapsible_left_navigation_and_neutral_homepage() -> None:
@@ -39,17 +46,17 @@ def test_dashboard_uses_collapsible_left_navigation_and_neutral_homepage() -> No
     assert "function setWorkspace(workspace)" in APP
 
 
-def test_historical_backtest_has_four_accessible_tabs() -> None:
+def test_historical_backtest_has_three_accessible_tabs() -> None:
     assert 'role="tablist" aria-label="歷史回測工作流程"' in HTML
-    assert HTML.count('role="tab"') == 4
-    assert HTML.count('role="tabpanel"') == 4
+    assert HTML.count('data-backtest-tab=') == 3
+    assert HTML.count('data-backtest-panel=') == 3
     for tab_name in (
-        "1. 準備歷史資料",
-        "2. 設定策略組合",
-        "3. 回測工作與結果",
-        "4. Baseline／Challenger 比較",
+        "1. 設定策略組合",
+        "2. 回測工作與結果",
+        "3. Baseline／Challenger 比較",
     ):
         assert tab_name in HTML
+    assert 'id="backtest-tab-setup" type="button" role="tab" aria-selected="true"' in HTML
     assert "function setBacktestTab(tabName)" in APP
 
 
@@ -68,24 +75,15 @@ def test_mobile_navigation_keeps_aria_state_in_sync_with_the_hidden_sidebar() ->
     assert "syncSidebarToggle();" in APP
 
 
-def test_historical_data_tab_shows_automatic_incremental_sync_status() -> None:
-    assert 'id="backtest-incremental-status"' in HTML
-    assert "/api/backtests/datasets/incremental-sync" in BACKTEST
-    assert "收盤後自動增量同步" in HTML
+def test_atomic_launcher_reports_server_managed_dataset_readiness() -> None:
+    assert "/api/backtests/atomic-dataset" in BACKTEST
+    assert "ATOMIC_BACKTEST_DEFAULT" in BACKTEST
+    assert "expected_binding_revision" in BACKTEST
+    assert "expected_dataset_digest" in BACKTEST
+    assert 'dataset.status === "READY"' not in BACKTEST
+    assert "/api/backtests/datasets\"" not in BACKTEST
 
 
-def test_experimental_backtest_strategies_are_not_default_selected() -> None:
-    assert 'strategy.status === "ACTIVE"' in BACKTEST
-    assert 'strategy.status === "EXPERIMENTAL" ? " · 實驗中"' in BACKTEST
-    assert 'missingCapabilities(strategy).length' in BACKTEST
-    assert 'missing.length ? "disabled"' in BACKTEST
-    assert "dataset.capabilities" in BACKTEST
-
-
-def test_daily_sma_selection_warns_about_conflicting_eod_exit_without_overriding_user_choice() -> None:
-    assert 'id="backtest-daily-sma-warning"' in HTML
-    assert "function syncDailySmaExitWarning()" in BACKTEST
-    assert "sma_20_60_golden_cross_entry_v1" in BACKTEST
-    assert "sma_20_60_death_cross_exit_v1" in BACKTEST
-    assert "EOD exit 會在每個日 K 收盤平倉" in BACKTEST
-    assert "成交時域" in BACKTEST
+def test_legacy_runs_are_read_only_in_the_atomic_clone_flow() -> None:
+    assert "舊版 Run 只保留查閱" in BACKTEST
+    assert "backtestRunRequest" not in BACKTEST
