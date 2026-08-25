@@ -157,6 +157,63 @@ Explain why the completed atomic `above_vwap_entry_v1` backtest failed, using it
 - **Status:** G0 approved / contract frozen; implementation and execution remain
   unauthorized
 
+### R5.3: Implement revision-2 G1 pure domain and immutable artifacts
+
+- [x] Implement the exact canonical wire-format, identity, ledger, match,
+  episode, result-summary, parity, and postflight domain contracts.
+- [x] Implement filesystem artifact publication/reload with exact-schema,
+  canonical-byte, digest, interruption, and clean-root replay enforcement.
+- [x] Define only the G1 ports required by the pure application boundary; do
+  not implement PostgreSQL, HTTP, migration, or formal replay composition.
+- [x] Add golden math, matching, schema, tamper, parity, ordering,
+  bounded-memory, and artifact recovery regression coverage.
+- [x] Run focused G1 tests, relevant no-DSN regression, Python compilation, and
+  whitespace checks without providers or PostgreSQL.
+- **Status:** Review changes required; Gate not passed
+
+### R5.4: Remediate revision-2 G1 exact identity findings
+
+- [x] Bind every `ReplayBuild` to the exact cost identity used for calculation,
+  reject manifest cost substitution, and revalidate it in postflight.
+- [x] Require authoritative source-bar bytes and verify the parsed full
+  `HistoricalBar` projection matches the matcher-visible bar fields.
+- [x] Normalize execution horizon only when the field is absent or JSON null;
+  reject empty/falsey aliases in decisions and orders.
+- [x] Add the three independent negative probes as focused regressions and
+  rerun focused, related no-DSN, full no-DSN, compilation, and whitespace.
+- **Status:** complete / G1 independently approved and Gate passed
+
+### R5.5: Implement revision-2 G2 PostgreSQL and application boundary
+
+- [x] Freeze the G2 application request/result/status contracts without adding
+  Dashboard, formal replay execution, provider, broker, or Local Paper paths.
+- [x] Add the next numbered PostgreSQL migration for replay head,
+  registration, operation, result, and chunk persistence.
+- [x] Implement durable same-key replay, different-key authoritative no-op,
+  head locking, revision CAS, baseline/v1/Dataset/order-seal revalidation, and
+  terminal status transitions.
+- [x] Implement fail-closed application reads that expose economics only after
+  an accepted postflight and revalidate current baseline/artifact/result
+  evidence.
+- [x] Add strict request, idempotency, concurrency, status-CAS, tamper,
+  redaction, migration, and PostgreSQL regressions.
+- [x] Run focused no-DSN checks, disposable PostgreSQL checks when explicitly
+  available, compilation, and whitespace verification.
+- **Status:** remediation required / formal Gate not passed
+
+### R5.6: Remediate revision-2 G2 Review findings
+
+- [x] Bind durable operation replay results to the queried baseline, exact
+  request preflight, referenced registration, replay identity, head revision,
+  and ledger identity.
+- [x] Preserve current durable progress for `RUNNING -> CANCELLING`; allow only
+  the worker terminal transition to write final cancellation progress.
+- [x] Reject boolean, float, Decimal, string, and other numeric aliases for
+  request and operation-result revisions.
+- [x] Add independent scope-substitution, progress-preservation, and numeric-
+  alias regressions; rerun focused PostgreSQL and full no-DSN/PostgreSQL suites.
+- **Status:** complete / G2 independently approved and Formal Gate passed
+
 ## Gate
 
 This phase passes only when the failure attribution is reproducible from immutable evidence and the next experiment cannot reuse the same evidence as both hypothesis-generation and validation. Passing this phase authorizes research implementation only; it does not authorize Local Paper or broker execution.
@@ -170,6 +227,8 @@ Gate R5 revision 1 design: APPROVED / CONTRACT FROZEN
 Gate R5 revision 1 implementation: APPROVED / PREFLIGHT REMEDIATION PASSED
 Gate R5 revision 1 execution: COMPLETE / INVALID / ACCEPTANCE REJECTED
 Gate R5 contract revision 2: APPROVED / G0 PASSED / CONTRACT FROZEN
+Gate R5 revision 2 G1: APPROVED / FORMAL GATE PASSED
+Gate R5 revision 2 G2: APPROVED / FORMAL GATE PASSED / PROGRESS 50%
 Gate R6 v1: SUPERSEDED / NOT AUTHORIZED
 Gate R6 revision 2: BLOCKED ON ACCEPTED R5 V2 / NOT AUTHORIZED
 ```
@@ -197,3 +256,5 @@ Gate R6 revision 2: BLOCKED ON ACCEPTED R5 V2 / NOT AUTHORIZED
 | Validation orchestration contained JavaScript-invalid literal backticks | 2 | No command ran; remove literal Markdown fences from the script and use `chr(96)` in the checker. |
 | Formatting probe called unavailable `python` binary | 1 | Re-run with the repository's `.venv/bin/python`; no file was changed by the failed probe. |
 | Commit packaging format probe emitted unquoted path literals in Python | 1 | No file was changed; pass the file list as individually quoted `Path(...)` values. |
+| G1 related-regression command named a nonexistent cash-admission application test file | 1 | Use `rg --files tests` and rerun only the actual domain, CLI, API, and PostgreSQL test modules; no test or product code ran in the failed attempt. |
+| New G2 remediation probes fail on numeric revision alias and cancel progress reset | 1 | Expected red phase: implement exact integer validation and progress-preserving cancellation before rerunning. |

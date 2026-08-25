@@ -402,3 +402,160 @@
 - User authorized a scoped local commit containing only the R5 revision-2 design
   and these approval records. Push, G1 implementation, formal replay, R6, Local
   Paper, provider, broker, and real-money execution remain unauthorized.
+
+### R5 revision 2 G1 implementation
+
+- User explicitly authorized the next phase. Started G1 only: pure domain,
+  minimal ports, immutable filesystem artifact adapter, and focused tests.
+- Frozen boundary: no migration, PostgreSQL repository, Dashboard/API, official
+  full-Dataset preflight, formal replay, R6, Local Paper, provider, broker, or
+  real-money operation.
+- Verification targets are exact-schema/canonical-byte fail closed behavior,
+  deterministic one-lot math and matching, six-layer multiplicity parity,
+  bounded streaming/external-sort behavior, interruption cleanup, clean-root
+  digest replay, focused/no-DSN regression, compilation, and whitespace.
+- Inspected the frozen schemas and existing canonical/domain/artifact patterns.
+  Chosen implementation keeps `domain.py` framework-free, uses minimal Protocol
+  ports, and places filesystem publication/reload in `artifact_store.py`.
+- Added the isolated `backtest.research_replay` package, G1-only ports, strict
+  canonical primitives, decision-ledger/order derivation builders, streaming
+  cross-session matcher, Decimal one-lot episode/summary calculator, and exact
+  layer multiplicity comparison. No persistence or external-call composition
+  was added.
+- Initial package compilation passes. The next G1 slice is exact manifest
+  construction plus filesystem publication/reload; PostgreSQL remains out of
+  scope.
+- Added exact ledger/match/result manifest builders and verifiers, cost/result
+  identities, strict postflight conditions/diagnostics, all six bidirectional
+  layer comparisons, and frozen-signal-count fail-closed behavior.
+- Added atomic filesystem publication/reload for ledger, match-plan, and result
+  directories. Payloads use bounded sequence-sorted chunks, canonical JSONL,
+  fsync, exact file sets, SHA/parity/semantic checks, same-digest replay, and
+  `BaseException` temporary cleanup. Compilation remains green.
+- First focused domain/artifact regression passes `14 passed`.
+- Self-review identified three pre-Gate hardening items: reconstruct row IDs,
+  distinguish matched-entry from completed-match counts, and recompute Result
+  row/formula/summary consistency instead of trusting a self-consistent
+  manifest. These are being fixed before broader regression.
+- Closed all three self-review items and added fail-closed regressions for
+  reconstructed IDs/economics, entry-versus-exit counts, and a payload plus
+  manifest digest rewrite that attempts to alter episode economics.
+- Replaced the production match path with one-pass streaming state and added a
+  400-session regression proving only one waiting/pending signal is retained in
+  the fixture. Added bounded fan-in external merge coverage with 150 one-row
+  chunks and canonical sequence reconstruction.
+- G1 focused domain/artifact result: `22 passed`.
+- Related R5 no-DSN result: `38 passed, 6 skipped`; skips are PostgreSQL-only.
+- Full no-DSN regression: `1412 passed, 41 skipped`.
+- Python compilation and scoped whitespace checks pass. No external provider,
+  broker, PostgreSQL, official full-Dataset, or formal replay operation ran.
+- **Disposition:** `G1 IMPLEMENTATION CANDIDATE / REVIEW REQUIRED`; formal G1
+  remains not passed, and G2-G5/R6 remain unauthorized.
+
+### R5 revision 2 G1 Review remediation
+
+- Independent Review returned `REQUEST CHANGES` with two P1 blockers and one
+  P2 finding: cost identity substitution, source-bar bytes/value divergence,
+  and falsey execution-horizon normalization.
+- Reopened G1 as `REMEDIATION REQUIRED / GATE NOT PASSED` before changing
+  product code. The remediation is limited to the three domain identities and
+  their adversarial tests; downstream phases remain unauthorized.
+- Added exact cost identity to `ReplayBuild`; manifest construction compares
+  caller parameters, ReplayBuild evidence, and economics reconstructed from
+  modeled rows. Postflight and artifact publication/reload repeat the digest
+  comparison and reject relabelled economics before final publication.
+- Removed source-byte synthesis from `ObservedBar.from_historical_bar()`.
+  Exact canonical bytes are now mandatory, must round-trip through the complete
+  `HistoricalBar` projection, and must match symbol/time/session/open/close used
+  by the matcher.
+- Restricted horizon normalization to missing/null only in both decision and
+  order construction. Empty string, false, and zero regressions fail closed.
+- Remediation focused result currently passes `26 passed`; broader regression
+  remains to be run before returning to Review.
+- Related R5 no-DSN remediation regression passes `42 passed, 6 skipped`.
+- Full no-DSN remediation regression passes `1416 passed, 41 skipped`.
+- Source AST/compilation, untracked-file trailing-whitespace/EOF checks, and
+  tracked planning/document `git diff --check` pass. Generated cache artifacts
+  inside the new package were removed; unrelated existing caches were untouched.
+- **Disposition:** all three Review findings are closed in the candidate;
+  `G1 REMEDIATION CANDIDATE / RE-REVIEW REQUIRED`. Formal G1 is not yet passed,
+  and G2-G5/R6 remain unauthorized.
+
+### R5 revision 2 G1 approval and G2 implementation
+
+- Independent short re-review approved G1 and reported no new finding.
+- Recorded `G1 APPROVED / FORMAL GATE PASSED`; formal progress is 33.3%.
+- User explicitly authorized G2 only. Began PostgreSQL/application inventory,
+  confirmed migration 015 is currently the next available number, and kept G3
+  full Dataset preflight plus all execution/trading authorities blocked.
+- Selected a bounded-context implementation: G1 domain remains framework-free;
+  application depends on ports; PostgreSQL owns atomic mutation and current
+  durable-evidence verification; filesystem artifacts remain immutable outer
+  evidence and locator paths do not enter identity.
+
+### R5 revision 2 G2 implementation candidate
+
+- Added PostgreSQL migration 015 with dedicated replay head, immutable
+  registration, durable operation replay, accepted result root, and bounded
+  result-chunk tables. Revision 2 remains outside normal `backtest_runs`.
+- Added strict application use cases and ports for create/start/cancel/fail,
+  terminal publication, redacted status reads, and accepted-economics reads.
+- Added advisory-lock serialization, revision CAS, same-key response-loss
+  replay, different-key authoritative no-op, and atomic registration/operation/
+  result/postflight publication.
+- Same-key response-loss replay is resolved before current filesystem artifacts
+  or baseline evidence. A new operation still revalidates baseline result,
+  config, Dataset, v1 INVALID lineage, decision/order inception seal, and exact
+  G1 ledger/match artifacts.
+- Registration preserves and revalidates exact request JSON/digest, actor,
+  change note, preflight, ledger, match, and order-derivation identity. Status
+  CAS cannot overwrite a committed `CANCELLING` state.
+- Economics remain unavailable unless postflight is `ACCEPTED`. INVALID
+  publication persists diagnostics but creates no result root or economics.
+- Focused no-DSN G1/G2/migration result: `35 passed, 9 skipped`.
+- Disposable PostgreSQL 17 focused result: `11 passed`.
+- Full no-DSN regression: `1454 passed, 49 skipped`.
+- Full disposable PostgreSQL 17 regression: `1503 passed`.
+- Python compilation and `git diff --check` pass. No official Dataset scan,
+  replay execution, provider/broker call, Local Paper, R6, commit, or push ran.
+- **Disposition:** `G2 IMPLEMENTATION CANDIDATE / INDEPENDENT REVIEW REQUIRED`;
+  formal progress stays 33.3% until G2 is independently approved.
+
+### R5 revision 2 G2 Review remediation
+
+- Independent Review returned `REQUEST CHANGES` for operation replay scope,
+  cancellation progress preservation, and exact integer revision validation.
+- Reopened G2 before product edits. The remediation is limited to these three
+  findings and adversarial regressions; G3-G5, R6, Local Paper, provider,
+  broker, and real-money remain unauthorized.
+- Added exact regression probes before changing product code. Current candidate
+  reproduces request revision `0.0` acceptance and cancellation progress reset;
+  PostgreSQL scope/revision/progress probes await the disposable database.
+- Implemented exact integer checks for request and operation revisions; bool,
+  float, Decimal, and string aliases now fail before mutation or replay.
+- Cancellation now sends no progress mutation. PostgreSQL uses the existing
+  durable registration value for `RUNNING -> CANCELLING`; only later worker
+  terminal transitions can write final progress.
+- Operation replay now binds the result to the queried baseline and request
+  preflight, then verifies the referenced registration, request digest, replay,
+  head revision, and ledger identity without revalidating mutable baseline
+  evidence needed only by new operations.
+- Disposable PostgreSQL focused remediation passes `25 passed`, including five
+  independent scope substitutions, numeric revision alias, and nonzero progress
+  preservation.
+- Full no-DSN regression passes `1482 passed, 56 skipped`.
+- Full disposable PostgreSQL 17 regression passes `1538 passed`.
+- Python compilation, scoped whitespace checks, and `git diff --check` pass.
+- The disposable PostgreSQL container is the only remaining temporary resource
+  and will be removed before handoff. No formal preflight, Replay execution,
+  provider, broker, Local Paper, R6, commit, or push ran.
+- **Disposition:** `G2 REMEDIATION CANDIDATE / RE-REVIEW REQUIRED`; formal
+  progress remains 33.3%.
+
+### R5 revision 2 G2 approval and scoped commit authorization
+
+- Independent short re-review approved G2 with no new finding.
+- Updated the Formal Gate to `APPROVED / PASSED` and progress to 50%.
+- User authorized a local scoped commit containing only R5 v2 G1/G2 code,
+  tests, migration, architecture, and isolated planning evidence. Push and all
+  unrelated shared-worktree files remain excluded.

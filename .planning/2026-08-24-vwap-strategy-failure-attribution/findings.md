@@ -402,6 +402,153 @@
 - G1-G5 implementation/execution remain separately gated and unauthorized. R6,
   Local Paper, provider, broker, and real-money execution remain blocked.
 
+## R5 revision 2 G1 authorization
+
+- The user explicitly authorized the next phase, interpreted as G1 only: pure
+  domain plus immutable filesystem artifacts.
+- G1 must remain dependency-inward: domain math and identity cannot import
+  PostgreSQL, dashboard, provider, broker, or Local Paper modules. Filesystem
+  publication is an outer adapter over exact domain values.
+- Success requires deterministic clean-root reconstruction, exact schema and
+  canonical-byte rejection, complete layer multiplicity parity, one-lot golden
+  math, cross-session matching, bounded streaming state, and interruption-safe
+  publication tests.
+- G2-G5, migration, application PostgreSQL, the official 28.3M-bar preflight,
+  formal replay, R6, Local Paper, provider, broker, and real-money remain
+  unauthorized.
+- Existing `backtest.domain` already owns `canonical_json()`, `digest()`,
+  `HistoricalBar`, and `TradeDecision`; G1 should reuse these values without
+  changing their legacy serialization or result digests.
+- Existing R5 v1 `research_control.py` demonstrates strict key-set validation
+  and canonical artifact reload, but revision 2 needs an isolated bounded
+  context because its independent episodes are not Backtest Runs.
+- The G1 matcher can remain bounded by ledger/current-symbol state while
+  streaming ordered bars: confirm each session close when the next session for
+  that symbol arrives, then finalize the last observed bar at EOF. An entry on
+  the confirmed closing bar remains open until the next session close.
+- Artifact publication will use sequence-keyed external chunk sorting, exact
+  canonical JSONL bytes, SHA-256 manifests, same-digest replay verification,
+  and `BaseException` cleanup. Paths and temporary names remain outside identity.
+
+## R5 revision 2 G1 candidate findings
+
+- The production matcher is a one-pass iterator over canonical ledger rows and
+  ordered bars. It retains only per-symbol waiting/pending state and the latest
+  relevant bar; the convenience `build_match_plan()` collector is not the
+  formal large-Dataset composition boundary.
+- Filesystem payload publication now uses bounded fan-in external merge rather
+  than opening an unbounded number of chunks. Canonical output remains ordered
+  by frozen sequence and rejects duplicate sequence/signal identity.
+- Match, modeled Entry/Exit, and Episode identifiers are reconstructed from
+  their frozen projections. Result reload also rebuilds row lineage, one-lot
+  economics, and summary, so self-consistent local SHA/manifest tampering cannot
+  expose altered metrics.
+- Match evidence distinguishes successful entry from complete entry/exit match:
+  `matched_entry = matched_exit + missing_exit`, and
+  `signal_count = matched_entry + missing_entry`.
+- G1 remains a candidate pending independent Review. No PostgreSQL, migration,
+  Web/API, official Dataset scan, replay registration/execution, R6, Local
+  Paper, provider, broker, or real-money work was added.
+
+## R5 revision 2 G1 Review remediation
+
+- Review reproduced that a `ReplayBuild` calculated under one set of costs can
+  be published under a different caller-supplied `cost_identity_digest`.
+  Replay economics must carry their own exact cost projection/digest, and
+  manifest/postflight must compare against it rather than trusting parameters.
+- `ObservedBar.source_json` is currently canonical but not authoritative: its
+  parsed symbol/time/session/OHLCV projection can disagree with the values used
+  by matching. The boundary must require exact raw bytes and compare the full
+  parsed `HistoricalBar` projection before accepting its digest.
+- Only missing or explicit null `execution_horizon` may normalize to
+  `INTRADAY_NEXT_BAR`; empty string, false, zero, and every other alias must be
+  rejected in both decision-ledger and order-derivation construction.
+- **Disposition:** G1 reopened as `REMEDIATION REQUIRED / GATE NOT PASSED`;
+  G2-G5, R6, Local Paper, provider, broker, and real-money remain unauthorized.
+- Cost validation is intentionally redundant at three boundaries: ReplayBuild
+  construction/manifest binding, pre-publication artifact reconstruction, and
+  postflight current-row reconstruction. The result manifest schema remains
+  frozen because the existing `cost_identity_digest` is now made authoritative
+  rather than adding another public field.
+- Full source authority is checked by comparing exact canonical bytes to
+  `HistoricalBar.from_dict(...).to_dict()` canonical bytes. This prevents
+  unknown fields and JSON type aliases such as boolean volume from disappearing
+  during parsing before the matcher-visible fields are compared.
+
+## R5 revision 2 G1 approval and G2 authorization
+
+- Independent short re-review approved G1 with no additional finding. The
+  accepted evidence is `26 passed` focused, `42 passed, 6 skipped` related R5,
+  and `1419 passed, 41 skipped` on the then-current shared no-DSN worktree.
+- Formal R5 v2 progress is now 33.3%; this approval covers only pure domain and
+  immutable artifact behavior.
+- The user explicitly authorized G2. The scoped boundary is PostgreSQL plus
+  application use cases: idempotency, head locking/revision CAS, baseline/v1/
+  Dataset/order-seal revalidation, status CAS, terminal result publication,
+  result redaction, and tamper/security tests.
+- Migration inventory currently ends at 014, so G2 owns candidate migration
+  `015_r5_signal_ledger_replays.sql`; the number must be rechecked immediately
+  before publication because the worktree is shared.
+- G3 full preflight, G4 formal replay, G5 disposition, R6, Local Paper,
+  provider, broker, and real-money execution remain unauthorized.
+
+## R5 revision 2 G2 candidate findings
+
+- The replay aggregate is independent of normal Backtest Runs. Compare,
+  Qualification, worker, and Strategy lifecycle code therefore cannot interpret
+  an independent one-lot replay as portfolio evidence.
+- Operation replay must precede current baseline and artifact validation. This
+  safely returns the original result after response loss; different keys still
+  re-enter full current-evidence validation.
+- Registration request JSON/digest is immutable audit identity, not mutable
+  metadata. Actor or change-note drift fails before a status or economics
+  response is returned.
+- PostgreSQL is the sole durable adapter. Head, registration, operation result,
+  terminal postflight, result root, and chunks are transactionally consistent;
+  there is no SQLite fallback.
+- The small synthetic replay reaches `INVALID` because the frozen Gate requires
+  128,802 authoritative signals. This proves redaction and absence of result
+  rows without weakening the formal full-Dataset constant.
+- Formal G2 remains open for independent Review. G3 full-Dataset preflight, G4
+  replay execution, G5 disposition, R6, Local Paper, provider, broker, and
+  real-money work remain blocked.
+
+## R5 revision 2 G2 Review remediation
+
+- Independent Review reproduced three scoped findings: operation-result scope
+  substitution, cancellation progress regression, and numeric revision aliases.
+- A self-consistent operation result digest is insufficient. Response-loss
+  replay must additionally bind the stored result to the queried baseline,
+  request preflight, current registration, replay ID, and head revision.
+- `RUNNING -> CANCELLING` is an operator signal, not a progress update. The
+  repository must preserve its already durable progress and only the worker's
+  terminal `CANCELLED` transition may write a final progress value.
+- JSON integer semantics are exact: booleans, floats, Decimal aliases, and
+  coercible strings must be rejected for request and operation revisions.
+- **Disposition:** `G2 REMEDIATION REQUIRED / FORMAL GATE NOT PASSED`; formal
+  progress remains 33.3%, and all downstream execution/trading authority stays
+  blocked.
+- Remediation closes the operation identity substitution at five independent
+  boundaries: baseline, request preflight, replay registration, head revision,
+  and ledger manifest. A missing foreign replay is normalized to an integrity
+  failure rather than leaking a lookup result.
+- Progress preservation is owned by the repository transaction through
+  `COALESCE(NULL::numeric, progress)`; the application cannot accidentally
+  synthesize a new progress value for cancellation.
+- **Updated disposition:** `G2 REMEDIATION CANDIDATE / INDEPENDENT RE-REVIEW
+  REQUIRED`. Formal Gate and progress do not advance before approval.
+
+## R5 revision 2 G2 approval
+
+- Independent short re-review approved all three remediation boundaries with no
+  new finding.
+- Accepted reviewer evidence: PostgreSQL 17 remediation integration
+  `15 passed`, full no-DSN `1482 passed, 56 skipped`, compilation, and
+  `git diff --check`.
+- **Disposition:** `G2 APPROVED / FORMAL GATE PASSED`; formal progress is 50%.
+  This approval does not itself authorize G3, formal Replay, R6, Local Paper,
+  broker, real-money, push, or any unrelated shared-worktree change.
+
 ## Evidence storage discovery
 
 - `backtest.backtest_trades` is the normalized trade-grain projection and supports direct symbol/time/P&L segmentation.
