@@ -1,0 +1,105 @@
+{
+  "artifact_type": "TradingJournalCleanupBackupV1",
+  "exported_at": "2026-08-24T09:01:08.742039+08:00",
+  "journal_records": [
+    {
+      "fingerprint": "c753b5fbc59f4c1f867c12fc4807b69cbef4dba448f21f88b2580ac2847bedc6",
+      "idempotency_key": "2026-08-21",
+      "idempotency_scope": "local-paper-runtime-v1:local-paper-daily-baseline",
+      "journal_sequence": 1,
+      "kind": "local_paper_daily_baseline.v1",
+      "occurred_at": "2026-08-21T12:53:15.827420+00:00",
+      "payload": {
+        "includes_unrealized_pnl": true,
+        "opening_equity": "10000000",
+        "opening_realized_pnl": "0",
+        "trading_date": "2026-08-21"
+      },
+      "record_id": "local-paper-daily-baseline:2026-08-21",
+      "schema_version": "journal-v1",
+      "session_id": "local-paper-runtime-v1"
+    },
+    {
+      "fingerprint": "483fb1958b0bdeadc77a98ad27da96f193d01baa75bedd0527ee0b15d6628364",
+      "idempotency_key": "2026-08-22",
+      "idempotency_scope": "local-paper-runtime-v1:local-paper-daily-baseline",
+      "journal_sequence": 2,
+      "kind": "local_paper_daily_baseline.v1",
+      "occurred_at": "2026-08-22T01:14:26.537323+00:00",
+      "payload": {
+        "includes_unrealized_pnl": true,
+        "opening_equity": "10000000",
+        "opening_realized_pnl": "0",
+        "trading_date": "2026-08-22"
+      },
+      "record_id": "local-paper-daily-baseline:2026-08-22",
+      "schema_version": "journal-v1",
+      "session_id": "local-paper-runtime-v1"
+    },
+    {
+      "fingerprint": "813d841f0e0b33b9774c67941a0b8fccfc7370d9198df985dd5e2e4e14c64092",
+      "idempotency_key": "2026-08-23",
+      "idempotency_scope": "local-paper-runtime-v1:local-paper-daily-baseline",
+      "journal_sequence": 3,
+      "kind": "local_paper_daily_baseline.v1",
+      "occurred_at": "2026-08-22T16:01:01.835915+00:00",
+      "payload": {
+        "includes_unrealized_pnl": true,
+        "opening_equity": "10000000",
+        "opening_realized_pnl": "0",
+        "trading_date": "2026-08-23"
+      },
+      "record_id": "local-paper-daily-baseline:2026-08-23",
+      "schema_version": "journal-v1",
+      "session_id": "local-paper-runtime-v1"
+    }
+  ],
+  "journal_sessions": [
+    {
+      "metadata": {
+        "execution_boundary": "LOCAL_ONLY",
+        "journal_backend": "POSTGRESQL",
+        "restart_policy": "NEW_LOCAL_PAPER_SESSION",
+        "starting_cash": "10000000"
+      },
+      "mode": "LOCAL_PAPER_SIMULATION",
+      "schema_version": "journal-v1",
+      "session_id": "local-paper-aa7ea76eb929444ab0bbb1fe3e8d1486",
+      "started_at": "2026-08-21T07:10:22.797515+00:00"
+    },
+    {
+      "metadata": {
+        "execution_boundary": "LOCAL_ONLY",
+        "journal_backend": "POSTGRESQL",
+        "restart_policy": "RESUME_CHECKPOINTED_LOCAL_PAPER_SESSION",
+        "starting_cash": "10000000"
+      },
+      "mode": "LOCAL_PAPER_SIMULATION",
+      "schema_version": "journal-v1",
+      "session_id": "local-paper-runtime-v1",
+      "started_at": "2026-08-21T12:53:15.803858+00:00"
+    }
+  ],
+  "projection_checkpoints": [
+    {
+      "digest": "f07c6f446f678a5fcaaf70e2b82e273bf3da8fe82ad984bf8189fd7c03b1263b",
+      "journal_sequence": 0,
+      "projection_name": "local_paper.v1",
+      "schema_version": "journal-v1",
+      "session_id": "local-paper-aa7ea76eb929444ab0bbb1fe3e8d1486",
+      "updated_at": "2026-08-21T07:10:22.819908+00:00"
+    },
+    {
+      "digest": "3f0acdd1b32ccdf621d79922f096cbbc37ff14bc57267238ecc5280ada3e3ef7",
+      "journal_sequence": 3,
+      "projection_name": "local_paper.v1",
+      "schema_version": "journal-v1",
+      "session_id": "local-paper-runtime-v1",
+      "updated_at": "2026-08-22T15:43:28.364098+00:00"
+    }
+  ],
+  "target_session_ids": [
+    "local-paper-aa7ea76eb929444ab0bbb1fe3e8d1486",
+    "local-paper-runtime-v1"
+  ]
+}
