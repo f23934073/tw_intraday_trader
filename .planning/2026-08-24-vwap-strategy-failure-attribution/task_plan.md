@@ -112,17 +112,21 @@ Explain why the completed atomic `above_vwap_entry_v1` backtest failed, using it
 
 ### R5.1: Execute the authorized authoritative control
 
-- [ ] Verify application PostgreSQL, Migration 014, immutable baseline Run,
+- [x] Verify application PostgreSQL, Migration 014 status, immutable baseline Run,
   Dataset registration/binding, and local Dataset artifact without providers.
-- [ ] Create and save the canonical provider-free preflight for the approved
+- [x] Create and save the canonical provider-free preflight for the approved
   baseline.
+- [x] Align preflight next-bar matching with the frozen engine's next observed
+  Kbar semantics across session boundaries and regenerate schema-v2 evidence.
+- [ ] Obtain independent short re-review approval for the schema-v2 preflight
+  remediation before Migration 014 or registration is created.
 - [ ] Create or replay the sole authoritative R5 control using the frozen
   operation identity; record derived `C/f` and Run identity.
 - [ ] Wait for the worker terminal state without invoking providers, Local
   Paper, broker, or R6.
 - [ ] Verify server postflight, formal acceptance SQL, result/digest identity,
   zero provider/broker calls, and the R5 decision matrix outcome.
-- **Status:** explicitly authorized / preflight in progress
+- **Status:** execution paused before registration / schema-v2 preflight ready for independent re-review
 
 ## Gate
 
@@ -134,8 +138,8 @@ This phase passes only when the failure attribution is reproducible from immutab
 R0-R4: COMPLETE
 Failure Attribution: COMPLETE
 Gate R5 design: APPROVED / CONTRACT FROZEN
-Gate R5 implementation: REMEDIATION COMPLETE / READY FOR INDEPENDENT RE-REVIEW
-Gate R5 execution: AUTHORIZED / IN PROGRESS
+Gate R5 implementation: PREFLIGHT REMEDIATION COMPLETE / READY FOR INDEPENDENT RE-REVIEW
+Gate R5 execution: PAUSED BEFORE REGISTRATION / RE-REVIEW REQUIRED
 Gate R6 contract remediation: ACCEPTED BY PRIOR REVIEW
 Gate R6 execution: NOT AUTHORIZED
 ```

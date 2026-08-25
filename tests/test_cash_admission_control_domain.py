@@ -343,18 +343,9 @@ def test_preflight_statistics_accepts_single_pass_order_stream() -> None:
     )
 
 
-def test_preflight_statistics_does_not_cross_session_for_missing_bar() -> None:
+def test_preflight_statistics_uses_next_observed_symbol_bar_across_session() -> None:
     order = _orders()[0]
     bars = [
-        HistoricalBar(
-            symbol="2317",
-            timestamp=datetime(2026, 8, 22, 9, 1, tzinfo=_TAIPEI),
-            open=Decimal("102"),
-            high=Decimal("102"),
-            low=Decimal("102"),
-            close=Decimal("102"),
-            volume=1,
-        ),
         HistoricalBar(
             symbol="2330",
             timestamp=datetime(2026, 8, 21, 9, 2, tzinfo=_TAIPEI),
@@ -364,10 +355,22 @@ def test_preflight_statistics_does_not_cross_session_for_missing_bar() -> None:
             close=Decimal("900"),
             volume=1,
         ),
+        HistoricalBar(
+            symbol="2317",
+            timestamp=datetime(2026, 8, 22, 9, 1, tzinfo=_TAIPEI),
+            open=Decimal("102"),
+            high=Decimal("102"),
+            low=Decimal("102"),
+            close=Decimal("102"),
+            volume=1,
+        ),
     ]
 
-    with pytest.raises(CashAdmissionControlIntegrityError, match="next-bar open"):
-        compute_cash_admission_preflight_statistics(
-            baseline_orders=[order],
-            bars=bars,
-        )
+    statistics = compute_cash_admission_preflight_statistics(
+        baseline_orders=[order],
+        bars=bars,
+    )
+
+    assert statistics.matched_next_bar_count == 1
+    assert statistics.missing_next_bar_count == 0
+    assert statistics.p_max == Decimal("102")

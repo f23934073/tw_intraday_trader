@@ -20,7 +20,7 @@ from backtest.domain import HistoricalBar, canonical_json, decimal, digest
 
 REQUEST_SCHEMA_VERSION = "cash-admission-control-request-v1"
 CONTROL_CONTRACT_VERSION = "cash-admission-control-v1"
-PREFLIGHT_SCHEMA_VERSION = "cash-admission-control-preflight-v1"
+PREFLIGHT_SCHEMA_VERSION = "cash-admission-control-preflight-v2"
 POSTFLIGHT_SCHEMA_VERSION = "cash-admission-control-postflight-v2"
 ALGORITHM_IDENTITY = {
     "implementation": "cash-admission-control-sizing-v1",
@@ -29,6 +29,7 @@ ALGORITHM_IDENTITY = {
     "position_fraction_rounding": "ROUND_DOWN",
     "starting_cash_scale": 0,
     "starting_cash_rounding": "ROUND_CEILING",
+    "next_bar_semantics": "NEXT_OBSERVED_SYMBOL_KBAR_V1",
 }
 ALGORITHM_IMPLEMENTATION_DIGEST = digest(ALGORITHM_IDENTITY)
 
@@ -164,7 +165,7 @@ def compute_cash_admission_preflight_statistics(
     baseline_orders: Iterable[Mapping[str, Any]],
     bars: Iterable[HistoricalBar],
 ) -> CashAdmissionPreflightStatistics:
-    """Stream exact intraday next-bar opens without loading Dataset bars."""
+    """Stream exact engine next-observed-symbol-bar opens without loading bars."""
 
     by_symbol: dict[str, list[tuple[datetime, str]]] = {}
     distinct_daily: dict[str, set[str]] = {}
@@ -203,11 +204,6 @@ def compute_cash_admission_preflight_statistics(
         while index < len(values):
             created_at, _ = values[index]
             if bar.timestamp <= created_at:
-                break
-            if bar.timestamp.date() > created_at.date():
-                index += 1
-                continue
-            if bar.timestamp.date() < created_at.date():
                 break
             highest_price = bar.open if highest_price is None else max(highest_price, bar.open)
             matched += 1

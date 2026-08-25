@@ -187,6 +187,11 @@ Preflight 是一個獨立、canonical、可重建的 evidence artifact。Postgre
 baseline ENTRY order keys；streaming reader 再從 immutable `bars.jsonl` 找到每個
 order 的 exact next-bar open。不得重新呼叫 FinMind 或其他 Provider。
 
+`cash-admission-control-v1` 必須逐字遵循 frozen engine 的 execution 語意：普通
+`INTRADAY_NEXT_BAR`／未明示 horizon 的 pending order 使用該 symbol 下一個 observed
+Kbar，即使它位於下一個 session；不得額外加入 same-session filter。只有
+`DAILY_NEXT_BAR` 使用獨立的 session-date admission 規則，而 R5 v1 不接受該 horizon。
+
 Preflight 計算：
 
 - `S_max`：單日最多 distinct ENTRY signals。

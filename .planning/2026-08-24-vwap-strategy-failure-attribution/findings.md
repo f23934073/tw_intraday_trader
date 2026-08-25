@@ -253,6 +253,29 @@
   strategy entry window ends at 12:45, so the missing cases need exact
   symbol/session diagnosis rather than an assumption that they are 13:25
   terminal signals.
+- Exact diagnostic evidence shows all 10 candidates occur at the last observed
+  Kbar for that symbol/session. One was actually FILLED on the next session:
+  1240 signalled at 2024-09-09 10:25 and filled at 2024-09-10 09:01 with
+  `source=NEXT_BAR_OPEN`.
+- The frozen engine only enforces a session-date boundary for
+  `DAILY_NEXT_BAR`; ordinary intraday `NEXT_BAR_OPEN` remains pending until the
+  next observed symbol Kbar, including the next session. The R5 preflight's
+  same-calendar-date filter is therefore a correctness bug and must be aligned
+  with baseline engine semantics before any registration is sealed.
+- The corrected preflight is schema v2 and binds
+  `NEXT_OBSERVED_SYMBOL_KBAR_V1` into algorithm identity. This makes the
+  previously generated same-session artifact fail closed rather than silently
+  changing the meaning of its digest.
+- The official schema-v2 preflight completed against the immutable 28,325,340
+  Kbar Dataset with artifact digest
+  `fc6a682dafc831bd15234bcf75c68d6a715c9dbd90a8a78bdc1075b405bb2879`.
+  All 128,802 candidates matched the next observed symbol Kbar and
+  `missing_next_bar_count=0`; deterministic sizing remains
+  `C=4,465,307,372` and `f=0.004387155994`.
+- Canonical catalog reload and domain verification reproduce the schema-v2
+  artifact exactly. Application PostgreSQL still has none of the Migration 014
+  tables, so no head, registration, operation, or Control Run was written while
+  the changed preflight contract awaits independent re-review.
 
 ## Evidence storage discovery
 

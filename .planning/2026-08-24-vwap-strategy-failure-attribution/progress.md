@@ -251,3 +251,27 @@
 - First diagnostic launch failed before DB access because direct `.planning`
   execution did not include the repository root on `sys.path`; the launcher was
   corrected without changing preflight or product semantics.
+- Missing-next-bar diagnostic artifact
+  `0be2d029b02c7bfd6488b276fb5bf900140ebf07d42548ba77a75d99eb27a6ad`
+  identifies all 10 exact candidates. A baseline FILLED order proves the engine
+  carries ordinary NEXT_BAR_OPEN across sessions, while the preflight incorrectly
+  filtered to the same calendar date.
+- Execution is paused before migration/registration. The preflight matching
+  implementation and regression must be corrected and independently reviewed;
+  the known-invalid artifact will not be used to seal revision 1.
+- Implemented preflight schema v2 with explicit next-observed-symbol-Kbar
+  identity and removed the incorrect same-session filter. Added a cross-session
+  engine-parity regression and clarified the frozen contract. Registration
+  remains uncreated pending verification and re-review.
+- Remediation verification passed: focused R5 tests `16 passed, 6 skipped`, full
+  no-DSN regression `1384 passed, 41 skipped`, Python compilation, and
+  `git diff --check`.
+- Regenerated the official provider-free schema-v2 preflight as
+  `fc6a682dafc831bd15234bcf75c68d6a715c9dbd90a8a78bdc1075b405bb2879`.
+  It records 128,802 candidates, 128,802 matched next bars, zero missing bars,
+  `S_max=182`, `P_max=19590.0`, `C=4465307372`, and
+  `f=0.004387155994`. Canonical catalog reload and digest verification pass.
+- Read-only application PostgreSQL verification confirms Migration 014 is still
+  unapplied and no R5 head, registration, or operation exists. Execution stays
+  paused before the first irreversible mutation until an independent short
+  re-review approves the schema-v2 remediation.
