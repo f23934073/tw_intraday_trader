@@ -1,0 +1,6 @@
+{
+  "now": "2026-08-24T10:01:24.009409+08:00",
+  "reason": "no configured quote-evidence window starts in this minute",
+  "session_window": null,
+  "status": "NO_CAPTURE_OFF_SCHEDULE"
+}

@@ -1,0 +1,271 @@
+{
+  "artifact": "research/captures/freshness_quote/quote_20260825T090012+0800.json",
+  "duration_seconds": 900,
+  "launch_delay_seconds": 5.444004,
+  "now": "2026-08-25T09:00:05.444004+08:00",
+  "ntp_preflight": {
+    "command": [
+      "/usr/bin/sntp",
+      "-d",
+      "time.apple.com"
+    ],
+    "samples": [
+      {
+        "returncode": 0,
+        "stderr": "sntp: Exchange failed: Timeout\n",
+        "stdout": " EE376795.86528AE7 (3996608405.524696999)\n            t2: EE376795.AC266352 (3996608405.672460753)\n            t3: EE376795.AC279E83 (3996608405.672479540)\n            t4: EE376795.94CCAB3E (3996608405.581247999)\n        offset: 0000000000000000.1E9765D800000000 (0.119497648)\n         delay: 0000000000000000.0E78E52600000000 (0.056532213)\n          mean: 00000000EE376795.AC2700EA80000000 (3996608405.672470093)\n         error: 0000000000000000.0018000000000000 (0.000366211)\n          addr: 17.253.68.125\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.000D (0.000198364)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE37678E.16489C39 (3996608398.087045444)\n            t1: EE376795.95DCC63F (3996608405.585399999)\n            t2: EE376795.BBEEA3A5 (3996608405.734110095)\n            t3: EE376795.BBEF8DFE (3996608405.734124063)\n            t4: EE376795.A49CA18B (3996608405.643014999)\n        offset: 0000000000000000.1EB264EC80000000 (0.119909580)\n         delay: 0000000000000000.0EBEF0F300000000 (0.057601032)\n          mean: 00000000EE376795.BBEF18D180000000 (3996608405.734117031)\n         error: 0000000000000000.000D000000000000 (0.000198364)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.000D (0.000198364)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE37678E.16489C39 (3996608398.087045444)\n            t1: EE376795.A540CC78 (3996608405.645519999)\n            t2: EE376795.C998D42E (3996608405.787488232)\n            t3: EE376795.C99A5CB3 (3996608405.787511628)\n            t4: EE376795.B2AFFF36 (3996608405.697997999)\n        offset: 0000000000000000.1DA1329980000000 (0.115740931)\n         delay: 0000000000000000.0D6DAA3900000000 (0.052454604)\n          mean: 00000000EE376795.C999987080000000 (3996608405.787499905)\n         error: 0000000000000000.000D000000000000 (0.000198364)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 6 (Timeout)\n        header: 00 (li:0 vn:0 mode:0)\n       stratum: 00 (0)\n          poll: 00 (1)\n     precision: 00 (1.000000e+00)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0000 (0.000000000)\n           ref: 00000000 (\"    \")\n         t_ref: 00000000.00000000 (0.000000000)\n            t1: EE376795.B37867F0 (3996608405.701055999)\n            t2: 00000000.00000000 (0.000000000)\n            t3: 00000000.00000000 (0.000000000)\n            t4: 00000000.00000000 (0.000000000)\n        offset: FFFFFFFF88E44C35.2643CC0800000000 (-1998304202.850528002)\n         delay: FFFFFFFF11C8986A.4C87981000000000 (-3996608405.701056004)\n          mean: 0000000000000000.0000000000000000 (0.000000000)\n         error: 0000000000000000.0000000000000000 (0.000000000)\n          addr: 17.253.114.35\n}\nselected:\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0018 (0.000366211)\n           ref: 47505373 (\"GPSs\")\n         t_ref: ECD11334.04F04FA1 (3973124916.019291855)\n            t1: EE376795.78FB6566 (3996608405.472585999)\n            t2: EE376795.9D1F8248 (3996608405.613762037)\n            t3: EE376795.9D2163DB (3996608405.613790741)\n            t4: EE376795.85A9973D (3996608405.522118999)\n        offset: 0000000000000000.1DCDF4C000000000 (0.116423890)\n         delay: 0000000000000000.0CAC504400000000 (0.049504296)\n          mean: 00000000EE376795.9D20731180000000 (3996608405.613776207)\n         error: 0000000000000000.0018000000000000 (0.000366211)\n          addr: 17.253.68.125\n}\n+0.116424 +/- 0.049871 time.apple.com 17.253.68.125\n"
+      },
+      {
+        "returncode": 0,
+        "stderr": "sntp: Exchange failed: Timeout\n",
+        "stdout": " EE376796.DADC2B0E (3996608406.854921999)\n            t2: EE376797.01D6DDC3 (3996608407.007184848)\n            t3: EE376797.01D7DC05 (3996608407.007200003)\n            t4: EE376796.EB35B0BB (3996608406.918787999)\n        offset: 0000000000000000.1ECE6EFF80000000 (0.120337427)\n         delay: 0000000000000000.1058876B00000000 (0.063850845)\n          mean: 00000000EE376797.01D75CE400000000 (3996608407.007192612)\n         error: 0000000000000000.0018000000000000 (0.000366211)\n          addr: 17.253.68.125\n}\nsntp_exchange {\n        result: 6 (Timeout)\n        header: 00 (li:0 vn:0 mode:0)\n       stratum: 00 (0)\n          poll: 00 (1)\n     precision: 00 (1.000000e+00)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0000 (0.000000000)\n           ref: 00000000 (\"    \")\n         t_ref: 00000000.00000000 (0.000000000)\n            t1: EE376796.EC714FCE (3996608406.923603999)\n            t2: 00000000.00000000 (0.000000000)\n            t3: 00000000.00000000 (0.000000000)\n            t4: 00000000.00000000 (0.000000000)\n        offset: FFFFFFFF88E44C34.89C7581900000000 (-1998304203.461802006)\n         delay: FFFFFFFF11C89869.138EB03200000000 (-3996608406.923604012)\n          mean: 0000000000000000.0000000000000000 (0.000000000)\n         error: 0000000000000000.0000000000000000 (0.000000000)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0008 (0.000122070)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376796.1648E5A4 (3996608406.087049820)\n            t1: EE376798.05FE8683 (3996608408.023414999)\n            t2: EE376798.2CDB2116 (3996608408.175218646)\n            t3: EE376798.2CDC1724 (3996608408.175233312)\n            t4: EE376798.15C55000 (3996608408.085041999)\n        offset: 0000000000000000.1EF9B0DB80000000 (0.120997480)\n         delay: 0000000000000000.0FC5D36F00000000 (0.061612334)\n          mean: 00000000EE376798.2CDB9C1D00000000 (3996608408.175226212)\n         error: 0000000000000000.0008000000000000 (0.000122070)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEB (4.768372e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.000A (0.000152588)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376794.385D255A (3996608404.220171293)\n            t1: EE376798.16BBA98E (3996608408.088800999)\n            t2: EE376798.397FBAE5 (3996608408.224605255)\n            t3: EE376798.3A00340A (3996608408.226565601)\n            t4: EE376798.25A0DFDE (3996608408.146985999)\n        offset: 0000000000000000.1B91B2C180000000 (0.107691929)\n         delay: 0000000000000000.0E64BD2B00000000 (0.056224654)\n          mean: 00000000EE376798.39BFF77780000000 (3996608408.225585461)\n         error: 0000000000000000.000A000000000000 (0.000152588)\n          addr: 17.253.114.35\n}\nselected:\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0018 (0.000366211)\n           ref: 47505373 (\"GPSs\")\n         t_ref: ECD11334.04F04FA1 (3973124916.019291855)\n            t1: EE376796.CBF23CC8 (3996608406.796664999)\n            t2: EE376796.F1076D69 (3996608406.941519582)\n            t3: EE376796.F108D8A3 (3996608406.941541232)\n            t4: EE376796.D9BB4916 (3996608406.850513999)\n        offset: 0000000000000000.1E31601700000000 (0.117940908)\n         delay: 0000000000000000.0DC7A11400000000 (0.053827350)\n          mean: 00000000EE376796.F108230600000000 (3996608406.941530228)\n         error: 0000000000000000.0018000000000000 (0.000366211)\n          addr: 17.253.68.125\n}\n+0.117941 +/- 0.054194 time.apple.com 17.253.68.125\n"
+      },
+      {
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "19734999)\n            t2: EE376798.5F060C96 (3996608408.371186052)\n            t3: EE376798.5F07F8B6 (3996608408.371215385)\n            t4: EE376798.47BC0A06 (3996608408.280212999)\n        offset: 0000000000000000.1F08B6DC00000000 (0.121226720)\n         delay: 0000000000000000.0F79905800000000 (0.060448667)\n          mean: 00000000EE376798.5F0702A600000000 (3996608408.371200562)\n         error: 0000000000000000.0018000000000000 (0.000366211)\n          addr: 17.253.68.125\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0008 (0.000122070)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376796.1648E5A4 (3996608406.087049820)\n            t1: EE376798.48A9478C (3996608408.283832999)\n            t2: EE376798.6F6B3383 (3996608408.435229510)\n            t3: EE376798.6F6E6432 (3996608408.435278188)\n            t4: EE376798.58167A95 (3996608408.344092999)\n        offset: 0000000000000000.1F0CEACA00000000 (0.121290850)\n         delay: 0000000000000000.0F6A025A00000000 (0.060211322)\n          mean: 00000000EE376798.6F6CCBDA80000000 (3996608408.435253620)\n         error: 0000000000000000.0008000000000000 (0.000122070)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0008 (0.000122070)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376796.1648E5A4 (3996608406.087049820)\n            t1: EE376798.59306A2B (3996608408.348394999)\n            t2: EE376798.7E14F751 (3996608408.492507416)\n            t3: EE376798.7E15CEE7 (3996608408.492520266)\n            t4: EE376798.66B81F96 (3996608408.401246999)\n        offset: 0000000000000000.1E211E3B80000000 (0.117692842)\n         delay: 0000000000000000.0D86DDD500000000 (0.052839150)\n          mean: 00000000EE376798.7E15631C00000000 (3996608408.492513657)\n         error: 0000000000000000.0008000000000000 (0.000122070)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEB (4.768372e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.000A (0.000152588)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376794.385D255A (3996608404.220171293)\n            t1: EE376798.678359BC (3996608408.404347999)\n            t2: EE376798.8B6B16E4 (3996608408.544602804)\n            t3: EE376798.8BB2A928 (3996608408.545694896)\n            t4: EE376798.76977C88 (3996608408.463248999)\n        offset: 0000000000000000.1C8174E400000000 (0.111350351)\n         delay: 0000000000000000.0ECC908800000000 (0.057808908)\n          mean: 00000000EE376798.8B8EE00600000000 (3996608408.545148849)\n         error: 0000000000000000.000A000000000000 (0.000152588)\n          addr: 17.253.114.35\n}\nselected:\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0008 (0.000122070)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376796.1648E5A4 (3996608406.087049820)\n            t1: EE376798.59306A2B (3996608408.348394999)\n            t2: EE376798.7E14F751 (3996608408.492507416)\n            t3: EE376798.7E15CEE7 (3996608408.492520266)\n            t4: EE376798.66B81F96 (3996608408.401246999)\n        offset: 0000000000000000.1E211E3B80000000 (0.117692842)\n         delay: 0000000000000000.0D86DDD500000000 (0.052839150)\n          mean: 00000000EE376798.7E15631C00000000 (3996608408.492513657)\n         error: 0000000000000000.0008000000000000 (0.000122070)\n          addr: 17.253.68.253\n}\n+0.117693 +/- 0.052961 time.apple.com 17.253.68.253\n"
+      },
+      {
+        "returncode": 0,
+        "stderr": "sntp: Exchange failed: Timeout\n",
+        "stdout": " EE376798.8B99806F (3996608408.545310999)\n            t2: EE376798.B279B03C (3996608408.697169317)\n            t3: EE376798.B27ACF4F (3996608408.697186428)\n            t4: EE376798.9B2A38B8 (3996608408.606112999)\n        offset: 0000000000000000.1F18633200000000 (0.121465873)\n         delay: 0000000000000000.0F8F993600000000 (0.060784889)\n          mean: 00000000EE376798.B27A3FC580000000 (3996608408.697177887)\n         error: 0000000000000000.0018000000000000 (0.000366211)\n          addr: 17.253.68.125\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0008 (0.000122070)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376796.1648E5A4 (3996608406.087049820)\n            t1: EE376798.9BCF3DC0 (3996608408.608630999)\n            t2: EE376798.C0590141 (3996608408.751358106)\n            t3: EE376798.C05BB6E8 (3996608408.751399451)\n            t4: EE376798.A958969A (3996608408.661507999)\n        offset: 0000000000000000.1DC671E780000000 (0.116309279)\n         delay: 0000000000000000.0D86A33300000000 (0.052835655)\n          mean: 00000000EE376798.C05A5C1480000000 (3996608408.751379013)\n         error: 0000000000000000.0008000000000000 (0.000122070)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0009 (0.000137329)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376796.1648E5A4 (3996608406.087049820)\n            t1: EE376798.AA7125DD (3996608408.665788999)\n            t2: EE376798.D0AF6DD2 (3996608408.815176833)\n            t3: EE376798.D0B069BB (3996608408.815191848)\n            t4: EE376798.B96EAC86 (3996608408.724344999)\n        offset: 0000000000000000.1EC0029500000000 (0.120117341)\n         delay: 0000000000000000.0EFC8AC000000000 (0.058540985)\n          mean: 00000000EE376798.D0AFEBC680000000 (3996608408.815184116)\n         error: 0000000000000000.0009000000000000 (0.000137329)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 6 (Timeout)\n        header: 00 (li:0 vn:0 mode:0)\n       stratum: 00 (0)\n          poll: 00 (1)\n     precision: 00 (1.000000e+00)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0000 (0.000000000)\n           ref: 00000000 (\"    \")\n         t_ref: 00000000.00000000 (0.000000000)\n            t1: EE376798.B9D31337 (3996608408.725876999)\n            t2: 00000000.00000000 (0.000000000)\n            t3: 00000000.00000000 (0.000000000)\n            t4: 00000000.00000000 (0.000000000)\n        offset: FFFFFFFF88E44C33.A316766480000000 (-1998304204.362938404)\n         delay: FFFFFFFF11C89867.462CECC900000000 (-3996608408.725876808)\n          mean: 0000000000000000.0000000000000000 (0.000000000)\n         error: 0000000000000000.0000000000000000 (0.000000000)\n          addr: 17.253.114.35\n}\nselected:\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0008 (0.000122070)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376796.1648E5A4 (3996608406.087049820)\n            t1: EE376798.9BCF3DC0 (3996608408.608630999)\n            t2: EE376798.C0590141 (3996608408.751358106)\n            t3: EE376798.C05BB6E8 (3996608408.751399451)\n            t4: EE376798.A958969A (3996608408.661507999)\n        offset: 0000000000000000.1DC671E780000000 (0.116309279)\n         delay: 0000000000000000.0D86A33300000000 (0.052835655)\n          mean: 00000000EE376798.C05A5C1480000000 (3996608408.751379013)\n         error: 0000000000000000.0008000000000000 (0.000122070)\n          addr: 17.253.68.253\n}\n+0.116309 +/- 0.052958 time.apple.com 17.253.68.253\n"
+      },
+      {
+        "returncode": 0,
+        "stderr": "sntp: Exchange failed: Timeout\n",
+        "stdout": " EE376799.E285DB76 (3996608409.884854999)\n            t2: EE37679A.07E2DA14 (3996608410.030805234)\n            t3: EE37679A.07E3A976 (3996608410.030817595)\n            t4: EE376799.F0B74DDF (3996608409.940296999)\n        offset: 0000000000000000.1E44AD1A80000000 (0.118235415)\n         delay: 0000000000000000.0E30A30700000000 (0.055429639)\n          mean: 00000000EE37679A.07E341C500000000 (3996608410.030811310)\n         error: 0000000000000000.0018000000000000 (0.000366211)\n          addr: 17.253.68.125\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.000A (0.000152588)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376796.1648E5A4 (3996608406.087049820)\n            t1: EE376799.F1337EB2 (3996608409.942191999)\n            t2: EE37679A.1555D7A7 (3996608410.083341100)\n            t3: EE37679A.1556B518 (3996608410.083354299)\n            t4: EE376799.FF5A31A4 (3996608409.997469999)\n        offset: 0000000000000000.1D0F6E3480000000 (0.113516701)\n         delay: 0000000000000000.0E25D58100000000 (0.055264801)\n          mean: 00000000EE37679A.1556465F80000000 (3996608410.083347797)\n         error: 0000000000000000.000A000000000000 (0.000152588)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.000A (0.000152588)\n           ref: 47505373 (\"GPSs\")\n         t_ref: EE376796.1648E5A4 (3996608406.087049820)\n            t1: EE37679A.005EA24C (3996608410.001443999)\n            t2: EE37679A.2664CE7E (3996608410.149975686)\n            t3: EE37679A.26662828 (3996608410.149996289)\n            t4: EE37679A.0F939A7C (3996608410.060845999)\n        offset: 0000000000000000.1E6C5CEF00000000 (0.118840988)\n         delay: 0000000000000000.0F339E8600000000 (0.059381397)\n          mean: 00000000EE37679A.26657B5300000000 (3996608410.149985790)\n         error: 0000000000000000.000A000000000000 (0.000152588)\n          addr: 17.253.68.253\n}\nsntp_exchange {\n        result: 6 (Timeout)\n        header: 00 (li:0 vn:0 mode:0)\n       stratum: 00 (0)\n          poll: 00 (1)\n     precision: 00 (1.000000e+00)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0000 (0.000000000)\n           ref: 00000000 (\"    \")\n         t_ref: 00000000.00000000 (0.000000000)\n            t1: EE37679A.10B72C51 (3996608410.065294999)\n            t2: 00000000.00000000 (0.000000000)\n            t3: 00000000.00000000 (0.000000000)\n            t4: 00000000.00000000 (0.000000000)\n        offset: FFFFFFFF88E44C32.F7A469D780000000 (-1998304205.032647610)\n         delay: FFFFFFFF11C89865.EF48D3AF00000000 (-3996608410.065295219)\n          mean: 0000000000000000.0000000000000000 (0.000000000)\n         error: 0000000000000000.0000000000000000 (0.000000000)\n          addr: 17.253.114.35\n}\nselected:\nsntp_exchange {\n        result: 0 (Success)\n        header: 24 (li:0 vn:4 mode:4)\n       stratum: 01 (1)\n          poll: 06 (64)\n     precision: FFFFFFEC (9.536743e-07)\n         delay: 0000.0000 (0.000000000)\n    dispersion: 0000.0018 (0.000366211)\n           ref: 47505373 (\"GPSs\")\n         t_ref: ECD11334.04F04FA1 (3973124916.019291855)\n            t1: EE376799.D3A6CE35 (3996608409.826763999)\n            t2: EE376799.F89A022C (3996608409.971099982)\n            t3: EE376799.F89B98C0 (3996608409.971124216)\n            t4: EE376799.E1756C93 (3996608409.880697999)\n        offset: 0000000000000000.1E0CB01200000000 (0.117381100)\n         delay: 0000000000000000.0DCD07CA00000000 (0.053909766)\n          mean: 00000000EE376799.F89ACD7600000000 (3996608409.971112251)\n         error: 0000000000000000.0018000000000000 (0.000366211)\n          addr: 17.253.68.125\n}\n+0.117381 +/- 0.054276 time.apple.com 17.253.68.125\n"
+      }
+    ],
+    "successful_samples": 5
+  },
+  "post_capture_quality": {
+    "artifact": {
+      "byte_length": 1016425,
+      "name": "quote_20260825T090012+0800.json",
+      "schema_version": "freshness_calibration_quote_v1",
+      "sha256": "045a0fc19c9df0464809f8ca6519ecab94bef5fd7317ab1e239fe7f1f2c239f1"
+    },
+    "callback_errors": [],
+    "callback_monotonic_regression_count": 0,
+    "expected_group_count": 6,
+    "expected_session_window": "opening",
+    "limitations": [
+      "This is structural evidence QA, not a FreshnessPolicyV1 decision.",
+      "Partial callback coverage remains reviewable evidence and is never synthesized.",
+      "No broker/account freshness metric is represented by this summary."
+    ],
+    "missing_groups": [
+      {
+        "liquidity_tier": "low",
+        "session_window": "opening",
+        "stream_kind": "TICK",
+        "symbol": "1530"
+      }
+    ],
+    "observation_lifecycle": {
+      "non_connected_active_observation_indices": [],
+      "observation_count": 2002
+    },
+    "observed_group_count": 5,
+    "paired_acknowledgement": {
+      "acknowledged_group_count": 6,
+      "missing_groups": []
+    },
+    "quality_status": "REVIEW_REQUIRED_PARTIAL_COVERAGE",
+    "schema_version": "freshness_post_capture_quality_v1",
+    "source_clock_skew_count": 1845,
+    "threshold_candidates": null,
+    "threshold_selection": "NOT_PERFORMED",
+    "unexpected_groups": []
+  },
+  "reason": "reviewed TWSE calendar and scheduled window permit capture within bounded launch grace",
+  "review": {
+    "callback_errors": [],
+    "groups": [
+      {
+        "callback_monotonic_regression_count": 0,
+        "callback_to_store_ms": {
+          "count": 1,
+          "max": 0.181125,
+          "min": 0.181125,
+          "p50": 0.181125,
+          "p95": 0.181125,
+          "p99": 0.181125
+        },
+        "event_to_callback_ms": {
+          "count": 1,
+          "max": -74.672,
+          "min": -74.672,
+          "p50": -74.672,
+          "p95": -74.672,
+          "p99": -74.672
+        },
+        "inter_arrival_ms": {
+          "count": 0,
+          "max": null,
+          "min": null,
+          "p50": null,
+          "p95": null,
+          "p99": null
+        },
+        "liquidity_tier": "low",
+        "missing_market_event_at_count": 0,
+        "observation_count": 1,
+        "session_window": "opening",
+        "source_clock_skew_count": 1,
+        "stream_kind": "BIDASK",
+        "symbol": "1530"
+      },
+      {
+        "callback_monotonic_regression_count": 0,
+        "callback_to_store_ms": {
+          "count": 1684,
+          "max": 0.723292,
+          "min": 0.0025,
+          "p50": 0.043584,
+          "p95": 0.073583,
+          "p99": 0.111125
+        },
+        "event_to_callback_ms": {
+          "count": 1684,
+          "max": 90.16399999999999,
+          "min": -108.36800000000001,
+          "p50": -63.105999999999995,
+          "p95": 17.365,
+          "p99": 47.51
+        },
+        "inter_arrival_ms": {
+          "count": 1683,
+          "max": 9777.076917,
+          "min": 0.016209,
+          "p50": 122.677084,
+          "p95": 2461.598833,
+          "p99": 5489.393167
+        },
+        "liquidity_tier": "high",
+        "missing_market_event_at_count": 0,
+        "observation_count": 1684,
+        "session_window": "opening",
+        "source_clock_skew_count": 1532,
+        "stream_kind": "BIDASK",
+        "symbol": "2886"
+      },
+      {
+        "callback_monotonic_regression_count": 0,
+        "callback_to_store_ms": {
+          "count": 245,
+          "max": 0.436417,
+          "min": 0.002708,
+          "p50": 0.027833,
+          "p95": 0.070333,
+          "p99": 0.098
+        },
+        "event_to_callback_ms": {
+          "count": 245,
+          "max": 5.821,
+          "min": -98.558,
+          "p50": -68.46900000000001,
+          "p95": -52.337,
+          "p99": -37.608999999999995
+        },
+        "inter_arrival_ms": {
+          "count": 244,
+          "max": 26685.1615,
+          "min": 0.019084,
+          "p50": 1561.418041,
+          "p95": 12000.923959,
+          "p99": 21894.76325
+        },
+        "liquidity_tier": "high",
+        "missing_market_event_at_count": 0,
+        "observation_count": 245,
+        "session_window": "opening",
+        "source_clock_skew_count": 244,
+        "stream_kind": "TICK",
+        "symbol": "2886"
+      },
+      {
+        "callback_monotonic_regression_count": 0,
+        "callback_to_store_ms": {
+          "count": 69,
+          "max": 0.328917,
+          "min": 0.002292,
+          "p50": 0.047333,
+          "p95": 0.167583,
+          "p99": 0.328917
+        },
+        "event_to_callback_ms": {
+          "count": 69,
+          "max": 32.304,
+          "min": -88.202,
+          "p50": -65.858,
+          "p95": 12.292000000000002,
+          "p99": 32.304
+        },
+        "inter_arrival_ms": {
+          "count": 68,
+          "max": 131607.623167,
+          "min": 0.01625,
+          "p50": 184.223167,
+          "p95": 64183.422708,
+          "p99": 131607.623167
+        },
+        "liquidity_tier": "mid",
+        "missing_market_event_at_count": 0,
+        "observation_count": 69,
+        "session_window": "opening",
+        "source_clock_skew_count": 65,
+        "stream_kind": "BIDASK",
+        "symbol": "6863"
+      },
+      {
+        "callback_monotonic_regression_count": 0,
+        "callback_to_store_ms": {
+          "count": 3,
+          "max": 0.078375,
+          "min": 0.057792,
+          "p50": 0.068125,
+          "p95": 0.078375,
+          "p99": 0.078375
+        },
+        "event_to_callback_ms": {
+          "count": 3,
+          "max": -53.352999999999994,
+          "min": -64.663,
+          "p50": -55.783,
+          "p95": -53.352999999999994,
+          "p99": -53.352999999999994
+        },
+        "inter_arrival_ms": {
+          "count": 2,
+          "max": 298496.808625,
+          "min": 60029.875959,
+          "p50": 60029.875959,
+          "p95": 298496.808625,
+          "p99": 298496.808625
+        },
+        "liquidity_tier": "mid",
+        "missing_market_event_at_count": 0,
+        "observation_count": 3,
+        "session_window": "opening",
+        "source_clock_skew_count": 3,
+        "stream_kind": "TICK",
+        "symbol": "6863"
+      }
+    ],
+    "limitations": [
+      "This artifact measures the calibration buffer, not an unimplemented Portfolio projection path.",
+      "Clock-skew observations are retained in the raw distributions and require reviewer disposition.",
+      "No broker/account freshness metric is represented by this quote artifact."
+    ],
+    "missing_stream_kinds": [],
+    "observation_count": 2002,
+    "percentile_method": "nearest_rank",
+    "review_status": "REVIEW_REQUIRED",
+    "threshold_candidates": null,
+    "threshold_selection": "NOT_PERFORMED"
+  },
+  "scheduled_for": "2026-08-25T09:00:00+08:00",
+  "session_window": "opening",
+  "status": "CAPTURED"
+}

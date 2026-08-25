@@ -10,6 +10,26 @@
 - Quote latency and broker/account freshness are separate datasets and analyses. Neither may be inferred from the other.
 - Thresholds remain unset unless immutable captured evidence and data-quality review support them.
 
+## 2026-08-24 — Quote scheduler hardening
+
+- The installed quote scheduler previously accepted only an exact configured
+  minute. The actual 10:01 scheduled-run record therefore proved that a one
+  minute launch delay was classified `NO_CAPTURE_OFF_SCHEDULE`, despite being
+  within the intended continuous collection period.
+- Each configured quote window now accepts a single start up to five minutes
+  late, records both `scheduled_for` and `launch_delay_seconds`, and otherwise
+  remains fail-closed. The close window can therefore start as late as 13:20
+  and still observe the required 13:30 boundary.
+- The launchd command now uses absolute interpreter/script paths. The runner
+  changes to its own repository root before reading relative manifests or
+  writing artifacts, so it no longer depends on launchd inheriting a usable
+  working directory.
+- The user-level job was reinstalled and safely invoked at 17:22 outside every
+  capture window. It exited 0 with `NO_CAPTURE_OFF_SCHEDULE`; no new stderr
+  bytes were emitted after removing the invalid `WorkingDirectory` setting.
+- This improves collection reliability only. It does not repair partial
+  callback coverage, set a freshness threshold, or unblock Portfolio Phase 1.
+
 ## 2026-08-22 — Frozen close-window execution
 
 - The active heartbeat authorizes one bounded quote-only close capture for the
@@ -25,6 +45,29 @@
   override the closed-date gate. The run is recorded as `NO_CAPTURE`; no SDK
   login, quote subscription, broker/account API, order API, CA, or Portfolio
   work occurred.
+
+## 2026-08-23 — Frozen close-window execution
+
+- The second heartbeat again arrived on a reviewed non-trading day: host time
+  was `2026-08-23 13:00 +08:00 Sun`. Five read-only NTP samples selected a
+  valid source (offsets approximately +0.595 to +0.601 ms), but the Sunday
+  calendar gate still requires `NO_CAPTURE`.
+- No Shioaji import/login, quote subscription, account/order/CA/trade-callback
+  API, execution, or Portfolio work occurred. No artifact-quality check is
+  implicitly passed when no immutable quote artifact exists.
+
+## 2026-08-24 — Frozen close-window execution
+
+- A one-time trading-day close capture is authorized for only the frozen
+  `2886:high`, `6863:mid`, `1530:low` Tick/BidAsk cohort. It remains evidence
+  collection only: broker/account, orders, CA, trade callbacks, execution, and
+  Portfolio Phase 1 are excluded, and every threshold remains unset pending
+  artifact integrity and review.
+- Host time at preflight was `2026-08-24 17:00 +08:00 Mon`, not the heartbeat's
+  13:02 close window. Five read-only NTP samples selected successfully
+  (approximately +0.037 ms), but the after-close host time requires
+  `NO_CAPTURE_OFF_SESSION`. No provider path was entered and no evidence
+  artifact-quality check is implicitly passed.
 
 ## 2026-08-22 — Broker/account read-only evidence authorization
 

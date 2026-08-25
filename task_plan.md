@@ -163,6 +163,14 @@ Phase 13 — Freshness Calibration Evidence
 - [ ] Keep all eight FreshnessPolicyV1 thresholds unset and Portfolio Phase 1 blocked pending repeated trading-session observations and review.
 - **Status:** in_progress
 
+### Phase 13s: Quote-evidence scheduler hardening
+
+- [x] Accept a bounded late launch for a configured quote window and record its scheduled time and delay.
+- [x] Make the launchd command independent of a successful inherited working directory.
+- [x] Add focused regressions for on-time, bounded-late, and expired launch attempts.
+- [x] Reinstall and inspect the user launchd job; no provider capture is run outside a permitted window.
+- **Status:** complete
+
 ## Key Questions
 
 1. Which parts of the supplied proposal duplicate or conflict with existing repository behavior?
@@ -224,6 +232,9 @@ Phase 13 — Freshness Calibration Evidence
 | Broker/account Saturday smoke referenced absent `ReviewedEquityCalendar.from_json_document` | 1 | The failure occurred before SDK import/login. Replaced it with the repository-supported `ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH)`; retry returned `NO_CAPTURE_NON_TRADING_DAY` with `provider_called=false`. |
 | Initial post-install planning patch used stale progress context | 1 | No planning file changed. Re-read the exact Phase 13r lines and applied a scoped patch against the live text. |
 | Frozen close-window NTP preflight could not resolve DNS in the sandbox | 1 | Re-ran the same read-only NTP command with approved network access; five selected samples succeeded. Host date was Saturday, so no provider capture was attempted. |
+| First 2026-08-23 no-capture review patch had one unprefixed added line | 1 | No file changed. Re-applied the review as a small valid patch, then updated the three planning records with exact current context. |
+| First 2026-08-24 no-capture review patch had one unprefixed added line | 1 | No file changed. Re-applied the review as a small valid patch, then updated the three planning records with exact current context. |
+| Initial scheduler-hardening planning patch contained an empty hunk | 1 | No file changed. Re-read the exact plan context and applied a scoped patch. |
 
 ## Notes
 
@@ -233,3 +244,12 @@ Phase 13 — Freshness Calibration Evidence
 - It may authenticate to Shioaji for market data with `subscribe_trade=False`; it must not activate CA, subscribe to order events, submit broker orders, or expose a live-order configuration value.
 - Phase 13 is calibration-only: it may add evidence capture and analysis artifacts, but it must not implement Portfolio Phase 1 or change frozen domain contracts.
 - Phase 13r begins only because the owner has explicitly authorized the broker/account source as read-only. It must never widen that grant into a broker-order or CA integration.
+- The 2026-08-22 and 2026-08-23 frozen close heartbeats each landed on a
+  reviewed non-trading day. Both retained successful read-only NTP provenance
+  and ended `NO_CAPTURE` before any provider path; neither is quote evidence or
+  changes the Phase 0 / Phase 1 gate.
+- The 2026-08-24 heartbeat was a trading day but the host clock was 17:00,
+  after the frozen close window despite its 13:02 heartbeat timestamp. It
+  retained successful read-only NTP provenance and ended
+  `NO_CAPTURE_OFF_SESSION` before any provider path; it is not quote evidence
+  and does not change the Phase 0 / Phase 1 gate.

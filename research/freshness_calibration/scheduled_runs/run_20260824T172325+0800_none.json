@@ -1,0 +1,8 @@
+{
+  "launch_delay_seconds": null,
+  "now": "2026-08-24T17:23:25.783563+08:00",
+  "reason": "no configured quote-evidence window starts within its bounded late-launch grace",
+  "scheduled_for": null,
+  "session_window": null,
+  "status": "NO_CAPTURE_OFF_SCHEDULE"
+}

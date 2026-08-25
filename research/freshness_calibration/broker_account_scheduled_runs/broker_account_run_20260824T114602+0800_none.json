@@ -1,0 +1,8 @@
+{
+  "now": "2026-08-24T11:46:02.874612+08:00",
+  "provider_called": false,
+  "reason": "no configured broker/account evidence window starts in this minute",
+  "status": "NO_CAPTURE_OFF_SCHEDULE",
+  "threshold_candidates": null,
+  "window_label": null
+}

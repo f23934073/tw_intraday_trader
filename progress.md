@@ -652,6 +652,21 @@
   `research/freshness_calibration/reviews/2026-08-22_1301_close_no_capture_review.md`;
   no quote artifact exists and all artifact-quality checks are N/A rather than
   treated as pass.
+- Second frozen close heartbeat disposition: host time was `2026-08-23 13:00
+  +08:00 Sun`, again a reviewed non-trading day. The required five read-only
+  NTP samples all selected valid sources (+0.595 to +0.601 ms offset), but no
+  provider path was entered. Published
+  `research/freshness_calibration/reviews/2026-08-23_1300_close_no_capture_review.md`;
+  the result remains `NO_CAPTURE`, no quote artifact exists, and all thresholds
+  stay unset.
+- Trading-day frozen close heartbeat disposition: the host clock was
+  `2026-08-24 17:00 +08:00 Mon`, after the close session, rather than the
+  heartbeat's 13:02 window. Five read-only NTP samples selected valid sources
+  (+0.0367 to +0.0373 ms), but the capture ended `NO_CAPTURE_OFF_SESSION`
+  before Shioaji import/login or any quote/account/order/CA operation.
+  Published
+  `research/freshness_calibration/reviews/2026-08-24_1700_close_no_capture_review.md`;
+  no quote artifact exists and all thresholds remain unset.
 - Inspected the installed Shioaji 1.7.2 method signatures without logging in.
   The synchronous, callback-free read signatures are available for positions,
   profit/loss, and account balance; `update_status` exists but remains
@@ -706,6 +721,25 @@
   the intentionally excluded `update_status`. `account_balance` reports a
   settlement-account balance and a provider query-time field, not a documented
   buying-power authority.
+
+### Phase 13s: Quote-evidence scheduler hardening (2026-08-24)
+
+- Diagnosed the missed 10:00 continuous window: the scheduler accepted only an
+  exact minute, so its 10:01 invocation correctly but unhelpfully ended
+  `NO_CAPTURE_OFF_SCHEDULE`.
+- Added a bounded five-minute late-launch grace to each frozen quote window.
+  Every accepted run retains its original session label and immutable duration,
+  and records the planned timestamp plus measured launch delay. A later launch
+  still makes no NTP or provider call.
+- Replaced the relative launchd command with absolute paths; the runner now
+  changes to its own repository root. Removed the launchd `WorkingDirectory`
+  setting after proving it produced `getcwd` errors in this environment.
+- Focused scheduler tests passed (`10 passed in 0.07s`), Python compilation,
+  plist syntax validation, and `git diff --check` passed. A non-session
+  launchd smoke exited 0 as `NO_CAPTURE_OFF_SCHEDULE` and produced no new
+  stderr output. No Shioaji provider, broker/account, order, CA, or Portfolio
+  path was entered.
+- **Status:** complete
 
 ## Test Results
 
