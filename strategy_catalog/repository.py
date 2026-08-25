@@ -80,6 +80,17 @@ class AtomicStrategyRepository(Protocol):
 
     def list_strategy_sets(self) -> tuple[ExactStrategySetSnapshot, ...]: ...
 
+    def is_strategy_set_archived(self, strategy_set_version_id: str) -> bool: ...
+
+    def archive_strategy_set(
+        self,
+        strategy_set_version_id: str,
+        *,
+        actor_id: str,
+        idempotency_key: str,
+        change_note: str,
+    ) -> bool: ...
+
     def get_paper_activation_snapshot(
         self,
         strategy_set_version_id: str,

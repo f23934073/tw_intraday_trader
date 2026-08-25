@@ -706,6 +706,30 @@ class PostgresAtomicStrategyRepository:
                     return False
             cursor.execute(
                 """
+                SELECT strategy_set_version_id
+                FROM backtest.strategy_set_versions
+                WHERE strategy_set_id = %s
+                ORDER BY strategy_set_version_id
+                FOR UPDATE
+                """,
+                (snapshot.strategy_set_id,),
+            )
+            cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT 1
+                FROM backtest.strategy_set_archives
+                WHERE strategy_set_id = %s
+                """,
+                (snapshot.strategy_set_id,),
+            )
+            if cursor.fetchone() is not None:
+                raise StrategyCatalogConflict(
+                    "STRATEGY_SET_ARCHIVED",
+                    "Strategy Set 已封存，不可新增修訂",
+                )
+            cursor.execute(
+                """
                 SELECT strategy_set_version_id, snapshot_digest
                 FROM backtest.strategy_set_versions
                 WHERE strategy_set_version_id = %s
@@ -820,7 +844,11 @@ class PostgresAtomicStrategyRepository:
                         "snapshot_digest": snapshot.snapshot_digest,
                     },
                     actor_id=actor_id,
-                    action="STRATEGY_SET_CREATED",
+                    action=(
+                        "STRATEGY_SET_CREATED"
+                        if snapshot.version_number == 1
+                        else "STRATEGY_SET_REVISED"
+                    ),
                     resource_type="STRATEGY_SET_VERSION",
                     resource_id=snapshot.strategy_set_version_id,
                     before_digest=None,
@@ -902,13 +930,154 @@ class PostgresAtomicStrategyRepository:
         with self._transaction() as cursor:
             cursor.execute(
                 """
-                SELECT strategy_set_version_id
-                FROM backtest.strategy_set_versions
-                ORDER BY created_at DESC, strategy_set_version_id
+                SELECT version.strategy_set_version_id
+                FROM backtest.strategy_set_versions AS version
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM backtest.strategy_set_archives AS archive
+                    WHERE archive.strategy_set_id = version.strategy_set_id
+                )
+                ORDER BY version.created_at DESC, version.strategy_set_version_id
                 """
             )
             identifiers = tuple(str(raw[0]) for raw in cursor.fetchall())
         return tuple(self.get_strategy_set(identifier) for identifier in identifiers)
+
+    def is_strategy_set_archived(self, strategy_set_version_id: str) -> bool:
+        with self._transaction() as cursor:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM backtest.strategy_set_versions AS version
+                    JOIN backtest.strategy_set_archives AS archive
+                      ON archive.strategy_set_id = version.strategy_set_id
+                    WHERE version.strategy_set_version_id = %s
+                )
+                """,
+                (strategy_set_version_id,),
+            )
+            return bool(cursor.fetchone()[0])
+
+    def archive_strategy_set(
+        self,
+        strategy_set_version_id: str,
+        *,
+        actor_id: str,
+        idempotency_key: str,
+        change_note: str,
+    ) -> bool:
+        if not actor_id.strip() or not idempotency_key.strip() or not change_note.strip():
+            raise ValueError("Strategy Set archive actor、idempotency key 與說明不可為空")
+        with self._transaction() as cursor:
+            cursor.execute(
+                """
+                SELECT strategy_set_id, snapshot_digest
+                FROM backtest.strategy_set_versions
+                WHERE strategy_set_version_id = %s
+                """,
+                (strategy_set_version_id,),
+            )
+            raw = cursor.fetchone()
+            if raw is None:
+                raise StrategyCatalogConflict(
+                    "STRATEGY_SET_VERSION_NOT_FOUND",
+                    f"找不到 Strategy Set Version：{strategy_set_version_id}",
+                )
+            row = _row(cursor, raw)
+            strategy_set_id = str(row["strategy_set_id"])
+            before_digest = str(row["snapshot_digest"])
+            cursor.execute(
+                """
+                SELECT strategy_set_version_id
+                FROM backtest.strategy_set_versions
+                WHERE strategy_set_id = %s
+                ORDER BY strategy_set_version_id
+                FOR UPDATE
+                """,
+                (strategy_set_id,),
+            )
+            cursor.fetchall()
+            scope = f"strategy-set:archive:{strategy_set_id}"
+            archive_document = {
+                "contract_version": "strategy-set-archive-v1",
+                "strategy_set_id": strategy_set_id,
+                "source_strategy_set_version_id": strategy_set_version_id,
+                "actor_id": actor_id.strip(),
+                "change_note": change_note.strip(),
+            }
+            request_digest = canonical_digest(archive_document)
+            self._lock_mutation(cursor, scope, idempotency_key)
+            replay = self._mutation_operation(cursor, scope, idempotency_key)
+            if replay is not None:
+                self._assert_mutation_digest(replay, request_digest)
+                return False
+            cursor.execute(
+                """
+                SELECT archive_digest
+                FROM backtest.strategy_set_archives
+                WHERE strategy_set_id = %s
+                """,
+                (strategy_set_id,),
+            )
+            existing_archive = cursor.fetchone()
+            if existing_archive is not None:
+                existing_archive_digest = str(existing_archive[0])
+                self._record_mutation(
+                    cursor,
+                    scope=scope,
+                    idempotency_key=idempotency_key,
+                    request_digest=request_digest,
+                    result={
+                        "strategy_set_id": strategy_set_id,
+                        "strategy_set_version_id": strategy_set_version_id,
+                        "archive_digest": existing_archive_digest,
+                        "already_archived": True,
+                    },
+                    actor_id=actor_id,
+                    action="STRATEGY_SET_ARCHIVE_REPLAYED",
+                    resource_type="STRATEGY_SET",
+                    resource_id=strategy_set_id,
+                    before_digest=existing_archive_digest,
+                    after_digest=existing_archive_digest,
+                    change_note=change_note,
+                )
+                return False
+            archive_digest = canonical_digest(archive_document)
+            cursor.execute(
+                """
+                INSERT INTO backtest.strategy_set_archives (
+                    strategy_set_id, source_strategy_set_version_id,
+                    archived_by, archive_note, archive_digest
+                ) VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    strategy_set_id,
+                    strategy_set_version_id,
+                    actor_id.strip(),
+                    change_note.strip(),
+                    archive_digest,
+                ),
+            )
+            self._record_mutation(
+                cursor,
+                scope=scope,
+                idempotency_key=idempotency_key,
+                request_digest=request_digest,
+                result={
+                    "strategy_set_id": strategy_set_id,
+                    "strategy_set_version_id": strategy_set_version_id,
+                    "archive_digest": archive_digest,
+                },
+                actor_id=actor_id,
+                action="STRATEGY_SET_ARCHIVED",
+                resource_type="STRATEGY_SET",
+                resource_id=strategy_set_id,
+                before_digest=before_digest,
+                after_digest=archive_digest,
+                change_note=change_note,
+            )
+            return True
 
     def get_paper_activation_snapshot(
         self,
@@ -920,10 +1089,13 @@ class PostgresAtomicStrategyRepository:
         with self._transaction() as cursor:
             cursor.execute(
                 """
-                SELECT snapshot_json, snapshot_digest
-                FROM backtest.strategy_set_versions
-                WHERE strategy_set_version_id = %s
-                FOR SHARE
+                SELECT version.snapshot_json, version.snapshot_digest,
+                       archive.strategy_set_id AS archived_strategy_set_id
+                FROM backtest.strategy_set_versions AS version
+                LEFT JOIN backtest.strategy_set_archives AS archive
+                  ON archive.strategy_set_id = version.strategy_set_id
+                WHERE version.strategy_set_version_id = %s
+                FOR SHARE OF version
                 """,
                 (strategy_set_version_id,),
             )
@@ -934,6 +1106,12 @@ class PostgresAtomicStrategyRepository:
                     f"找不到 Strategy Set Version：{strategy_set_version_id}",
                 )
             set_row = _row(cursor, raw_set)
+            if set_row["archived_strategy_set_id"] is not None:
+                raise StrategyCatalogConflict(
+                    "STRATEGY_SET_ARCHIVED",
+                    "Strategy Set 已封存，不可啟動新的 Local Paper",
+                    details={"strategy_set_version_id": strategy_set_version_id},
+                )
             locked_document = _decode_json(set_row["snapshot_json"])
             locked_digest = str(set_row["snapshot_digest"])
             if (

@@ -30,11 +30,11 @@ def test_entrypoint_composes_workspace_modules_instead_of_embedding_them() -> No
         assert f'./workspaces/{module}.js' in APP
         source = (WORKSPACES / f"{module}.js").read_text(encoding="utf-8")
         assert factory in source
+    assert len(APP.splitlines()) < 575
     assert (
         './workspaces/backtest.js?v=20260823-atomic-backtest-auto-dataset-v1'
         in APP
     )
-    assert len(APP.splitlines()) < 575
 
 
 def test_workspace_factories_declare_cross_workspace_dependencies() -> None:

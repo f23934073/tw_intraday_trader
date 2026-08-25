@@ -27,6 +27,7 @@ from strategy_catalog.drafts import PublishStrategyRequest, StrategyVersion
 from strategy_catalog.parameter_schema import canonical_digest
 from strategy_catalog.domain import StrategyRole
 from strategy_catalog.postgres_repository import PostgresAtomicStrategyRepository
+from strategy_catalog.repository import StrategyCatalogConflict
 from strategy_catalog.sets import (
     CompositionPolicy,
     ExactStrategySetSnapshot,
@@ -118,6 +119,15 @@ def _wait_for_terminal(service: BacktestApplicationService, run_id: str) -> dict
     return current
 
 
+class _ArchivedStrategySetRepository:
+    def is_strategy_set_archived(self, strategy_set_version_id: str) -> bool:
+        assert strategy_set_version_id == "archived-strategy-set-version"
+        return True
+
+    def get_strategy_set(self, strategy_set_version_id: str):
+        raise AssertionError("封存組合必須在載入 exact snapshot 前被拒絕")
+
+
 class _AtomicVersionSetRepository:
     def __init__(
         self,
@@ -126,6 +136,10 @@ class _AtomicVersionSetRepository:
     ) -> None:
         self._snapshot = snapshot
         self._version = version
+
+    def is_strategy_set_archived(self, strategy_set_version_id: str) -> bool:
+        assert strategy_set_version_id == self._snapshot.strategy_set_version_id
+        return False
 
     def get_strategy_set(self, strategy_set_version_id: str) -> ExactStrategySetSnapshot:
         assert strategy_set_version_id == self._snapshot.strategy_set_version_id
@@ -192,6 +206,34 @@ def _atomic_vwap_fixture() -> tuple[
         ),
     )
     return registry, _AtomicVersionSetRepository(snapshot, version), snapshot
+
+
+def test_archived_strategy_set_cannot_launch_new_backtest(tmp_path) -> None:
+    catalog = HistoricalDatasetCatalog(tmp_path / "datasets")
+    manifest = catalog.create_imported_dataset(
+        bars=_one_minute_bars(),
+        source="archived-set-fixture",
+        universe_scope="DATE_EFFECTIVE",
+        research_eligible=True,
+    )
+    repository = SQLiteBacktestRepository(tmp_path / "backtest.sqlite3")
+    repository.upsert_dataset(manifest.to_dict(), "READY")
+    service = BacktestApplicationService(
+        MockProvider(),
+        repository=repository,
+        catalog=catalog,
+        atomic_repository=_ArchivedStrategySetRepository(),
+        workers=1,
+    )
+    try:
+        with pytest.raises(StrategyCatalogConflict) as archived:
+            service.create_atomic_run(
+                strategy_set_version_id="archived-strategy-set-version",
+                idempotency_key="archived-set-backtest",
+            )
+        assert archived.value.code == "STRATEGY_SET_ARCHIVED"
+    finally:
+        service.close()
 
 
 def test_atomic_standalone_run_never_falls_back_to_sqlite_ready_datasets(

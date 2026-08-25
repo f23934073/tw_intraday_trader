@@ -465,6 +465,11 @@ class AtomicStrategySetCreateRequest(StrictRequest):
     change_note: str = Field(min_length=1, pattern=r".*\S.*")
 
 
+class AtomicStrategySetArchiveRequest(StrictRequest):
+    actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
+    change_note: str = Field(min_length=1, pattern=r".*\S.*")
+
+
 class AtomicBacktestRunRequest(StrictRequest):
     strategy_set_version_id: str
     starting_cash: str = "10000000"
@@ -1761,6 +1766,37 @@ def atomic_strategy_sets() -> dict[str, Any]:
         raise _atomic_http_error(error) from error
 
 
+def _strategy_set_snapshot(
+    payload: AtomicStrategySetCreateRequest,
+    *,
+    strategy_set_version_id: str,
+    strategy_set_id: str,
+    version_number: int,
+) -> ExactStrategySetSnapshot:
+    stage = StrategyRole(payload.stage.strip().upper())
+    return ExactStrategySetSnapshot(
+        strategy_set_version_id=strategy_set_version_id,
+        strategy_set_id=strategy_set_id,
+        version_number=version_number,
+        display_name_zh_tw=payload.display_name_zh_tw,
+        stage=stage,
+        policy=CompositionPolicy(payload.policy.strip().upper()),
+        members=tuple(
+            StrategySetMemberSnapshot(
+                strategy_version_id=item.strategy_version_id,
+                strategy_id=item.strategy_id,
+                role=stage,
+                configuration_digest=item.configuration_digest,
+                implementation_digest=item.implementation_digest,
+                member_order=item.member_order,
+                attribution_priority=item.attribution_priority,
+            )
+            for item in payload.members
+        ),
+        minimum_trigger_count=payload.minimum_trigger_count,
+    )
+
+
 @app.post("/api/strategy-sets", status_code=status.HTTP_201_CREATED)
 def create_atomic_strategy_set(
     payload: AtomicStrategySetCreateRequest,
@@ -1772,26 +1808,11 @@ def create_atomic_strategy_set(
     key = _atomic_idempotency_key(idempotency_key)
     try:
         stable_id = uuid5(NAMESPACE_URL, f"tw-intraday-trader:strategy-set:{key}").hex
-        snapshot = ExactStrategySetSnapshot(
+        snapshot = _strategy_set_snapshot(
+            payload,
             strategy_set_version_id=f"strategy-set-version-{stable_id}",
             strategy_set_id=f"strategy-set-{stable_id}",
             version_number=1,
-            display_name_zh_tw=payload.display_name_zh_tw,
-            stage=StrategyRole(payload.stage.strip().upper()),
-            policy=CompositionPolicy(payload.policy.strip().upper()),
-            members=tuple(
-                StrategySetMemberSnapshot(
-                    strategy_version_id=item.strategy_version_id,
-                    strategy_id=item.strategy_id,
-                    role=StrategyRole(payload.stage.strip().upper()),
-                    configuration_digest=item.configuration_digest,
-                    implementation_digest=item.implementation_digest,
-                    member_order=item.member_order,
-                    attribution_priority=item.attribution_priority,
-                )
-                for item in payload.members
-            ),
-            minimum_trigger_count=payload.minimum_trigger_count,
         )
         created = get_atomic_strategy_service().save_strategy_set(
             snapshot,
@@ -1819,6 +1840,70 @@ def create_atomic_strategy_set(
         raise _atomic_http_error(error) from error
 
 
+@app.post(
+    "/api/strategy-sets/{strategy_set_version_id}/revisions",
+    status_code=status.HTTP_201_CREATED,
+)
+def revise_atomic_strategy_set(
+    strategy_set_version_id: str,
+    payload: AtomicStrategySetCreateRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    stable_id = uuid5(
+        NAMESPACE_URL,
+        f"tw-intraday-trader:strategy-set-revision:{strategy_set_version_id}:{key}",
+    ).hex
+    try:
+        service = get_atomic_strategy_service()
+        base = service.get_strategy_set(strategy_set_version_id)
+        if service.is_strategy_set_archived(strategy_set_version_id):
+            raise StrategyCatalogConflict(
+                "STRATEGY_SET_ARCHIVED",
+                "Strategy Set 已封存，不可建立新修訂",
+            )
+        requested_stage = StrategyRole(payload.stage.strip().upper())
+        if requested_stage is not base.stage:
+            raise StrategyCatalogConflict(
+                "STRATEGY_SET_STAGE_CONFLICT",
+                "Strategy Set 修訂不可改變 stage",
+            )
+        snapshot = _strategy_set_snapshot(
+            payload,
+            strategy_set_version_id=f"strategy-set-version-{stable_id}",
+            strategy_set_id=base.strategy_set_id,
+            version_number=base.version_number + 1,
+        )
+        created = service.save_strategy_set(
+            snapshot,
+            actor_id=payload.actor_id,
+            idempotency_key=key,
+            change_note=payload.change_note,
+        )
+        return {
+            "strategy_set": snapshot.to_dict()
+            | {"snapshot_digest": snapshot.snapshot_digest},
+            "created": created,
+            "revised_from_strategy_set_version_id": strategy_set_version_id,
+        }
+    except Exception as error:
+        _record_catalog_mutation_failure(
+            error,
+            action="STRATEGY_SET_REVISE",
+            resource_type="STRATEGY_SET_VERSION",
+            resource_id=f"strategy-set-version-{stable_id}",
+            actor_id=payload.actor_id,
+            operation_scope=f"strategy-set:revise:{strategy_set_version_id}",
+            idempotency_key=key,
+            request_document=payload.model_dump(),
+            change_note=payload.change_note,
+        )
+        raise _atomic_http_error(error) from error
+
+
 @app.get("/api/strategy-sets/{strategy_set_version_id}")
 def atomic_strategy_set(strategy_set_version_id: str) -> dict[str, Any]:
     try:
@@ -1827,6 +1912,53 @@ def atomic_strategy_set(strategy_set_version_id: str) -> dict[str, Any]:
             "strategy_set": snapshot.to_dict() | {"snapshot_digest": snapshot.snapshot_digest}
         }
     except Exception as error:
+        raise _atomic_http_error(error) from error
+
+
+@app.delete("/api/strategy-sets/{strategy_set_version_id}")
+def archive_atomic_strategy_set(
+    strategy_set_version_id: str,
+    payload: AtomicStrategySetArchiveRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    operation_scope = f"strategy-set:archive-version:{strategy_set_version_id}"
+    resource_id = strategy_set_version_id
+    try:
+        service = get_atomic_strategy_service()
+        snapshot = service.get_strategy_set(strategy_set_version_id)
+        operation_scope = f"strategy-set:archive:{snapshot.strategy_set_id}"
+        resource_id = snapshot.strategy_set_id
+        archived = service.archive_strategy_set(
+            strategy_set_version_id,
+            actor_id=payload.actor_id,
+            idempotency_key=key,
+            change_note=payload.change_note,
+        )
+        return {
+            "strategy_set_version_id": strategy_set_version_id,
+            "strategy_set_id": snapshot.strategy_set_id,
+            "archived": archived,
+        }
+    except Exception as error:
+        if not (
+            isinstance(error, StrategyCatalogConflict)
+            and error.code == "IDEMPOTENCY_CONFLICT"
+        ):
+            _record_catalog_mutation_failure(
+                error,
+                action="STRATEGY_SET_ARCHIVE",
+                resource_type="STRATEGY_SET",
+                resource_id=resource_id,
+                actor_id=payload.actor_id,
+                operation_scope=operation_scope,
+                idempotency_key=key,
+                request_document=payload.model_dump(),
+                change_note=payload.change_note,
+            )
         raise _atomic_http_error(error) from error
 
 

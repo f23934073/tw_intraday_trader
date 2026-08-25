@@ -623,11 +623,60 @@
       .atomic-management-grid .wide { grid-column: 1 / -1; }
       .strategy-template-button { background: var(--surface); border: 1px solid var(--line); border-radius: 9px; color: var(--text); cursor: pointer; display: grid; gap: 4px; padding: 10px; text-align: left; width: 100%; }
       .strategy-template-button:hover, .strategy-template-button.selected { border-color: var(--blue); }
+      .strategy-template-button.selected { background: color-mix(in srgb, var(--blue) 7%, var(--surface)); box-shadow: inset 3px 0 0 var(--blue); }
+      .strategy-template-button strong { font-size: 13px; }
       .strategy-template-button span { color: var(--muted); font-size: 10px; line-height: 1.4; }
       .strategy-parameter-grid { display: grid; gap: 9px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 10px; }
       .strategy-parameter-help { color: var(--muted); font-size: 9px; line-height: 1.35; }
-      .legacy-strategy-catalog, .legacy-backtest-settings { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
-      .legacy-strategy-catalog summary, .legacy-backtest-settings summary { color: var(--muted); cursor: pointer; font-size: 11px; margin-bottom: 10px; }
+
+      .strategy-management-body { display: flex; flex-direction: column; overflow: hidden; padding-right: 0; }
+      .strategy-management-intro { align-items: flex-start; display: flex; flex: none; gap: 18px; justify-content: space-between; }
+      .strategy-management-intro .backtest-intro { margin-bottom: 10px; max-width: 76ch; }
+      .strategy-management-intro .backtest-button { flex: none; margin-top: 0; }
+      .strategy-workflow-tabs { background: var(--surface); border-bottom: 1px solid var(--line); display: flex; flex: none; gap: 4px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 0 2px; position: sticky; scrollbar-width: thin; top: 0; z-index: 3; }
+      .strategy-workflow-tab { align-items: center; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; display: flex; flex: 1 0 auto; font: inherit; font-size: 12px; gap: 8px; justify-content: center; margin-bottom: -1px; min-height: 44px; padding: 8px 12px; white-space: nowrap; }
+      .strategy-workflow-tab:hover { color: var(--text); }
+      .strategy-workflow-tab.active { border-bottom-color: var(--blue); color: var(--blue); font-weight: 600; }
+      .strategy-workflow-count { align-items: center; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); display: inline-flex; font-size: 10px; font-variant-numeric: tabular-nums; justify-content: center; min-width: 24px; padding: 2px 6px; }
+      .strategy-workflow-tab.active .strategy-workflow-count { background: color-mix(in srgb, var(--blue) 10%, var(--surface)); border-color: color-mix(in srgb, var(--blue) 35%, var(--line)); color: var(--blue); }
+      .strategy-workflow-status { align-items: center; display: flex; flex: none; gap: 8px; min-height: 36px; }
+      .strategy-workflow-status .backtest-card-copy { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .strategy-status-dot { background: var(--green); border-radius: 999px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 12%, transparent); flex: none; height: 6px; width: 6px; }
+      .strategy-management-stage { flex: 1; min-height: 0; overflow: hidden; }
+      .strategy-workflow-panel { display: none; height: 100%; min-height: 0; overflow: auto; padding-right: 4px; scroll-padding-top: 54px; }
+      .strategy-workflow-panel.active { display: block; }
+      .strategy-editor-layout, .strategy-library-layout, .strategy-set-layout { display: grid; gap: 12px; height: 100%; min-height: 0; }
+      .strategy-editor-layout { grid-template-columns: minmax(260px, .82fr) minmax(340px, 1.18fr); }
+      .strategy-library-layout { grid-template-columns: minmax(250px, .72fr) minmax(390px, 1.28fr); }
+      .strategy-set-layout { grid-template-columns: minmax(420px, 1.25fr) minmax(240px, .75fr); }
+      .strategy-editor-mount, .strategy-library-editor-mount { min-height: 0; }
+      .strategy-editor-mount { height: 100%; }
+      .strategy-library-detail { display: grid; gap: 12px; grid-template-rows: minmax(260px, .95fr) minmax(260px, 1.05fr); height: 100%; min-height: 0; }
+      .strategy-library-editor-mount:empty { display: none; }
+      .strategy-library-detail:has(.strategy-library-editor-mount:empty) { grid-template-rows: minmax(0, 1fr); }
+      .strategy-editor-card, .strategy-library-card, .strategy-set-builder-card, .strategy-saved-sets-card, .strategy-audit-card { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+      .strategy-editor-card .panel-heading, .strategy-library-card .panel-heading, .strategy-set-builder-card .panel-heading, .strategy-saved-sets-card .panel-heading, .strategy-audit-card .panel-heading { flex: none; }
+      .strategy-editor-heading { align-items: flex-start; }
+      .strategy-editor-heading .panel-count { max-width: 44%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #strategy-template-list, .strategy-workflow-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+      #strategy-draft-form { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+      .strategy-editor-form-fields { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 4px 8px 0; }
+      .strategy-draft-actions { background: var(--surface-soft); border-top: 1px solid var(--line); flex: none; margin-top: 0; padding-top: 10px; position: relative; z-index: 2; }
+      .strategy-draft-status { flex: none; margin: 8px 0 0; min-height: 17px; }
+      .strategy-management-body :is(input, select):disabled, .strategy-management-body input[readonly] { cursor: not-allowed; opacity: .62; }
+      .strategy-version-card .strategy-workflow-list { margin-bottom: 10px; }
+      .strategy-version-compare { border-top: 1px solid var(--line); flex: none; padding-top: 10px; }
+      .strategy-set-builder-card form { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+      .strategy-set-builder-card .strategy-groups { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+      .strategy-set-actions { border-top: 1px solid var(--line); flex: none; padding-top: 10px; }
+      .strategy-set-card-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+      .strategy-set-card-actions .backtest-button { min-height: 36px; }
+      .strategy-audit-card .legacy-strategy-catalog { flex: none; }
+      .strategy-management-body .backtest-button { min-height: 44px; }
+      .strategy-management-body :is(input, select, button) { scroll-margin-top: 54px; }
+      .strategy-workflow-tab:focus-visible, .strategy-template-button:focus-visible, .strategy-management-body .backtest-button:focus-visible, .strategy-workflow-panel:focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 45%, transparent); outline-offset: 2px; }
+      .legacy-strategy-catalog { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
+      .legacy-strategy-catalog summary { color: var(--muted); cursor: pointer; font-size: 11px; margin-bottom: 10px; }
       .atomic-launcher { background: color-mix(in srgb, var(--blue) 5%, var(--surface)); border: 1px solid color-mix(in srgb, var(--blue) 35%, var(--line)); border-radius: 10px; margin-bottom: 14px; padding: 12px; }
       .workspace-tabs { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 16px; padding: 0 0 0 2px; }
       .workspace-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; font-size: 12px; margin-bottom: -1px; padding: 10px 12px 9px; }
@@ -678,9 +727,9 @@
       .strategy-group-heading strong { display: block; font-size: 12px; margin: 0; }
       .strategy-selection-count { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; padding: 2px 7px; }
       .strategy-selection-help { color: var(--muted); font-size: 10px; line-height: 1.4; margin: 4px 0 6px; }
-      .strategy-option { align-items: flex-start; display: flex; font-size: 11px; gap: 6px; line-height: 1.35; margin-top: 6px; }
-      .strategy-option input { accent-color: var(--blue); margin-top: 2px; }
-      .strategy-option span { color: var(--muted); display: block; font-size: 10px; margin-top: 2px; }
+      .strategy-option { align-items: flex-start; display: flex; font-size: 11px; gap: 6px; line-height: 1.35; margin-top: 6px; min-width: 0; }
+      .strategy-option input { accent-color: var(--blue); flex: none; margin-top: 2px; }
+      .strategy-option span { color: var(--muted); display: block; font-size: 10px; margin-top: 2px; min-width: 0; overflow-wrap: anywhere; }
       .backtest-list { display: grid; gap: 7px; max-height: 190px; overflow-y: auto; }
       .backtest-list-item { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--text); cursor: pointer; display: grid; gap: 3px; padding: 8px; text-align: left; width: 100%; }
       .backtest-list-item:hover, .backtest-list-item.selected { border-color: var(--blue); }
@@ -724,6 +773,13 @@
         .momentum-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .momentum-alert-card { grid-column: 1 / -1; }
         .momentum-alerts { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; }
+        .strategy-editor-layout, .strategy-library-layout, .strategy-set-layout { grid-template-columns: 1fr; height: auto; }
+        .strategy-editor-mount, .strategy-library-detail { height: auto; }
+        .strategy-library-detail { grid-template-rows: none; }
+        .strategy-workflow-panel { overflow-y: auto; }
+        .strategy-editor-card, .strategy-library-card, .strategy-set-builder-card, .strategy-saved-sets-card { height: auto; max-height: none; }
+        #strategy-template-list, .strategy-workflow-list { flex: none; max-height: 280px; }
+        .strategy-editor-form-fields { overflow: visible; }
       }
 
       @media (max-width: 700px) {
@@ -757,6 +813,14 @@
         .drawer-panel, .backtest-drawer .drawer-panel, .strategy-catalog-drawer .drawer-panel { height: 100%; left: 0; padding: 16px; top: 0; width: 100vw; }
         .atomic-management-grid, .strategy-parameter-grid { grid-template-columns: 1fr; }
         .atomic-management-grid .wide { grid-column: auto; }
+        .strategy-management-body { display: block; overflow-y: auto; padding-right: 2px; }
+        .strategy-management-intro { align-items: stretch; flex-direction: column; gap: 0; }
+        .strategy-management-intro .backtest-button { align-self: flex-start; margin-bottom: 10px; }
+        .strategy-management-stage { overflow: visible; }
+        .strategy-workflow-panel { height: auto; overflow: visible; }
+        .strategy-editor-layout, .strategy-library-layout, .strategy-set-layout { height: auto; }
+        .strategy-workflow-tab { justify-content: flex-start; }
+        .strategy-management-body .backtest-field input, .strategy-management-body .backtest-field select { font-size: 16px; min-height: 44px; }
       }
 
       @media (max-width: 430px) {

@@ -12,6 +12,7 @@ def test_atomic_strategy_management_is_schema_driven_and_versioned() -> None:
         "strategy-template-list",
         "strategy-draft-form",
         "strategy-parameter-fields",
+        "strategy-draft-clone",
         "strategy-draft-validate",
         "strategy-draft-publish",
         "strategy-version-list",
@@ -21,6 +22,8 @@ def test_atomic_strategy_management_is_schema_driven_and_versioned() -> None:
         "strategy-set-form",
         "strategy-set-members",
         "strategy-set-change-note",
+        "strategy-set-save",
+        "strategy-set-cancel",
         "strategy-audit-list",
     ):
         assert f'id="{element_id}"' in HTML
@@ -32,6 +35,84 @@ def test_atomic_strategy_management_is_schema_driven_and_versioned() -> None:
     assert "/diff/" in BACKTEST
     assert "X-Strategy-CSRF" in BACKTEST
     assert "pendingAtomicMutationKeys" in BACKTEST
+
+
+def test_strategy_management_uses_accessible_workflow_tabs() -> None:
+    for tab_name in ("editor", "library", "sets", "audit"):
+        assert f'id="strategy-tab-{tab_name}"' in HTML
+        assert f'aria-controls="strategy-panel-{tab_name}"' in HTML
+        assert f'data-strategy-tab="{tab_name}"' in HTML
+        assert f'id="strategy-panel-{tab_name}"' in HTML
+        assert f'aria-labelledby="strategy-tab-{tab_name}"' in HTML
+        assert f'data-strategy-panel="{tab_name}"' in HTML
+    assert 'role="tablist" aria-label="策略管理工作流程"' in HTML
+    assert "setStrategyManagementView" in BACKTEST
+    assert "handleStrategyTabKeydown" in BACKTEST
+    assert '["ArrowLeft", "ArrowRight", "Home", "End"]' in BACKTEST
+
+
+def test_switching_atomic_template_clears_stale_draft_status() -> None:
+    selection_start = BACKTEST.index('button.addEventListener("click", () => {', BACKTEST.index("function renderAtomicTemplates"))
+    selection_end = BACKTEST.index("renderAtomicManagement();", selection_start)
+    selection_handler = BACKTEST[selection_start:selection_end]
+    assert 'strategyDraftMessage.textContent = "";' in selection_handler
+
+
+def test_selecting_or_cloning_draft_keeps_library_open_with_editor_on_right() -> None:
+    assert 'id="strategy-editor-mount"' in HTML
+    assert 'id="strategy-draft-editor-card"' in HTML
+    assert 'id="strategy-library-editor-mount"' in HTML
+    assert HTML.index('id="strategy-library-editor-mount"') < HTML.index('id="strategy-version-list"')
+    assert 'viewName === "library" && activeAtomicDraft()' in BACKTEST
+
+    draft_handler = BACKTEST[
+        BACKTEST.index("function renderAtomicDrafts"):
+        BACKTEST.index("function renderAtomicVersions")
+    ]
+    clone_handler = BACKTEST[
+        BACKTEST.index("async function cloneAtomicVersion"):
+        BACKTEST.index("async function submitAtomicStrategySet")
+    ]
+    assert "renderAtomicManagement();" in draft_handler
+    assert 'setStrategyManagementView("editor"' not in draft_handler
+    assert 'setStrategyManagementView("editor"' not in clone_handler
+
+
+def test_sealed_draft_offers_clone_instead_of_editing_original() -> None:
+    assert 'id="strategy-draft-clone" type="button" hidden' in HTML
+    editor = BACKTEST[
+        BACKTEST.index("function renderAtomicParameterEditor"):
+        BACKTEST.index("function readAtomicParameters")
+    ]
+    assert 'control.disabled = sealed' in editor
+    assert 'strategyChangeNote.readOnly = sealed' in editor
+    assert 'strategyDraftClone.hidden = !sealed' in editor
+    assert 'strategyDraftSave.hidden = sealed' in editor
+    assert "draft?.published_strategy_version_id" in editor
+    assert 'strategyDraftClone?.addEventListener("click", cloneActiveAtomicDraft)' in BACKTEST
+    assert "await cloneAtomicVersion(draft.published_strategy_version_id)" in BACKTEST
+    assert "strategyDraftClone.disabled = false" in BACKTEST
+
+
+def test_strategy_set_minimum_is_editable_and_selects_at_least_n_policy() -> None:
+    minimum = '<input id="strategy-set-minimum" type="number" min="1" value="1" aria-describedby="strategy-set-minimum-help">'
+    assert minimum in HTML
+    assert 'id="strategy-set-minimum-help"' in HTML
+    assert 'strategySetMinimum?.addEventListener("input"' in BACKTEST
+    assert 'strategySetPolicy.value = "AT_LEAST_N"' in BACKTEST
+    assert 'strategySetMinimum.disabled' not in BACKTEST
+
+
+def test_strategy_set_cards_can_create_revisions_and_archive_with_confirmation() -> None:
+    assert "data-strategy-set-edit" in BACKTEST
+    assert "data-strategy-set-delete" in BACKTEST
+    assert "/revisions`" in BACKTEST
+    assert '"DELETE"' in BACKTEST
+    assert "window.confirm" in BACKTEST
+    assert "歷史快照仍會保留" in BACKTEST
+    assert "resetStrategySetEditor" in BACKTEST
+    assert "最新版本" not in BACKTEST or "latestVersionByFamily" in BACKTEST
+    assert "latestVersionByFamily" in BACKTEST
 
 
 def test_atomic_backtest_launcher_uses_exact_set_not_raw_strategy_ids() -> None:

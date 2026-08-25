@@ -8,6 +8,7 @@ import dashboard.server as server
 from atomic_strategies.registry import AtomicStrategyRegistry
 from backtest.repository import BacktestIdempotencyConflict
 from strategy_catalog.drafts import StrategyDraft
+from strategy_catalog.sets import ExactStrategySetSnapshot
 
 
 class _AtomicServiceProbe:
@@ -15,6 +16,8 @@ class _AtomicServiceProbe:
         self.template_items = AtomicStrategyRegistry().templates()
         self.created: list[dict[str, object]] = []
         self.audit_events: list[dict[str, object]] = []
+        self.strategy_sets: list[ExactStrategySetSnapshot] = []
+        self.archived_strategy_set_ids: set[str] = set()
 
     def templates(self):
         return self.template_items
@@ -29,7 +32,36 @@ class _AtomicServiceProbe:
         return ()
 
     def list_strategy_sets(self):
-        return ()
+        return tuple(
+            item
+            for item in self.strategy_sets
+            if item.strategy_set_id not in self.archived_strategy_set_ids
+        )
+
+    def save_strategy_set(self, snapshot, **kwargs):
+        if any(item.strategy_set_version_id == snapshot.strategy_set_version_id for item in self.strategy_sets):
+            return False
+        self.strategy_sets.append(snapshot)
+        self.created.append({"strategy_set": snapshot, **kwargs})
+        return True
+
+    def get_strategy_set(self, strategy_set_version_id):
+        return next(
+            item
+            for item in self.strategy_sets
+            if item.strategy_set_version_id == strategy_set_version_id
+        )
+
+    def is_strategy_set_archived(self, strategy_set_version_id):
+        return self.get_strategy_set(strategy_set_version_id).strategy_set_id in self.archived_strategy_set_ids
+
+    def archive_strategy_set(self, strategy_set_version_id, **kwargs):
+        snapshot = self.get_strategy_set(strategy_set_version_id)
+        if snapshot.strategy_set_id in self.archived_strategy_set_ids:
+            return False
+        self.archived_strategy_set_ids.add(snapshot.strategy_set_id)
+        self.created.append({"archived_strategy_set": snapshot, **kwargs})
+        return True
 
     def diff_versions(self, left_id, right_id):
         return {
@@ -235,6 +267,65 @@ def test_atomic_strategy_web_routes_require_csrf_and_use_exact_set(monkeypatch) 
     diff = client.get("/api/strategy-versions/version-a/diff/version-b")
     assert diff.status_code == 200
     assert diff.json()["diff"]["changes"][0]["parameter"] == "minimum_distance_bps"
+
+
+def test_strategy_set_revision_and_archive_preserve_exact_history(monkeypatch) -> None:
+    atomic = _AtomicServiceProbe()
+    monkeypatch.setattr(server, "get_atomic_strategy_service", lambda: atomic)
+    client = TestClient(server.app)
+    token = client.get("/api/atomic-strategies/capabilities").json()["csrf_token"]
+    headers = {"Idempotency-Key": "strategy-set-create-web-1", "X-Strategy-CSRF": token}
+    payload = {
+        "display_name_zh_tw": "精確版本組合",
+        "stage": "ENTRY",
+        "policy": "AT_LEAST_N",
+        "minimum_trigger_count": 1,
+        "members": [
+            {
+                "strategy_version_id": "version-web-1",
+                "strategy_id": "above_vwap_entry",
+                "configuration_digest": "configuration-digest",
+                "implementation_digest": "implementation-digest",
+                "member_order": 0,
+                "attribution_priority": 0,
+            }
+        ],
+        "actor_id": "reviewer",
+        "change_note": "建立初版",
+    }
+
+    created = client.post("/api/strategy-sets", headers=headers, json=payload)
+    assert created.status_code == 201, created.text
+    base = created.json()["strategy_set"]
+
+    no_csrf = client.post(
+        f"/api/strategy-sets/{base['strategy_set_version_id']}/revisions",
+        headers={"Idempotency-Key": "strategy-set-revise-web-1"},
+        json=payload | {"change_note": "調整顯示名稱"},
+    )
+    assert no_csrf.status_code == 403
+
+    revised = client.post(
+        f"/api/strategy-sets/{base['strategy_set_version_id']}/revisions",
+        headers={"Idempotency-Key": "strategy-set-revise-web-1", "X-Strategy-CSRF": token},
+        json=payload | {"display_name_zh_tw": "精確版本組合新版", "change_note": "調整顯示名稱"},
+    )
+    assert revised.status_code == 201, revised.text
+    revision = revised.json()["strategy_set"]
+    assert revision["strategy_set_id"] == base["strategy_set_id"]
+    assert revision["version_number"] == 2
+    assert client.get(f"/api/strategy-sets/{base['strategy_set_version_id']}").status_code == 200
+
+    archived = client.request(
+        "DELETE",
+        f"/api/strategy-sets/{revision['strategy_set_version_id']}",
+        headers={"Idempotency-Key": "strategy-set-archive-web-1", "X-Strategy-CSRF": token},
+        json={"actor_id": "reviewer", "change_note": "不再提供新回測使用"},
+    )
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["archived"] is True
+    assert client.get("/api/strategy-sets").json()["strategy_sets"] == []
+    assert client.get(f"/api/strategy-sets/{base['strategy_set_version_id']}").status_code == 200
 
 
 def test_atomic_requests_forbid_unknown_fields_and_protect_run_mutations(monkeypatch) -> None:

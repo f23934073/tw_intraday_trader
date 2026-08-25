@@ -14,6 +14,7 @@ export function createBacktestWorkspace(context) {
   const strategyDraftForm = document.getElementById("strategy-draft-form");
   const strategyParameterFields = document.getElementById("strategy-parameter-fields");
   const strategyChangeNote = document.getElementById("strategy-change-note");
+  const strategyDraftClone = document.getElementById("strategy-draft-clone");
   const strategyDraftSave = document.getElementById("strategy-draft-save");
   const strategyDraftValidate = document.getElementById("strategy-draft-validate");
   const strategyDraftPublish = document.getElementById("strategy-draft-publish");
@@ -25,14 +26,29 @@ export function createBacktestWorkspace(context) {
   const strategyVersionCompare = document.getElementById("strategy-version-compare");
   const strategyVersionDiff = document.getElementById("strategy-version-diff");
   const strategySetForm = document.getElementById("strategy-set-form");
+  const strategySetEditorTitle = document.getElementById("strategy-set-editor-title");
   const strategySetName = document.getElementById("strategy-set-name");
   const strategySetPolicy = document.getElementById("strategy-set-policy");
   const strategySetMinimum = document.getElementById("strategy-set-minimum");
+  const strategySetMinimumHelp = document.getElementById("strategy-set-minimum-help");
   const strategySetChangeNote = document.getElementById("strategy-set-change-note");
   const strategySetMembers = document.getElementById("strategy-set-members");
   const strategySetMessage = document.getElementById("strategy-set-message");
+  const strategySetSave = document.getElementById("strategy-set-save");
+  const strategySetCancel = document.getElementById("strategy-set-cancel");
   const strategySetList = document.getElementById("strategy-set-list");
   const strategyAuditList = document.getElementById("strategy-audit-list");
+  const strategyWorkflowTabs = [...document.querySelectorAll("[data-strategy-tab]")];
+  const strategyWorkflowPanels = [...document.querySelectorAll("[data-strategy-panel]")];
+  const strategyTemplateCount = document.getElementById("strategy-template-count");
+  const strategyLibraryCount = document.getElementById("strategy-library-count");
+  const strategySetCount = document.getElementById("strategy-set-count");
+  const strategyAuditCount = document.getElementById("strategy-audit-count");
+  const strategyEditorName = document.getElementById("strategy-editor-name");
+  const strategyEditorMeta = document.getElementById("strategy-editor-meta");
+  const strategyDraftEditorCard = document.getElementById("strategy-draft-editor-card");
+  const strategyEditorMount = document.getElementById("strategy-editor-mount");
+  const strategyLibraryEditorMount = document.getElementById("strategy-library-editor-mount");
   const backtestToggle = document.getElementById("backtest-toggle");
   const backtestDrawer = document.getElementById("backtest-drawer");
   const backtestPanel = document.getElementById("backtest-panel");
@@ -60,6 +76,7 @@ export function createBacktestWorkspace(context) {
   const atomicBacktestMessage = document.getElementById("atomic-backtest-message");
   const pendingAtomicMutationKeys = createMutationKeyStore(newIdempotencyKey);
   let pendingAtomicBacktestRequest = null;
+  let editingStrategySetVersionId = null;
   let qualificationFoldSequence = 0;
 
       function formatBacktestPercent(value, digits = 2) {
@@ -124,10 +141,64 @@ export function createBacktestWorkspace(context) {
         strategyCatalogDrawer.setAttribute("aria-hidden", String(!open));
         strategyToggle.setAttribute("aria-expanded", String(open));
         if (open) {
+          setStrategyManagementView(state.strategyCatalog.activeView || "editor");
           requestAnimationFrame(() => strategyCatalogPanel.focus());
         } else {
           strategyToggle.focus();
         }
+      }
+
+      function setStrategyManagementView(viewName, { focusTab = false } = {}) {
+        const targetTab = strategyWorkflowTabs.find((tab) => tab.dataset.strategyTab === viewName);
+        if (!targetTab) return;
+        state.strategyCatalog.activeView = viewName;
+        mountStrategyDraftEditor(viewName);
+        strategyWorkflowTabs.forEach((tab) => {
+          const active = tab === targetTab;
+          tab.classList.toggle("active", active);
+          tab.setAttribute("aria-selected", String(active));
+          tab.tabIndex = active ? 0 : -1;
+        });
+        strategyWorkflowPanels.forEach((panel) => {
+          const active = panel.dataset.strategyPanel === viewName;
+          panel.classList.toggle("active", active);
+          panel.hidden = !active;
+        });
+        if (focusTab) targetTab.focus();
+      }
+
+      function mountStrategyDraftEditor(viewName) {
+        const showBesideLibrary = viewName === "library" && activeAtomicDraft();
+        const target = showBesideLibrary ? strategyLibraryEditorMount : strategyEditorMount;
+        if (target && strategyDraftEditorCard?.parentElement !== target) target.append(strategyDraftEditorCard);
+      }
+
+      function handleStrategyTabKeydown(event) {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const currentIndex = strategyWorkflowTabs.indexOf(event.currentTarget);
+        let nextIndex = currentIndex;
+        if (event.key === "Home") nextIndex = 0;
+        if (event.key === "End") nextIndex = strategyWorkflowTabs.length - 1;
+        if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % strategyWorkflowTabs.length;
+        if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + strategyWorkflowTabs.length) % strategyWorkflowTabs.length;
+        setStrategyManagementView(strategyWorkflowTabs[nextIndex].dataset.strategyTab, { focusTab: true });
+      }
+
+      function syncStrategyWorkflowCounts() {
+        const templateTotal = state.strategyCatalog.templates.length;
+        const draftTotal = state.strategyCatalog.drafts.length;
+        const versionTotal = state.strategyCatalog.versions.length;
+        const setTotal = state.strategyCatalog.strategySets.length;
+        const auditTotal = state.strategyCatalog.auditEvents.length;
+        strategyTemplateCount.textContent = String(templateTotal);
+        strategyLibraryCount.textContent = String(draftTotal + versionTotal);
+        strategySetCount.textContent = String(setTotal);
+        strategyAuditCount.textContent = String(auditTotal);
+        strategyWorkflowTabs.find((tab) => tab.dataset.strategyTab === "editor")?.setAttribute("aria-label", `1. 選擇與設定，${templateTotal} 個策略`);
+        strategyWorkflowTabs.find((tab) => tab.dataset.strategyTab === "library")?.setAttribute("aria-label", `2. 草稿與版本，${draftTotal} 份草稿、${versionTotal} 個版本`);
+        strategyWorkflowTabs.find((tab) => tab.dataset.strategyTab === "sets")?.setAttribute("aria-label", `3. 策略組合，${setTotal} 個組合`);
+        strategyWorkflowTabs.find((tab) => tab.dataset.strategyTab === "audit")?.setAttribute("aria-label", `4. 操作紀錄，${auditTotal} 筆`);
       }
 
       function selectedAtomicTemplate() {
@@ -145,7 +216,7 @@ export function createBacktestWorkspace(context) {
           return;
         }
         strategyTemplateList.innerHTML = templates.map((template) => `
-          <button class="strategy-template-button ${template.strategy_id === state.strategyCatalog.selectedTemplateId ? "selected" : ""}" type="button" data-atomic-template="${escapeHtml(template.strategy_id)}">
+          <button class="strategy-template-button ${template.strategy_id === state.strategyCatalog.selectedTemplateId ? "selected" : ""}" type="button" data-atomic-template="${escapeHtml(template.strategy_id)}" aria-pressed="${template.strategy_id === state.strategyCatalog.selectedTemplateId ? "true" : "false"}">
             <strong>${escapeHtml(template.display_name_zh_tw)}</strong>
             <span>${escapeHtml(strategyRoleLabels[template.role] || template.role)} · ${escapeHtml(strategyPhaseLabels[template.session_phase] || template.session_phase)} · ${escapeHtml(template.description_zh_tw)}</span>
             <span>需要資料：${escapeHtml((template.required_capabilities || []).join("、"))}</span>
@@ -156,6 +227,7 @@ export function createBacktestWorkspace(context) {
             state.strategyCatalog.selectedTemplateId = button.dataset.atomicTemplate;
             state.strategyCatalog.activeDraftId = null;
             strategyChangeNote.value = "";
+            strategyDraftMessage.textContent = "";
             renderAtomicManagement();
           });
         });
@@ -188,16 +260,35 @@ export function createBacktestWorkspace(context) {
         const template = selectedAtomicTemplate();
         const draft = activeAtomicDraft();
         if (!template) {
+          strategyEditorName.textContent = "請先選擇策略";
+          strategyEditorMeta.textContent = "—";
           strategyParameterFields.innerHTML = '<p class="backtest-empty">請先選擇策略。</p>';
+          strategyDraftForm.classList.remove("sealed");
+          strategyChangeNote.readOnly = false;
+          strategyDraftClone.hidden = true;
+          strategyDraftSave.hidden = false;
+          strategyDraftValidate.hidden = false;
+          strategyDraftPublish.hidden = false;
           strategyDraftSave.disabled = true;
           strategyDraftValidate.disabled = true;
           strategyDraftPublish.disabled = true;
           return;
         }
+        strategyEditorName.textContent = template.display_name_zh_tw;
+        const sealed = Boolean(draft?.is_sealed);
+        strategyEditorMeta.textContent = `${strategyRoleLabels[template.role] || template.role} · ${strategyPhaseLabels[template.session_phase] || template.session_phase}${sealed ? " · 已封存" : ""}`;
         const fields = template.parameter_schema?.fields || {};
         const values = draft?.parameters || Object.fromEntries(Object.entries(fields).map(([name, spec]) => [name, spec.default]));
         strategyParameterFields.innerHTML = `<div class="strategy-parameter-grid">${Object.entries(fields).map(([name, spec]) => parameterInput(template, name, spec, values[name])).join("")}</div>`;
-        const editable = !draft?.is_sealed;
+        strategyParameterFields.querySelectorAll("input, select").forEach((control) => { control.disabled = sealed; });
+        strategyDraftForm.classList.toggle("sealed", sealed);
+        strategyChangeNote.readOnly = sealed;
+        strategyDraftClone.hidden = !sealed;
+        strategyDraftClone.disabled = !draft?.published_strategy_version_id;
+        strategyDraftSave.hidden = sealed;
+        strategyDraftValidate.hidden = sealed;
+        strategyDraftPublish.hidden = sealed;
+        const editable = !sealed;
         strategyDraftSave.disabled = !editable;
         strategyDraftSave.textContent = draft ? "儲存草稿" : "建立草稿";
         strategyDraftValidate.disabled = !draft || draft.is_sealed;
@@ -292,10 +383,37 @@ export function createBacktestWorkspace(context) {
         strategySetMembers.innerHTML = versions.length ? versions.map((version, index) => `
           <label class="strategy-option"><input type="checkbox" data-strategy-set-version="${escapeHtml(version.strategy_version_id)}" value="${escapeHtml(version.strategy_version_id)}"><span><strong>${escapeHtml(state.strategyCatalog.templates.find((item) => item.strategy_id === version.strategy_id)?.display_name_zh_tw || version.strategy_id)} v${version.version_number}</strong><span>${escapeHtml(JSON.stringify(version.parameters))}</span></span></label>
         `).join("") : '<p class="backtest-empty">請先發布買入策略版本。</p>';
+        strategySetMembers.querySelectorAll("[data-strategy-set-version]").forEach((input) => {
+          input.addEventListener("change", syncStrategySetMinimumControl);
+        });
+        const editingSet = state.strategyCatalog.strategySets.find((set) => set.strategy_set_version_id === editingStrategySetVersionId);
+        if (editingSet) {
+          const memberVersionIds = new Set(editingSet.members.map((member) => member.strategy_version_id));
+          strategySetMembers.querySelectorAll("[data-strategy-set-version]").forEach((input) => {
+            input.checked = memberVersionIds.has(input.value);
+          });
+        } else if (editingStrategySetVersionId) {
+          resetStrategySetEditor();
+        }
+        syncStrategySetMinimumControl();
         const sets = state.strategyCatalog.strategySets;
+        const latestVersionByFamily = new Map();
+        sets.forEach((set) => {
+          latestVersionByFamily.set(set.strategy_set_id, Math.max(latestVersionByFamily.get(set.strategy_set_id) || 0, set.version_number));
+        });
         strategySetList.innerHTML = sets.length ? sets.map((set) => `
-          <article class="strategy-catalog-card"><div class="strategy-catalog-card-heading"><strong>${escapeHtml(set.display_name_zh_tw)}</strong><span>${escapeHtml(set.policy)}</span></div><p class="strategy-catalog-description">${set.members.length} 個精確版本 · ${escapeHtml(set.snapshot_digest.slice(0, 12))}</p></article>
+          <article class="strategy-catalog-card">
+            <div class="strategy-catalog-card-heading"><strong>${escapeHtml(set.display_name_zh_tw)}</strong><span>${escapeHtml(set.policy)} · v${set.version_number}</span></div>
+            <p class="strategy-catalog-description">${set.members.length} 個精確版本 · ${escapeHtml(set.snapshot_digest.slice(0, 12))}</p>
+            ${latestVersionByFamily.get(set.strategy_set_id) === set.version_number ? `<div class="strategy-set-card-actions"><button class="backtest-button secondary" type="button" data-strategy-set-edit="${escapeHtml(set.strategy_set_version_id)}" aria-label="修改策略組合 ${escapeHtml(set.display_name_zh_tw)}">修改</button><button class="backtest-button danger" type="button" data-strategy-set-delete="${escapeHtml(set.strategy_set_version_id)}" aria-label="刪除策略組合 ${escapeHtml(set.display_name_zh_tw)}">刪除</button></div>` : '<div class="strategy-catalog-badges"><span class="strategy-catalog-badge">歷史版本</span></div>'}
+          </article>
         `).join("") : '<p class="backtest-empty">目前沒有策略組合。</p>';
+        strategySetList.querySelectorAll("[data-strategy-set-edit]").forEach((button) => {
+          button.addEventListener("click", () => editAtomicStrategySet(button.dataset.strategySetEdit));
+        });
+        strategySetList.querySelectorAll("[data-strategy-set-delete]").forEach((button) => {
+          button.addEventListener("click", () => archiveAtomicStrategySet(button.dataset.strategySetDelete));
+        });
       }
 
       function renderAtomicLauncherOptions() {
@@ -346,6 +464,8 @@ export function createBacktestWorkspace(context) {
         renderAtomicSetBuilder();
         renderAtomicAuditEvents();
         renderAtomicLauncherOptions();
+        syncStrategyWorkflowCounts();
+        setStrategyManagementView(state.strategyCatalog.activeView || "editor");
       }
 
       function renderStrategyCatalog() {
@@ -409,6 +529,7 @@ export function createBacktestWorkspace(context) {
           state.strategyCatalog.atomicAvailable = false;
           strategyCatalogNotice.textContent = `原子策略管理不可用：${error.message}`;
           strategyTemplateList.innerHTML = '<p class="backtest-empty">需要 PostgreSQL 才能管理原子策略；不會退回 SQLite。</p>';
+          syncStrategyWorkflowCounts();
           renderAtomicLauncherOptions();
         } finally {
           state.strategyCatalog.loading = false;
@@ -487,6 +608,87 @@ export function createBacktestWorkspace(context) {
         }
       }
 
+      async function cloneActiveAtomicDraft() {
+        const draft = activeAtomicDraft();
+        if (!draft?.published_strategy_version_id) return;
+        strategyDraftClone.disabled = true;
+        strategyDraftClone.textContent = "複製中…";
+        try {
+          await cloneAtomicVersion(draft.published_strategy_version_id);
+        } finally {
+          strategyDraftClone.disabled = false;
+          strategyDraftClone.textContent = "複製為新草稿";
+        }
+      }
+
+      function syncStrategySetMinimumControl() {
+        const selectedCount = strategySetMembers.querySelectorAll("[data-strategy-set-version]:checked").length;
+        if (selectedCount) strategySetMinimum.max = String(selectedCount);
+        else strategySetMinimum.removeAttribute("max");
+        strategySetMinimumHelp.textContent = strategySetPolicy.value === "AT_LEAST_N"
+          ? selectedCount
+            ? `請輸入 1 到 ${selectedCount}；目前已選 ${selectedCount} 個策略。`
+            : "請先選擇策略，再設定至少觸發數。"
+          : "調整此數值會自動切換成「至少 N 個」。";
+      }
+
+      function resetStrategySetEditor() {
+        editingStrategySetVersionId = null;
+        strategySetEditorTitle.textContent = "建立策略組合";
+        strategySetSave.textContent = "建立策略組合";
+        strategySetCancel.hidden = true;
+        strategySetName.value = "";
+        strategySetPolicy.value = "ANY";
+        strategySetMinimum.value = "1";
+        strategySetChangeNote.value = "";
+        strategySetMembers.querySelectorAll("[data-strategy-set-version]").forEach((input) => { input.checked = false; });
+        syncStrategySetMinimumControl();
+      }
+
+      function editAtomicStrategySet(strategySetVersionId) {
+        const strategySet = state.strategyCatalog.strategySets.find((set) => set.strategy_set_version_id === strategySetVersionId);
+        if (!strategySet) {
+          strategySetMessage.textContent = "找不到要修改的策略組合，請重新整理。";
+          return;
+        }
+        editingStrategySetVersionId = strategySetVersionId;
+        strategySetEditorTitle.textContent = `修改策略組合 · v${strategySet.version_number}`;
+        strategySetSave.textContent = `儲存為 v${strategySet.version_number + 1}`;
+        strategySetCancel.hidden = false;
+        strategySetName.value = strategySet.display_name_zh_tw;
+        strategySetPolicy.value = strategySet.policy;
+        strategySetMinimum.value = String(strategySet.minimum_trigger_count);
+        strategySetChangeNote.value = "";
+        const memberVersionIds = new Set(strategySet.members.map((member) => member.strategy_version_id));
+        strategySetMembers.querySelectorAll("[data-strategy-set-version]").forEach((input) => {
+          input.checked = memberVersionIds.has(input.value);
+        });
+        syncStrategySetMinimumControl();
+        strategySetMessage.textContent = `正在修改「${strategySet.display_name_zh_tw}」；儲存後會新增 v${strategySet.version_number + 1}，原版本仍會保留。`;
+        strategySetName.focus();
+      }
+
+      async function archiveAtomicStrategySet(strategySetVersionId) {
+        const strategySet = state.strategyCatalog.strategySets.find((set) => set.strategy_set_version_id === strategySetVersionId);
+        if (!strategySet) {
+          strategySetMessage.textContent = "找不到要刪除的策略組合，請重新整理。";
+          return;
+        }
+        const confirmed = window.confirm(`確定刪除策略組合「${strategySet.display_name_zh_tw}」？\n\n它會從新回測與 Local Paper 的可用清單移除，但歷史快照仍會保留。`);
+        if (!confirmed) return;
+        try {
+          await atomicMutation(`/api/strategy-sets/${encodeURIComponent(strategySetVersionId)}`, "DELETE", {
+            actor_id: "local-researcher",
+            change_note: `封存策略組合「${strategySet.display_name_zh_tw}」；保留歷史精確版本快照。`
+          }, "strategy-set-archive");
+          if (editingStrategySetVersionId === strategySetVersionId) resetStrategySetEditor();
+          await refreshStrategyCatalog();
+          strategySetMessage.textContent = `策略組合「${strategySet.display_name_zh_tw}」已刪除；歷史快照仍保留。`;
+        } catch (error) {
+          strategySetMessage.textContent = `策略組合刪除失敗：${error.message}`;
+        }
+      }
+
       async function submitAtomicStrategySet(event) {
         event.preventDefault();
         const selected = [...strategySetMembers.querySelectorAll("[data-strategy-set-version]:checked")]
@@ -502,7 +704,11 @@ export function createBacktestWorkspace(context) {
           return;
         }
         try {
-          const payload = await atomicMutation("/api/strategy-sets", "POST", {
+          const revisionBase = editingStrategySetVersionId;
+          const endpoint = revisionBase
+            ? `/api/strategy-sets/${encodeURIComponent(revisionBase)}/revisions`
+            : "/api/strategy-sets";
+          const payload = await atomicMutation(endpoint, "POST", {
             display_name_zh_tw: strategySetName.value.trim(),
             stage: "ENTRY",
             policy: strategySetPolicy.value,
@@ -517,13 +723,14 @@ export function createBacktestWorkspace(context) {
               member_order: index,
               attribution_priority: index
             }))
-          }, "strategy-set-create");
-          strategySetMessage.textContent = `策略組合「${payload.strategy_set.display_name_zh_tw}」已保存。`;
-          strategySetName.value = "";
-          strategySetChangeNote.value = "";
+          }, revisionBase ? "strategy-set-revise" : "strategy-set-create");
+          resetStrategySetEditor();
           await refreshStrategyCatalog();
+          strategySetMessage.textContent = revisionBase
+            ? `策略組合「${payload.strategy_set.display_name_zh_tw}」已新增 v${payload.strategy_set.version_number}；原版本仍保留。`
+            : `策略組合「${payload.strategy_set.display_name_zh_tw}」已保存。`;
         } catch (error) {
-          strategySetMessage.textContent = `策略組合建立失敗：${error.message}`;
+          strategySetMessage.textContent = `策略組合${editingStrategySetVersionId ? "修改" : "建立"}失敗：${error.message}`;
         }
       }
 
@@ -992,12 +1199,23 @@ export function createBacktestWorkspace(context) {
       }
 
       strategyDraftForm?.addEventListener("submit", submitAtomicDraft);
+      strategyWorkflowTabs.forEach((tab) => {
+        tab.addEventListener("click", () => setStrategyManagementView(tab.dataset.strategyTab));
+        tab.addEventListener("keydown", handleStrategyTabKeydown);
+      });
       strategyDraftValidate?.addEventListener("click", validateAtomicDraft);
       strategyDraftPublish?.addEventListener("click", publishAtomicDraft);
+      strategyDraftClone?.addEventListener("click", cloneActiveAtomicDraft);
       strategySetForm?.addEventListener("submit", submitAtomicStrategySet);
+      strategySetCancel?.addEventListener("click", () => {
+        resetStrategySetEditor();
+        strategySetMessage.textContent = "已取消修改，原版本沒有變更。";
+      });
       strategyVersionCompare?.addEventListener("click", compareAtomicVersions);
-      strategySetPolicy?.addEventListener("change", () => {
-        strategySetMinimum.disabled = strategySetPolicy.value !== "AT_LEAST_N";
+      strategySetPolicy?.addEventListener("change", syncStrategySetMinimumControl);
+      strategySetMinimum?.addEventListener("input", () => {
+        if (strategySetPolicy.value !== "AT_LEAST_N") strategySetPolicy.value = "AT_LEAST_N";
+        syncStrategySetMinimumControl();
       });
       atomicBacktestForm?.addEventListener("submit", submitAtomicBacktestRun);
       atomicBacktestSet?.addEventListener("change", refreshAtomicDatasetProjection);
@@ -1006,6 +1224,7 @@ export function createBacktestWorkspace(context) {
       qualificationAddFold?.addEventListener("click", addQualificationFold);
       addQualificationFold();
       addQualificationFold();
+      setStrategyManagementView(state.strategyCatalog.activeView || "editor");
 
 
   return { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, refreshBacktestWorkspace, cloneBacktestRun, compareBacktestRuns, pollBacktestWorkspace };

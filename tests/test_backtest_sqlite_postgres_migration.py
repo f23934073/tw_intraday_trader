@@ -27,6 +27,7 @@ def test_backtest_forward_migrations_include_logical_schema_move() -> None:
         "008_backtest_qualification.sql",
         "009_backtest_experiment_families.sql",
         "010_backtest_experiment_family_identity.sql",
+        "011_strategy_set_archives.sql",
         "012_backtest_dataset_bindings.sql",
         "013_backtest_result_chunks.sql",
     ]

@@ -14,6 +14,7 @@ ATOMIC_TABLES = (
     "strategy_lifecycle_outbox",
     "strategy_set_versions",
     "strategy_set_members",
+    "strategy_set_archives",
     "strategy_mutation_operations",
     "strategy_audit_events",
     "backtest_qualifications",
@@ -31,6 +32,7 @@ EXPECTED_CONSTRAINT_COUNTS = {
     "strategy_lifecycle_outbox": 5,
     "strategy_set_versions": 7,
     "strategy_set_members": 8,
+    "strategy_set_archives": 3,
     "strategy_mutation_operations": 1,
     "strategy_audit_events": 1,
     "backtest_qualifications": 10,
@@ -47,6 +49,7 @@ ATOMIC_INDEXES = (
     "strategy_audit_resource_index",
     "strategy_audit_operation_index",
     "strategy_audit_outcome_index",
+    "strategy_set_archives_time_index",
     "backtest_qualifications_created_index",
     "backtest_qualifications_runs_index",
     "backtest_qualifications_family_index",
@@ -59,7 +62,7 @@ ATOMIC_INDEXES = (
 def test_atomic_strategy_migration_is_numbered_and_owned_by_runner() -> None:
     files = migration_files()
     assert files[-1].name == "013_backtest_result_chunks.sql"
-    sql = "\n".join(file.read_text(encoding="utf-8") for file in files[-8:])
+    sql = "\n".join(file.read_text(encoding="utf-8") for file in files[-9:])
     for table in ATOMIC_TABLES:
         assert f"backtest.{table}" in sql
 
@@ -83,6 +86,7 @@ def test_atomic_strategy_migration_applies_once_to_postgresql(
     assert "008_backtest_qualification.sql" in first
     assert "009_backtest_experiment_families.sql" in first
     assert "010_backtest_experiment_family_identity.sql" in first
+    assert "011_strategy_set_archives.sql" in first
     assert "012_backtest_dataset_bindings.sql" in first
     assert "013_backtest_result_chunks.sql" in first
     assert second == ()

@@ -37,6 +37,7 @@ import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260823-ato
           versions: [],
           strategySets: [],
           auditEvents: [],
+          activeView: "editor",
           selectedTemplateId: null,
           activeDraftId: null,
           csrfToken: null,

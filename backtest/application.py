@@ -57,7 +57,7 @@ from config import backtest as backtest_settings
 from market_data.provider import MarketDataProvider
 from strategy_catalog.service import StrategyCatalogService
 from strategy_catalog.postgres_repository import PostgresAtomicStrategyRepository
-from strategy_catalog.repository import AtomicStrategyRepository
+from strategy_catalog.repository import AtomicStrategyRepository, StrategyCatalogConflict
 from strategy_catalog.sets import ExactStrategySetSnapshot
 
 
@@ -530,6 +530,11 @@ class BacktestApplicationService:
                     "相同 idempotency key 的 Atomic Run request 不同"
                 )
             return replay, True
+        if repository.is_strategy_set_archived(strategy_set_version_id):
+            raise StrategyCatalogConflict(
+                "STRATEGY_SET_ARCHIVED",
+                "Strategy Set 已封存，不可建立新的歷史回測",
+            )
         snapshot = repository.get_strategy_set(strategy_set_version_id)
         resolution = resolve_atomic_entry_set(repository, self._atomic_registry, snapshot)
         baseline: dict[str, Any] | None = None

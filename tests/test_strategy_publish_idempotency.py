@@ -476,6 +476,104 @@ def test_exact_strategy_set_is_immutable_and_reloads_from_postgresql(
     assert snapshot_drift.value.code == "STRATEGY_SET_INTEGRITY_ERROR"
 
 
+def test_strategy_set_archive_hides_family_but_preserves_exact_versions(
+    postgres_test_connection,
+) -> None:
+    apply_migrations(postgres_test_connection)
+    registry = AtomicStrategyRegistry()
+    service = build_atomic_strategy_service(
+        database_backend="postgresql",
+        connection=postgres_test_connection,
+        templates=registry.templates(),
+    )
+    draft = service.create_draft("above_vwap_entry", {}, actor_id="researcher")
+    published = service.publish(_request(draft.draft_id, key="archive-family-publish"))
+    version = service.get_version(published.strategy_version_id)
+    member = StrategySetMemberSnapshot(
+        strategy_version_id=version.strategy_version_id,
+        strategy_id=version.strategy_id,
+        role=StrategyRole.ENTRY,
+        configuration_digest=version.configuration_digest,
+        implementation_digest=version.implementation_digest,
+        member_order=0,
+        attribution_priority=0,
+    )
+    first = ExactStrategySetSnapshot(
+        strategy_set_version_id="archive-family-version-1",
+        strategy_set_id="archive-family",
+        version_number=1,
+        display_name_zh_tw="封存測試初版",
+        stage=StrategyRole.ENTRY,
+        policy=CompositionPolicy.ANY,
+        members=(member,),
+    )
+    second = ExactStrategySetSnapshot(
+        strategy_set_version_id="archive-family-version-2",
+        strategy_set_id=first.strategy_set_id,
+        version_number=2,
+        display_name_zh_tw="封存測試新版",
+        stage=StrategyRole.ENTRY,
+        policy=CompositionPolicy.ALL,
+        members=(member,),
+    )
+    service.save_strategy_set(
+        first,
+        actor_id="researcher",
+        idempotency_key="archive-family-create",
+        change_note="建立初版",
+    )
+    service.save_strategy_set(
+        second,
+        actor_id="researcher",
+        idempotency_key="archive-family-revise",
+        change_note="建立新版",
+    )
+
+    assert service.archive_strategy_set(
+        second.strategy_set_version_id,
+        actor_id="researcher",
+        idempotency_key="archive-family-remove",
+        change_note="不再提供新操作",
+    ) is True
+    assert service.is_strategy_set_archived(first.strategy_set_version_id) is True
+    assert service.list_strategy_sets() == ()
+    assert service.get_strategy_set(first.strategy_set_version_id).to_dict() == first.to_dict()
+    assert service.get_strategy_set(second.strategy_set_version_id).to_dict() == second.to_dict()
+    assert service.archive_strategy_set(
+        second.strategy_set_version_id,
+        actor_id="researcher",
+        idempotency_key="archive-family-remove",
+        change_note="不再提供新操作",
+    ) is False
+
+    with pytest.raises(StrategyCatalogConflict) as idempotency_conflict:
+        service.archive_strategy_set(
+            second.strategy_set_version_id,
+            actor_id="researcher",
+            idempotency_key="archive-family-remove",
+            change_note="同 key 不同內容",
+        )
+    assert idempotency_conflict.value.code == "IDEMPOTENCY_CONFLICT"
+
+    third = ExactStrategySetSnapshot(
+        strategy_set_version_id="archive-family-version-3",
+        strategy_set_id=first.strategy_set_id,
+        version_number=3,
+        display_name_zh_tw="不應建立的版本",
+        stage=StrategyRole.ENTRY,
+        policy=CompositionPolicy.ANY,
+        members=(member,),
+    )
+    with pytest.raises(StrategyCatalogConflict) as archived_conflict:
+        service.save_strategy_set(
+            third,
+            actor_id="researcher",
+            idempotency_key="archive-family-revise-after-archive",
+            change_note="封存後不可修訂",
+        )
+    assert archived_conflict.value.code == "STRATEGY_SET_ARCHIVED"
+
+
 def test_paper_activation_requires_locked_paper_approved_lifecycle_evidence(
     postgres_test_connection,
 ) -> None:

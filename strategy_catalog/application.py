@@ -171,6 +171,24 @@ class AtomicStrategyCatalogService:
     def list_strategy_sets(self) -> tuple[ExactStrategySetSnapshot, ...]:
         return self._repository.list_strategy_sets()
 
+    def is_strategy_set_archived(self, strategy_set_version_id: str) -> bool:
+        return self._repository.is_strategy_set_archived(strategy_set_version_id)
+
+    def archive_strategy_set(
+        self,
+        strategy_set_version_id: str,
+        *,
+        actor_id: str,
+        idempotency_key: str,
+        change_note: str,
+    ) -> bool:
+        return self._repository.archive_strategy_set(
+            strategy_set_version_id,
+            actor_id=actor_id,
+            idempotency_key=idempotency_key,
+            change_note=change_note,
+        )
+
     def get_paper_activation_snapshot(
         self,
         strategy_set_version_id: str,
