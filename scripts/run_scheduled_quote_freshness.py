@@ -5,13 +5,16 @@ from __future__ import annotations
 import argparse
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 from typing import Sequence
 from zoneinfo import ZoneInfo
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+os.chdir(REPOSITORY_ROOT)
+sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from config import twse_calendar_2026
 from market_data.equity_calendar import ReviewedEquityCalendar

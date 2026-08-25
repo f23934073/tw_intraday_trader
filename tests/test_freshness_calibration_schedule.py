@@ -6,6 +6,7 @@ from config import twse_calendar_2026
 from market_data.equity_calendar import ReviewedEquityCalendar
 from market_data.freshness_calibration_schedule import (
     SCHEDULED_QUOTE_WINDOWS,
+    decide_scheduled_quote_capture,
     run_scheduled_quote_capture,
 )
 
@@ -15,8 +16,14 @@ CALENDAR = ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH)
 MANIFEST = Path("research/freshness_calibration/cohort_manifest_2026-08-20_twse_2026-08-19.json")
 
 
-def scheduled_at(hour: int, minute: int, day: int = 20) -> datetime:
-    return datetime(2026, 8, day, hour, minute, tzinfo=TAIPEI)
+def scheduled_at(
+    hour: int,
+    minute: int,
+    day: int = 20,
+    *,
+    second: int = 0,
+) -> datetime:
+    return datetime(2026, 8, day, hour, minute, second, tzinfo=TAIPEI)
 
 
 def test_permitted_opening_capture_uses_frozen_cohort_after_ntp_preflight(tmp_path) -> None:
@@ -89,6 +96,60 @@ def test_off_schedule_never_runs_ntp_or_quote_capture() -> None:
 
     assert result["status"] == "NO_CAPTURE_OFF_SCHEDULE"
     assert calls == []
+
+
+def test_late_launch_within_grace_keeps_the_scheduled_window_and_audit_fields(tmp_path) -> None:
+    calls: list[object] = []
+
+    result = run_scheduled_quote_capture(
+        scheduled_at(10, 4, second=59),
+        calendar=CALENDAR,
+        manifest_path=MANIFEST,
+        output_directory=tmp_path,
+        ntp_preflight=lambda: calls.append("ntp") or {"successful_samples": 5},
+        capture=lambda **kwargs: calls.append(kwargs) or (tmp_path / "quote.json", {}),
+    )
+
+    assert result["status"] == "CAPTURED"
+    assert result["scheduled_for"] == "2026-08-20T10:00:00+08:00"
+    assert result["launch_delay_seconds"] == 299.0
+    assert calls == [
+        "ntp",
+        {
+            "symbol_tiers": {"2886": "high", "6863": "mid", "1530": "low"},
+            "session_window": "continuous",
+            "duration_seconds": 900,
+            "output_directory": tmp_path,
+        },
+    ]
+
+
+def test_launch_after_grace_never_runs_ntp_or_quote_capture() -> None:
+    calls: list[str] = []
+    result = run_scheduled_quote_capture(
+        scheduled_at(10, 5, second=1),
+        calendar=CALENDAR,
+        manifest_path=MANIFEST,
+        ntp_preflight=lambda: calls.append("ntp") or {"successful_samples": 5},
+        capture=lambda **_: calls.append("capture"),
+    )
+
+    assert result["status"] == "NO_CAPTURE_OFF_SCHEDULE"
+    assert result["scheduled_for"] is None
+    assert result["launch_delay_seconds"] is None
+    assert calls == []
+
+
+def test_close_launch_grace_still_starts_before_the_required_boundary() -> None:
+    decision = decide_scheduled_quote_capture(
+        scheduled_at(13, 20),
+        calendar=CALENDAR,
+    )
+
+    assert decision.permitted is True
+    assert decision.scheduled_window == SCHEDULED_QUOTE_WINDOWS[(13, 15)]
+    assert decision.scheduled_for == scheduled_at(13, 15)
+    assert decision.launch_delay_seconds == 300.0
 
 
 def test_failed_ntp_preflight_never_starts_quote_capture() -> None:

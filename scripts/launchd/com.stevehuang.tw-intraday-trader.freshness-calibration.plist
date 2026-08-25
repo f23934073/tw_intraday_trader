@@ -8,10 +8,8 @@
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>exec .venv/bin/python scripts/run_scheduled_quote_freshness.py</string>
+    <string>exec /Users/stevehuang-work/Documents/tw_intraday_trader/.venv/bin/python /Users/stevehuang-work/Documents/tw_intraday_trader/scripts/run_scheduled_quote_freshness.py</string>
   </array>
-  <key>WorkingDirectory</key>
-  <string>/Users/stevehuang-work/Documents/tw_intraday_trader</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>TZ</key>

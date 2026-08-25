@@ -28,6 +28,7 @@ FROZEN_MANIFEST_PATH = Path(
 class ScheduledQuoteWindow:
     session_window: str
     duration_seconds: int
+    launch_grace_seconds: int = 300
 
 
 SCHEDULED_QUOTE_WINDOWS: Mapping[tuple[int, int], ScheduledQuoteWindow] = {
@@ -47,6 +48,8 @@ class ScheduleDecision:
     status: str
     now: datetime
     scheduled_window: ScheduledQuoteWindow | None
+    scheduled_for: datetime | None
+    launch_delay_seconds: float | None
     reason: str
 
     @property
@@ -67,13 +70,30 @@ def decide_scheduled_quote_capture(
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
     local_now = now.astimezone(TAIPEI)
-    window = SCHEDULED_QUOTE_WINDOWS.get((local_now.hour, local_now.minute))
+    scheduled_for: datetime | None = None
+    window: ScheduledQuoteWindow | None = None
+    launch_delay_seconds: float | None = None
+    for (hour, minute), candidate in sorted(SCHEDULED_QUOTE_WINDOWS.items(), reverse=True):
+        candidate_scheduled_for = local_now.replace(
+            hour=hour,
+            minute=minute,
+            second=0,
+            microsecond=0,
+        )
+        candidate_delay_seconds = (local_now - candidate_scheduled_for).total_seconds()
+        if 0 <= candidate_delay_seconds <= candidate.launch_grace_seconds:
+            scheduled_for = candidate_scheduled_for
+            window = candidate
+            launch_delay_seconds = candidate_delay_seconds
+            break
     if window is None:
         return ScheduleDecision(
             status="NO_CAPTURE_OFF_SCHEDULE",
             now=local_now,
             scheduled_window=None,
-            reason="no configured quote-evidence window starts in this minute",
+            scheduled_for=None,
+            launch_delay_seconds=None,
+            reason="no configured quote-evidence window starts within its bounded late-launch grace",
         )
     try:
         is_trading_day = calendar.is_trading_day(local_now.date())
@@ -82,6 +102,8 @@ def decide_scheduled_quote_capture(
             status="NO_CAPTURE_CALENDAR_UNAVAILABLE",
             now=local_now,
             scheduled_window=window,
+            scheduled_for=scheduled_for,
+            launch_delay_seconds=launch_delay_seconds,
             reason=str(error),
         )
     if not is_trading_day:
@@ -89,13 +111,17 @@ def decide_scheduled_quote_capture(
             status="NO_CAPTURE_NON_TRADING_DAY",
             now=local_now,
             scheduled_window=window,
+            scheduled_for=scheduled_for,
+            launch_delay_seconds=launch_delay_seconds,
             reason="reviewed TWSE calendar marks this date closed",
         )
     return ScheduleDecision(
         status="CAPTURE_PERMITTED",
         now=local_now,
         scheduled_window=window,
-        reason="reviewed TWSE calendar and scheduled window both permit capture",
+        scheduled_for=scheduled_for,
+        launch_delay_seconds=launch_delay_seconds,
+        reason="reviewed TWSE calendar and scheduled window permit capture within bounded launch grace",
     )
 
 
@@ -155,6 +181,12 @@ def run_scheduled_quote_capture(
             if decision.scheduled_window is not None
             else None
         ),
+        "scheduled_for": (
+            decision.scheduled_for.isoformat()
+            if decision.scheduled_for is not None
+            else None
+        ),
+        "launch_delay_seconds": decision.launch_delay_seconds,
     }
     if not decision.permitted:
         return result
