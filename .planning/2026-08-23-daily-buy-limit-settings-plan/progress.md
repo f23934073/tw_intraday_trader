@@ -1,0 +1,114 @@
+# Progress: Configurable local-paper risk and fee settings
+
+## 2026-08-23
+
+- Confirmed this turn is implementation-plan only.
+- Processed both response annotations.
+- Read the `planning-with-files` workflow and preserved the existing active-plan pointer.
+- Created an isolated planning session; no product code or tests were changed.
+- Started read-only inspection of the existing settings and local-paper runtime paths.
+- Initial repository search found no existing local-paper settings page/API and confirmed local paper currently does not calculate fees or sell tax.
+- Traced the process-wide runtime composition and Journal recovery guard; changing starting cash requires a controlled new-session lifecycle rather than live mutation.
+- Traced cash reservation, fill accounting, Journal replay, and the existing backtest cost model.
+- Confirmed the updated plan must version new fee-bearing Journal evidence and keep historical v1 replay at zero commission.
+- Confirmed the default in-memory Journal cannot be the sole persistence mechanism for UI settings; planned a dedicated atomic file-backed settings repository plus immutable per-session settings snapshots.
+- Mapped the existing loopback/CSRF mutation guard, drawer-based workspace wiring, and focused test surfaces.
+- Froze a plan-level v1 settings contract and a staged-save/new-session apply lifecycle; no runtime implementation was made.
+- Authored `architecture/local_paper_runtime_settings_implementation_plan.md` with exact contracts, formulas, lifecycle, file map, tests, rollout, rollback, and non-goals.
+- Marked all planning phases complete. Product code, tests, APIs, UI, and documentation remain unchanged.
+- The first completion-helper call targeted the legacy root plan; inspected the helper and switched to its documented positional plan-file argument.
+- User issued the explicit `process` command after reviewing the updated plan; Phase 4 implementation is now authorized.
+- Activated `karpathy-guidelines`; implementation will be surgical and verified against focused acceptance tests.
+- Focused pre-change baseline passed: `104 passed in 0.82s`.
+- Confirmed concurrent/pre-existing edits overlap `dashboard/server.py`, `dashboard/static/index.html`, `dashboard/static/js/app.js`, `dashboard/static/css/dashboard.css`, and `tests/test_candidate_workspace_ui.py`; implementation will patch only exact local-paper contexts and preserve those changes.
+- Implemented the typed settings file repository, independent daily BUY budget, commission-aware cash/PnL, Journal recovery, settings API, runtime session replacement, and Traditional Chinese settings page.
+- Focused implementation verification passed: `119 passed in 0.84s`; both JavaScript modules passed `node --check`.
+- Applied the UI/UX review findings: replaced the structural settings emoji with an inline SVG and added disabled/loading feedback for draft save and account apply.
+- Added cache-version updates for the settings JavaScript and CSS so deployed browsers do not reuse pre-feature assets.
+- Browser smoke passed at the default desktop viewport and at `390 x 844`: all four fields and actions were visible, layout remained usable, and console warning/error output was empty.
+- Final focused regression passed: `74 passed in 0.71s`.
+- Final full regression passed: `1301 passed, 23 skipped in 7.42s`; JavaScript syntax checks and `git diff --check` passed.
+- Phase 4 is complete. No broker-order path was added and no commit was created.
+- Independent review returned `Request Changes` with two P1 and three P2 findings; Phase 4 is reopened and Phase 5 remediation is in progress.
+- Corrected the verification record: the review observed `1303 passed, 26 skipped, 2 failed`, with the failures attributed to concurrent uncommitted migration work. The earlier full-green result is historical evidence only and must not be presented as current.
+- Activated `code-review-excellence`, `karpathy-guidelines`, and `ui-ux-pro-max` for bounded remediation. No product fix has been applied yet in Phase 5.
+- Added regression tests covering all five review findings. Pre-fix run reproduced the gaps as expected: `9 failed, 42 passed` across settings, composition, Journal v2, UI labels, successful archive evidence, and both replacement failure stages.
+- Implemented cent-precision rejection for minimum commission and separate active/draft settings policy revisions in the persistent settings state.
+
+## 2026-08-23 — Phase 7
+
+- Independent review confirmed the two Phase 6 P1 fixes and reported a new P1: a command can retain the old runtime across settings apply and append Journal evidence after archive.
+- Reopened the isolated plan as Phase 7 / Request Changes; acceptance is not marked complete.
+- Chose the existing `_runtime_composition_lock` as the lifecycle lease boundary so settings apply and all Journal-mutating dashboard actions serialize on one reentrant lock.
+- Preserved `.planning/.active_plan`, unrelated shared-worktree changes, the local-paper-only execution boundary, and the no-commit constraint.
+- Added the deterministic concurrency regression using an observing reentrant lock and a paused old-runtime command.
+- Confirmed the pre-fix red result: the test failed because settings apply did not contend on the lifecycle lock while the old command was still in progress.
+- Added the runtime composition lease and applied it to command, projection/reconciliation, dashboard refresh, health/session, and automated-controller HTTP actions.
+- The deterministic concurrency regression is now green: `1 passed`; the unconfirmed apply waits, rechecks the filled position, returns 409, and confirmed reset leaves archive as the terminal old-session record.
+- The first dashboard simulation module run reached 17 passing tests, then exposed a test-injection regression via the known Shioaji native segfault; no result from that interrupted process is treated as a completed suite.
+- After repairing WebSocket injection, the targeted pair passed `2 passed`; the next module run reached 20 tests before the same eager-composition issue surfaced at the fake automated-controller seam.
+- Converted the lease to a lock-only context and restored service/controller resolution through the existing getters inside the lease.
+- Key targeted checks passed `3 passed`; the complete dashboard simulation API module then passed `22 passed` without native Provider startup.
+- The first reconstructed local-paper focused selection passed `118 passed`; it covers settings, runtime composition, risk/application, simulation service, command/Journal projection recovery, dashboard API/UI, and parameterized local-paper features.
+- The additional automated-strategy selection passed `64 passed`; no lifecycle, strategy-flow, exact-set runtime, or atomic Web API regression was found.
+- Combined Phase 7 feature regression passed `182 passed in 1.65s`.
+- Complete repository regression passed `1331 passed, 33 skipped in 7.97s`.
+- Python compilation, both JavaScript syntax checks, and `git diff --check` all passed.
+- Refreshed the architecture plan with the Phase 7 lease/archive invariant and current green verification while keeping acceptance explicitly pending independent re-review.
+- Final boundary checks preserved the active-plan pointer, produced no `data/local_paper/settings_v1.json`, found no newly added broker mutation call, and created no commit.
+- Phase 7 implementation is complete pending independent re-review.
+- Planning integrity check reports `ALL PHASES COMPLETE (7/7)`; final `git diff --check` remains green.
+- Independent review returned `Approve`; opened Phase 8 to record the scoped acceptance without changing product code or creating a commit.
+- Added suspended quote-stream construction plus explicit activation/ownership tracking so closing a failed replacement cannot stop the old provider stream.
+- Added complete settings-bound Journal metadata validation with an explicit default-only legacy compatibility path.
+- Added settings-digest-aware v2 fill evidence for zero- and nonzero-fee settings-bound sessions, including gross, signed net cash effect, cumulative commission, and SHA-256 validation.
+- Added a dedicated old-session archive record contract for successful settings replacement.
+- Updated dashboard startup and replacement composition to pass the active/draft settings policy revision and construct replacements with streaming suspended.
+- Removed the pre-creation close and rollback reconstruction. Replacement creation and settings activation now occur while the exact old runtime remains live; globals swap only after those steps and archive evidence succeed.
+- Reworded the simulation status to display gross `今日掛單保留買入額度` separately from commission-inclusive `含手續費現金保留`, following the UX semantic-label guidance.
+- Added a monotonic active-pointer restoration path for a post-activation/archive failure while leaving the exact old runtime instance live.
+- Updated the stale UI regression assertion and reran the five remediation modules: `51 passed in 0.57s`.
+- Expanded remediation regression reached `145 passed, 2 failed`; both failures are scoped compatibility issues introduced by the stricter checkpoint binding/fee normalization and are being corrected before the next run.
+- Checkpoint writes now derive the pinned digest from settings-bound session metadata when a legacy helper call omits it; zero-fee arithmetic preserves its prior Decimal scale while sub-cent minimums remain rejected.
+- Expanded remediation regression is green: `147 passed in 0.97s`.
+- Strengthened lifecycle coverage with a stream-capable provider: successful apply performs one clean handler handoff, and replacement, activation, or archive failure preserves the exact old simulation object/handler with no close call.
+- Lifecycle/settings/Journal focused rerun passed: `44 passed in 0.84s`.
+- Reused the repository's canonical Decimal encoder for settings digests, metadata, and v2 money evidence so numerically equivalent Decimal scales do not create different contracts.
+- Expanded focused regression after canonicalization passed: `148 passed in 1.14s`; Python compilation, both JavaScript syntax checks, and `git diff --check` also pass.
+- A newly added API sub-cent test omitted the suite's required provider/scheduler isolation and triggered the known Python 3.13 native Shioaji segfault. No product state was written; the test harness is being corrected before retry.
+- Added the missing MockProvider/scheduler isolation; the corrected settings/composition/Journal/API subset passed `47 passed in 0.89s`.
+- Expanded feature regression including lifecycle, recovery, risk, automated strategy, API, and UI passed `151 passed in 1.22s`.
+- Current complete repository suite is green: `1319 passed, 30 skipped in 8.51s`; the previously reported concurrent migration failures are no longer present in this checkout state.
+- Activated the Browser skill for a final local UI smoke of the separated reservation labels; no settings mutation will be submitted during this check.
+- Local dashboard loaded with MockProvider and the simulation order drawer rendered correctly. The semantic click target was below the browser's actionable viewport despite being reported visible; pressing Enter on the limit field did not submit, so no test order has been created yet. The next browser action will use a fresh visible-DOM target rather than repeating the failed click.
+- Browser inspection confirmed the existing drawer itself exceeds the 720px viewport and has no scrollable container; this is independent of the reservation-label remediation. No browser order or settings mutation was submitted, and the temporary local server/tab were closed.
+- Phase 5 remediation is complete and the implementation is marked `complete_pending_re_review`, not independently accepted. The five review findings have direct regression coverage and the current full suite is green.
+- Final post-plan checks passed: Python compilation, both JavaScript syntax checks, `git diff --check`, and the explicit isolated-plan completion helper (`5/5`). `.planning/.active_plan` remains unchanged and no local settings file was created by verification.
+- Follow-up independent review returned `Request Changes`: true pre-feature metadata with `execution_boundary=LOCAL_ONLY` is rejected, and Provider stream-start failure is swallowed after the old runtime has already been retired.
+- Re-read `planning-with-files`, `code-review-excellence` with its Python/universal/architecture references, and `karpathy-guidelines`; session catch-up confirmed this review had not yet been persisted.
+- Added Phase 6 and restored the implementation status to Request Changes before product edits. The fix remains limited to legacy compatibility, rollback-capable quote-stream handoff, and direct regression coverage.
+- Added two Phase 6 regression tests before implementation. The red run reproduced both blockers exactly: real legacy recovery fails with `local-paper settings conflicts with Journal`, while the second Provider stream start failure still returns HTTP 200 (`2 failed`).
+- Narrowed partial legacy binding detection to fields introduced by settings binding; the real HEAD metadata shape now replays a v1 fill/checkpoint successfully.
+- Added strict public stream activation, state-preserving stream suspension, worker cleanup, and strict subscription restoration. Settings apply now performs the exclusive handler handoff before settings pointer/archive/global commit and rolls back to the same old simulation object on any failure.
+- Updated existing activation/archive failure expectations for the intentional new→old handler rollback and strengthened the Provider-failure regression with restored quote-watch/subscription assertions.
+- Both new P1 regressions are green: `2 passed in 0.65s`.
+- Added fail-closed coverage for each new partial settings-binding field and required the legacy mode/local-only boundary while accepting the exact historical metadata shape.
+- Runtime-composition and settings API modules passed `37 passed in 1.25s`; expanded local-paper settings/risk/Journal/recovery/stream/UI regression passed `162 passed in 1.69s`.
+- Current complete suite result is `1328 passed, 32 skipped, 1 failed in 8.56s`. The single failure is the unrelated concurrent backtest UI copy assertion `test_atomic_launcher_reports_server_managed_dataset_readiness`; this Phase 6 will not alter that workspace or claim a green complete suite.
+- Strengthened the stream-failure test to prove the same old runtime retains its pre-handoff BidAsk cache. The first assertion used the wrong Decimal display scale (`105.00` instead of established `105.0`); corrected the test expectation without changing product formatting.
+- Final Phase 6 focused rerun passed `162 passed in 1.58s`. Python compilation, both JavaScript syntax checks, and `git diff --check` pass after the final concurrency ordering adjustment.
+- Phase 6 is complete pending independent re-review. The plan does not claim full-suite green because the unrelated backtest UI assertion remains failing; no commit was created.
+- The explicit isolated-plan completion helper reports `ALL PHASES COMPLETE (6/6)`. Final `git diff --check` passes, `.planning/.active_plan` remains unchanged, and no `data/local_paper/settings_v1.json` exists.
+- Recorded the independent `Approve` result in the formal Implementation Plan and changed Phases 4–7 from remediation follow-up states to complete.
+- Kept the acceptance explicitly scoped to local-paper runtime settings; no product source, unrelated worktree change, or commit was added in Phase 8.
+- One literal-quoting mistake in a read-only status search caused zsh to try executing the word `Approve`; the needed status evidence still returned, and the mistake was logged without repeating the command.
+- Documentation-only final checks passed: `git diff --check`, unchanged active-plan pointer, and absent `data/local_paper/settings_v1.json`.
+- Phase 8 is complete; local-paper runtime settings is independently accepted, with no commit created.
+- The first completeness check reported 7/8 because the helper recognizes only `complete`; normalized Phase 8 to that machine-readable status while retaining the independent acceptance record in the formal plan.
+- Final planning helper passed `ALL PHASES COMPLETE (8/8)` and `git diff --check` remained green.
+- User authorized a local commit and asked for feature completeness plus next-stage guidance; opened Phase 9 for exact shared-worktree packaging. No push is authorized.
+- Reused the prior shared-worktree packaging safeguards for this branch: exact hunk staging, immediate pre-commit payload recheck, and a separate push gate.
+- Logged a read-only shell quoting error from a backtick-bearing file-map regex; no repository state changed, and subsequent searches will use literal-safe patterns.
+- Reconstructed and reviewed a 27-file staged payload; unrelated FinMind, atomic backtest, strategy-management, research, and planning changes remained outside the commit.
+- Exact staged-tree verification passed `1319 passed, 29 skipped`; Python compilation, both JavaScript syntax checks, `git diff --cached --check`, and a credential-pattern scan also passed.
+- Created local commit `072c0c5` (`feat(simulation): add configurable local paper limits and fees`) without pushing. The committed diff hash matched the immediately pre-commit staged diff hash.
