@@ -1,0 +1,37 @@
+{
+  "body_file": "finmind_03_TaiwanStockMarketValue.response.bin",
+  "data_array_present": true,
+  "dataset": "TaiwanStockMarketValue",
+  "date_field_max": "2023-08-21",
+  "date_field_min": "2023-08-21",
+  "field_names": [
+    "date",
+    "market_value",
+    "stock_id"
+  ],
+  "http_status": 200,
+  "json_message": "success",
+  "json_status": 200,
+  "market": null,
+  "raw_response_bytes": 157356,
+  "raw_response_sha256": "b181c238de09985a9bdd3bf31b5161ae669bd380b961b6e49c65cc1d042cc8eb",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "dataset": "TaiwanStockMarketValue",
+      "start_date": "2023-08-21"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-origin": "*",
+    "connection": "close",
+    "content-length": "157356",
+    "content-type": "application/json",
+    "date": "Mon, 24 Aug 2026 01:25:45 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-24T09:25:45.062733+08:00",
+  "role": "HISTORICAL_MARKET_CAP_EARLY_SCHEMA",
+  "row_count": 2376,
+  "source_version": "FINMIND_API_V4"
+}

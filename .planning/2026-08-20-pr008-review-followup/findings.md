@@ -206,6 +206,9 @@
 - The r0, r1, and r2 artifact digests are `53c42a21c170973933d4ac12555bf17fbe906136a9f0259fead59156cd7a17c2`, `30d609a22d6827a6bca47fefba4668ef681df053ce0f53dd432c84940b52df26`, and `d60502f51897bdf4492717ec49f07b52b09c5f7f60b8c5764d10b4295dc22797`. These are data-acquisition lineage only, not a formal coverage audit or research population freeze.
 - The job remains durably paused at 678/2,738 with retry symbol `2101`; r2's artifact digest and both source hashes still match its frozen configuration. Shioaji has not reset its historical-query allowance, so no immediate retry is justified.
 - An active current-task heartbeat will check in the next Taiwan weekday reset window. It is constrained to metadata-only preflight, the frozen explicit r2 command, and segment/config sealing after any subsequent rate-limit pause; it cannot inspect outcome fields or unlock downstream formal-research gates.
+- At the 2026-08-24 provider-reset heartbeat, the r2 preflight stopped before digest/source validation because `dataset-download-f914feaddea04e37b3cbdcfce2b0179b` was absent from the workspace SQLite database and from the configured PostgreSQL repository. It is therefore impossible to prove the frozen checkpoint/progress/retry boundary, so no provider request was issued.
+- The only valid recovery paths are restoring the immutable store containing the original frozen job and checkpoints, or creating a new acquisition lineage after explicit research-owner approval. Recreating the job or replaying from index 678 would silently break r0/r1/r2 lineage and is prohibited.
+- A pause request to the app-owned heartbeat configuration timed out without persisting a state change. Its current prompt remains fail-closed at the missing-job preflight, and its configuration file must not be edited as a workaround.
 
 ## Decisions
 

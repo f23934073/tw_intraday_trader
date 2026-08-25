@@ -1,0 +1,359 @@
+{
+  "artifact_id": "credentialed-finmind-pit-reference-probe-capture-v1-2026-08-24-r1",
+  "authentication": {
+    "credential_environment_name": "FINMIND_API_TOKEN",
+    "credential_present": true,
+    "credential_value_persisted": false
+  },
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "protocol_reference": {
+    "artifact_id": "credentialed-finmind-pit-reference-probe-protocol-v1-2026-08-24-r1",
+    "canonical_sha256": "9ae68fbb2192c0b092718c3c271dbf427b29af50b9d466bd13cc19fcdae04937"
+  },
+  "records": [
+    {
+      "body_file": "finmind_01_TaiwanStockInfo.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockInfo",
+      "date_field_max": "None",
+      "date_field_min": "2020-06-03",
+      "field_names": [
+        "date",
+        "industry_category",
+        "stock_id",
+        "stock_name",
+        "type"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": null,
+      "raw_response_bytes": 594825,
+      "raw_response_sha256": "6b5ee3a9fb05a3d253132cc9fada0169c3997970e0df275da2824043359b36b2",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "dataset": "TaiwanStockInfo"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "594825",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 01:25:44 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T09:25:44.512907+08:00",
+      "role": "SECURITY_IDENTITY_AND_MARKET_SCHEMA",
+      "row_count": 4308,
+      "source_version": "FINMIND_API_V4"
+    },
+    {
+      "body_file": "finmind_02_TaiwanStockDelisting.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockDelisting",
+      "date_field_max": "2026-07-28",
+      "date_field_min": "1995-09-23",
+      "field_names": [
+        "date",
+        "stock_id",
+        "stock_name"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": null,
+      "raw_response_bytes": 59885,
+      "raw_response_sha256": "507d81cdac249e0d99e2d74108db49477e09cf086375e89399cf3f3474ec0b1f",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "dataset": "TaiwanStockDelisting"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "59885",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 01:25:45 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T09:25:44.855064+08:00",
+      "role": "LATER_DELISTED_SECURITY_SCHEMA",
+      "row_count": 723,
+      "source_version": "FINMIND_API_V4"
+    },
+    {
+      "body_file": "finmind_03_TaiwanStockMarketValue.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockMarketValue",
+      "date_field_max": "2023-08-21",
+      "date_field_min": "2023-08-21",
+      "field_names": [
+        "date",
+        "market_value",
+        "stock_id"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": null,
+      "raw_response_bytes": 157356,
+      "raw_response_sha256": "b181c238de09985a9bdd3bf31b5161ae669bd380b961b6e49c65cc1d042cc8eb",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "dataset": "TaiwanStockMarketValue",
+          "start_date": "2023-08-21"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "157356",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 01:25:45 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T09:25:45.062733+08:00",
+      "role": "HISTORICAL_MARKET_CAP_EARLY_SCHEMA",
+      "row_count": 2376,
+      "source_version": "FINMIND_API_V4"
+    },
+    {
+      "body_file": "finmind_04_TaiwanStockMarketValue.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockMarketValue",
+      "date_field_max": "2026-08-18",
+      "date_field_min": "2026-08-18",
+      "field_names": [
+        "date",
+        "market_value",
+        "stock_id"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": null,
+      "raw_response_bytes": 180937,
+      "raw_response_sha256": "e3dc6afcde4ae43a753d93d1d0cbd00acb708feb743c4d883e3383c73de9c0ac",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "dataset": "TaiwanStockMarketValue",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "180937",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 01:25:45 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T09:25:45.322126+08:00",
+      "role": "HISTORICAL_MARKET_CAP_LATE_SCHEMA",
+      "row_count": 2728,
+      "source_version": "FINMIND_API_V4"
+    },
+    {
+      "body_file": "finmind_05_TaiwanStockTradingDate_2330.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockTradingDate",
+      "date_field_max": "2023-08-23",
+      "date_field_min": "2023-08-21",
+      "field_names": [
+        "date"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TWSE",
+      "raw_response_bytes": 105,
+      "raw_response_sha256": "39ca956bb95980f3acd2defa68f136c44f514d7f8c49a31a8b1f66aa8875b6a9",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "2330",
+          "dataset": "TaiwanStockTradingDate",
+          "end_date": "2023-08-23",
+          "start_date": "2023-08-21"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "105",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 01:25:45 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T09:25:45.612537+08:00",
+      "role": "TWSE_TRADING_CALENDAR_SCHEMA",
+      "row_count": 3,
+      "source_version": "FINMIND_API_V4"
+    },
+    {
+      "body_file": "finmind_06_TaiwanStockTradingDate_1240.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockTradingDate",
+      "date_field_max": "2023-08-23",
+      "date_field_min": "2023-08-21",
+      "field_names": [
+        "date"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TPEX",
+      "raw_response_bytes": 105,
+      "raw_response_sha256": "39ca956bb95980f3acd2defa68f136c44f514d7f8c49a31a8b1f66aa8875b6a9",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "1240",
+          "dataset": "TaiwanStockTradingDate",
+          "end_date": "2023-08-23",
+          "start_date": "2023-08-21"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "105",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 01:25:46 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T09:25:45.755451+08:00",
+      "role": "TPEX_TRADING_CALENDAR_SCHEMA",
+      "row_count": 3,
+      "source_version": "FINMIND_API_V4"
+    },
+    {
+      "body_file": "finmind_07_TaiwanStockDividend_2330.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockDividend",
+      "date_field_max": "2026-06-17",
+      "date_field_min": "2023-09-20",
+      "field_names": [
+        "AnnouncementDate",
+        "AnnouncementTime",
+        "CashDividendPaymentDate",
+        "CashEarningsDistribution",
+        "CashExDividendTradingDate",
+        "CashIncreaseSubscriptionRate",
+        "CashIncreaseSubscriptionpRrice",
+        "CashStatutorySurplus",
+        "ParticipateDistributionOfTotalShares",
+        "RatioOfEmployeeStockDividend",
+        "RatioOfEmployeeStockDividendOfTotal",
+        "RemunerationOfDirectorsAndSupervisors",
+        "StockEarningsDistribution",
+        "StockExDividendTradingDate",
+        "StockStatutorySurplus",
+        "TotalEmployeeCashDividend",
+        "TotalEmployeeStockDividend",
+        "TotalEmployeeStockDividendAmount",
+        "TotalNumberOfCashCapitalIncrease",
+        "date",
+        "stock_id",
+        "year"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TWSE",
+      "raw_response_bytes": 9144,
+      "raw_response_sha256": "25d8d0d481105147b8e7f835ec93500ff0b345fd4ff2e244780677696e2f3281",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "2330",
+          "dataset": "TaiwanStockDividend",
+          "end_date": "2026-08-18",
+          "start_date": "2023-08-19"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "9144",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 01:25:46 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T09:25:45.893712+08:00",
+      "role": "TWSE_CORPORATE_ACTION_SCHEMA",
+      "row_count": 12,
+      "source_version": "FINMIND_API_V4"
+    },
+    {
+      "body_file": "finmind_08_TaiwanStockDividend_1240.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockDividend",
+      "date_field_max": "2026-07-21",
+      "date_field_min": "2023-09-05",
+      "field_names": [
+        "AnnouncementDate",
+        "AnnouncementTime",
+        "CashDividendPaymentDate",
+        "CashEarningsDistribution",
+        "CashExDividendTradingDate",
+        "CashIncreaseSubscriptionRate",
+        "CashIncreaseSubscriptionpRrice",
+        "CashStatutorySurplus",
+        "ParticipateDistributionOfTotalShares",
+        "RatioOfEmployeeStockDividend",
+        "RatioOfEmployeeStockDividendOfTotal",
+        "RemunerationOfDirectorsAndSupervisors",
+        "StockEarningsDistribution",
+        "StockExDividendTradingDate",
+        "StockStatutorySurplus",
+        "TotalEmployeeCashDividend",
+        "TotalEmployeeStockDividend",
+        "TotalEmployeeStockDividendAmount",
+        "TotalNumberOfCashCapitalIncrease",
+        "date",
+        "stock_id",
+        "year"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "market": "TPEX",
+      "raw_response_bytes": 3017,
+      "raw_response_sha256": "7eda8ad67f26c5f7afe27e09f49392faf3fb707037210913c5c8a3c95635ea1a",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "data_id": "1240",
+          "dataset": "TaiwanStockDividend",
+          "end_date": "2026-08-18",
+          "start_date": "2023-08-19"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "3017",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 01:25:46 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T09:25:46.049189+08:00",
+      "role": "TPEX_CORPORATE_ACTION_SCHEMA",
+      "row_count": 4,
+      "source_version": "FINMIND_API_V4"
+    }
+  ],
+  "schema_version": "credentialed_finmind_pit_reference_probe_capture_v1",
+  "usage_preflight": {
+    "api_request_limit": 6000,
+    "remaining_before": 2204,
+    "user_count_before": 3796
+  }
+}

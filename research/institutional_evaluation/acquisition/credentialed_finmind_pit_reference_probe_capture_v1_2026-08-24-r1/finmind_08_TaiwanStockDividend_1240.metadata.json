@@ -1,0 +1,58 @@
+{
+  "body_file": "finmind_08_TaiwanStockDividend_1240.response.bin",
+  "data_array_present": true,
+  "dataset": "TaiwanStockDividend",
+  "date_field_max": "2026-07-21",
+  "date_field_min": "2023-09-05",
+  "field_names": [
+    "AnnouncementDate",
+    "AnnouncementTime",
+    "CashDividendPaymentDate",
+    "CashEarningsDistribution",
+    "CashExDividendTradingDate",
+    "CashIncreaseSubscriptionRate",
+    "CashIncreaseSubscriptionpRrice",
+    "CashStatutorySurplus",
+    "ParticipateDistributionOfTotalShares",
+    "RatioOfEmployeeStockDividend",
+    "RatioOfEmployeeStockDividendOfTotal",
+    "RemunerationOfDirectorsAndSupervisors",
+    "StockEarningsDistribution",
+    "StockExDividendTradingDate",
+    "StockStatutorySurplus",
+    "TotalEmployeeCashDividend",
+    "TotalEmployeeStockDividend",
+    "TotalEmployeeStockDividendAmount",
+    "TotalNumberOfCashCapitalIncrease",
+    "date",
+    "stock_id",
+    "year"
+  ],
+  "http_status": 200,
+  "json_message": "success",
+  "json_status": 200,
+  "market": "TPEX",
+  "raw_response_bytes": 3017,
+  "raw_response_sha256": "7eda8ad67f26c5f7afe27e09f49392faf3fb707037210913c5c8a3c95635ea1a",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "data_id": "1240",
+      "dataset": "TaiwanStockDividend",
+      "end_date": "2026-08-18",
+      "start_date": "2023-08-19"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-origin": "*",
+    "connection": "close",
+    "content-length": "3017",
+    "content-type": "application/json",
+    "date": "Mon, 24 Aug 2026 01:25:46 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-24T09:25:46.049189+08:00",
+  "role": "TPEX_CORPORATE_ACTION_SCHEMA",
+  "row_count": 4,
+  "source_version": "FINMIND_API_V4"
+}

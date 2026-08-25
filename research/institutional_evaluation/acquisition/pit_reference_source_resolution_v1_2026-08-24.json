@@ -1,0 +1,131 @@
+{
+  "artifact_id": "pit-reference-source-resolution-v1-2026-08-24-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "contract": {
+    "required_artifacts": [
+      "DATE_EFFECTIVE_PIT_UNIVERSE",
+      "SYMBOL_IDENTITY_AND_LISTING_DELISTING_REFERENCE",
+      "DAILY_INDUSTRY_AND_MARKET_CAP_REFERENCE",
+      "CORPORATE_ACTION_REFERENCE",
+      "TWSE_TPEX_TRADING_CALENDAR"
+    ],
+    "required_market_scope": [
+      "TWSE",
+      "TPEX"
+    ],
+    "required_security_scope": "ORDINARY_EQUITIES_INCLUDING_LATER_DELISTED_SECURITIES",
+    "required_temporal_semantics": "DATE_EFFECTIVE_PRE_OPEN_OR_PRIOR_AVAILABLE_REFERENCE"
+  },
+  "decision": {
+    "next_gate": "TEJ_PIT_REFERENCE_ENTITLEMENT_AND_METADATA_QUALIFICATION_V1",
+    "selected_source": null,
+    "verdict": "INSUFFICIENT_EVIDENCE"
+  },
+  "evidence_scope": {
+    "credential_values_read": false,
+    "local_credential_names_checked": [
+      "TEJ_API_KEY",
+      "TEJAPI_KEY",
+      "TQUANT_API_KEY",
+      "TQUANT_TOKEN"
+    ],
+    "outcome_fields_read": false,
+    "provider_requests_executed": false,
+    "reviewed_at": "2026-08-24T09:10:33+08:00"
+  },
+  "issues": [
+    {
+      "code": "PIT_REFERENCE_SOURCE_NOT_ACQUIRED",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "TEJ_TQUANT_LOCAL_ENTITLEMENT_NOT_PRESENT",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "PIT_REFERENCE_SCHEMA_AND_SAMPLE_NOT_VALIDATED",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "PIT_REFERENCE_RETENTION_AND_REVISION_TERMS_NOT_EVIDENCED",
+      "severity": "BLOCKING"
+    }
+  ],
+  "permissions": {
+    "corporate_action_artifact_allowed": false,
+    "formal_price_dataset_allowed": false,
+    "formal_universe_artifact_allowed": false,
+    "pit_reference_acquisition_allowed": false,
+    "population_freeze_allowed": false,
+    "source_selection_allowed": false
+  },
+  "schema_version": "pit_reference_source_resolution_v1",
+  "source_candidates": [
+    {
+      "candidate_id": "TWSE_TPEX_PUBLIC_LISTING_AND_DELISTING_PAGES",
+      "documented_capabilities": [
+        "CURRENT_AND_RECENT_LISTING_EVIDENCE",
+        "DELISTING_LOOKUP_EVIDENCE",
+        "MARKET_SPECIFIC_PUBLIC_DISCLOSURE"
+      ],
+      "gaps": [
+        "NO_SINGLE_DUAL_MARKET_DAILY_PIT_REFERENCE_PRODUCT_CONFIRMED",
+        "HISTORICAL_DAILY_INDUSTRY_AND_MARKET_CAP_COHORTS_UNCONFIRMED",
+        "REPRODUCIBLE_CROSS_SOURCE_REVISION_POLICY_UNCONFIRMED"
+      ],
+      "selected": false,
+      "status": "COMPLEMENTARY_EVIDENCE_ONLY"
+    },
+    {
+      "candidate_id": "TEJ_TQUANT_PIT_REFERENCE_DATASETS",
+      "documented_capabilities": [
+        "DAILY_PRE_OPEN_SECURITY_ATTRIBUTES",
+        "DAILY_MARKET_AND_SECURITY_TYPE_ATTRIBUTES",
+        "DAILY_MARKET_CAP_AND_CORPORATE_ACTION_FIELDS",
+        "TWSE_TPEX_AND_DELISTED_SECURITY_SCOPE_DOCUMENTED"
+      ],
+      "documented_dataset_ids": [
+        "TWN/APISTOCK",
+        "TWN/APISTKATTR",
+        "TWN/APISHRACT",
+        "TWN/TRADEDAY_TWSE"
+      ],
+      "gaps": [
+        "LOCAL_ENTITLEMENT_NOT_PRESENT",
+        "NO_ACQUIRED_METADATA_OR_RAW_SAMPLE",
+        "EXACT_SCHEMA_AND_AS_OF_SEMANTICS_UNVALIDATED",
+        "RETENTION_CORRECTION_AND_REVISION_TERMS_UNEVIDENCED"
+      ],
+      "selected": false,
+      "status": "CANDIDATE_PENDING_ENTITLEMENT_AND_QUALIFICATION"
+    }
+  ],
+  "upstream_references": {
+    "coverage_amendment": {
+      "artifact_id": "formal-evaluation-coverage-amendment-v1-2026-08-21-r1",
+      "canonical_sha256": "6a5a943e720dc3bf0e9bc952805539a4c0a460d3f8137462f714773fbaba96ab"
+    },
+    "finmind_pit_price_acquisition_contract": {
+      "artifact_id": "finmind-pit-price-acquisition-contract-v1-2026-08-24-r1",
+      "canonical_sha256": "75d819467d320504915a5db594ea77ddbe8ad5c1b2afd4ff914f170a33b07001"
+    },
+    "official_or_licensed_intraday_source_resolution": {
+      "artifact_id": "official-or-licensed-intraday-source-resolution-v1-2026-08-21-r1",
+      "canonical_sha256": "43cbe7621c6e70541a98e7d565d76ca0c56d8ece2c59ef6856cef4bfaccd921b"
+    },
+    "price_coverage_audit_contract": {
+      "artifact_id": "price-coverage-audit-v1-contract-2026-08-21-r1",
+      "canonical_sha256": "6fb84bf8bd4950fe5558488590762f55da335ff3215b5c561fe39ec2c1457384"
+    }
+  },
+  "written_qualification_requirements": [
+    "ENTITLEMENT_FOR_THE_REQUIRED_HISTORICAL_PERIOD",
+    "DATASET_SCHEMA_AND_FIELD_DICTIONARY",
+    "POINT_IN_TIME_AVAILABILITY_AND_REVISION_SEMANTICS",
+    "TWSE_TPEX_AND_LATER_DELISTED_SECURITY_COVERAGE",
+    "SYMBOL_RENAME_AND_MARKET_TRANSFER_CONTINUITY",
+    "CORPORATE_ACTION_AND_MARKET_CAP_AS_OF_POLICY",
+    "RAW_RETENTION_DERIVED_ARTIFACT_AND_CORRECTION_RIGHTS",
+    "BOUNDED_METADATA_ONLY_SAMPLE_WITH_IMMUTABLE_DIGESTS"
+  ]
+}

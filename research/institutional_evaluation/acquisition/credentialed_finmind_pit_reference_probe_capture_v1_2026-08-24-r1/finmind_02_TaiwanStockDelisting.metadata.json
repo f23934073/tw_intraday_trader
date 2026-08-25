@@ -1,0 +1,36 @@
+{
+  "body_file": "finmind_02_TaiwanStockDelisting.response.bin",
+  "data_array_present": true,
+  "dataset": "TaiwanStockDelisting",
+  "date_field_max": "2026-07-28",
+  "date_field_min": "1995-09-23",
+  "field_names": [
+    "date",
+    "stock_id",
+    "stock_name"
+  ],
+  "http_status": 200,
+  "json_message": "success",
+  "json_status": 200,
+  "market": null,
+  "raw_response_bytes": 59885,
+  "raw_response_sha256": "507d81cdac249e0d99e2d74108db49477e09cf086375e89399cf3f3474ec0b1f",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "dataset": "TaiwanStockDelisting"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-origin": "*",
+    "connection": "close",
+    "content-length": "59885",
+    "content-type": "application/json",
+    "date": "Mon, 24 Aug 2026 01:25:45 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-24T09:25:44.855064+08:00",
+  "role": "LATER_DELISTED_SECURITY_SCHEMA",
+  "row_count": 723,
+  "source_version": "FINMIND_API_V4"
+}

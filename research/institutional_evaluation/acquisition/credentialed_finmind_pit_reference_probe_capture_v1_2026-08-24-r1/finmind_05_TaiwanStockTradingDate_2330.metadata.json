@@ -1,0 +1,37 @@
+{
+  "body_file": "finmind_05_TaiwanStockTradingDate_2330.response.bin",
+  "data_array_present": true,
+  "dataset": "TaiwanStockTradingDate",
+  "date_field_max": "2023-08-23",
+  "date_field_min": "2023-08-21",
+  "field_names": [
+    "date"
+  ],
+  "http_status": 200,
+  "json_message": "success",
+  "json_status": 200,
+  "market": "TWSE",
+  "raw_response_bytes": 105,
+  "raw_response_sha256": "39ca956bb95980f3acd2defa68f136c44f514d7f8c49a31a8b1f66aa8875b6a9",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "data_id": "2330",
+      "dataset": "TaiwanStockTradingDate",
+      "end_date": "2023-08-23",
+      "start_date": "2023-08-21"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-origin": "*",
+    "connection": "close",
+    "content-length": "105",
+    "content-type": "application/json",
+    "date": "Mon, 24 Aug 2026 01:25:45 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-24T09:25:45.612537+08:00",
+  "role": "TWSE_TRADING_CALENDAR_SCHEMA",
+  "row_count": 3,
+  "source_version": "FINMIND_API_V4"
+}

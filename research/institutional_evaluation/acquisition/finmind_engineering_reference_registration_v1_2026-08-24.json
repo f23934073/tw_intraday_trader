@@ -1,0 +1,66 @@
+{
+  "artifact_id": "finmind-engineering-reference-registration-v1-2026-08-24-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "classification": {
+    "existing_dataset_is_formal_pr008_price_dataset": false,
+    "formal_holdout_eligible": false,
+    "outcome_observation_recorded": true,
+    "outcome_values_recorded_in_this_artifact": false,
+    "purpose": "ENGINEERING_REFERENCE_AND_PIT_ACQUISITION_IMPLEMENTATION_BASELINE",
+    "research_eligible": false
+  },
+  "dataset_reference": {
+    "artifact_path": "data/backtest/dataset-finmind-sponsor-sha256-88712fb2b5e7def4f87948f0e7c584d6b9fe89f87ebff0d5e214386ecbda37e6/manifest.json",
+    "bars_sha256": "216d306d2df5ec3f6221e6e96c3998129774c966f844e9d923634d96f275c31d",
+    "dataset_id": "dataset-finmind-sponsor-sha256-88712fb2b5e7def4f87948f0e7c584d6b9fe89f87ebff0d5e214386ecbda37e6",
+    "end_date": "2026-08-18",
+    "issues": [
+      "AMOUNT_DERIVED_PROXY",
+      "CURRENT_SNAPSHOT_SURVIVORSHIP_LIMITED",
+      "PARTIAL_MARKET_UNIVERSE",
+      "RAW_PRICE_UNADJUSTED",
+      "REFERENCE_METADATA_CURRENT_NOT_PIT"
+    ],
+    "manifest_digest": "ced1e2d7c95f8f5bd402556b022eeecdf771deedd410e3319618b9d96a141b29",
+    "plan_identity_digest": "b72f4f6479b59acc71d5dedf780fc15c281b829bf6e645822dbd79ed27af15b6",
+    "profile": "KBAR_1M_V1",
+    "requested_symbol_count": 182,
+    "source": "FINMIND_SPONSOR_TAIWAN_STOCK_KBAR",
+    "source_snapshot_digest": "88712fb2b5e7def4f87948f0e7c584d6b9fe89f87ebff0d5e214386ecbda37e6",
+    "start_date": "2023-08-19",
+    "universe_scope": "CURRENT_SNAPSHOT"
+  },
+  "inspection_scope": {
+    "backtest_executed": false,
+    "outcome_fields_read": false,
+    "price_payload_read": false,
+    "source_manifest_metadata_read": true
+  },
+  "permissions": {
+    "composite_manifest_allowed": false,
+    "holdout_execution_allowed": false,
+    "outcome_generation_allowed": false,
+    "population_freeze_allowed": false,
+    "price_dataset_artifact_allowed": false,
+    "provider_acquisition_allowed": false,
+    "source_mixing_allowed": false
+  },
+  "registration_time": "2026-08-24T09:03:13+08:00",
+  "schema_version": "finmind_engineering_reference_registration_v1",
+  "upstream_evidence": {
+    "finmind_sponsor_probe_result": {
+      "artifact_id": "credentialed-finmind-intraday-source-probe-result-v1-2026-08-21-r2",
+      "canonical_sha256": "4a259a737643b60c80193ea40076456d1deebc3aacd3be7bc310850d3d57f189",
+      "source_qualified": false,
+      "verdict": "REJECTED_FOR_MISMATCH_RESOLUTION"
+    },
+    "formal_evaluation_protocol": {
+      "artifact_id": "institutional-formal-evaluation-gate-v1",
+      "canonical_sha256": "b769cf1b672e15d599cf610d22bda49d37981ddc36ae999b120b52702b197dc4"
+    },
+    "formal_evaluation_coverage_amendment": {
+      "artifact_id": "formal-evaluation-coverage-amendment-v1-2026-08-21-r1",
+      "canonical_sha256": "6a5a943e720dc3bf0e9bc952805539a4c0a460d3f8137462f714773fbaba96ab"
+    }
+  }
+}

@@ -280,10 +280,11 @@ Phase 21 - Price Coverage Scan Configuration Evidence V1
 ### Phase 24: R2 Resume Monitoring
 - [x] Revalidate the sealed r1 boundary, r2 artifact digest, and pinned source hashes while the job is paused
 - [x] Register a thread heartbeat for the next Taiwan trading-session provider-reset window
-- [ ] Execute r2 only after the heartbeat's metadata-only preflight passes
+- [x] Execute the heartbeat metadata-only preflight at the provider-reset window
+- [ ] Execute r2 only after the frozen durable job and checkpoint are restored and the metadata-only preflight passes
 - [ ] On any new whole-job safe pause, seal the active segment and freeze the next configuration revision before another resume
 - [ ] Produce Raw Scan Inventory only after all 2,738 targets have sealed segment evidence
-- **Status:** scheduled_pending_provider_reset
+- **Status:** blocked_missing_frozen_durable_job
 
 ## Decisions Made
 
@@ -321,6 +322,7 @@ Phase 21 - Price Coverage Scan Configuration Evidence V1
 | Allow only uniform pre-outcome data-coverage exclusions | The owner approved studying the fully covered subset with symbol >=95% and session >=99%; no named-symbol exception or outcome-responsive exclusion is allowed. |
 | Seal scan evidence by configuration-pinned segment | A rate-limit pause creates a natural immutable boundary. r0 retains the pre-coverage trusted prefix, r1 seals the observed continuation slice, and r2 is registered before the next resume; no final summary may combine them without segment references. |
 | Use a thread heartbeat for r2 recovery | The provider has not reset yet, so an immediate retry would be purposeless. The active thread will revalidate r2 only in the next trading-session reset window; no external cron or new task was created. |
+| Fail closed on a missing frozen job | The r2 resume is valid only for its original job id, request digest, checkpoint sequence, and retry symbol. A missing job cannot be recreated or substituted without an owner-approved new acquisition lineage. |
 
 ## Errors Encountered
 
@@ -349,3 +351,5 @@ Phase 21 - Price Coverage Scan Configuration Evidence V1
 | Report skill links resolved relative to the skill root rather than the `build-report` subdirectory | Located and read the required technical and MCP report specifications under `skills/build-report/specifications`; report evidence was unaffected. |
 | Full regression has one failure in `tests/test_trade_management_operational_composition.py` because its unrelated fixture replaces `event_time` with a timestamp whose date differs from the source event's fixed `session_date` | Preserve the unrelated trade-management test and report the failure honestly; run the suite excluding that file plus all focused PR-008 gates. |
 | Official OpenAI documentation search returned an expired local web token while configuring the heartbeat | Used the app-provided automation schema and validated the resulting active heartbeat configuration locally; no repository or research evidence was affected. |
+| R2 heartbeat preflight cannot find its frozen job in either the workspace SQLite database or configured PostgreSQL repository | Do not run `--resume`, do not reconstruct checkpoints, and request either immutable backup restoration or owner approval for a new acquisition lineage. |
+| Attempt to pause the heartbeat through the app automation interface timed out twice and did not persist a status change | Do not edit the app-owned automation file directly. The active heartbeat remains fail-closed because its first step is the missing-job metadata check. |

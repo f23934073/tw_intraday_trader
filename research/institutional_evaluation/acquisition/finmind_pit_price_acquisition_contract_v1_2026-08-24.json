@@ -1,0 +1,96 @@
+{
+  "artifact_id": "finmind-pit-price-acquisition-contract-v1-2026-08-24-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "current_input_status": {
+    "corporate_actions": "MISSING",
+    "existing_finmind_dataset": "ENGINEERING_REFERENCE_ONLY",
+    "historical_institutional_partitions": "MISSING",
+    "pit_universe": "MISSING",
+    "reference_data": "MISSING",
+    "trading_calendar": "PARTIAL"
+  },
+  "dataset_identity_policy": {
+    "existing_engineering_dataset_id": "dataset-finmind-sponsor-sha256-88712fb2b5e7def4f87948f0e7c584d6b9fe89f87ebff0d5e214386ecbda37e6",
+    "must_be_distinct_from_existing_engineering_dataset": true,
+    "new_dataset_identity_required_after_acquisition": true,
+    "silent_cross_provider_mixing_allowed": false
+  },
+  "execution_lock": {
+    "dataset_materialization_allowed": false,
+    "formal_coverage_audit_allowed": false,
+    "holdout_execution_allowed": false,
+    "outcome_generation_allowed": false,
+    "pit_price_acquisition_allowed": false,
+    "population_freeze_allowed": false,
+    "source_selection_allowed": false
+  },
+  "formal_coverage_gate": {
+    "minimum_aggregate_session_coverage_rate": "0.99",
+    "minimum_per_symbol_session_coverage_rate": "0.99",
+    "minimum_symbol_coverage_rate": "0.95",
+    "required_concentration_dimensions": [
+      "MARKET",
+      "MARKET_CAP_COHORT",
+      "ADV20_LIQUIDITY_COHORT",
+      "INDUSTRY_CODE",
+      "LISTING_STATUS_ACTIVE_VS_LATER_DELISTED"
+    ]
+  },
+  "pit_acquisition_contract": {
+    "acquisition_grain": "PIT_SYMBOL_SESSION",
+    "calendar_policy": "MERGED_TWSE_TPEX_TRADING_SESSION_RESOLVER",
+    "data_profile": "ONE_MINUTE_OHLCV_WITH_RECONSTRUCTABLE_CUMULATIVE_INTRADAY_VWAP",
+    "market_scope": [
+      "TWSE",
+      "TPEX"
+    ],
+    "price_adjustment_policy": "RAW_INTRADAY_WITH_SEPARATE_CORPORATE_ACTION_ARTIFACT",
+    "required_price_fields": [
+      "OPEN",
+      "HIGH",
+      "LOW",
+      "CLOSE",
+      "VOLUME_SHARES"
+    ],
+    "required_security_scope": "DATE_EFFECTIVE_PIT_ORDINARY_EQUITIES_INCLUDING_LATER_DELISTED_SECURITIES",
+    "required_session": "REGULAR_SESSION_ASIA_TAIPEI",
+    "source_candidate": "FINMIND_SPONSOR",
+    "target_date_range": null,
+    "vwap_evidence_requirement": "QUALIFIED_TICK_RECONSTRUCTION_OR_SEPARATELY_VALIDATED_AMOUNT_CONTRACT;_KBAR_ONLY_IS_INSUFFICIENT"
+  },
+  "prerequisites": [
+    "PIT_UNIVERSE_ARTIFACT_WITH_DATE_EFFECTIVE_SECURITY_IDENTITY",
+    "HISTORICAL_INSTITUTIONAL_PARTITION_SET_ARTIFACT",
+    "TWSE_AND_TPEX_CALENDAR_ARTIFACT",
+    "REFERENCE_DATA_ARTIFACT_WITH_SYMBOL_CONTINUITY",
+    "CORPORATE_ACTION_ARTIFACT",
+    "FROZEN_TARGET_DATE_RANGE_AND_CHRONOLOGICAL_SPLIT",
+    "UNOBSERVED_FORMAL_HOLDOUT_DECLARATION",
+    "SOURCE_ENTITLEMENT_AND_RETENTION_EVIDENCE",
+    "PIT_ACQUISITION_PLAN_DIGEST"
+  ],
+  "schema_version": "finmind_pit_price_acquisition_contract_v1",
+  "status": "PREREGISTERED_BLOCKED",
+  "upstream_references": {
+    "coverage_amendment": {
+      "artifact_id": "formal-evaluation-coverage-amendment-v1-2026-08-21-r1",
+      "canonical_sha256": "6a5a943e720dc3bf0e9bc952805539a4c0a460d3f8137462f714773fbaba96ab"
+    },
+    "finmind_engineering_reference_registration": {
+      "artifact_id": "finmind-engineering-reference-registration-v1-2026-08-24-r1",
+      "canonical_sha256": "7ed1f486dbe103f512466ba19d15c9acdb42937aae189a4abef6c046c8e70599"
+    },
+    "finmind_sponsor_probe_result": {
+      "artifact_id": "credentialed-finmind-intraday-source-probe-result-v1-2026-08-21-r2",
+      "canonical_sha256": "4a259a737643b60c80193ea40076456d1deebc3aacd3be7bc310850d3d57f189"
+    },
+    "formal_evaluation_protocol": {
+      "artifact_id": "institutional-formal-evaluation-gate-v1",
+      "canonical_sha256": "b769cf1b672e15d599cf610d22bda49d37981ddc36ae999b120b52702b197dc4"
+    },
+    "price_coverage_audit_contract": {
+      "artifact_id": "price-coverage-audit-v1-contract-2026-08-21-r1",
+      "canonical_sha256": "16de2310f21fef0acb066f719227e5260539debab2b3647a18296e7802bfc887"
+    }
+  }
+}

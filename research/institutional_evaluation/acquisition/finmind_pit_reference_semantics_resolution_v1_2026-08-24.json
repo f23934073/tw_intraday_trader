@@ -1,0 +1,155 @@
+{
+  "artifact_id": "finmind-pit-reference-semantics-resolution-v1-2026-08-24-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "decision": {
+    "finmind_disposition": "REJECTED_FOR_FORMAL_PIT_REFERENCE_USE",
+    "finmind_may_remain_partial_reference_component": true,
+    "formal_pit_reference_source_selected": false,
+    "next_gate": "LICENSED_OR_PROVIDER_WRITTEN_PIT_REFERENCE_SOURCE_RESOLUTION_V1",
+    "verdict": "REJECTED_FOR_FORMAL_PIT_REFERENCE_USE"
+  },
+  "documentary_evidence": [
+    {
+      "dataset": "TaiwanStockInfo",
+      "documented_columns": [
+        "industry_category",
+        "stock_id",
+        "stock_name",
+        "type",
+        "date"
+      ],
+      "documented_semantics": "ONE_ROW_PER_MARKET_THE_STOCK_HAS_BELONGED_TO;_TRANSFERS_RETAIN_A_FROZEN_EMERGING_ROW_AND_USE_THE_LATEST_DATE_FOR_CURRENT_MARKET_RESOLUTION",
+      "formal_pit_assessment": "INSUFFICIENT_FOR_LISTED_FROM_LISTED_UNTIL_OR_COMPLETE_MARKET_TRANSFER_TIMELINE",
+      "source_url": "https://finmind.github.io/llms-full.txt"
+    },
+    {
+      "dataset": "TaiwanStockDelisting",
+      "documented_columns": [
+        "date",
+        "stock_id",
+        "stock_name"
+      ],
+      "documented_semantics": "DELISTING_DATE_TABLE",
+      "formal_pit_assessment": "PARTIAL_TERMINATION_EVIDENCE_ONLY;_NO_LISTING_START_MARKET_OR_SECURITY_TYPE",
+      "source_url": "https://finmind.github.io/llms-full.txt"
+    },
+    {
+      "dataset": "TaiwanStockMarketValue",
+      "documented_columns": [
+        "date",
+        "stock_id",
+        "market_value"
+      ],
+      "documented_semantics": "DAILY_MARKET_VALUE_WITH_HISTORY_FROM_2004-01-01",
+      "formal_pit_assessment": "MARKET_CAP_COMPONENT_ONLY;_NO_MARKET_SECURITY_TYPE_OR_INDUSTRY_AS_OF",
+      "source_url": "https://finmind.github.io/llms-full.txt"
+    },
+    {
+      "dataset": "TaiwanStockIndustryChain",
+      "documented_columns": [
+        "stock_id",
+        "industry",
+        "sub_industry",
+        "date"
+      ],
+      "documented_semantics": "HISTORICAL_DATES_USE_CURRENT_INDUSTRY_CHAIN_CLASSIFICATION",
+      "formal_pit_assessment": "INCOMPATIBLE_WITH_DATE_EFFECTIVE_INDUSTRY_REQUIREMENT",
+      "source_url": "https://finmind.github.io/llms-full.txt"
+    },
+    {
+      "dataset": "TaiwanStockTradingDate",
+      "documented_columns": [
+        "date"
+      ],
+      "documented_semantics": "TAIWAN_STOCK_TRADING_DATES_WITHOUT_A_MARKET_FIELD",
+      "formal_pit_assessment": "INSUFFICIENT_TO_PROVE_A_SEPARATE_TWSE_TPEX_CALENDAR_SCOPE",
+      "source_url": "https://finmind.github.io/llms-full.txt"
+    }
+  ],
+  "evidence_scope": {
+    "additional_provider_requests_executed": false,
+    "backtest_executed": false,
+    "credential_values_read": false,
+    "outcome_fields_read": false,
+    "price_or_kbar_payloads_read": false,
+    "reviewed_on": "2026-08-24"
+  },
+  "issues": [
+    {
+      "code": "PIT_LISTING_INTERVAL_AND_MARKET_TRANSFER_TIMELINE_UNAVAILABLE",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "PIT_COMMON_STOCK_SECURITY_TYPE_UNAVAILABLE",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "PIT_INDUSTRY_AS_OF_SEMANTICS_DOCUMENTED_INCOMPATIBLE",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "DUAL_MARKET_CALENDAR_SCOPE_UNAVAILABLE",
+      "severity": "BLOCKING"
+    },
+    {
+      "code": "PROVIDER_RETENTION_CORRECTION_AND_REVISION_TERMS_NOT_EVIDENCED",
+      "severity": "BLOCKING"
+    }
+  ],
+  "permissions": {
+    "corporate_action_artifact_allowed": false,
+    "formal_universe_artifact_allowed": false,
+    "outcome_generation_allowed": false,
+    "pit_reference_acquisition_allowed": false,
+    "population_freeze_allowed": false,
+    "price_dataset_artifact_allowed": false,
+    "source_selection_allowed": false
+  },
+  "pit_contract_requirements": {
+    "date_effective_intervals": [
+      "listed_from",
+      "listed_until",
+      "effective_from",
+      "effective_to"
+    ],
+    "required_classifications": [
+      "market",
+      "security_type",
+      "industry_as_of",
+      "market_cap_as_of"
+    ],
+    "required_market_scope": [
+      "TWSE",
+      "TPEX"
+    ],
+    "required_security_scope": "EXPLICIT_COMMON_STOCKS_INCLUDING_LATER_DELISTED_SECURITIES"
+  },
+  "schema_version": "finmind_pit_reference_semantics_resolution_v1",
+  "source_terms_evidence": {
+    "assessment": "NOT_EVIDENCED_IN_REVIEWED_PUBLIC_DOCUMENTATION",
+    "reviewed_documents": [
+      "https://finmind.github.io/llms-full.txt",
+      "https://finmindtrade.com/"
+    ],
+    "required_written_evidence": [
+      "RAW_RETENTION_RIGHTS",
+      "HISTORICAL_CORRECTION_POLICY",
+      "SOURCE_REVISION_IDENTIFIER_OR_SNAPSHOT_POLICY",
+      "RESEARCH_USE_LICENSE_SCOPE"
+    ]
+  },
+  "upstream_references": {
+    "credentialed_finmind_pit_reference_probe_result": {
+      "artifact_id": "credentialed-finmind-pit-reference-probe-result-v1-2026-08-24-r1",
+      "canonical_sha256": "cd6c46fd3210c0d105e417c402b9d3796040cfb959d0cc7391ecca752f161d0a"
+    },
+    "finmind_pit_price_acquisition_contract": {
+      "artifact_id": "finmind-pit-price-acquisition-contract-v1-2026-08-24-r1",
+      "canonical_sha256": "75d819467d320504915a5db594ea77ddbe8ad5c1b2afd4ff914f170a33b07001"
+    },
+    "pit_reference_source_resolution": {
+      "artifact_id": "pit-reference-source-resolution-v1-2026-08-24-r1",
+      "canonical_sha256": "1cc8d5fd8ded8f7e4cffb1ccdac9a71d460026226c17fd52cf6d9cc700c2fb05"
+    }
+  }
+}
