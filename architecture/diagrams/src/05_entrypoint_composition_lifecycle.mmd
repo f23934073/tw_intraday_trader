@@ -1,0 +1,66 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 對照 entrypoint、composition root 與 process lifecycle。
+%% How to read: 上半部是 entrypoint，中央是 lazy composition root，下半部是 shutdown/close 行為。
+%% Source anchors: app.py::main/run_scan; dashboard/__main__.py; dashboard/server.py::lifespan/get_runtime_composition/get_backtest_service/get_incremental_scheduler; runtime/composition.py::RuntimeComposition.create/close.
+%% Runtime/authority notes: Dashboard 同 process 內有 Local Paper composition 與 separate historical-backtest composition；Backtest 不透過 RuntimeComposition。
+
+flowchart TB
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    appentry["python app.py<br/>main()"]
+    scan["run_scan()<br/>build provider + store + engines"]
+    dashentry["python -m dashboard<br/>uvicorn dashboard.server:app"]
+    fastapi["FastAPI app<br/>middleware + routes"]
+    lifespan["lifespan()<br/>start scheduler / close resources"]
+
+    provider["get_market_provider()<br/>provider singleton via composition"]
+    comp["get_runtime_composition()<br/>RuntimeComposition.create()"]
+    settings["JsonLocalPaperSettingsRepository<br/>data/local_paper/settings_v1.json"]
+    localpaper["SimulationService + LocalPaperCommandService<br/>Journal + projections"]
+    dashsvc["DashboardService<br/>snapshot/cache/premarket projection"]
+    momentum["get_momentum_dashboard_service()<br/>live Shadow or unavailable service"]
+    backsvc["get_backtest_service()<br/>separate historical composition"]
+    atomic["get_atomic_strategy_service()<br/>PostgreSQL-only catalog"]
+    sched["get_incremental_scheduler()<br/>after-close trigger"]
+
+    close["shutdown close order<br/>controller, backtest, catalog, hubs, momentum, composition/provider"]
+
+    appentry --> scan
+    dashentry --> fastapi --> lifespan
+    fastapi --> comp
+    comp --> settings
+    comp --> provider
+    comp --> localpaper
+    comp --> dashsvc
+    fastapi --> momentum
+    fastapi --> backsvc
+    fastapi --> atomic
+    lifespan --> sched --> backsvc
+    lifespan --> close
+    close --> localpaper
+    close --> backsvc
+    close --> atomic
+    close --> momentum
+    close --> provider
+
+    class appentry,scan,dashentry,fastapi,lifespan,provider,comp,settings,localpaper,dashsvc,backsvc,atomic,sched,close implemented
+    class momentum research
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

@@ -1,0 +1,82 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 Dashboard frontend、REST API、WebSocket hubs 與服務邊界。
+%% How to read: Browser 由左進入 loopback FastAPI；REST 讀取/提交，WebSocket 只推送 projection。
+%% Source anchors: dashboard/static/index.html; dashboard/static/js/app.js; dashboard/server.py routes; dashboard/service.py::DashboardService; dashboard/momentum_stream.py::MomentumStreamHub; simulation/service.py::projection.
+%% Runtime/authority notes: Dashboard 是 loopback single-user UI；WebSocket 不直接輪詢 Shioaji 帳務或送出 broker order；strategy mutations 受 Origin/CSRF 防護。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    browser["Browser<br/>static dashboard workspaces"]
+    html["dashboard/static/index.html<br/>app.js + workspace modules"]
+    loopback["FastAPI loopback boundary<br/>Host/client validation"]
+
+    rest_dash["REST: /api/dashboard/*<br/>snapshot, refresh, history, provider usage"]
+    rest_momentum["REST: /api/dashboard/momentum*<br/>bootstrap / symbol / alerts"]
+    ws_momentum["WS: /ws/dashboard/momentum<br/>delta + heartbeat"]
+    rest_sim["REST: /api/simulation/*<br/>orders, positions, settings, automated strategy"]
+    ws_sim["WS: /ws/simulation/projection<br/>projection push"]
+    rest_backtest["REST: /api/backtests/*<br/>datasets, runs, comparisons, qualifications"]
+    rest_catalog["REST: /api/strategy-*<br/>templates, drafts, versions, sets"]
+    health["/healthz /readyz"]
+
+    dashsvc["DashboardService<br/>scan snapshot + history cache"]
+    premarket["PremarketContextService<br/>TAIFEX panel projection"]
+    momentumsvc["RealtimeMomentumDashboardService<br/>or Unavailable service"]
+    hub["MomentumStreamHub<br/>process-local replay buffer"]
+    simsvc["SimulationService<br/>Local Paper projection"]
+    cmdsvc["LocalPaperCommandService<br/>journal-first commands"]
+    backsvc["BacktestApplicationService"]
+    catsvc["AtomicStrategyCatalogService"]
+
+    pg[("PostgreSQL<br/>backtest/trading/catalog when configured")]
+    memory[("Process-local memory<br/>stream hub/cache/controller")]
+    fs[("Filesystem<br/>static assets / settings / artifacts")]
+    shioaji["Shioaji<br/>market-data provider"]
+    taifex["TAIFEX official/context sources"]
+
+    browser --> html --> loopback
+    loopback --> rest_dash --> dashsvc
+    loopback --> rest_momentum --> momentumsvc
+    loopback --> ws_momentum --> hub --> momentumsvc
+    loopback --> rest_sim --> cmdsvc --> simsvc
+    loopback --> ws_sim --> simsvc
+    loopback --> rest_backtest --> backsvc
+    loopback --> rest_catalog --> catsvc
+    loopback --> health
+    dashsvc --> premarket
+    dashsvc --> shioaji
+    momentumsvc --> shioaji
+    simsvc --> shioaji
+    premarket --> taifex
+    cmdsvc --> pg
+    backsvc --> pg
+    catsvc --> pg
+    simsvc --> memory
+    hub --> memory
+    html --> fs
+    premarket --> fs
+
+    class html,loopback,rest_dash,rest_momentum,ws_momentum,rest_sim,ws_sim,rest_backtest,rest_catalog,health,dashsvc,premarket,hub,simsvc,cmdsvc,backsvc,catsvc implemented
+    class momentumsvc research
+    class browser,shioaji,taifex external
+    class pg,memory,fs store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

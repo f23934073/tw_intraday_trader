@@ -1,0 +1,57 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 Trade Management Shadow 的 canonical market-data admission、decision-only pipeline、replay parity 與 evidence qualification。
+%% How to read: live capture 只接受已啟用的 PaperFillThesisActivation 與 data-only stream；decision records 寫入 Journal 後再由 replay/parity 驗證。
+%% Source anchors: runtime/trade_management_live_capture.py::LiveShadowCaptureRunner; runtime/trade_management_shadow.py::LiveTradeManagementShadowOperation; trading/trade_management_shadow.py::ShadowDecisionPipeline; trading/trade_management_replay.py::TradeManagementReplayRunner; runtime/trade_management_shadow_validation.py::ShadowValidationEvaluator.
+%% Runtime/authority notes: Trade Management Shadow deliberately has no order、position、simulation、broker、filesystem 或 network authority beyond evidence journal; full capture/evidence gate 不可被 collector existence 推論為 passed。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    activation["PaperFillThesisActivation<br/>already-audited paper fill"]
+    stream["DataOnlyMarketStream<br/>Shioaji Tick/BidAsk callbacks"]
+    runner["LiveShadowCaptureRunner<br/>paired ACK + session window evidence"]
+    canonical["CanonicalMarketDataPipeline<br/>admission + recorder + decision gate"]
+    risk["RiskSnapshotProvider<br/>event-time risk evidence"]
+    shadowop["LiveTradeManagementShadowOperation<br/>canonical + shadow + Journal"]
+    decision["ShadowDecisionPipeline<br/>decision-only kernel"]
+    records[("ShadowDecisionRecord<br/>config/event/risk/decision digests")]
+    journal[("Shadow Evidence Journal<br/>TRADE_MANAGEMENT_SHADOW mode")]
+    replay["TradeManagementReplayRunner<br/>same kernel deterministic replay"]
+    parity["ShadowParityReport<br/>MATCHED or DIVERGED"]
+    validation["ShadowValidationEvaluator<br/>readiness + operational drills"]
+    evidence["LiveShadowCaptureEvidence<br/>coverage and finalization"]
+    broker["Broker/order/simulation authority<br/>not present"]
+
+    activation --> runner
+    stream --> runner --> canonical --> shadowop
+    risk --> shadowop --> decision --> records --> journal
+    journal --> replay --> parity --> evidence
+    runner --> evidence
+    evidence --> validation
+    shadowop -.->|no execution capability| broker
+    decision -.->|no order side effects| broker
+
+    class runner,canonical,risk,shadowop,decision,records,journal,replay,parity,validation,evidence implemented
+    class activation observe
+    class stream external
+    class broker planned
+    class records,journal,evidence store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

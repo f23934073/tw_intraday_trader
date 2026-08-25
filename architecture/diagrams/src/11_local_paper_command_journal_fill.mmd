@@ -1,0 +1,60 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 Local Paper manual/strategy command 如何 journal-first 通過 RiskGate 並交給 SimulationService。
+%% How to read: command 由左進入；Journal/RiskGate 在 Simulation fill 前；terminal fill/rejection 再回寫 Journal 與 projection。
+%% Source anchors: simulation/application.py::LocalPaperCommandService; trading/application.py::OrderApplicationService; trading/risk.py::RiskGate/RiskPolicy; simulation/application_adapter.py::LocalPaperSimulationCommandAdapter; simulation/service.py::SimulationService; trading/local_paper.py::write_local_paper_checkpoint.
+%% Runtime/authority notes: LOCAL_PAPER_SIMULATION 僅建立本機虛擬 order/fill/position；Shioaji Tick/BidAsk 只作本機參考撮合與估值，不是 Shioaji Simulation 或真實券商成交。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    browser["Browser<br/>manual order API"]
+    strategy["StrategyPaperFlowService<br/>process-local strategy intent"]
+    cmd["LocalPaperCommandService<br/>idempotent command facade"]
+    proposed[("JournalRecord<br/>proposal / risk / result")]
+    risk["RiskGate + RiskPolicy<br/>cash, position, daily loss, fresh book"]
+    adapter["LocalPaperSimulationCommandAdapter"]
+    sim["SimulationService<br/>local order book + cash + positions"]
+    quotes["Quote state<br/>snapshot + Tick/BidAsk"]
+    shioaji["Shioaji market data<br/>optional streaming quotes"]
+    fill["Local fill / rejection / cancel / retry state"]
+    checkpoint[("ProjectionCheckpoint<br/>local_paper.v1")]
+    projection["Simulation projection<br/>REST / WebSocket"]
+    broker["Broker order API / CA / trade callback<br/>not wired"]
+
+    browser --> cmd
+    strategy --> cmd
+    cmd --> proposed
+    cmd --> risk
+    risk -->|approved| adapter --> sim
+    risk -->|blocked/rejected| fill
+    sim --> quotes
+    shioaji --> quotes
+    quotes --> sim
+    sim --> fill --> proposed
+    fill --> checkpoint --> projection
+    sim -.->|no place_order| broker
+
+    class cmd,proposed,risk,adapter,sim,quotes,fill,checkpoint,projection implemented
+    class strategy research
+    class browser,shioaji external
+    class broker planned
+    class proposed,checkpoint store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

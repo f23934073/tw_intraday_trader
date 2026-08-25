@@ -1,0 +1,60 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 Backtest Run 建立、worker 執行、result chunks、comparison、qualification 與 cash admission control。
+%% How to read: HTTP/CLI 只提交資料研究工作；ThreadPoolExecutor worker 在 deterministic boundaries 更新 durable run state。
+%% Source anchors: backtest/application.py::create_run/create_atomic_run/_run_backtest/qualify_runs/create_cash_admission_control; backtest/engine.py::HistoricalBacktestEngine.run; backtest/repository.py chunk helpers; backtest/migrations/013_backtest_result_chunks.sql; backtest/qualification.py.
+%% Runtime/authority notes: Backtest 是 data-only；不啟動 broker orders、帳務、CA、trade subscription，也不得暗示未來獲利。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    browser["Browser/CLI<br/>Backtest request"]
+    appsvc["BacktestApplicationService<br/>validate dataset + strategy set"]
+    atomic["Atomic run resolver<br/>Strategy Set + Dataset binding"]
+    repo[("BacktestRepository<br/>SQLite or PostgreSQL adapter")]
+    runrow[("backtest_runs<br/>QUEUED/PREFLIGHT/RUNNING/COMPLETED")]
+    worker["ThreadPoolExecutor worker<br/>historical-backtest"]
+    catalog[("HistoricalDatasetCatalog<br/>iter_bars_ordered()")]
+    engine["HistoricalBacktestEngine<br/>next-bar execution"]
+    results[("backtest_results<br/>summary/result_digest")]
+    chunks[("backtest_result_chunks<br/>large result fields")]
+    decisions[("backtest_decisions / trades / daily_equity")]
+    compare["compare_runs()<br/>baseline vs challenger"]
+    qualification["Qualification evidence<br/>multiple-testing / OOS guardrails"]
+    cash["R5 Cash Admission Control<br/>PostgreSQL-only sealed control"]
+    promotion["Live trading promotion<br/>not authorized"]
+
+    browser --> appsvc
+    appsvc --> atomic
+    appsvc --> repo --> runrow --> worker
+    worker --> catalog --> engine --> results
+    engine --> decisions
+    results --> chunks
+    results --> compare --> qualification
+    qualification --> repo
+    appsvc --> cash --> repo
+    qualification -.->|不等於 live promotion| promotion
+    cash -.->|不等於 broker authority| promotion
+
+    class appsvc,atomic,repo,runrow,worker,catalog,engine,results,chunks,decisions,compare,qualification,cash implemented
+    class browser external
+    class promotion planned
+    class repo,runrow,catalog,results,chunks,decisions store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

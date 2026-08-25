@@ -1,0 +1,58 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 連接 FeatureEngine、Momentum signal、Atomic requested features 與 Web projection。
+%% How to read: Tick/BidAsk 先成為 validated stores，FeatureEngine 再評估 snapshot 與 requested features；signals/projectors 只產生 projection。
+%% Source anchors: features/engine.py::FeatureEngine.evaluate/evaluate_requests; signals/momentum.py::MomentumSignalEngine; signals/projection.py::MomentumProjectionStore; runtime/momentum_shadow.py::_process_market_event/read_view; simulation/atomic_runtime.py::AtomicPaperRuntimeResolution.evaluate_projection.
+%% Runtime/authority notes: Evidence Score 是規則證據，不是漲停機率、買進建議或 broker order；Atomic Local Paper 仍需 RiskGate 與 Local Paper command path。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    bars[("IntradayBarStore<br/>validated ticks/bars")]
+    books[("OrderBookStore<br/>validated BidAsk")]
+    refs[("InstrumentReferenceStore")]
+    health[("DataHealth")]
+    feature["FeatureEngine.evaluate()<br/>price, VWAP, high, return, volume, book"]
+    snapshot["IntradayFeatureSnapshot<br/>required_inputs_valid + block reasons"]
+    signal["MomentumSignalEngine<br/>Opening / Limit-Up router"]
+    state["MomentumStateMachine<br/>episode/stage"]
+    projection[("MomentumProjectionStore<br/>digest + alerts")]
+    web["RealtimeMomentumDashboardService<br/>Web rows + alerts"]
+    requested["FeatureEngine.evaluate_requests()<br/>completed 1m Kbar features"]
+    atomic["AtomicPaperRuntimeResolution<br/>exact Strategy Set evaluation"]
+    controller["ContinuousPaperStrategyController<br/>manual-start Local Paper intent"]
+    risk["LocalPaperCommandService / RiskGate<br/>separate order path"]
+
+    bars --> feature
+    books --> feature
+    refs --> feature
+    health --> feature
+    feature --> snapshot --> signal --> state --> projection --> web
+    bars --> requested
+    requested --> atomic
+    web --> atomic
+    atomic --> controller --> risk
+    projection --> web
+
+    class feature,snapshot,signal,state,projection,web,requested implemented
+    class atomic,controller research
+    class risk implemented
+    class bars,books,refs,health store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

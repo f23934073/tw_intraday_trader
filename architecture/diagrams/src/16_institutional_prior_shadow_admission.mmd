@@ -1,0 +1,59 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示法人資料 raw-first ingestion、PIT research、Candidate Prior artifact 與 Shadow admission 的 current-state。
+%% How to read: 所有研究 artifacts 先被驗證為 exploratory/non-promoting；Shadow admission 只規劃殘餘容量，不授權 subscription 或 execution side effects。
+%% Source anchors: institutional_data/application.py::InstitutionalIngestionService; institutional_research/application.py::InstitutionalFactorDiagnostics; institutional_prior/application.py::InstitutionalCandidatePriorBuilder; institutional_prior/domain.py readiness guards; candidate/shadow_admission.py::InstitutionalCandidateShadowAdmission; watchlist/reference_data.py.
+%% Runtime/authority notes: Candidate Prior 不是 live strategy admission；institutional shadow decision forces subscription_allowed=false and execution_allowed=false。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    sources["FinMind / TWSE / TPEX<br/>institutional official sources"]
+    rawstore[("InstitutionalRawArtifactStore<br/>raw bytes + request metadata")]
+    ingest["InstitutionalIngestionService<br/>normalize + validate"]
+    partition[("InstitutionalPartitionManifest<br/>VALIDATED or QUARANTINED")]
+    inputs["InstitutionalResearchInput<br/>lineage + PIT universe checks"]
+    diagnostics["InstitutionalFactorDiagnostics<br/>fixed v0 exploratory report"]
+    factor[("InstitutionalFactorReportArtifact<br/>production_ready=false")]
+    price[("PriceMomentumPriorArtifact")]
+    universe["EquityUniversePort<br/>PIT eligible denominator"]
+    priorbuilder["InstitutionalCandidatePriorBuilder<br/>two frozen hypotheses"]
+    prior[("CandidatePriorArtifact<br/>live_admission_ready=false")]
+    repo[("CandidatePriorRepository<br/>SQLite/PostgreSQL adapters")]
+    pool["CandidatePool contribution<br/>PREVIOUS_SESSION_WATCHLIST"]
+    admission["InstitutionalCandidateShadowAdmission<br/>capacity-only decision"]
+    realtime["Realtime subscription/execution<br/>not authorized by prior"]
+
+    sources --> rawstore --> ingest --> partition --> inputs --> diagnostics --> factor
+    price --> priorbuilder
+    factor --> priorbuilder
+    universe --> inputs
+    universe --> priorbuilder
+    priorbuilder --> prior --> repo
+    prior --> pool --> admission
+    admission -.->|subscription_allowed=false| realtime
+    admission -.->|execution_allowed=false| realtime
+
+    class ingest,partition,inputs,diagnostics,factor,price,universe,priorbuilder,prior,repo,pool implemented
+    class admission research
+    class realtime planned
+    class sources external
+    class rawstore,partition,factor,price,prior,repo store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

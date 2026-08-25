@@ -1,0 +1,60 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 tw_intraday_trader modular monolith 與外部服務、操作者、stores 的 current-state 邊界。
+%% How to read: 由左至右讀取；實線是已接線資料或操作路徑，虛線是安全邊界中存在但 current source 未接線的券商委託能力。
+%% Source anchors: app.py::run_scan/build_provider; dashboard/server.py::app/lifespan; runtime/composition.py::RuntimeComposition.create; market_data/provider.py::MarketDataProvider; backtest/application.py::BacktestApplicationService.
+%% Runtime/authority notes: LOCAL_PAPER_SIMULATION 只在本機撮合；Tick/BidAsk 只具行情、估值與本機撮合參考用途；目前沒有 CA、place_order、trade callback 或 subscribe_trade=true 下單 runtime。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    dev["開發者 / Reviewer"]
+    browser["Browser<br/>本機 Dashboard"]
+    cli["CLI 操作者"]
+
+    system["tw_intraday_trader<br/>modular monolith<br/>Ports/Adapters + event-driven runtime"]
+
+    shioaji["Shioaji<br/>行情 API"]
+    finmind["FinMind<br/>研究/歷史資料 API"]
+    twse["TWSE<br/>官方資料/市場"]
+    tpex["TPEX<br/>官方資料/市場"]
+    taifex["TAIFEX<br/>夜盤/日報"]
+    broker_order["券商委託/帳務/CA<br/>current source 未接線"]
+
+    pg[("PostgreSQL logical schemas<br/>trading / backtest / institutional prior")]
+    sqlite[("SQLite<br/>acquisition / local-dev backtest")]
+    fs[("Filesystem immutable artifacts<br/>JSON/JSONL manifests")]
+    memory[("Process-local memory<br/>projection/cache/control")]
+
+    dev -->|閱讀 source / diagrams| system
+    browser -->|loopback REST / WebSocket| system
+    cli -->|scanner / acquisition / qualification / replay| system
+    system -->|snapshot, Kbar, Tick/BidAsk| shioaji
+    system -->|Sponsor / institutional / PIT data| finmind
+    system -->|reference / official evidence| twse
+    system -->|reference / official evidence| tpex
+    system -->|night context / reconciliation| taifex
+    system -.->|未接線：no CA/place_order/trade callback| broker_order
+    system -->|durable Journal / Backtest / Catalog| pg
+    system -->|resumable acquisition / local dev| sqlite
+    system -->|sealed evidence / replay / artifacts| fs
+    system -->|runtime projections / default local state| memory
+
+    class li,system implemented
+    class lr research
+    class lo observe
+    class lp,broker_order planned
+    class le,dev,browser,cli,shioaji,finmind,twse,tpex,taifex external
+    class ls,pg,sqlite,fs,memory store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

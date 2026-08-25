@@ -1,0 +1,63 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 以 logical ERD 視角顯示 Trading Journal 與 Local Paper projection/recovery 主要資料關係。
+%% How to read: 上方是 repository tables/protocol，中央是 Journal records，右側是 reconstructed local projection。
+%% Source anchors: trading/migrations/001_journal.sql; trading/migrations/002_trading_schema.sql; trading/journal.py::JournalSession/JournalRecord/ProjectionCheckpoint; trading/local_paper.py::rebuild_local_paper_projection; runtime/trading_persistence.py; runtime/composition.py settings-bound session.
+%% Runtime/authority notes: memory adapter 與 PostgreSQL adapter 有相同語意但不同 durability；memory 不提供跨 process recovery；quote cache 不會偽造重啟恢復。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    config["TradingPersistenceConfig<br/>memory or postgresql"]
+    mem[("InMemoryJournalRepository<br/>process lifetime only")]
+    pg[("PostgreSQL trading schema<br/>durable when configured")]
+    sessions[("journal_sessions<br/>session_id, mode, metadata")]
+    records[("journal_records<br/>append sequence + kind + payload")]
+    checkpoints[("projection_checkpoints<br/>projection_name + digest")]
+
+    command["OrderCommand<br/>MANUAL_WEB / STRATEGY_AUTOMATED"]
+    risk[("risk decision records<br/>policy + snapshot + digest")]
+    states[("local_paper_order_state.v1")]
+    fills[("local_paper_fill.v1/v2<br/>commission/accounting evidence")]
+    baseline[("local_paper_daily_baseline.v1")]
+    archive[("local_paper_session_archive.v1")]
+    settings[("data/local_paper/settings_v1.json<br/>settings draft/applied state")]
+    projection["rebuild_local_paper_projection()<br/>cash, positions, orders, reservations"]
+    sim["SimulationService runtime state<br/>quotes + local orders"]
+
+    config --> mem
+    config --> pg
+    pg --> sessions --> records --> checkpoints
+    mem --> sessions
+    command --> records
+    records --> risk
+    records --> states
+    records --> fills
+    records --> baseline
+    records --> archive
+    settings --> sessions
+    states --> projection
+    fills --> projection
+    baseline --> projection
+    checkpoints --> projection --> sim
+
+    class config,sessions,records,checkpoints,command,risk,states,fills,baseline,archive,settings,projection,sim implemented
+    class mem,pg,sessions,records,checkpoints,risk,states,fills,baseline,archive,settings store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

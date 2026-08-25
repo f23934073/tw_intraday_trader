@@ -1,0 +1,63 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 TAIFEX 夜盤 Context、Qualification 與官方 Reconciliation 三條 evidence 路徑。
+%% How to read: Context 投影進 Dashboard；Qualification 與 Reconciliation 是獨立 CLI artifact，不會回寫決策路徑。
+%% Source anchors: premarket/service.py::PremarketContextService; premarket/qualification.py::PremarketQualificationService; premarket/taifex_reconciliation.py; premarket/artifacts.py::FilePremarketArtifactRepository; config/premarket.py::PREMARKET_CONTEXT_V0; scripts/capture_taifex_night_context.py.
+%% Runtime/authority notes: TAIFEX panel 是 observation-only；Shioaji completeness 未 reviewed 前保持 PENDING/CAPTURED_UNQUALIFIED，不得因 query 有資料就宣稱 READY。
+
+flowchart TB
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    calendar["TaifexTradingCalendar<br/>versioned 2026 calendar"]
+    config["PREMARKET_CONTEXT_V0<br/>affects_decisions=false"]
+    shioaji["Shioaji Kbar/Tick/reference<br/>provider observation"]
+    taifex["TAIFEX official daily report"]
+
+    contextsvc["PremarketContextService.projection()<br/>query_not_before + readiness predicate"]
+    raw[("Raw source artifact<br/>content-addressed JSON")]
+    context[("TaifexNightContextArtifact<br/>context_digest")]
+    dash["Dashboard TAIFEX panel<br/>observe-only metrics"]
+
+    qualscript["capture_taifex_night_qualification.py"]
+    qualsvc["PremarketQualificationService.capture()<br/>Kbar/Tick consistency"]
+    qualreport[("Qualification report<br/>CAPTURED_UNQUALIFIED until review")]
+
+    recscript["capture_taifex_night_reconciliation.py"]
+    recsvc["parse_taifex_after_hours_observation()<br/>official OHLC/settlement"]
+    reconciliation[("Reconciliation artifact<br/>linked by context_digest")]
+
+    decisions["Candidate / BuyScore / RiskGate / Local Paper<br/>not affected"]
+
+    calendar --> contextsvc
+    config --> contextsvc
+    shioaji --> contextsvc --> raw --> context --> dash
+    shioaji --> qualscript --> qualsvc --> qualreport
+    calendar --> qualsvc
+    taifex --> recscript --> recsvc --> reconciliation
+    context --> recsvc
+    dash -.->|observe-only| decisions
+    qualreport -.->|review required| decisions
+    reconciliation -.->|summary only| dash
+
+    class calendar,config,contextsvc,raw,context,dash,qualscript,qualsvc,qualreport,recscript,recsvc,reconciliation implemented
+    class decisions planned
+    class shioaji,taifex external
+    class raw,context,qualreport,reconciliation store
+    class li implemented
+    class lr research
+    class lo,dash observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

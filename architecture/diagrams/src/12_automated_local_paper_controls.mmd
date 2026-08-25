@@ -1,0 +1,67 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 manual-start automated Local Paper controller、kill switch、交易時段與強制出場。
+%% How to read: 啟動前需 exact Strategy Set 與 operator risk；RUNNING 時輪詢 live projection；13:25 後只嘗試本機強制出場。
+%% Source anchors: simulation/continuous_strategy.py::AutomatedStrategyConfig/ContinuousPaperStrategyController/LocalPaperKillSwitch; simulation/atomic_runtime.py::resolve_atomic_paper_entry_set; dashboard/server.py automated-strategy routes; config/twse_calendar_2026.py; simulation/strategy_flow.py.
+%% Runtime/authority notes: stop/kill-switch control state current source 為 process-local；Dashboard 重啟後 controller 固定停止，需人工再啟動；仍無 broker order execution。
+
+flowchart TB
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    browser["Browser<br/>start / stop / kill-switch routes"]
+    csrf["Loopback + Origin + CSRF gate"]
+    config["AutomatedStrategyConfig<br/>stop_loss, take_profit, max_daily_loss"]
+    resolver["resolve_atomic_paper_entry_set()<br/>exact ENTRY Strategy Set"]
+    lifecycle["PAPER_APPROVED lifecycle admission<br/>digest/Template checks"]
+    controller["ContinuousPaperStrategyController<br/>RUNNING worker"]
+    kill["LocalPaperKillSwitch<br/>process-local emergency stop"]
+    calendar["ReviewedEquityCalendar<br/>09:00 entry open, 13:20 cutoff"]
+    projection["Momentum live projection<br/>status live / RUNNING / HEALTHY"]
+    quote["prepare_entry_quote()<br/>fresh best ask/bid evidence"]
+    risk["Effective Hard Risk Policy<br/>min(system ceiling, operator limit)"]
+    entry["Local Paper BUY intent<br/>one entry max"]
+    exit["Stop-loss / take-profit / 13:25 flatten<br/>SELL intent"]
+    flow["StrategyPaperFlowService<br/>Journaled local-only command path"]
+    journal[("Trading Journal<br/>activation/checkpoint when durable")]
+    memory[("Process-local controller state<br/>stop/kill/reset")]
+    broker["Broker execution<br/>not wired"]
+
+    browser --> csrf --> config --> controller
+    controller --> resolver --> lifecycle --> controller
+    controller --> kill
+    controller --> calendar
+    controller --> projection
+    controller --> quote
+    controller --> risk
+    projection --> entry --> flow
+    quote --> entry
+    risk --> entry
+    controller --> exit --> flow
+    flow --> journal
+    kill --> memory
+    controller --> memory
+    flow -.->|local only| broker
+
+    class csrf,config,calendar,quote,risk,entry,exit,flow,journal implemented
+    class resolver,lifecycle,controller,kill,projection research
+    class browser external
+    class broker planned
+    class memory,journal store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;
