@@ -2,6 +2,10 @@
 
 ## 2026-08-20
 
+- On 2026-08-24, the scheduled opening passive capture ran from 08:57 to 09:30 and fail-closed as
+  `INCOMPLETE`. It accepted 17,472 events and rejected 87 due to missing Tick high and empty BidAsk
+  levels. Opened Phase 28 for a separate data-quality repair; preserve the artifact and do not alter
+  qualification status or execution authority.
 - User approved TM-012C-preflight-fix. Ingress Timestamp, Rehearsal Fixture, and Real Stream
   Post-fix Diagnostic gates are PASS. Production Shadow Gate remains NOT PASSED. The incorrect home
   path appeared only in the prior response; repository and runbook paths are correct.

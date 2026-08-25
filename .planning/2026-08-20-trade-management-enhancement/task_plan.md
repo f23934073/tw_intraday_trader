@@ -413,6 +413,18 @@ collects real data-only Shadow evidence without granting order or trade authorit
   complete real session passes.
 - **Status:** complete; both blocking fixes verified, Production Shadow Gate NOT PASSED
 
+### Phase 28: TM-012C Live Callback Data-Quality Repair
+
+- [ ] Preserve the 2026-08-24 `INCOMPLETE` passive-capture artifact and isolate the precise Tick and
+  BidAsk callback mapping failures without changing the artifact.
+- [ ] Define the minimal provider-field handling that preserves canonical event truth: do not invent
+  intraday high/low or price levels, and make malformed observations auditable.
+- [ ] Add failing-first tests for unavailable Tick high/low and empty BidAsk levels, implement only
+  the approved adapter behavior, and prove valid callbacks remain unchanged.
+- [ ] Run focused adapter/capture tests plus relevant replay and full regression; record whether a
+  new full-session qualification can safely be scheduled.
+- **Status:** in_progress; Production Shadow Gate NOT PASSED
+
 ## Key questions
 
 1. Does the existing system have a real `PositionManager`, or are exit decisions split across strategy/backtest/simulation components?

@@ -567,6 +567,18 @@ Repository discoveries and design decisions will be recorded here. Repository co
 
 ## TM-012C preflight blocking-fix design
 
+## 2026-08-24 live callback data-quality diagnostic
+
+- The scheduled 30-minute passive opening capture `ldev-20260824T085711-open-d21e86ef` preserved
+  35,118 records but finalized `INCOMPLETE`: 17,472 canonical events were accepted and 87 rejected.
+  It is diagnostic-only evidence and must not be rewritten or replay-qualified.
+- The failure differs from the repaired Tick/BidAsk ingress ordering race. Real callbacks raised
+  `positive field unavailable: high` and `BidAsk event has no valid price levels`; the adapter stores
+  those as callback errors, and the capture correctly fail-closes when callback errors exist.
+- The repair must not synthesize intraday high/low from close or manufacture book levels. First
+  establish whether the Shioaji payload has an alternate authoritative field; otherwise distinguish
+  an unrepresentable observation from a fatal runtime failure while preserving auditable rejection.
+
 - `ShioajiMomentumStream._next_receipt()` currently clamps a regressed clock to
   `_last_received_at`; this mutates the observed timestamp and conflicts with the reviewed rule that
   raw provider observation time must remain evidence rather than be repaired with an epsilon/clamp.
