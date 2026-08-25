@@ -49,6 +49,19 @@ from backtest.qualification import (
 )
 from backtest.repository import BacktestRepository
 from backtest.repository import BacktestIdempotencyConflict
+from backtest.research_control import (
+    CONTROL_CONTRACT_VERSION,
+    REQUEST_SCHEMA_VERSION,
+    CashAdmissionControlNotAccepted,
+    CashAdmissionPreflightCatalog,
+    build_cash_admission_postflight,
+    build_research_control_snapshot,
+    cash_admission_projection_digest,
+    cash_admission_identity_validation_digest,
+    entry_signal_multiplicity_digest,
+    recompute_backtest_result_digest,
+    verify_cash_admission_preflight,
+)
 from backtest.run_control import DurableRunControlProbe, ThrottledProgressReporter
 from backtest.sqlite_repository import SQLiteBacktestRepository
 from backtest.strategies import StrategyRegistry
@@ -86,6 +99,7 @@ class BacktestApplicationService:
         registry: StrategyRegistry | None = None,
         atomic_repository: AtomicStrategyRepository | None = None,
         atomic_registry: AtomicStrategyRegistry | None = None,
+        research_control_preflights: CashAdmissionPreflightCatalog | None = None,
         workers: int = backtest_settings.BACKTEST_WORKERS,
     ) -> None:
         self._provider = provider
@@ -96,6 +110,12 @@ class BacktestApplicationService:
         self._engine = engine or HistoricalBacktestEngine(self._registry)
         self._atomic_repository = atomic_repository
         self._atomic_registry = atomic_registry or AtomicStrategyRegistry()
+        self._research_control_preflights = (
+            research_control_preflights
+            or CashAdmissionPreflightCatalog(
+                backtest_settings.BACKTEST_DATA_DIR / "research_controls" / "preflights"
+            )
+        )
         if self._atomic_repository is None and isinstance(self._repository, PostgresBacktestRepository):
             pool = self._repository.connection_pool
             if pool is not None:
@@ -665,6 +685,95 @@ class BacktestApplicationService:
             self._executor.submit(self._run_backtest, run["run_id"])
         return run, idempotent
 
+    def create_cash_admission_control(
+        self,
+        *,
+        baseline_run_id: str,
+        request_schema_version: str,
+        control_contract_version: str,
+        preflight_digest: str,
+        expected_registration_revision: int,
+        idempotency_key: str,
+        actor_id: str,
+        change_note: str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Create the sole sealed R5 control; callers never supply C or f."""
+
+        self._require_enabled()
+        if not isinstance(self._repository, PostgresBacktestRepository):
+            raise RuntimeError("R5 cash-admission control 只允許寫入 PostgreSQL")
+        if request_schema_version != REQUEST_SCHEMA_VERSION:
+            raise ValueError("R5 request schema version 不支援")
+        if control_contract_version != CONTROL_CONTRACT_VERSION:
+            raise ValueError("R5 control contract version 不支援")
+        if expected_registration_revision != 0:
+            raise ValueError("R5 初次 registration expected revision 必須是 0")
+        actor = actor_id.strip()
+        note = change_note.strip()
+        if not actor or not note:
+            raise ValueError("R5 actor_id 與 change_note 不可為空")
+        key = self._validate_idempotency_key(idempotency_key)
+        preflight = verify_cash_admission_preflight(
+            self._research_control_preflights.load(preflight_digest)
+        )
+        if preflight["identity"]["baseline_run_id"] != baseline_run_id:
+            raise ValueError("R5 preflight baseline Run 不一致")
+        baseline = self._repository.get_run(baseline_run_id)
+        verify_run_identity(baseline)
+        if baseline["status"] != RunStatus.COMPLETED.value:
+            raise ValueError("R5 baseline 必須是 COMPLETED")
+        if baseline["config"].get("research_control_snapshot") is not None:
+            raise ValueError("R5 control 不可作為另一個 R5 control 的來源")
+        created_at = _now()
+        snapshot = build_research_control_snapshot(
+            preflight=preflight,
+            actor_id=actor,
+            change_note=note,
+            created_at=created_at,
+        )
+        config_document = deepcopy(dict(baseline["config"]))
+        config_document.update(
+            {
+                "starting_cash": preflight["sizing"]["starting_cash"],
+                "position_fraction": preflight["sizing"]["position_fraction"],
+                "experiment_id": None,
+                "baseline_run_id": None,
+                "research_baseline_digest": None,
+                "parent_run_id": baseline_run_id,
+                "change_note": note,
+                "research_control_snapshot": snapshot,
+            }
+        )
+        config = BacktestRunConfig.from_dict(config_document)
+        request = {
+            "request_schema_version": request_schema_version,
+            "control_contract_version": control_contract_version,
+            "preflight_digest": preflight_digest,
+            "expected_registration_revision": expected_registration_revision,
+            "idempotency_key": key,
+            "actor_id": actor,
+            "change_note": note,
+        }
+        record = {
+            "run_id": f"run-{uuid4().hex}",
+            "idempotency_key": key,
+            "status": RunStatus.QUEUED.value,
+            "config": config.to_dict(),
+            "config_digest": config.config_digest,
+            "dataset_id": config.dataset_id,
+            "dataset_digest": config.dataset_digest,
+            "created_at": created_at,
+        }
+        run, idempotent = self._repository.create_cash_admission_control(
+            record,
+            request=request,
+            request_digest=digest(request),
+            preflight=preflight,
+        )
+        if not idempotent:
+            self._executor.submit(self._run_backtest, run["run_id"])
+        return run, idempotent
+
     def atomic_backtest_dataset_status(
         self,
         *,
@@ -771,6 +880,55 @@ class BacktestApplicationService:
     def get_run(self, run_id: str) -> dict[str, Any]:
         return self._repository.get_run(run_id)
 
+    def _require_control_result_accepted(self, run_id: str) -> dict[str, Any] | None:
+        run = self._repository.get_run(run_id)
+        if run["config"].get("research_control_snapshot") is None:
+            return None
+        read = getattr(self._repository, "get_cash_admission_control", None)
+        if not callable(read):
+            raise CashAdmissionControlNotAccepted(
+                "R5_CONTROL_POSTFLIGHT_NOT_ACCEPTED: registration repository unavailable"
+            )
+        try:
+            registration = read(run_id)
+        except (KeyError, ValueError) as error:
+            raise CashAdmissionControlNotAccepted(
+                "R5_CONTROL_POSTFLIGHT_NOT_ACCEPTED: registration evidence invalid"
+            ) from error
+        postflight = registration.get("postflight")
+        if (
+            registration.get("status") != "ACCEPTED"
+            or not isinstance(postflight, Mapping)
+            or postflight.get("verdict") != "ACCEPTED"
+            or run["status"] != RunStatus.COMPLETED.value
+            or not run.get("result_digest")
+            or run["result_digest"] != postflight.get("control_result_digest")
+        ):
+            raise CashAdmissionControlNotAccepted(
+                "R5_CONTROL_POSTFLIGHT_NOT_ACCEPTED"
+            )
+        return dict(registration)
+
+    def _verified_result(self, run_id: str) -> dict[str, Any]:
+        registration = self._require_control_result_accepted(run_id)
+        result = self._repository.get_result(run_id)
+        if registration is None:
+            return result
+        postflight = dict(registration["postflight"])
+        result_digest = str(result.get("summary", {}).get("result_digest") or "")
+        if (
+            result_digest != postflight["control_result_digest"]
+            or recompute_backtest_result_digest(result) != result_digest
+            or entry_signal_multiplicity_digest(result.get("orders", ()))
+            != postflight["diagnostics"]["control_signal_multiplicity_digest"]
+            or cash_admission_projection_digest(result)
+            != postflight["control_admission_projection_digest"]
+        ):
+            raise CashAdmissionControlNotAccepted(
+                "R5_CONTROL_POSTFLIGHT_NOT_ACCEPTED: published result integrity conflict"
+            )
+        return result
+
     def cancel_run(self, run_id: str) -> dict[str, Any]:
         run = self._repository.get_run(run_id)
         if run["status"] not in {RunStatus.QUEUED.value, RunStatus.PREFLIGHT.value, RunStatus.RUNNING.value}:
@@ -797,6 +955,8 @@ class BacktestApplicationService:
 
     def retry_run(self, run_id: str, *, idempotency_key: str) -> tuple[dict[str, Any], bool]:
         existing = self._repository.get_run(run_id)
+        if existing["config"].get("research_control_snapshot") is not None:
+            raise ValueError("R5 control 已封存，不可使用一般 retry")
         if existing["status"] not in {RunStatus.CANCELLED.value, RunStatus.FAILED.value}:
             raise ValueError("只有已取消或失敗的回測可以重試")
         return self._create_from_config(
@@ -817,6 +977,8 @@ class BacktestApplicationService:
         if not change_note.strip():
             raise ValueError("複製並調整回測時必須填寫調整說明")
         existing = self._repository.get_run(run_id)
+        if existing["config"].get("research_control_snapshot") is not None:
+            raise ValueError("R5 control 已封存，不可使用一般 clone")
         if existing["config"].get("atomic_strategy_run_snapshot") is not None:
             allowed_atomic_overrides = {
                 "starting_cash",
@@ -846,26 +1008,27 @@ class BacktestApplicationService:
         )
 
     def summary(self, run_id: str) -> dict[str, Any]:
-        return self._repository.get_result(run_id)["summary"]
+        return self._verified_result(run_id)["summary"]
 
     def result(self, run_id: str) -> dict[str, Any]:
-        return self._repository.get_result(run_id)
+        return self._verified_result(run_id)
 
     def trades(self, run_id: str, *, page: int, page_size: int) -> dict[str, Any]:
+        self._verified_result(run_id)
         if page < 1 or not 1 <= page_size <= 250:
             raise ValueError("page 必須大於 0，page_size 必須介於 1 與 250")
         trades, total = self._repository.list_trades(run_id, offset=(page - 1) * page_size, limit=page_size)
         return {"page": page, "page_size": page_size, "total": total, "trades": trades}
 
     def trade(self, run_id: str, trade_id: str) -> dict[str, Any]:
-        for trade in self._repository.get_result(run_id).get("trades", []):
+        for trade in self._verified_result(run_id).get("trades", []):
             if trade["trade_id"] == trade_id:
                 return trade
         raise KeyError(f"找不到交易紀錄：{trade_id}")
 
     def drawdown(self, run_id: str) -> list[dict[str, Any]]:
         """Return an explicit drawdown series rather than making the browser infer it."""
-        points = self._repository.get_result(run_id).get("daily_equity", [])
+        points = self._verified_result(run_id).get("daily_equity", [])
         peak: float | None = None
         output: list[dict[str, Any]] = []
         for point in points:
@@ -883,7 +1046,7 @@ class BacktestApplicationService:
 
     def breakdowns(self, run_id: str) -> dict[str, Any]:
         """Server-side, bounded projections used by the result workspace."""
-        result = self._repository.get_result(run_id)
+        result = self._verified_result(run_id)
         by_symbol: dict[str, dict[str, Any]] = {}
         for trade in result.get("trades", []):
             row = by_symbol.setdefault(
@@ -899,7 +1062,7 @@ class BacktestApplicationService:
             symbols.append(row)
         return {
             "symbols": sorted(symbols, key=lambda item: (-item["net_pnl"], item["symbol"])),
-            "strategy_attribution": self.summary(run_id).get("strategy_attribution", []),
+            "strategy_attribution": result["summary"].get("strategy_attribution", []),
         }
 
     def trade_chart(self, run_id: str, trade_id: str, *, radius: int = 40) -> dict[str, Any]:
@@ -929,7 +1092,7 @@ class BacktestApplicationService:
 
     def export_trades(self, run_id: str) -> list[dict[str, Any]]:
         """Export from the immutable result, never from an active worker buffer."""
-        return list(self._repository.get_result(run_id).get("trades", []))
+        return list(self._verified_result(run_id).get("trades", []))
 
     def strategy_attribution(self, run_id: str, side: str | None = None) -> list[dict[str, Any]]:
         rows = self.summary(run_id).get("strategy_attribution", [])
@@ -939,6 +1102,8 @@ class BacktestApplicationService:
         return [row for row in rows if row["role"] in {normalized, "EVALUATION"}]
 
     def compare(self, baseline_run_id: str, challenger_run_id: str) -> dict[str, Any]:
+        self._require_control_result_accepted(baseline_run_id)
+        self._require_control_result_accepted(challenger_run_id)
         baseline = self._repository.get_run(baseline_run_id)
         challenger = self._repository.get_run(challenger_run_id)
         verify_run_identity(baseline)
@@ -948,8 +1113,8 @@ class BacktestApplicationService:
         comparison = compare_runs(
             baseline_run=baseline,
             challenger_run=challenger,
-            baseline_result=self._repository.get_result(baseline_run_id),
-            challenger_result=self._repository.get_result(challenger_run_id),
+            baseline_result=self._verified_result(baseline_run_id),
+            challenger_result=self._verified_result(challenger_run_id),
         )
         comparison["comparison_id"] = f"comparison-{uuid4().hex}"
         self._repository.save_comparison(comparison)
@@ -1010,6 +1175,8 @@ class BacktestApplicationService:
             )
             if existing is not None:
                 return existing, True
+        self._require_control_result_accepted(baseline_run_id)
+        self._require_control_result_accepted(challenger_run_id)
         baseline = self._repository.get_run(baseline_run_id)
         challenger = self._repository.get_run(challenger_run_id)
         verify_run_identity(baseline)
@@ -1267,6 +1434,35 @@ class BacktestApplicationService:
                 dataset_issues=tuple(dataset.get("issues", ())),
             )
             stored = {**raw_result, "summary": summary}
+            if config.research_control_snapshot is not None:
+                finalize_control = getattr(
+                    self._repository, "finalize_cash_admission_control", None
+                )
+                if not callable(finalize_control):
+                    raise RuntimeError("R5 postflight 需要 PostgreSQL durable repository")
+                baseline_run_id = str(
+                    config.research_control_snapshot["baseline_run_id"]
+                )
+                baseline = self._repository.get_run(baseline_run_id)
+                baseline_result = self._repository.get_result(baseline_run_id)
+                preflight = verify_cash_admission_preflight(
+                    config.research_control_snapshot["preflight"]
+                )
+                postflight = build_cash_admission_postflight(
+                    baseline_orders=baseline_result.get("orders", ()),
+                    control_result=stored,
+                    preflight=preflight,
+                    control_run_id=run_id,
+                    control_config_digest=run["config_digest"],
+                    control_result_digest=summary["result_digest"],
+                    identity_validation_digest=cash_admission_identity_validation_digest(
+                        baseline_run=baseline,
+                        control_run=run,
+                        preflight=preflight,
+                    ),
+                )
+                finalize_control(run_id, result=stored, postflight=postflight)
+                return
             self._repository.save_result(run_id, stored)
             self._persist_terminal_run(
                 run_id,
@@ -1323,6 +1519,8 @@ class BacktestApplicationService:
         parent_run_id: str,
         change_note: str,
     ) -> tuple[dict[str, Any], bool]:
+        if config.get("research_control_snapshot") is not None:
+            raise ValueError("R5 control 已封存，不可使用一般 retry/clone")
         if config.get("atomic_strategy_run_snapshot") is not None:
             atomic_config = deepcopy(dict(config))
             atomic_config["parent_run_id"] = parent_run_id

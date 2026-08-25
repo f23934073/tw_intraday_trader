@@ -1,0 +1,402 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "VWAP 策略失敗歸因",
+    "description": "以 immutable PostgreSQL Run evidence 分解 above_vwap_entry 基準回測，並凍結下一個研究 Gate。",
+    "generatedAt": "2026-08-25T09:10:29+08:00",
+    "cards": [
+      {
+        "id": "net_return_card",
+        "description": "10M 初始資金在 727 個 Dataset 日後的總報酬。",
+        "dataset": "summary",
+        "sourceId": "run_summary_sql",
+        "metrics": [
+          {"label": "總報酬", "field": "net_return", "format": "percent", "signed": true}
+        ]
+      },
+      {
+        "id": "fill_rate_card",
+        "description": "128,802 個 ENTRY signals 中實際成交的比例。",
+        "dataset": "summary",
+        "sourceId": "run_summary_sql",
+        "metrics": [
+          {"label": "ENTRY fill rate", "field": "fill_rate", "format": "percent"}
+        ]
+      },
+      {
+        "id": "pre_slippage_card",
+        "description": "由成交價反推未套用 5 bps/side slippage 的 price-path P&L。",
+        "dataset": "summary",
+        "sourceId": "cost_sql",
+        "metrics": [
+          {"label": "Pre-slippage P&L", "field": "pre_slippage_pnl", "format": "currency", "signed": true}
+        ]
+      },
+      {
+        "id": "friction_card",
+        "description": "Slippage、commission 與 sell tax 對 P&L 的合計負向影響。",
+        "dataset": "summary",
+        "sourceId": "cost_sql",
+        "metrics": [
+          {"label": "總 friction drag", "field": "friction_drag", "format": "currency"}
+        ]
+      },
+      {
+        "id": "profitable_days_card",
+        "description": "690 個實際有交易的日期中，net P&L 大於零的比例。",
+        "dataset": "summary",
+        "sourceId": "daily_sql",
+        "metrics": [
+          {"label": "獲利交易日", "field": "profitable_day_rate", "format": "percent"}
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "cost_waterfall",
+        "title": "P&L friction decomposition",
+        "subtitle": "6,321 trades；三個 delta 累計至 net P&L -9.87M。",
+        "intent": "decomposition",
+        "question": "淨虧損由 price path、slippage、fees 與 tax 各自貢獻多少？",
+        "rationale": "三個已對帳的 additive deltas 適合使用 waterfall。",
+        "type": "waterfall",
+        "dataset": "cost_bridge",
+        "sourceId": "cost_sql",
+        "encodings": {
+          "x": {"field": "component", "type": "ordinal", "label": "Component"},
+          "y": {"field": "pnl_delta", "type": "quantitative", "label": "P&L delta", "format": "currency"},
+          "tooltip": [
+            {"field": "pnl_delta", "type": "quantitative", "label": "P&L delta", "format": "currency"},
+            {"field": "share_of_net_loss", "type": "quantitative", "label": "Net loss share", "format": "percent"}
+          ]
+        },
+        "valueFormat": "currency",
+        "unit": "TWD",
+        "layout": "full",
+        "labels": {"values": "all"},
+        "palette": {"kind": "diverging", "name": "orange-neutral"},
+        "surface": {"surface": "export", "showControls": false, "viewMode": "both"}
+      },
+      {
+        "id": "rank_bias_chart",
+        "title": "ENTRY fill rate by same-day signal rank",
+        "subtitle": "128,802 signals；依 created_at、symbol 排序後的互斥 rank buckets。",
+        "intent": "comparison",
+        "question": "同日 signal 排序是否影響成交機率？",
+        "rationale": "五個有序 rank bucket 以 horizontal bar 顯示 fill-rate 落差。",
+        "type": "horizontalBar",
+        "dataset": "rank_bias",
+        "sourceId": "rank_sql",
+        "encodings": {
+          "x": {"field": "rank_bucket", "type": "ordinal", "label": "Same-day signal rank"},
+          "y": {"field": "fill_rate", "type": "quantitative", "label": "Fill rate", "format": "percent"},
+          "tooltip": [
+            {"field": "signals", "type": "quantitative", "label": "Signals", "format": "number"},
+            {"field": "filled", "type": "quantitative", "label": "Filled", "format": "number"},
+            {"field": "fill_rate", "type": "quantitative", "label": "Fill rate", "format": "percent"}
+          ]
+        },
+        "valueFormat": "percent",
+        "layout": "full",
+        "labels": {"values": "all"},
+        "palette": {"kind": "sequential", "name": "blue"},
+        "referenceLines": [{"axis": "y", "value": 0.04907532491731495, "label": "Overall 4.91%", "color": "neutral", "lineStyle": "dashed"}],
+        "surface": {"surface": "export", "showControls": false, "viewMode": "both"}
+      },
+      {
+        "id": "year_return_chart",
+        "title": "Average net return per trade by year",
+        "subtitle": "6,321 closed trades；百分比以每筆 entry notional 為分母。",
+        "intent": "comparison",
+        "question": "資金下降後，normalized trade performance 是否轉正？",
+        "rationale": "四個離散年度用 bar 比較，避免把少量年度點畫成趨勢線。",
+        "type": "bar",
+        "dataset": "year_performance",
+        "sourceId": "year_sql",
+        "encodings": {
+          "x": {"field": "year", "type": "ordinal", "label": "Year"},
+          "y": {"field": "average_net_return", "type": "quantitative", "label": "Average net return", "format": "percent"},
+          "tooltip": [
+            {"field": "trades", "type": "quantitative", "label": "Trades", "format": "number"},
+            {"field": "win_rate", "type": "quantitative", "label": "Win rate", "format": "percent"},
+            {"field": "median_net_return", "type": "quantitative", "label": "Median net return", "format": "percent"}
+          ]
+        },
+        "valueFormat": "percent",
+        "layout": "full",
+        "labels": {"values": "all"},
+        "palette": {"kind": "sequential", "name": "orange"},
+        "referenceLines": [{"axis": "y", "value": 0, "label": "Break-even", "color": "neutral", "lineStyle": "solid"}],
+        "surface": {"surface": "export", "showControls": false, "viewMode": "both"}
+      }
+    ],
+    "tables": [
+      {
+        "id": "cause_table",
+        "title": "Failure attribution register",
+        "subtitle": "按 confidence 排列；只列可由目前 immutable evidence 支持的 disposition。",
+        "dataset": "causes",
+        "sourceId": "run_summary_sql",
+        "defaultSort": {"field": "priority", "direction": "asc"},
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {"field": "priority", "label": "Priority", "type": "number"},
+          {"field": "finding", "label": "Finding", "type": "text"},
+          {"field": "confidence", "label": "Confidence", "type": "text"},
+          {"field": "evidence", "label": "Evidence", "type": "text"},
+          {"field": "decision", "label": "Decision", "type": "text"}
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "run_summary_sql",
+        "label": "Immutable Run and order evidence",
+        "query": {
+          "engine": "PostgreSQL 17",
+          "language": "sql",
+          "description": "Reconciles the completed Run, result summary, normalized orders and trades.",
+          "sql": "SELECT r.run_id, r.config_digest, r.dataset_digest, r.result_digest, res.summary_json FROM backtest.backtest_runs r JOIN backtest.backtest_results res USING (run_id) WHERE r.run_id = 'run-91ad87981676414da87b928398fa43c9';",
+          "tables_used": ["backtest.backtest_runs", "backtest.backtest_results", "backtest.backtest_result_chunks", "backtest.backtest_trades"],
+          "filters": ["run_id = run-91ad87981676414da87b928398fa43c9"],
+          "metric_definitions": ["ENTRY fill rate = filled ENTRY orders / all ENTRY orders", "Total return = (final equity - starting cash) / starting cash"],
+          "executed_at": "2026-08-24T09:18:31+08:00"
+        }
+      },
+      {
+        "id": "cost_sql",
+        "label": "Trade friction reconciliation",
+        "query": {
+          "engine": "PostgreSQL 17",
+          "language": "sql",
+          "description": "Reconstructs raw prices from the frozen 5 bps per-side fill model and reconciles explicit costs to net P&L.",
+          "sql": "WITH t AS (SELECT (payload_json->>'gross_pnl')::numeric post_slippage_gross, (payload_json->>'net_pnl')::numeric net_pnl, (payload_json->'entry'->>'price')::numeric entry_fill_price, (payload_json->'exit'->>'price')::numeric exit_fill_price, (payload_json->'entry'->>'shares')::numeric shares, (payload_json->'entry'->>'total_cost')::numeric + (payload_json->'exit'->>'total_cost')::numeric explicit_costs FROM backtest.backtest_trades WHERE run_id='run-91ad87981676414da87b928398fa43c9') SELECT SUM(((exit_fill_price/0.9995)-(entry_fill_price/1.0005))*shares) pre_slippage_gross, SUM(((exit_fill_price/0.9995)-(entry_fill_price/1.0005))*shares-post_slippage_gross) slippage_drag, SUM(explicit_costs) explicit_costs, SUM(net_pnl) net_pnl FROM t;",
+          "tables_used": ["backtest.backtest_trades"],
+          "filters": ["run_id = run-91ad87981676414da87b928398fa43c9"],
+          "metric_definitions": ["Pre-slippage price P&L reverses the frozen 1.0005 ENTRY and 0.9995 EXIT multipliers", "Explicit costs = entry commission + exit commission + sell tax"],
+          "executed_at": "2026-08-24T09:18:31+08:00"
+        }
+      },
+      {
+        "id": "rank_sql",
+        "label": "Same-day signal-rank admission query",
+        "query": {
+          "engine": "PostgreSQL 17",
+          "language": "sql",
+          "description": "Ranks ENTRY orders within each session by created_at and symbol, then compares fill rates by mutually exclusive buckets.",
+          "sql": "WITH o AS (SELECT jsonb_array_elements(payload_json) item FROM backtest.backtest_result_chunks WHERE run_id='run-91ad87981676414da87b928398fa43c9' AND field_name='orders'), e AS (SELECT (item->>'created_at')::timestamptz created_at, item->>'symbol' symbol, item->>'status' status FROM o WHERE item->>'side'='ENTRY'), r AS (SELECT *, row_number() OVER (PARTITION BY (created_at AT TIME ZONE 'Asia/Taipei')::date ORDER BY created_at,symbol) signal_rank FROM e) SELECT CASE WHEN signal_rank<=10 THEN '001-010' WHEN signal_rank<=20 THEN '011-020' WHEN signal_rank<=50 THEN '021-050' WHEN signal_rank<=100 THEN '051-100' ELSE '101+' END rank_bucket, COUNT(*) signals, COUNT(*) FILTER (WHERE status='FILLED') filled, AVG((status='FILLED')::integer) fill_rate FROM r GROUP BY 1 ORDER BY 1;",
+          "tables_used": ["backtest.backtest_result_chunks"],
+          "filters": ["run_id = run-91ad87981676414da87b928398fa43c9", "field_name = orders", "side = ENTRY"],
+          "metric_definitions": ["Fill rate = filled orders / signals within each rank bucket"],
+          "executed_at": "2026-08-24T09:18:31+08:00"
+        }
+      },
+      {
+        "id": "year_sql",
+        "label": "Normalized trade performance by year",
+        "query": {
+          "engine": "PostgreSQL 17",
+          "language": "sql",
+          "description": "Aggregates trade-level net_pnl_pct by entry year so capital depletion does not masquerade as recovery.",
+          "sql": "SELECT EXTRACT(YEAR FROM entry_at::timestamptz AT TIME ZONE 'Asia/Taipei')::integer year, COUNT(*) trades, AVG(((payload_json->>'net_pnl')::numeric>0)::integer) win_rate, AVG((payload_json->>'net_pnl_pct')::numeric)/100 average_net_return, PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (payload_json->>'net_pnl_pct')::numeric)/100 median_net_return FROM backtest.backtest_trades WHERE run_id='run-91ad87981676414da87b928398fa43c9' GROUP BY 1 ORDER BY 1;",
+          "tables_used": ["backtest.backtest_trades"],
+          "filters": ["run_id = run-91ad87981676414da87b928398fa43c9"],
+          "metric_definitions": ["Average net return is the average stored net_pnl_pct converted from percentage points to a fractional rate"],
+          "executed_at": "2026-08-24T09:18:31+08:00"
+        }
+      },
+      {
+        "id": "daily_sql",
+        "label": "Daily trade outcome query",
+        "query": {
+          "engine": "PostgreSQL 17",
+          "language": "sql",
+          "description": "Calculates the share of active trade days with positive aggregate net P&L.",
+          "sql": "WITH d AS (SELECT (entry_at::timestamptz AT TIME ZONE 'Asia/Taipei')::date session_date, SUM((payload_json->>'net_pnl')::numeric) net_pnl FROM backtest.backtest_trades WHERE run_id='run-91ad87981676414da87b928398fa43c9' GROUP BY 1) SELECT AVG((net_pnl>0)::integer) profitable_day_rate FROM d;",
+          "tables_used": ["backtest.backtest_trades"],
+          "filters": ["run_id = run-91ad87981676414da87b928398fa43c9"],
+          "metric_definitions": ["Profitable-day rate = active trade days with aggregate net P&L > 0 / all active trade days"],
+          "executed_at": "2026-08-24T09:18:31+08:00"
+        }
+      }
+    ],
+    "blocks": [
+      {"id": "title", "type": "markdown", "body": "# VWAP 策略失敗歸因"},
+      {
+        "id": "contract_notice",
+        "type": "markdown",
+        "body": "## 研究契約更新（2026-08-25）\n\n**SUPERSEDED NOTICE：**舊版報告使用的 `allocation-neutral control` 一詞已作廢。R5 的正確名稱是 **cash-admission-neutral sensitivity control**：它只排除剩餘現金不足造成的 admission bias，不宣稱 current-equity sizing、整張 rounding、order notional 或 P&L weighting 對 symbol order 完全中立。下列 baseline 數值與失敗歸因沒有改變；R5 尚未執行，也尚無可解讀的 control 績效。"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "body": "## 技術結論：策略不可使用，但需先排除 cash-admission bias\n\n這個 exact Strategy Set 應維持 **HOLD / NOT ELIGIBLE**。已成交樣本在 slippage 與交易稅費之前就虧損，成本再把虧損放大到幾乎歸零；但 95.09% ENTRY signals 因現金不足被拒絕，且成交機率強烈依賴同日 signal 排序。因此它證明目前組合不可用，尚不能視為 182 檔 VWAP signals 的無偏估計。下一步只應執行相同 Version、相同 EOD exit 與相同成本的 cash-admission-neutral sensitivity control；不得 promotion、Local Paper 或 broker execution。",
+        "sourceId": "run_summary_sql"
+      },
+      {"id": "headline_metrics", "type": "metric-strip", "cardIds": ["net_return_card", "fill_rate_card", "pre_slippage_card", "friction_card", "profitable_days_card"]},
+      {
+        "id": "cost_finding",
+        "type": "markdown",
+        "body": "## 成本是巨大放大器，但不是負 edge 的根因\n\n由 frozen fill model 反推後，未計 slippage 的 price-path P&L 已是 **-1.37M**。5 bps/side slippage 再拖累 **1.24M**，commission 與 sell tax 再拖累 **7.26M**，累計成 **-9.87M** net P&L。這是 descriptive reconciliation，不是零成本反事實策略的正式回測；但足以否定「只要降低手續費就會獲利」的解釋。",
+        "sourceId": "cost_sql"
+      },
+      {"id": "cost_chart_block", "type": "chart", "chartId": "cost_waterfall", "layout": "full"},
+      {
+        "id": "rank_finding",
+        "type": "markdown",
+        "body": "## Shared cash 讓成交樣本偏向較早出現的 signals\n\nEngine 依 `(timestamp, symbol)` 處理 bars，每個 candidate 以總權益 10% 計算部位，再以剩餘 cash admission。每日平均出現 **177.17** 個 ENTRY signals，卻只成交 **8.69** 個；同日 ranks 1-10 的 fill rate 是 **39.37%**，ranks 101+ 只剩 **0.73%**。這表示 baseline P&L 同時反映 signal 與排序／資金政策。",
+        "sourceId": "rank_sql"
+      },
+      {"id": "rank_chart_block", "type": "chart", "chartId": "rank_bias_chart", "layout": "full"},
+      {
+        "id": "year_finding",
+        "type": "markdown",
+        "body": "## 資金下降後，單筆報酬並沒有轉正\n\nRaw TWD loss 在後期變小，是因為 equity 已大幅縮水。改用每筆 entry notional 正規化後，2023-2026 的平均與中位 net return 每年都為負；因此不能把 2025-2026 較小的金額虧損解讀成策略改善。",
+        "sourceId": "year_sql"
+      },
+      {"id": "year_chart_block", "type": "chart", "chartId": "year_return_chart", "layout": "full"},
+      {
+        "id": "scope_definitions",
+        "type": "markdown",
+        "body": "## 範圍、資料與指標定義\n\n分析單位是 completed Run `run-91ad87981676414da87b928398fa43c9` 的 6,321 closed trades、128,802 ENTRY orders 與 727 daily-equity points。ENTRY 是 `above_vwap_entry` Version 1，參數為 09:01-12:45、minimum distance 0 bps；EXIT 固定為 EOD close。VWAP 使用 completed 1m close × volume proxy，不是真實 turnover。`net_pnl_pct` 是以該 trade entry notional 表示的百分點，報告轉為 fractional percent scale。"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## 方法：只讀重建，不重跑與不調參\n\n先核對 Run/config/Dataset/result/Version digests，再從 normalized trades 與 immutable chunks 重建 order outcomes、cost reconciliation、year/time/symbol cuts 與 rank buckets。Slippage 依 engine 的 ENTRY `raw × 1.0005`、EXIT `raw × 0.9995` 公式反推。所有 SQL 保存在 phase evidence pack；這一輪沒有建立新 Run、修改 Strategy Version 或更動 lifecycle。"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 限制與 robustness 邊界\n\n本結果仍是 exploratory：Dataset 有 current-snapshot survivorship、partial universe、raw unadjusted prices、current non-PIT metadata 與 derived amount proxy。ENTRY 與 EOD EXIT 的獨立貢獻也無法由單一 Run 分離；MFE/MAE 或固定 horizon 需要另外做 5.5 GiB bar-path join。這些限制會阻擋 promotion，但不會把已觀測的負 P&L 變成正證據。"
+      },
+      {"id": "cause_table_block", "type": "table", "tableId": "cause_table", "layout": "full"},
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "body": "## 下一步：先做唯一的 cash-admission-neutral sensitivity control\n\nR5 維持 exact VWAP Version、EOD exit、Dataset、engine 與成本；`starting_cash` 與 `position_fraction` 由 server 依 frozen preflight 公式確定性推導，操作者不能輸入或挑選。每個 baseline＋contract revision 只能有一個 sealed authoritative control。Server postflight 必須先確認 missing next bar 為 0、所有 ENTRY 全數 FILLED、所有 rejection reason 為 0，且 signal keys 以 multiplicity-aware parity 完全一致，才會曝光績效。若 pre-slippage P&L 仍不大於 0，停止調整這個策略，才進入其餘 7 個原子 ENTRY 的預先登記 benchmark matrix。任何結果都不會自動 promotion 或啟動模擬交易。"
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## 後續仍需回答\n\n- Cash-admission-neutral sensitivity control 是否仍呈現負 pre-slippage edge？\n- 若 price edge 為正、net edge 為負，虧損主要在哪個 holding horizon 被成本吃掉？\n- 相同 execution protocol 下，哪一個單一原子 ENTRY 能先通過 exploratory screening？\n- 何時可取得 research-eligible、adjusted-price、point-in-time Dataset 做正式 Qualification？"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-24T09:18:31+08:00",
+    "status": "ready",
+    "datasets": {
+      "summary": [
+        {
+          "net_return": -0.9869688987318751,
+          "fill_rate": 0.04907532491731495,
+          "pre_slippage_pnl": -1365500.0,
+          "friction_drag": 8504188.98731875,
+          "profitable_day_rate": 0.1565217391304348
+        }
+      ],
+      "cost_bridge": [
+        {"component": "Pre-slippage price path", "pnl_delta": -1365500.0, "share_of_net_loss": 0.1383528882681674},
+        {"component": "Slippage", "pnl_delta": -1242058.15, "share_of_net_loss": 0.1258457241018762},
+        {"component": "Commission + sell tax", "pnl_delta": -7262130.83731875, "share_of_net_loss": 0.7358013876299564}
+      ],
+      "rank_bias": [
+        {"rank_bucket": "001-010", "signals": 7270, "filled": 2862, "fill_rate": 0.3936726272352132},
+        {"rank_bucket": "011-020", "signals": 7270, "filled": 1423, "fill_rate": 0.19573590096286108},
+        {"rank_bucket": "021-050", "signals": 21786, "filled": 988, "fill_rate": 0.04535022491508308},
+        {"rank_bucket": "051-100", "signals": 36288, "filled": 638, "fill_rate": 0.017581569664903},
+        {"rank_bucket": "101+", "signals": 56188, "filled": 410, "fill_rate": 0.007296931729194846}
+      ],
+      "year_performance": [
+        {"year": "2023", "trades": 994, "win_rate": 0.252515, "average_net_return": -0.007680633449203558, "median_net_return": -0.008058631828742693},
+        {"year": "2024", "trades": 2840, "win_rate": 0.25493, "average_net_return": -0.008279086784319166, "median_net_return": -0.009021737069641176},
+        {"year": "2025", "trades": 2370, "win_rate": 0.233755, "average_net_return": -0.008148356326213456, "median_net_return": -0.008159641411894526},
+        {"year": "2026", "trades": 117, "win_rate": 0.179487, "average_net_return": -0.006080407135330133, "median_net_return": -0.006835337105893468}
+      ],
+      "causes": [
+        {"priority": 1, "finding": "Exact Strategy Set is unusable", "confidence": "High", "evidence": "Pre-slippage P&L -1.37M; net return -98.70%", "decision": "HOLD / NOT ELIGIBLE"},
+        {"priority": 2, "finding": "Admission sample is order-biased", "confidence": "High", "evidence": "Fill rate 39.37% at ranks 1-10 vs 0.73% at ranks 101+", "decision": "Require one sealed cash-admission-neutral sensitivity control"},
+        {"priority": 3, "finding": "Friction amplifies the loss", "confidence": "High", "evidence": "8.50M total friction; 86.16% of net loss", "decision": "Keep realistic costs in all controls"},
+        {"priority": 4, "finding": "Signal has low selectivity", "confidence": "Medium", "evidence": "177.17 ENTRY signals per Dataset day", "decision": "Do not tune on the same Run"},
+        {"priority": 5, "finding": "ENTRY vs EOD EXIT contribution", "confidence": "Not identified", "evidence": "Single exact ENTRY/EXIT combination only", "decision": "Needs separate path/horizon study"}
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "run_summary_sql",
+      "label": "Immutable Run and order evidence",
+      "query": {
+        "engine": "PostgreSQL 17",
+        "language": "sql",
+        "description": "Reconciles the completed Run, result summary, normalized orders and trades.",
+        "sql": "SELECT r.run_id, r.config_digest, r.dataset_digest, r.result_digest, res.summary_json FROM backtest.backtest_runs r JOIN backtest.backtest_results res USING (run_id) WHERE r.run_id = 'run-91ad87981676414da87b928398fa43c9';",
+        "tables_used": ["backtest.backtest_runs", "backtest.backtest_results", "backtest.backtest_result_chunks", "backtest.backtest_trades"],
+        "filters": ["run_id = run-91ad87981676414da87b928398fa43c9"],
+        "metric_definitions": ["ENTRY fill rate = filled ENTRY orders / all ENTRY orders", "Total return = (final equity - starting cash) / starting cash"],
+        "executed_at": "2026-08-24T09:18:31+08:00"
+      }
+    },
+    {
+      "id": "cost_sql",
+      "label": "Trade friction reconciliation",
+      "query": {
+        "engine": "PostgreSQL 17",
+        "language": "sql",
+        "description": "Reconstructs raw prices from the frozen 5 bps per-side fill model and reconciles explicit costs to net P&L.",
+        "sql": "WITH t AS (SELECT (payload_json->>'gross_pnl')::numeric post_slippage_gross, (payload_json->>'net_pnl')::numeric net_pnl, (payload_json->'entry'->>'price')::numeric entry_fill_price, (payload_json->'exit'->>'price')::numeric exit_fill_price, (payload_json->'entry'->>'shares')::numeric shares, (payload_json->'entry'->>'total_cost')::numeric + (payload_json->'exit'->>'total_cost')::numeric explicit_costs FROM backtest.backtest_trades WHERE run_id='run-91ad87981676414da87b928398fa43c9') SELECT SUM(((exit_fill_price/0.9995)-(entry_fill_price/1.0005))*shares) pre_slippage_gross, SUM(((exit_fill_price/0.9995)-(entry_fill_price/1.0005))*shares-post_slippage_gross) slippage_drag, SUM(explicit_costs) explicit_costs, SUM(net_pnl) net_pnl FROM t;",
+        "tables_used": ["backtest.backtest_trades"],
+        "filters": ["run_id = run-91ad87981676414da87b928398fa43c9"],
+        "metric_definitions": ["Pre-slippage price P&L reverses the frozen 1.0005 ENTRY and 0.9995 EXIT multipliers", "Explicit costs = entry commission + exit commission + sell tax"],
+        "executed_at": "2026-08-24T09:18:31+08:00"
+      }
+    },
+    {
+      "id": "rank_sql",
+      "label": "Same-day signal-rank admission query",
+      "query": {
+        "engine": "PostgreSQL 17",
+        "language": "sql",
+        "description": "Ranks ENTRY orders within each session by created_at and symbol, then compares fill rates by mutually exclusive buckets.",
+        "sql": "WITH o AS (SELECT jsonb_array_elements(payload_json) item FROM backtest.backtest_result_chunks WHERE run_id='run-91ad87981676414da87b928398fa43c9' AND field_name='orders'), e AS (SELECT (item->>'created_at')::timestamptz created_at, item->>'symbol' symbol, item->>'status' status FROM o WHERE item->>'side'='ENTRY'), r AS (SELECT *, row_number() OVER (PARTITION BY (created_at AT TIME ZONE 'Asia/Taipei')::date ORDER BY created_at,symbol) signal_rank FROM e) SELECT CASE WHEN signal_rank<=10 THEN '001-010' WHEN signal_rank<=20 THEN '011-020' WHEN signal_rank<=50 THEN '021-050' WHEN signal_rank<=100 THEN '051-100' ELSE '101+' END rank_bucket, COUNT(*) signals, COUNT(*) FILTER (WHERE status='FILLED') filled, AVG((status='FILLED')::integer) fill_rate FROM r GROUP BY 1 ORDER BY 1;",
+        "tables_used": ["backtest.backtest_result_chunks"],
+        "filters": ["run_id = run-91ad87981676414da87b928398fa43c9", "field_name = orders", "side = ENTRY"],
+        "metric_definitions": ["Fill rate = filled orders / signals within each rank bucket"],
+        "executed_at": "2026-08-24T09:18:31+08:00"
+      }
+    },
+    {
+      "id": "year_sql",
+      "label": "Normalized trade performance by year",
+      "query": {
+        "engine": "PostgreSQL 17",
+        "language": "sql",
+        "description": "Aggregates trade-level net_pnl_pct by entry year so capital depletion does not masquerade as recovery.",
+        "sql": "SELECT EXTRACT(YEAR FROM entry_at::timestamptz AT TIME ZONE 'Asia/Taipei')::integer year, COUNT(*) trades, AVG(((payload_json->>'net_pnl')::numeric>0)::integer) win_rate, AVG((payload_json->>'net_pnl_pct')::numeric)/100 average_net_return, PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (payload_json->>'net_pnl_pct')::numeric)/100 median_net_return FROM backtest.backtest_trades WHERE run_id='run-91ad87981676414da87b928398fa43c9' GROUP BY 1 ORDER BY 1;",
+        "tables_used": ["backtest.backtest_trades"],
+        "filters": ["run_id = run-91ad87981676414da87b928398fa43c9"],
+        "metric_definitions": ["Average net return is the average stored net_pnl_pct converted from percentage points to a fractional rate"],
+        "executed_at": "2026-08-24T09:18:31+08:00"
+      }
+    },
+    {
+      "id": "daily_sql",
+      "label": "Daily trade outcome query",
+      "query": {
+        "engine": "PostgreSQL 17",
+        "language": "sql",
+        "description": "Calculates the share of active trade days with positive aggregate net P&L.",
+        "sql": "WITH d AS (SELECT (entry_at::timestamptz AT TIME ZONE 'Asia/Taipei')::date session_date, SUM((payload_json->>'net_pnl')::numeric) net_pnl FROM backtest.backtest_trades WHERE run_id='run-91ad87981676414da87b928398fa43c9' GROUP BY 1) SELECT AVG((net_pnl>0)::integer) profitable_day_rate FROM d;",
+        "tables_used": ["backtest.backtest_trades"],
+        "filters": ["run_id = run-91ad87981676414da87b928398fa43c9"],
+        "metric_definitions": ["Profitable-day rate = active trade days with aggregate net P&L > 0 / all active trade days"],
+        "executed_at": "2026-08-24T09:18:31+08:00"
+      }
+    }
+  ]
+}

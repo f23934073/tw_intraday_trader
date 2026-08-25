@@ -30,6 +30,7 @@ def test_backtest_forward_migrations_include_logical_schema_move() -> None:
         "011_strategy_set_archives.sql",
         "012_backtest_dataset_bindings.sql",
         "013_backtest_result_chunks.sql",
+        "014_cash_admission_controls.sql",
     ]
     assert [spec.name for spec in TABLE_SPECS] == [
         "backtest_datasets",

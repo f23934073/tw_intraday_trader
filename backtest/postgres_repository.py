@@ -24,7 +24,7 @@ from backtest.dataset_binding import (
     require_text,
 )
 from backtest.migrations import apply_migrations
-from backtest.domain import digest
+from backtest.domain import BacktestRunConfig, RunStatus, digest
 from backtest.qualification import (
     experiment_family_definition,
     experiment_family_id,
@@ -35,8 +35,21 @@ from backtest.qualification import (
 from backtest.repository import (
     BacktestIdempotencyConflict,
     _JsonBacktestRepository,
+    _chunked_result_root,
     _decode_json,
     _json,
+    _rebuild_chunked_result,
+)
+from backtest.research_control import (
+    CONTROL_CONTRACT_VERSION,
+    CashAdmissionControlConflict,
+    CashAdmissionControlIntegrityError,
+    build_cash_admission_postflight,
+    cash_admission_identity_validation_digest,
+    recompute_backtest_result_digest,
+    verify_cash_admission_postflight,
+    verify_cash_admission_preflight,
+    verify_research_control_snapshot,
 )
 
 
@@ -232,6 +245,426 @@ class PostgresBacktestRepository(_JsonBacktestRepository):
             created = self._run_payload(self._row(cursor, cursor.fetchone()))
             self._after_run_created(cursor, created)
             return created, False
+
+    def create_cash_admission_control(
+        self,
+        record: Mapping[str, Any],
+        *,
+        request: Mapping[str, Any],
+        request_digest: str,
+        preflight: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        """Seal the sole R5 control and its Run in one PostgreSQL transaction."""
+
+        request_body = dict(request)
+        required_request_fields = {
+            "request_schema_version",
+            "control_contract_version",
+            "preflight_digest",
+            "expected_registration_revision",
+            "idempotency_key",
+            "actor_id",
+            "change_note",
+        }
+        if set(request_body) != required_request_fields:
+            raise ValueError("R5 control request schema 不合法")
+        if digest(request_body) != request_digest:
+            raise CashAdmissionControlIntegrityError("R5 request digest 不一致")
+        verified_preflight = verify_cash_admission_preflight(preflight)
+        baseline_run_id = str(verified_preflight["identity"]["baseline_run_id"])
+        contract_version = str(request_body["control_contract_version"])
+        if contract_version != CONTROL_CONTRACT_VERSION:
+            raise ValueError("R5 control contract version 不支援")
+        if request_body["preflight_digest"] != verified_preflight["artifact_digest"]:
+            raise CashAdmissionControlIntegrityError("R5 request 與 preflight 不一致")
+        if str(request_body["idempotency_key"]) != str(record["idempotency_key"]):
+            raise CashAdmissionControlIntegrityError("R5 operation key 與 Run 不一致")
+        lock_key = self._advisory_lock_key(
+            "backtest-r5-control:create",
+            f"{baseline_run_id}\0{contract_version}",
+        )
+        with self._transaction() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", (lock_key,))
+            cursor.execute(
+                """
+                SELECT request_digest, result_json, result_digest
+                FROM backtest_cash_admission_control_operations
+                WHERE baseline_run_id = %s AND contract_version = %s
+                  AND idempotency_key = %s
+                """,
+                (
+                    baseline_run_id,
+                    contract_version,
+                    request_body["idempotency_key"],
+                ),
+            )
+            replay = cursor.fetchone()
+            if replay is not None:
+                replay_row = self._row(cursor, replay)
+                if str(replay_row["request_digest"]) != request_digest:
+                    raise CashAdmissionControlConflict(
+                        "相同 R5 idempotency key 的 request 不同"
+                    )
+                replay_result = _decode_json(replay_row["result_json"])
+                if digest(replay_result) != str(replay_row["result_digest"]):
+                    raise CashAdmissionControlIntegrityError(
+                        "R5 operation replay result digest 不一致"
+                    )
+                return self._control_run_payload(cursor, replay_result), True
+
+            cursor.execute(
+                """
+                SELECT * FROM backtest_cash_admission_control_heads
+                WHERE baseline_run_id = %s AND contract_version = %s
+                FOR UPDATE
+                """,
+                (baseline_run_id, contract_version),
+            )
+            raw_head = cursor.fetchone()
+            if raw_head is not None:
+                cursor.execute(
+                    """
+                    SELECT * FROM backtest_cash_admission_control_registrations
+                    WHERE baseline_run_id = %s AND contract_version = %s
+                      AND revision = %s
+                    """,
+                    (
+                        baseline_run_id,
+                        contract_version,
+                        int(self._row(cursor, raw_head)["current_revision"]),
+                    ),
+                )
+                registration = self._verified_control_registration(
+                    self._row(cursor, cursor.fetchone())
+                )
+                if registration["preflight_digest"] != verified_preflight["artifact_digest"]:
+                    raise CashAdmissionControlConflict(
+                        "R5_CONTROL_ALREADY_SEALED: authoritative preflight 不同"
+                    )
+                result = self._control_operation_result(registration)
+                self._insert_control_operation(
+                    cursor,
+                    request=request_body,
+                    request_digest=request_digest,
+                    result=result,
+                )
+                return self._control_run_payload(cursor, result), True
+
+            if int(request_body["expected_registration_revision"]) != 0:
+                raise CashAdmissionControlConflict(
+                    "R5_CONTROL_REVISION_CONFLICT: initial expected revision must be 0"
+                )
+            cursor.execute(
+                "SELECT * FROM backtest_runs WHERE run_id = %s FOR SHARE",
+                (baseline_run_id,),
+            )
+            raw_baseline = cursor.fetchone()
+            if raw_baseline is None:
+                raise KeyError(f"找不到 R5 baseline Run：{baseline_run_id}")
+            baseline = self._run_payload(self._row(cursor, raw_baseline))
+            self._verify_control_preflight_identity(
+                cursor,
+                baseline=baseline,
+                preflight=verified_preflight,
+            )
+            if baseline["status"] != RunStatus.COMPLETED.value:
+                raise ValueError("R5 baseline 必須是 COMPLETED")
+
+            config = BacktestRunConfig.from_dict(dict(record["config"]))
+            self._verify_control_config(
+                baseline=baseline,
+                control_config=config,
+                preflight=verified_preflight,
+            )
+            if config.config_digest != str(record["config_digest"]):
+                raise CashAdmissionControlIntegrityError("R5 control config digest 不一致")
+            if (
+                record["status"] != RunStatus.QUEUED.value
+                or record["dataset_id"] != config.dataset_id
+                or record["dataset_digest"] != config.dataset_digest
+            ):
+                raise CashAdmissionControlIntegrityError(
+                    "R5 Run row proposal 與 immutable config 不一致"
+                )
+
+            cursor.execute(
+                """
+                INSERT INTO backtest_runs (
+                    run_id, idempotency_key, status, config_json, config_digest,
+                    dataset_id, dataset_digest, progress, progress_message,
+                    created_at, updated_at, error_message, result_digest
+                ) VALUES (
+                    %s, %s, %s, %s::jsonb, %s, %s, %s, 0.0,
+                    '已建立 R5 cash-admission control', %s, %s, NULL, NULL
+                )
+                RETURNING *
+                """,
+                (
+                    record["run_id"],
+                    record["idempotency_key"],
+                    record["status"],
+                    _json(config.to_dict()),
+                    record["config_digest"],
+                    record["dataset_id"],
+                    record["dataset_digest"],
+                    record["created_at"],
+                    record["created_at"],
+                ),
+            )
+            created_run = self._run_payload(self._row(cursor, cursor.fetchone()))
+            snapshot = verify_research_control_snapshot(
+                dict(config.research_control_snapshot or {})
+            )
+            sizing = dict(verified_preflight["sizing"])
+            cursor.execute(
+                """
+                INSERT INTO backtest_cash_admission_control_heads (
+                    baseline_run_id, contract_version, current_revision, status
+                ) VALUES (%s, %s, 1, 'RUN_CREATED')
+                """,
+                (baseline_run_id, contract_version),
+            )
+            cursor.execute(
+                """
+                INSERT INTO backtest_cash_admission_control_registrations (
+                    baseline_run_id, contract_version, revision, control_run_id,
+                    preflight_digest, preflight_json, sizing_digest, sizing_json,
+                    research_control_snapshot_digest,
+                    research_control_snapshot_json, status, actor_id, change_note
+                ) VALUES (
+                    %s, %s, 1, %s, %s, %s::jsonb, %s, %s::jsonb,
+                    %s, %s::jsonb, 'RUN_CREATED', %s, %s
+                )
+                """,
+                (
+                    baseline_run_id,
+                    contract_version,
+                    created_run["run_id"],
+                    verified_preflight["artifact_digest"],
+                    _json(verified_preflight),
+                    digest(sizing),
+                    _json(sizing),
+                    snapshot["snapshot_digest"],
+                    _json(snapshot),
+                    request_body["actor_id"],
+                    request_body["change_note"],
+                ),
+            )
+            registration = {
+                "baseline_run_id": baseline_run_id,
+                "contract_version": contract_version,
+                "revision": 1,
+                "control_run_id": created_run["run_id"],
+                "preflight_digest": verified_preflight["artifact_digest"],
+                "status": "RUN_CREATED",
+                "research_control_snapshot_digest": snapshot["snapshot_digest"],
+                "postflight_digest": None,
+            }
+            result = self._control_operation_result(registration)
+            self._insert_control_operation(
+                cursor,
+                request=request_body,
+                request_digest=request_digest,
+                result=result,
+            )
+            return {**created_run, "cash_admission_control": registration}, False
+
+    def get_cash_admission_control(self, run_id: str) -> dict[str, Any]:
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT * FROM backtest_cash_admission_control_registrations
+                WHERE control_run_id = %s
+                """,
+                (run_id,),
+            )
+            raw = cursor.fetchone()
+            if raw is None:
+                raise KeyError(f"Run 不是 R5 cash-admission control：{run_id}")
+            return self._verified_control_registration(self._row(cursor, raw))
+
+    def finalize_cash_admission_control(
+        self,
+        run_id: str,
+        *,
+        result: Mapping[str, Any],
+        postflight: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Atomically publish accepted performance or diagnostics-only invalidity."""
+
+        supplied_postflight = verify_cash_admission_postflight(postflight)
+        summary = dict(result["summary"])
+        root, chunk_manifests = _chunked_result_root(result)
+        with self._transaction() as cursor:
+            cursor.execute(
+                "SELECT * FROM backtest_runs WHERE run_id = %s FOR UPDATE",
+                (run_id,),
+            )
+            raw_control = cursor.fetchone()
+            if raw_control is None:
+                raise KeyError(f"找不到 R5 control Run：{run_id}")
+            control = self._run_payload(self._row(cursor, raw_control))
+            verify_run_identity(control)
+            cursor.execute(
+                """
+                SELECT * FROM backtest_cash_admission_control_registrations
+                WHERE control_run_id = %s FOR UPDATE
+                """,
+                (run_id,),
+            )
+            raw_registration = cursor.fetchone()
+            if raw_registration is None:
+                raise CashAdmissionControlIntegrityError("R5 control registration 遺失")
+            registration = self._verified_control_registration(
+                self._row(cursor, raw_registration)
+            )
+            if registration["status"] in {"ACCEPTED", "INVALID"}:
+                if registration["postflight_digest"] != supplied_postflight["postflight_digest"]:
+                    raise CashAdmissionControlConflict("R5 postflight 已封存且 evidence 不同")
+                return registration
+            if control["status"] != RunStatus.RUNNING.value:
+                raise CashAdmissionControlIntegrityError(
+                    f"R5 control 必須由 RUNNING 進入 postflight：{control['status']}"
+                )
+            control_config = BacktestRunConfig.from_dict(control["config"])
+            snapshot = verify_research_control_snapshot(
+                dict(control_config.research_control_snapshot or {})
+            )
+            verified_preflight = verify_cash_admission_preflight(snapshot["preflight"])
+            cursor.execute(
+                "SELECT * FROM backtest_runs WHERE run_id = %s FOR SHARE",
+                (registration["baseline_run_id"],),
+            )
+            baseline = self._run_payload(self._row(cursor, cursor.fetchone()))
+            if baseline["status"] != RunStatus.COMPLETED.value:
+                raise CashAdmissionControlIntegrityError(
+                    "R5 baseline 已不再是 COMPLETED"
+                )
+            baseline_result = self._verify_control_preflight_identity(
+                cursor,
+                baseline=baseline,
+                preflight=verified_preflight,
+            )
+            self._verify_control_config(
+                baseline=baseline,
+                control_config=control_config,
+                preflight=verified_preflight,
+            )
+            result_digest = str(summary.get("result_digest") or "")
+            if recompute_backtest_result_digest(result) != result_digest:
+                raise CashAdmissionControlIntegrityError(
+                    "R5 control immutable result digest 無法重建"
+                )
+            identity_validation_digest = self._control_identity_validation_digest(
+                baseline=baseline,
+                control=control,
+                preflight=verified_preflight,
+            )
+            expected_postflight = build_cash_admission_postflight(
+                baseline_orders=baseline_result.get("orders", ()),
+                control_result=result,
+                preflight=verified_preflight,
+                control_run_id=run_id,
+                control_config_digest=control["config_digest"],
+                control_result_digest=result_digest,
+                identity_validation_digest=identity_validation_digest,
+            )
+            if expected_postflight != supplied_postflight:
+                raise CashAdmissionControlIntegrityError(
+                    "R5 postflight 無法由 locked result projection 重建"
+                )
+            accepted = expected_postflight["verdict"] == "ACCEPTED"
+            terminal_status = (
+                RunStatus.COMPLETED.value
+                if accepted
+                else RunStatus.INVALID_CASH_ADMISSION_CONTROL.value
+            )
+            cursor.execute(
+                """
+                UPDATE backtest_runs
+                SET status = %s, progress = 1.0, progress_message = %s,
+                    result_digest = %s, updated_at = CURRENT_TIMESTAMP::text
+                WHERE run_id = %s AND status = %s
+                """,
+                (
+                    RunStatus.CONTROL_POSTFLIGHT.value,
+                    "正在驗證 R5 server postflight",
+                    None,
+                    run_id,
+                    RunStatus.RUNNING.value,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise CashAdmissionControlConflict("R5 control status transition conflict")
+            if accepted:
+                self._save_result_with_cursor(
+                    cursor,
+                    run_id=run_id,
+                    result=result,
+                    summary=summary,
+                    root=root,
+                    chunk_manifests=chunk_manifests,
+                    allow_research_control=True,
+                )
+            cursor.execute(
+                """
+                UPDATE backtest_cash_admission_control_registrations
+                SET status = %s, postflight_digest = %s,
+                    postflight_json = %s::jsonb, updated_at = CURRENT_TIMESTAMP
+                WHERE control_run_id = %s AND status = 'RUN_CREATED'
+                """,
+                (
+                    "ACCEPTED" if accepted else "INVALID",
+                    expected_postflight["postflight_digest"],
+                    _json(expected_postflight),
+                    run_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise CashAdmissionControlConflict("R5 registration finalize conflict")
+            cursor.execute(
+                """
+                UPDATE backtest_cash_admission_control_heads
+                SET status = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE baseline_run_id = %s AND contract_version = %s
+                  AND current_revision = %s
+                """,
+                (
+                    "ACCEPTED" if accepted else "INVALID",
+                    registration["baseline_run_id"],
+                    registration["contract_version"],
+                    registration["revision"],
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise CashAdmissionControlConflict("R5 head finalize conflict")
+            cursor.execute(
+                """
+                UPDATE backtest_runs
+                SET status = %s, progress = 1.0, progress_message = %s,
+                    result_digest = %s, updated_at = CURRENT_TIMESTAMP::text
+                WHERE run_id = %s AND status = %s
+                """,
+                (
+                    terminal_status,
+                    (
+                        "R5 cash-admission control postflight 通過"
+                        if accepted
+                        else "R5 cash-admission control postflight 未通過"
+                    ),
+                    result_digest if accepted else None,
+                    run_id,
+                    RunStatus.CONTROL_POSTFLIGHT.value,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise CashAdmissionControlConflict("R5 terminal status conflict")
+            return {
+                **registration,
+                "status": "ACCEPTED" if accepted else "INVALID",
+                "postflight_digest": expected_postflight["postflight_digest"],
+                "postflight": expected_postflight,
+            }
 
     def activate_dataset_binding(
         self,
@@ -1011,6 +1444,262 @@ class PostgresBacktestRepository(_JsonBacktestRepository):
             ),
         }
         return verify_qualification_record(payload)
+
+    def _result_with_cursor(self, cursor: Any, run_id: str) -> dict[str, Any]:
+        cursor.execute(
+            "SELECT result_json FROM backtest_results WHERE run_id = %s",
+            (run_id,),
+        )
+        raw = cursor.fetchone()
+        if raw is None:
+            raise KeyError(f"回測工作尚未產生結果：{run_id}")
+        root = _decode_json(self._row(cursor, raw)["result_json"])
+        if root.get("_storage") is None:
+            return root
+        cursor.execute(
+            """
+            SELECT field_name, chunk_sequence, item_count,
+                   payload_json, payload_digest
+            FROM backtest_result_chunks
+            WHERE run_id = %s
+            ORDER BY field_name, chunk_sequence
+            """,
+            (run_id,),
+        )
+        rows = [self._row(cursor, item) for item in cursor.fetchall()]
+        return _rebuild_chunked_result(root, rows)
+
+    def _verify_control_preflight_identity(
+        self,
+        cursor: Any,
+        *,
+        baseline: Mapping[str, Any],
+        preflight: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        verify_run_identity(baseline)
+        verified = verify_cash_admission_preflight(preflight)
+        result = self._result_with_cursor(cursor, str(baseline["run_id"]))
+        summary_digest = str(result.get("summary", {}).get("result_digest") or "")
+        if (
+            not summary_digest
+            or summary_digest != str(baseline.get("result_digest") or "")
+            or recompute_backtest_result_digest(result) != summary_digest
+        ):
+            raise CashAdmissionControlIntegrityError(
+                "R5 baseline result digest 與 Run row 不一致"
+            )
+        config = dict(baseline["config"])
+        atomic_snapshot = config.get("atomic_strategy_run_snapshot")
+        amount_contract = config.get("dataset_amount_contract")
+        binding_snapshot = config.get("dataset_binding_snapshot")
+        if not all(
+            isinstance(item, Mapping)
+            for item in (atomic_snapshot, amount_contract, binding_snapshot)
+        ):
+            raise CashAdmissionControlIntegrityError(
+                "R5 baseline 缺少 Atomic/Dataset/amount immutable evidence"
+            )
+        cursor.execute(
+            "SELECT * FROM backtest_datasets WHERE dataset_id = %s FOR SHARE",
+            (baseline["dataset_id"],),
+        )
+        raw_dataset = cursor.fetchone()
+        if raw_dataset is None:
+            raise CashAdmissionControlIntegrityError("R5 baseline Dataset registration 遺失")
+        dataset_row = self._row(cursor, raw_dataset)
+        if dataset_row["status"] != "READY":
+            raise CashAdmissionControlIntegrityError("R5 baseline Dataset 不是 READY")
+        manifest = self._verified_registered_manifest(dataset_row["manifest_json"])
+        expected_identity = {
+            "baseline_run_id": baseline["run_id"],
+            "baseline_config_digest": baseline["config_digest"],
+            "baseline_result_digest": baseline["result_digest"],
+            "dataset_id": baseline["dataset_id"],
+            "dataset_digest": baseline["dataset_digest"],
+            "dataset_manifest_digest": manifest["manifest_digest"],
+            "dataset_bars_sha256": manifest["bars_sha256"],
+            "dataset_binding_revision": int(binding_snapshot["revision"]),
+            "strategy_set_snapshot_digest": digest(dict(config["strategy_set"])),
+            "atomic_strategy_run_snapshot_digest": str(
+                atomic_snapshot.get("snapshot_digest") or ""
+            ),
+            "dataset_amount_contract_digest": digest(dict(amount_contract)),
+            "engine_version": config["engine_version"],
+            "commission_rate": str(config["commission_rate"]),
+            "sell_tax_rate": str(config["sell_tax_rate"]),
+            "slippage_bps": str(config["slippage_bps"]),
+            "min_lot_shares": int(config["min_lot_shares"]),
+        }
+        if dict(verified["identity"]) != expected_identity:
+            raise CashAdmissionControlIntegrityError(
+                "R5 preflight 與 durable baseline identity 不一致"
+            )
+        if (
+            binding_snapshot.get("dataset_id") != baseline["dataset_id"]
+            or binding_snapshot.get("dataset_digest") != baseline["dataset_digest"]
+        ):
+            raise CashAdmissionControlIntegrityError("R5 baseline binding identity 已漂移")
+        return result
+
+    @staticmethod
+    def _verify_control_config(
+        *,
+        baseline: Mapping[str, Any],
+        control_config: BacktestRunConfig,
+        preflight: Mapping[str, Any],
+    ) -> None:
+        snapshot = verify_research_control_snapshot(
+            dict(control_config.research_control_snapshot or {})
+        )
+        verified_preflight = verify_cash_admission_preflight(preflight)
+        if snapshot["preflight_digest"] != verified_preflight["artifact_digest"]:
+            raise CashAdmissionControlIntegrityError("R5 control config preflight 已漂移")
+        expected = dict(baseline["config"])
+        expected.update(
+            {
+                "starting_cash": verified_preflight["sizing"]["starting_cash"],
+                "position_fraction": verified_preflight["sizing"]["position_fraction"],
+                "experiment_id": None,
+                "baseline_run_id": None,
+                "research_baseline_digest": None,
+                "parent_run_id": baseline["run_id"],
+                "change_note": snapshot["change_note"],
+                "research_control_snapshot": snapshot,
+            }
+        )
+        normalized_expected = BacktestRunConfig.from_dict(expected).to_dict()
+        if control_config.to_dict() != normalized_expected:
+            raise CashAdmissionControlIntegrityError(
+                "R5 control config 存在未核准的 baseline delta"
+            )
+
+    @staticmethod
+    def _control_identity_validation_digest(
+        *,
+        baseline: Mapping[str, Any],
+        control: Mapping[str, Any],
+        preflight: Mapping[str, Any],
+    ) -> str:
+        return cash_admission_identity_validation_digest(
+            baseline_run=baseline,
+            control_run=control,
+            preflight=preflight,
+        )
+
+    @staticmethod
+    def _control_operation_result(registration: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "baseline_run_id": registration["baseline_run_id"],
+            "contract_version": registration["contract_version"],
+            "revision": int(registration["revision"]),
+            "control_run_id": registration["control_run_id"],
+            "preflight_digest": registration["preflight_digest"],
+            "status": registration["status"],
+            "research_control_snapshot_digest": registration[
+                "research_control_snapshot_digest"
+            ],
+            "postflight_digest": registration.get("postflight_digest"),
+        }
+
+    def _insert_control_operation(
+        self,
+        cursor: Any,
+        *,
+        request: Mapping[str, Any],
+        request_digest: str,
+        result: Mapping[str, Any],
+    ) -> None:
+        cursor.execute(
+            """
+            INSERT INTO backtest_cash_admission_control_operations (
+                baseline_run_id, contract_version, idempotency_key,
+                request_digest, request_json, result_digest, result_json
+            ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s::jsonb)
+            """,
+            (
+                result["baseline_run_id"],
+                result["contract_version"],
+                request["idempotency_key"],
+                request_digest,
+                _json(request),
+                digest(dict(result)),
+                _json(result),
+            ),
+        )
+
+    def _control_run_payload(
+        self,
+        cursor: Any,
+        result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        cursor.execute(
+            "SELECT * FROM backtest_runs WHERE run_id = %s",
+            (result["control_run_id"],),
+        )
+        raw = cursor.fetchone()
+        if raw is None:
+            raise CashAdmissionControlIntegrityError("R5 operation Run result 遺失")
+        run = self._run_payload(self._row(cursor, raw))
+        return {**run, "cash_admission_control": dict(result)}
+
+    @staticmethod
+    def _verified_control_registration(row: Mapping[str, Any]) -> dict[str, Any]:
+        preflight = verify_cash_admission_preflight(
+            _decode_json(row["preflight_json"])
+        )
+        sizing = _decode_json(row["sizing_json"])
+        snapshot = verify_research_control_snapshot(
+            _decode_json(row["research_control_snapshot_json"])
+        )
+        if row["preflight_digest"] != preflight["artifact_digest"]:
+            raise CashAdmissionControlIntegrityError("R5 registration preflight digest 不一致")
+        if row["sizing_digest"] != digest(sizing) or sizing != preflight["sizing"]:
+            raise CashAdmissionControlIntegrityError("R5 registration sizing digest 不一致")
+        if row["research_control_snapshot_digest"] != snapshot["snapshot_digest"]:
+            raise CashAdmissionControlIntegrityError("R5 registration snapshot digest 不一致")
+        postflight = None
+        if row.get("postflight_json") is not None:
+            postflight = verify_cash_admission_postflight(
+                _decode_json(row["postflight_json"])
+            )
+            if row["postflight_digest"] != postflight["postflight_digest"]:
+                raise CashAdmissionControlIntegrityError("R5 registration postflight digest 不一致")
+        elif row.get("postflight_digest") is not None:
+            raise CashAdmissionControlIntegrityError("R5 registration postflight evidence 不完整")
+        status = str(row["status"])
+        if (status == "RUN_CREATED") != (postflight is None):
+            raise CashAdmissionControlIntegrityError("R5 registration status/evidence 不一致")
+        created_at = row["created_at"]
+        updated_at = row["updated_at"]
+        return {
+            "baseline_run_id": row["baseline_run_id"],
+            "contract_version": row["contract_version"],
+            "revision": int(row["revision"]),
+            "control_run_id": row["control_run_id"],
+            "preflight_digest": row["preflight_digest"],
+            "preflight": preflight,
+            "sizing_digest": row["sizing_digest"],
+            "sizing": sizing,
+            "research_control_snapshot_digest": row[
+                "research_control_snapshot_digest"
+            ],
+            "research_control_snapshot": snapshot,
+            "status": status,
+            "actor_id": row["actor_id"],
+            "change_note": row["change_note"],
+            "postflight_digest": row.get("postflight_digest"),
+            "postflight": postflight,
+            "created_at": (
+                created_at.isoformat()
+                if hasattr(created_at, "isoformat")
+                else str(created_at)
+            ),
+            "updated_at": (
+                updated_at.isoformat()
+                if hasattr(updated_at, "isoformat")
+                else str(updated_at)
+            ),
+        }
 
     @staticmethod
     def _advisory_lock_key(scope: str, identity: str) -> int:

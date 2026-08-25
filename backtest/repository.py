@@ -146,6 +146,28 @@ class BacktestRepository(Protocol):
     ) -> tuple[dict[str, Any], bool]:
         ...
 
+    def create_cash_admission_control(
+        self,
+        record: Mapping[str, Any],
+        *,
+        request: Mapping[str, Any],
+        request_digest: str,
+        preflight: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        ...
+
+    def get_cash_admission_control(self, run_id: str) -> dict[str, Any]:
+        ...
+
+    def finalize_cash_admission_control(
+        self,
+        run_id: str,
+        *,
+        result: Mapping[str, Any],
+        postflight: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        ...
+
     def save_result(self, run_id: str, result: Mapping[str, Any]) -> None:
         ...
 
@@ -651,92 +673,115 @@ class _JsonBacktestRepository:
         summary = result["summary"]
         root, chunk_manifests = _chunked_result_root(result)
         with self._transaction() as cursor:
-            self._execute(cursor, "SELECT 1 FROM backtest_runs WHERE run_id = ?", (run_id,))
-            if cursor.fetchone() is None:
-                raise KeyError(f"找不到回測工作：{run_id}")
-            # A completed run is an audit record.  Retrying or changing a
-            # strategy must create a new run instead of silently replacing its
-            # fills, decisions, or result digest.
-            self._execute(cursor, "SELECT 1 FROM backtest_results WHERE run_id = ?", (run_id,))
-            if cursor.fetchone() is not None:
-                raise ValueError(f"回測結果已封存，不能覆寫：{run_id}")
-            self._execute(
+            self._save_result_with_cursor(
                 cursor,
-                """
-                INSERT INTO backtest_results (run_id, result_json, summary_json, created_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (run_id, _json(root), _json(summary), _now()),
+                run_id=run_id,
+                result=result,
+                summary=summary,
+                root=root,
+                chunk_manifests=chunk_manifests,
             )
-            for field_name in _RESULT_CHUNK_FIELDS:
-                values = result.get(field_name, [])
-                assert isinstance(values, list)
-                descriptors = chunk_manifests[field_name]
-                for descriptor in descriptors:
-                    sequence = int(descriptor["sequence"])
-                    start = sequence * _RESULT_CHUNK_SIZE
-                    payload = values[start : start + _RESULT_CHUNK_SIZE]
-                    payload_json = _json(payload)
-                    if _sha256_text(payload_json) != descriptor["payload_digest"]:
-                        raise ValueError(
-                            f"回測結果 chunk 在封存期間發生變更：{field_name}:{sequence}"
-                        )
-                    self._execute(
-                        cursor,
-                        """
-                        INSERT INTO backtest_result_chunks (
-                            run_id, field_name, chunk_sequence, item_count,
-                            payload_json, payload_digest
-                        ) VALUES (?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            run_id,
-                            field_name,
-                            sequence,
-                            int(descriptor["item_count"]),
-                            payload_json,
-                            descriptor["payload_digest"],
-                        ),
+
+    def _save_result_with_cursor(
+        self,
+        cursor: Any,
+        *,
+        run_id: str,
+        result: Mapping[str, Any],
+        summary: Mapping[str, Any],
+        root: Mapping[str, Any],
+        chunk_manifests: Mapping[str, list[Mapping[str, Any]]],
+        allow_research_control: bool = False,
+    ) -> None:
+        """Persist one immutable result using the caller's transaction."""
+
+        self._execute(cursor, "SELECT config_json FROM backtest_runs WHERE run_id = ?", (run_id,))
+        raw_run = cursor.fetchone()
+        if raw_run is None:
+            raise KeyError(f"找不到回測工作：{run_id}")
+        run_config = _decode_json(self._row(cursor, raw_run)["config_json"])
+        if run_config.get("research_control_snapshot") is not None and not allow_research_control:
+            raise ValueError("R5 control result 只能由 server postflight transaction 發布")
+        self._execute(cursor, "SELECT 1 FROM backtest_results WHERE run_id = ?", (run_id,))
+        if cursor.fetchone() is not None:
+            raise ValueError(f"回測結果已封存，不能覆寫：{run_id}")
+        self._execute(
+            cursor,
+            """
+            INSERT INTO backtest_results (run_id, result_json, summary_json, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (run_id, _json(root), _json(summary), _now()),
+        )
+        for field_name in _RESULT_CHUNK_FIELDS:
+            values = result.get(field_name, [])
+            assert isinstance(values, list)
+            descriptors = chunk_manifests[field_name]
+            for descriptor in descriptors:
+                sequence = int(descriptor["sequence"])
+                start = sequence * _RESULT_CHUNK_SIZE
+                payload = values[start : start + _RESULT_CHUNK_SIZE]
+                payload_json = _json(payload)
+                if _sha256_text(payload_json) != descriptor["payload_digest"]:
+                    raise ValueError(
+                        f"回測結果 chunk 在封存期間發生變更：{field_name}:{sequence}"
                     )
-            self._execute_many_bounded(
-                cursor,
-                "INSERT INTO backtest_decisions (run_id, decision_id, symbol, event_at, side, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
-                (
+                self._execute(
+                    cursor,
+                    """
+                    INSERT INTO backtest_result_chunks (
+                        run_id, field_name, chunk_sequence, item_count,
+                        payload_json, payload_digest
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
                     (
                         run_id,
-                        decision["decision_id"],
-                        decision["symbol"],
-                        decision["event_at"],
-                        decision["side"],
-                        _json(decision),
-                    )
-                    for decision in result.get("decisions", [])
-                ),
-            )
-            self._execute_many_bounded(
-                cursor,
-                "INSERT INTO backtest_trades (run_id, trade_id, symbol, entry_at, exit_at, net_pnl, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        field_name,
+                        sequence,
+                        int(descriptor["item_count"]),
+                        payload_json,
+                        descriptor["payload_digest"],
+                    ),
+                )
+        self._execute_many_bounded(
+            cursor,
+            "INSERT INTO backtest_decisions (run_id, decision_id, symbol, event_at, side, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
+            (
                 (
-                    (
-                        run_id,
-                        trade["trade_id"],
-                        trade["symbol"],
-                        trade["entry"]["filled_at"],
-                        trade["exit"]["filled_at"],
-                        trade["net_pnl"],
-                        _json(trade),
-                    )
-                    for trade in result.get("trades", [])
-                ),
-            )
-            self._execute_many_bounded(
-                cursor,
-                "INSERT INTO backtest_daily_equity (run_id, session_date, equity, payload_json) VALUES (?, ?, ?, ?)",
+                    run_id,
+                    decision["decision_id"],
+                    decision["symbol"],
+                    decision["event_at"],
+                    decision["side"],
+                    _json(decision),
+                )
+                for decision in result.get("decisions", [])
+            ),
+        )
+        self._execute_many_bounded(
+            cursor,
+            "INSERT INTO backtest_trades (run_id, trade_id, symbol, entry_at, exit_at, net_pnl, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
                 (
-                    (run_id, point["date"], point["equity"], _json(point))
-                    for point in result.get("daily_equity", [])
-                ),
-            )
+                    run_id,
+                    trade["trade_id"],
+                    trade["symbol"],
+                    trade["entry"]["filled_at"],
+                    trade["exit"]["filled_at"],
+                    trade["net_pnl"],
+                    _json(trade),
+                )
+                for trade in result.get("trades", [])
+            ),
+        )
+        self._execute_many_bounded(
+            cursor,
+            "INSERT INTO backtest_daily_equity (run_id, session_date, equity, payload_json) VALUES (?, ?, ?, ?)",
+            (
+                (run_id, point["date"], point["equity"], _json(point))
+                for point in result.get("daily_equity", [])
+            ),
+        )
 
     def get_result(self, run_id: str) -> dict[str, Any]:
         with self._cursor() as cursor:

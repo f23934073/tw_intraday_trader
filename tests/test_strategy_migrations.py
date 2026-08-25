@@ -20,6 +20,9 @@ ATOMIC_TABLES = (
     "backtest_qualifications",
     "backtest_experiment_families",
     "backtest_experiment_attempts",
+    "backtest_cash_admission_control_heads",
+    "backtest_cash_admission_control_registrations",
+    "backtest_cash_admission_control_operations",
 )
 
 EXPECTED_CONSTRAINT_COUNTS = {
@@ -38,6 +41,9 @@ EXPECTED_CONSTRAINT_COUNTS = {
     "backtest_qualifications": 10,
     "backtest_experiment_families": 10,
     "backtest_experiment_attempts": 8,
+    "backtest_cash_admission_control_heads": 4,
+    "backtest_cash_admission_control_registrations": 13,
+    "backtest_cash_admission_control_operations": 5,
 }
 
 ATOMIC_INDEXES = (
@@ -56,13 +62,15 @@ ATOMIC_INDEXES = (
     "backtest_experiment_families_created_index",
     "backtest_experiment_attempts_family_index",
     "backtest_qualifications_family_sequence_index",
+    "backtest_cash_control_registration_status_index",
+    "backtest_cash_control_operation_created_index",
 )
 
 
 def test_atomic_strategy_migration_is_numbered_and_owned_by_runner() -> None:
     files = migration_files()
-    assert files[-1].name == "013_backtest_result_chunks.sql"
-    sql = "\n".join(file.read_text(encoding="utf-8") for file in files[-9:])
+    assert files[-1].name == "014_cash_admission_controls.sql"
+    sql = "\n".join(file.read_text(encoding="utf-8") for file in files[-10:])
     for table in ATOMIC_TABLES:
         assert f"backtest.{table}" in sql
 
@@ -89,6 +97,7 @@ def test_atomic_strategy_migration_applies_once_to_postgresql(
     assert "011_strategy_set_archives.sql" in first
     assert "012_backtest_dataset_bindings.sql" in first
     assert "013_backtest_result_chunks.sql" in first
+    assert "014_cash_admission_controls.sql" in first
     assert second == ()
     with postgres_test_connection.cursor() as cursor:
         cursor.execute(

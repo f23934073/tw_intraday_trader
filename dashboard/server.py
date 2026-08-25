@@ -39,6 +39,11 @@ from backtest.dataset_binding import (
 )
 from backtest.migrations import apply_migrations
 from backtest.repository import BacktestIdempotencyConflict
+from backtest.research_control import (
+    CashAdmissionControlConflict,
+    CashAdmissionControlIntegrityError,
+    CashAdmissionControlNotAccepted,
+)
 from backtest.scheduler import AfterCloseIncrementalScheduler
 from config import backtest as backtest_settings
 from config import twse_calendar_2026
@@ -490,6 +495,23 @@ class AtomicBacktestRunRequest(StrictRequest):
     actor_id: str = Field(default="local-researcher", min_length=1, pattern=r".*\S.*")
 
 
+class CashAdmissionControlRequest(StrictRequest):
+    request_schema_version: Literal["cash-admission-control-request-v1"] = (
+        "cash-admission-control-request-v1"
+    )
+    control_contract_version: Literal["cash-admission-control-v1"] = (
+        "cash-admission-control-v1"
+    )
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_registration_revision: Literal[0] = 0
+    actor_id: str = Field(
+        default="local-researcher",
+        min_length=1,
+        pattern=r".*\S.*",
+    )
+    change_note: str = Field(min_length=1, pattern=r".*\S.*")
+
+
 def get_local_paper_settings_repository() -> JsonLocalPaperSettingsRepository:
     global _local_paper_settings_repository
     with _runtime_composition_lock:
@@ -702,6 +724,24 @@ def get_incremental_scheduler() -> AfterCloseIncrementalScheduler:
 
 
 def _backtest_http_error(error: Exception) -> HTTPException:
+    if isinstance(error, CashAdmissionControlNotAccepted):
+        return HTTPException(
+            status_code=409,
+            detail={
+                "code": "R5_CONTROL_POSTFLIGHT_NOT_ACCEPTED",
+                "message": str(error),
+            },
+        )
+    if isinstance(error, CashAdmissionControlConflict):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "R5_CONTROL_CONFLICT", "message": str(error)},
+        )
+    if isinstance(error, CashAdmissionControlIntegrityError):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "R5_CONTROL_INTEGRITY_ERROR", "message": str(error)},
+        )
     if isinstance(error, AtomicBacktestBindingChanged):
         return HTTPException(
             status_code=409,
@@ -2010,6 +2050,76 @@ def create_atomic_backtest_run(
         resource_id=run["run_id"],
         actor_id=payload.actor_id,
         operation_scope="backtest-run:create:atomic",
+        idempotency_key=key,
+        outcome="REPLAYED" if idempotent else "SUCCESS",
+        request_document=request_document,
+        change_note=payload.change_note,
+        after_digest=run["config_digest"],
+    )
+    if idempotent:
+        response.status_code = status.HTTP_200_OK
+    return {"run": run, "idempotent": idempotent}
+
+
+@app.post(
+    "/api/backtests/runs/{baseline_run_id}/cash-admission-controls",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_cash_admission_control(
+    baseline_run_id: str,
+    payload: CashAdmissionControlRequest,
+    request: Request,
+    response: Response,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, Any]:
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    request_document = {
+        **payload.model_dump(),
+        "baseline_run_id": baseline_run_id,
+    }
+    try:
+        run, idempotent = get_backtest_service().create_cash_admission_control(
+            baseline_run_id=baseline_run_id,
+            **payload.model_dump(),
+            idempotency_key=key,
+        )
+    except Exception as error:
+        _record_atomic_audit(
+            action="R5_CASH_ADMISSION_CONTROL_CREATE",
+            resource_type="BACKTEST_RUN",
+            resource_id=baseline_run_id,
+            actor_id=payload.actor_id,
+            operation_scope=(
+                f"r5-control:create:{baseline_run_id}:cash-admission-control-v1"
+            ),
+            idempotency_key=key,
+            outcome=(
+                "CONFLICT"
+                if isinstance(
+                    error,
+                    (
+                        BacktestIdempotencyConflict,
+                        CashAdmissionControlConflict,
+                        CashAdmissionControlIntegrityError,
+                    ),
+                )
+                else "FAILED"
+            ),
+            request_document=request_document,
+            change_note=payload.change_note,
+            details={"error_type": type(error).__name__, "message": str(error)},
+        )
+        raise _backtest_http_error(error) from error
+    _record_atomic_audit(
+        action="R5_CASH_ADMISSION_CONTROL_CREATE",
+        resource_type="BACKTEST_RUN",
+        resource_id=run["run_id"],
+        actor_id=payload.actor_id,
+        operation_scope=(
+            f"r5-control:create:{baseline_run_id}:cash-admission-control-v1"
+        ),
         idempotency_key=key,
         outcome="REPLAYED" if idempotent else "SUCCESS",
         request_document=request_document,

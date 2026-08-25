@@ -60,6 +60,8 @@ class RunStatus(StrEnum):
     CANCELLING = "CANCELLING"
     CANCELLED = "CANCELLED"
     FAILED = "FAILED"
+    CONTROL_POSTFLIGHT = "CONTROL_POSTFLIGHT"
+    INVALID_CASH_ADMISSION_CONTROL = "INVALID_CASH_ADMISSION_CONTROL"
     COMPLETED = "COMPLETED"
 
 
@@ -265,6 +267,7 @@ class BacktestRunConfig:
     atomic_run_request_digest: str | None = None
     dataset_binding_snapshot: Mapping[str, Any] | None = None
     dataset_amount_contract: Mapping[str, Any] | None = None
+    research_control_snapshot: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -293,10 +296,26 @@ class BacktestRunConfig:
             "atomic_run_request",
             "dataset_binding_snapshot",
             "dataset_amount_contract",
+            "research_control_snapshot",
         ):
             value = getattr(self, field_name)
             if value is not None:
                 object.__setattr__(self, field_name, dict(value))
+        if self.research_control_snapshot is not None:
+            snapshot = dict(self.research_control_snapshot)
+            snapshot_digest = str(snapshot.get("snapshot_digest") or "")
+            if len(snapshot_digest) != 64 or any(
+                character not in "0123456789abcdef"
+                for character in snapshot_digest
+            ):
+                raise ValueError("research control snapshot digest 必須是 lowercase SHA-256")
+            snapshot_body = {
+                key: value
+                for key, value in snapshot.items()
+                if key != "snapshot_digest"
+            }
+            if digest(snapshot_body) != snapshot_digest:
+                raise ValueError("research control snapshot digest 與 evidence 不一致")
         if (self.atomic_run_request is None) != (self.atomic_run_request_digest is None):
             raise ValueError("atomic Run request evidence 與 digest 必須同時存在")
         if self.atomic_run_request_digest is not None:
@@ -359,6 +378,8 @@ class BacktestRunConfig:
             value["dataset_binding_snapshot"] = dict(self.dataset_binding_snapshot)
         if self.dataset_amount_contract is not None:
             value["dataset_amount_contract"] = dict(self.dataset_amount_contract)
+        if self.research_control_snapshot is not None:
+            value["research_control_snapshot"] = dict(self.research_control_snapshot)
         return value
 
     @classmethod
@@ -405,6 +426,11 @@ class BacktestRunConfig:
             dataset_amount_contract=(
                 dict(value["dataset_amount_contract"])
                 if value.get("dataset_amount_contract") is not None
+                else None
+            ),
+            research_control_snapshot=(
+                dict(value["research_control_snapshot"])
+                if value.get("research_control_snapshot") is not None
                 else None
             ),
         )
