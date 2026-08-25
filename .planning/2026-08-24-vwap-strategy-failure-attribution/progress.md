@@ -275,3 +275,130 @@
   unapplied and no R5 head, registration, or operation exists. Execution stays
   paused before the first irreversible mutation until an independent short
   re-review approves the schema-v2 remediation.
+- Independent short re-review approved the cross-session matcher, schema-v2
+  algorithm identity, regression, canonical artifact rebuild, and v1
+  fail-closed behavior with no blocker.
+- User explicitly authorized formal R5 execution after that approval. The next
+  action is one final pre-mutation identity check followed by Migration 014 and
+  the sole authoritative registration/Control Run. R6, Local Paper, providers,
+  broker, and real-money remain prohibited.
+- The first final pre-mutation probe aborted read-only because status values
+  were quoted as SQL identifiers. No table or Run changed; the retry uses a
+  parameterized status array rather than repeating that SQL construction.
+- Corrected pre-mutation verification passed: the baseline/binding/v2 preflight
+  identities are unchanged, all 128,802 candidates match, no other Run is
+  active, and Migration 014 tables remain absent. Added an isolated execution
+  harness with a call-blocking MockProvider, stable idempotency key, durable
+  status monitoring, and cleanup that cannot cancel unrelated Runs.
+- Repository initialization applied Migration 014 and atomically created the
+  sole revision-1 registration plus Control Run
+  `run-4de8112d3a154148a1af93fc86a26f83` with config digest
+  `1f0f38e0b7036f6dce2f7fd358ff38fea5bc0afe720cae1870c02c210d24e0f6`.
+  Creation was not a replay; registration status is `RUN_CREATED`, preflight
+  digest is the approved schema-v2 artifact, and the worker entered `RUNNING`.
+- The worker completed all 28,325,340 Kbars with zero provider calls, then the
+  server postflight correctly sealed revision 1 as `INVALID` and the Run as
+  `INVALID_CASH_ADMISSION_CONTROL`; no performance result was published.
+- Postflight diagnostics: baseline/candidate signals `128802`, control ENTRY
+  orders `128772`, control ENTRY fills `118252`, non-FILLED cash rejections
+  `10520`, and both signal-count/multiplicity parity checks failed. Postflight
+  digest is `e0bf1d76555eb62b4e4fe93b0dcd9f0187bf2a8fd8b878ea070ea4fa8cf78c6f`;
+  provider audit is an empty list.
+- The formal `REPEATABLE READ READ ONLY` acceptance SQL rejected as required
+  with exit code `3`, rolled back its snapshot, and reported no published
+  control result, registration `INVALID`, Run `INVALID_CASH_ADMISSION_CONTROL`,
+  and server postflight not accepted.
+- Final durable audit confirms Migration 014 exactly once, one head, one sealed
+  registration, one operation, no active Runs, and zero published result rows,
+  chunks, trades, or daily-equity rows for the invalid Control Run.
+- R5 decision: the authoritative control is invalid and cannot be interpreted
+  as strategy performance. The strategy remains `HOLD / NOT ELIGIBLE`; R6 is
+  blocked. Any attempt to change sizing or signal-parity semantics requires a
+  separately reviewed contract revision rather than retry/clone of revision 1.
+
+### R5 contract revision 2 design
+
+- User required a new R5 contract revision that removes current-equity sizing
+  and signal-parity path dependence.
+- Started a design-only phase. No revision-2 Run, migration, PostgreSQL state,
+  R6, Local Paper, provider, broker, or real-money operation is authorized.
+- Frozen the primary design direction: baseline ENTRY evidence becomes a
+  canonical signal ledger, and every signal is independently replayed at one
+  lot without strategy re-evaluation or shared portfolio state.
+- Source inspection confirmed engine order: pending fill, position-dependent
+  branch, then exit or new ENTRY evaluation. The revision-2 implementation will
+  therefore use a separate research replay boundary, not
+  `HistoricalBacktestEngine.run()`.
+- Frozen provisional exit matching for design review: first same-symbol
+  session close strictly after the matched entry Kbar; an entry on a closing
+  Kbar exits at the next observed session close. Missing entry/exit invalidates
+  the replay.
+- Created `architecture/vwap_signal_ledger_replay_v2_implementation_plan.md`
+  with frozen research scope, ledger/match/episode schemas, Decimal formulas,
+  Clean Architecture ports, PostgreSQL/idempotency contract, publication
+  barrier, adversarial tests, and staged Gates.
+- Updated the original failure-attribution Gate so revision 1 and R6 v1 are
+  visibly historical/superseded and cannot be mistaken for execution authority.
+- Contract self-review corrected order-level strategy fields to the actual
+  member IDs, moved exact Version identity to the manifest, and disclosed that
+  the ledger covers baseline-observed rather than counterfactual signals.
+- Targeted `git diff --check`, trailing-whitespace, EOF newline, Markdown fence,
+  and local-link checks pass. No product tests were run because this phase only
+  changes design/planning documents.
+- **Disposition:** R5 revision 2 design complete / ready for independent Review.
+  Implementation, migration, PostgreSQL mutation, formal replay, R6, Local
+  Paper, provider, broker, and real-money remain unauthorized.
+
+### R5 revision 2 G0 remediation
+
+- Independent Review found three P1 blockers: nonexistent historical order
+  projection authority, open-ended immutable schemas, and incomplete layer-by-
+  layer parity checks.
+- Accepted the findings and reopened G0. Design direction remains the canonical
+  signal ledger plus independent one-lot episodes; implementation and execution
+  remain unauthorized.
+- Replaced order authority with baseline ENTRY decisions already protected by
+  `result_digest`. Signal IDs now derive from decision IDs; current orders only
+  form an explicitly labelled v2 inception derivation seal that is recomputed in
+  the registration transaction and on later reads.
+- Froze common UTF-8/canonical JSONL, timezone, Decimal, sorting, and digest
+  rules plus exact key sets for order derivation, Signal Ledger/manifest,
+  Match Plan/manifest, modeled Entry/Exit, Replay Episode, result summary/
+  manifest, and postflight conditions/diagnostics/verdict.
+- Added exact `(sequence, signal_id, semantic_key)` multiset parity in both
+  directions across all six boundaries, explicit duplicate-match rejection,
+  per-direction difference counts, and same-count substitution regressions.
+- **Disposition:** three G0 Review fixes applied / ready for short re-review.
+  G0 is not passed or frozen; implementation/execution and all downstream
+  authorities remain blocked.
+
+### R5 revision 2 exact-contract re-review reopening
+
+- Independent Review closed the original three G0 blockers but found three new
+  P1 contract inconsistencies: Match multiplicity token arity, finite Profit
+  Factor canonicalization, and source-order regression semantics.
+- Reopened G0 as `CHANGES REQUIRED / NOT PASSED / NOT FROZEN` before editing
+  the contract.
+- Work remains design-document-only. Implementation, execution, Migration,
+  PostgreSQL mutation, R6, Local Paper, provider, broker, and real-money paths
+  remain unauthorized.
+- Unified Match/Result/Postflight layer multiplicity identity on the exact
+  `(sequence, signal_id, semantic_key)` token and shared projection schema.
+- Froze finite Profit Factor arithmetic and canonical scale-18 Decimal output,
+  including zero, infinity, undefined, and failure cases.
+- Split source-order tests: authoritative durable decision reorder fails
+  identity verification, while unpublished derived-chunk reorder converges
+  after canonical publication.
+- Clarified that derived parity sorting happens only after durable authority
+  identity verification and never rewrites the stored-order projection.
+- **Disposition:** exact-contract fixes complete / ready for short G0 re-review.
+  G0 is still not passed or frozen; downstream authority remains blocked.
+
+### R5 revision 2 G0 approval and scoped packaging
+
+- Independent Review reported no remaining blocker and explicitly approved G0.
+- Updated the implementation plan, research Gate, task plan, findings, and
+  progress to `APPROVED / G0 PASSED / CONTRACT FROZEN`.
+- User authorized a scoped local commit containing only the R5 revision-2 design
+  and these approval records. Push, G1 implementation, formal replay, R6, Local
+  Paper, provider, broker, and real-money execution remain unauthorized.

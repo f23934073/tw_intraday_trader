@@ -276,6 +276,131 @@
   artifact exactly. Application PostgreSQL still has none of the Migration 014
   tables, so no head, registration, operation, or Control Run was written while
   the changed preflight contract awaits independent re-review.
+- Formal revision 1 demonstrated why preflight sizing is only a candidate
+  screen: `C*f` is just sufficient for one lot at the global `P_max`, while the
+  engine sizes from current equity. After losses reduce equity, the same
+  `position_fraction` can floor expensive symbols below one lot or exceed
+  remaining cash. The authoritative Run therefore produced 10,520 cash
+  rejections despite the 80% simultaneous-allocation buffer.
+- Signal parity is also path-dependent. A pending intraday ENTRY may fill on
+  the next observed symbol Kbar in a later session; the resulting position is
+  processed before that session's ENTRY evaluation and can suppress a signal
+  that exists in the cash-rejected baseline. The invalid control recorded 30
+  fewer ENTRY orders, so a future revision cannot assume signal multiplicity is
+  invariant when admission changes engine state.
+
+## R5 contract revision 2 design discovery
+
+- Revision 1 cannot be repaired by increasing starting cash or adjusting
+  `position_fraction`: both remain tied to current-equity and shared-cash path
+  state, so the final order size is not an invariant of the original signal.
+- Exact signal parity cannot be proven by running the strategy through the
+  portfolio engine again. Different admission changes pending fills and
+  positions before later evaluations, which changes the signal stream itself.
+- Revision 2 must therefore use the baseline ENTRY multiset as an immutable
+  authoritative signal ledger. It must never call strategy evaluation while
+  building control outcomes.
+- Each ledger item must be replayed as an independent one-lot episode with no
+  shared cash, current equity, portfolio position, owner state, or allocation
+  ordering. Overlapping episodes are permitted research observations and are
+  explicitly not an executable portfolio.
+- Revision 2 can answer whether the frozen signal population has signal-level
+  economic edge under fixed execution/cost assumptions. It cannot establish
+  deployable portfolio performance, buying-power feasibility, or promotion to
+  Local Paper.
+- The independent exit rule must not be described loosely as "same-day close".
+  Entry remains the first observed same-symbol Kbar strictly after the signal;
+  exit is the first later same-symbol session-closing Kbar strictly after that
+  entry event. If entry occurs on a session's final Kbar, exit moves to the next
+  observed session close. Missing entry or exit evidence invalidates the whole
+  replay.
+- The current `HistoricalBacktestEngine` processes pending fills before
+  strategy evaluation and keeps positions across sessions. It is therefore an
+  unsuitable application service for revision 2; a separate deterministic
+  signal-ledger replay domain/use case must own matching and episode P&L.
+- Revision 2 should not create a normal `backtest_run` or publish portfolio
+  equity/drawdown metrics. A separate research replay aggregate prevents the
+  non-deployable overlapping episodes from entering compare, Qualification, or
+  lifecycle paths by accident.
+- R6 v1 assumes the accepted R5 portfolio Run and its cash-admission allocation
+  are reusable as a canonical Baseline. Revision 1 invalidated that premise, so
+  R6 must remain blocked and its execution contract must be reviewed separately
+  after R5 revision 2 rather than silently inheriting the new episode semantics.
+- Baseline order rows preserve strategy member IDs, not necessarily catalog
+  Version IDs. Ledger rows therefore retain exact order member fields while the
+  manifest binds the immutable Atomic Strategy Version snapshot.
+- Freezing the ledger solves control-vs-baseline parity, but it does not recover
+  counterfactual signals that the original baseline portfolio path never
+  evaluated. The v2 population must always be labelled
+  `baseline-observed signals`.
+- Statistical bootstrap/CI semantics are deliberately excluded from revision 2
+  rather than leaving user-controlled or implementation-dependent parameters.
+  A positive point estimate remains exploratory and cannot qualify the strategy.
+
+## R5 contract revision 2 G0 Review remediation
+
+- Existing `result_digest` covers decisions but not orders/fills. V1 preserved
+  only signal multiplicity, so no historical full ENTRY order projection seal
+  exists. Revision 2 must use result-digest-bound ENTRY decisions as authority.
+- Orders can only be a v2 inception-time derived projection: every authoritative
+  ENTRY decision must map to exactly one current ENTRY order by `decision_id`,
+  and every current ENTRY order must map back. The new seal must be labelled v2
+  inception evidence rather than historical v1 evidence.
+- Open-ended phrases such as "at least contains" conflict with exact-schema
+  verification. Ledger, manifests, match rows, episodes, and postflight require
+  enumerated fields, types, ordering, formatting, and digest projections.
+- Equal total counts cannot prove identity parity. Postflight must verify
+  bidirectional multiset equality at decision-ledger, ledger-match,
+  match-episode, episode-modeled-entry, and episode-modeled-exit boundaries,
+  including explicit duplicate-match rejection.
+- Remediation makes ENTRY decisions the only historical signal authority.
+  `signal_id` is decision-based; each ledger row binds the full source decision
+  digest, and the manifest binds an exact decision-id/digest projection.
+- Current orders are verified in both directions against decisions, but their
+  projection is sealed only at v2 inception. The registration transaction
+  recomputes that seal and later reads must reproduce it.
+- All immutable schemas now have exact key sets and a shared canonical wire
+  format: UTF-8 canonical JSON/JSONL, Taipei second-resolution timestamps,
+  normalized Decimal strings, fixed precision/rounding, explicit row order,
+  byte SHA-256, and body-without-self digest rules.
+- Postflight parity uses `(sequence, signal_id, semantic_key)` grouped
+  multiplicities. It checks both directions at six boundaries and stores every
+  difference count, so equal-count substitution cannot pass.
+
+## R5 revision 2 exact-contract re-review reopening
+
+- The first three G0 blockers are closed, but exact-contract Review found three
+  new internal contradictions; G0 remains not passed and not frozen.
+- The Match manifest's two-field multiplicity token conflicts with the frozen
+  three-field `(sequence, signal_id, semantic_key)` token used by section 8.1.
+- `FINITE` Profit Factor lacks an exact quotient, scale-18 quantization,
+  `ROUND_HALF_EVEN`, and canonical Decimal normalization contract.
+- The authoritative decision projection preserves durable order, so its rows
+  cannot be reordered without invalidating baseline identity. Reorder stability
+  applies only to unpublished derived/external-sort chunks before canonical
+  publication.
+- The Match manifest now uses the same exact three-field layer token and
+  `r5-layer-parity-projection-v2` schema as Result/Postflight; every
+  `*_signal_multiplicity_digest` shares that definition.
+- `FINITE` Profit Factor now freezes positive/negative `net_pnl` sums, Decimal
+  division, scale-18 `ROUND_HALF_EVEN` quantization, normalization, zero cases,
+  and fail-closed overflow behavior.
+- Tests now distinguish raw authoritative-decision reorder, which invalidates
+  baseline identity, from unpublished derived-chunk reorder, which must converge
+  to the same canonical publication digest.
+- **Disposition:** all three exact-contract Review fixes applied; ready for a
+  short G0 re-review. G0 remains not passed/frozen, and no product code,
+  migration, PostgreSQL state, replay execution, R6, Local Paper, provider,
+  broker, or real-money work is authorized.
+
+## R5 revision 2 G0 approval
+
+- Independent exact-contract Review found no remaining blocker and approved the
+  three-field parity identity, finite Profit Factor arithmetic, and split
+  authoritative/derived reorder semantics.
+- **Disposition:** `R5 v2 Design: APPROVED`; `G0: PASSED / CONTRACT FROZEN`.
+- G1-G5 implementation/execution remain separately gated and unauthorized. R6,
+  Local Paper, provider, broker, and real-money execution remain blocked.
 
 ## Evidence storage discovery
 

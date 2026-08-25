@@ -14,9 +14,15 @@ Broker / Real-money: PROHIBITED
 但尚不能把全部虧損單獨歸因於 VWAP ENTRY。原因是同日大量訊號受到
 `(timestamp, symbol)` 排序與剩餘現金 admission 的強烈抽樣偏差。
 
-下一個研究 Gate 先執行 cash-admission-neutral sensitivity control；不先調參、
-不建立組合策略，
-也不把同一份 exploratory Dataset 當成正式 OOS promotion 證據。
+原 cash-admission-neutral revision 1 已正式執行，但因 current-equity sizing 仍產生
+10,520 筆拒單，且重新跑 portfolio engine 少了 30 筆 ENTRY signal，最終以
+`INVALID / ACCEPTANCE REJECTED` 封存。該結果不可解讀為策略績效，也不可 retry、
+clone 或用較大資金重跑。
+
+後續改由 [R5 Contract Revision 2 — VWAP Signal-Ledger One-Lot Replay](./vwap_signal_ledger_replay_v2_implementation_plan.md)
+重新設計。Revision 2 凍結 baseline signal ledger，每筆獨立一張 replay，不再使用
+current equity、共享現金、portfolio position 或策略重新評估。本文件第 5、6 節保留
+revision 1／R6 v1 的歷史契約與稽核脈絡，不再構成執行授權。
 
 ## 2. 基準證據
 
@@ -86,7 +92,11 @@ challenger。
 尚未各自量測的原子策略不可直接用 `ALL`／`ANY` 組合；否則無法辨認績效來自
 哪一個策略，也會快速消耗 multiple-testing budget。
 
-## 5. Gate R5 — Cash-admission-neutral VWAP sensitivity control
+## 5. Historical Gate R5 revision 1 — Cash-admission-neutral control
+
+> **SUPERSEDED / SEALED INVALID**：本節是 revision 1 的已執行契約。Control Run
+> `run-4de8112d3a154148a1af93fc86a26f83` 已 fail closed；不得依本節建立第二個
+> authoritative control。Revision 2 以獨立文件為準。
 
 R5 只回答一個問題：排除「剩餘現金不足」造成的 signal admission 偏差後，
 同一組 VWAP ENTRY／EOD EXIT 是否仍無正 edge。現行 engine 會用每筆成交前的
@@ -289,6 +299,11 @@ evidence，不是第一個阻擋績效曝光的 Gate。
 
 ## 6. Gate R6 — Atomic ENTRY benchmark matrix
 
+> **SUPERSEDED / NOT AUTHORIZED**：本節的 R6 v1 假設存在 accepted R5 portfolio
+> Run 與可繼承的 cash-admission allocation。R5 revision 1 已 invalid，而 revision 2
+> 刻意不是 portfolio Run，因此本節只保留歷史設計。R6 必須等 R5 v2 accepted 後
+> 另行 Review；不得把 `replay_id` 當成 `baseline_run_id`。
+
 R5 完成後，才可用同一套 cash-admission-neutral execution policy，分別建立下列
 單一 ENTRY Strategy Set：
 
@@ -356,7 +371,7 @@ Qualification 才由使用者填入。
 
 沒有單一 atomic candidate 通過前，不建立策略組合。
 
-### 6.3 實作修改地圖
+### 6.3 Historical implementation map
 
 R5/R6 execution 前至少修改：
 
@@ -381,7 +396,7 @@ R5/R6 execution 前至少修改：
   redaction、missing next bar、所有非 FILLED reason、multiplicity parity、family
   budget 20、sealed slot order、concurrent consume。
 
-本次契約修正不授權建立 migration、產品 endpoint 或任何 Run。
+本次契約修正不授權建立 migration、產品 endpoint、Replay 或任何 Run。
 
 本 Dataset 只能做 exploratory screening。正式 promotion 仍須使用
 `research_eligible=true`、date-effective、adjusted-price、point-in-time metadata
@@ -391,9 +406,10 @@ Dataset，重新通過 Qualification Gate。
 
 ```text
 Failure Attribution: COMPLETE
-Gate R5 design remediation: REVIEW FIX APPLIED / READY FOR RE-REVIEW
-Gate R5 execution: NOT STARTED
-Gate R6 contract remediation: ACCEPTED BY PRIOR REVIEW / EXECUTION BLOCKED ON R5
-Gate R6 execution: NOT AUTHORIZED
+Gate R5 revision 1: COMPLETE / INVALID / SEALED
+Gate R5 revision 2 design: APPROVED / G0 PASSED / CONTRACT FROZEN
+Gate R5 revision 2 implementation/execution: NOT AUTHORIZED
+Gate R6 v1: SUPERSEDED / NOT AUTHORIZED
+Gate R6 revision 2: BLOCKED ON ACCEPTED R5 V2 / NOT AUTHORIZED
 Local Paper / Broker / Real-money: PROHIBITED
 ```
