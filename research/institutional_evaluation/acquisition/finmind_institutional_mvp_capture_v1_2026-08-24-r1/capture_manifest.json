@@ -1,0 +1,101 @@
+{
+  "artifact_id": "finmind-institutional-mvp-capture-v1-2026-08-24-r1",
+  "authentication": {
+    "credential_environment_name": "FINMIND_API_TOKEN",
+    "credential_present": true,
+    "credential_value_persisted": false
+  },
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "protocol_reference": {
+    "artifact_id": "finmind-institutional-mvp-protocol-v1-2026-08-24-r1",
+    "canonical_sha256": "470282b38653f1502c92153e7ad6dc06409c3b62a95d8262e05a05a944734925"
+  },
+  "records": [
+    {
+      "body_file": "finmind_01_TaiwanStockInstitutionalInvestorsBuySellWide.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockInstitutionalInvestorsBuySellWide",
+      "field_names": [
+        "Dealer_Hedging_buy",
+        "Dealer_Hedging_sell",
+        "Dealer_buy",
+        "Dealer_self_buy",
+        "Dealer_self_sell",
+        "Dealer_sell",
+        "Foreign_Dealer_Self_buy",
+        "Foreign_Dealer_Self_sell",
+        "Foreign_Investor_buy",
+        "Foreign_Investor_sell",
+        "Investment_Trust_buy",
+        "Investment_Trust_sell",
+        "date",
+        "stock_id"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "raw_response_bytes": 6707644,
+      "raw_response_sha256": "81b763a10af6e99dc06a03656088c984351cc5f60ebec022f8c6d6954551c640",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "dataset": "TaiwanStockInstitutionalInvestorsBuySellWide",
+          "start_date": "2026-08-18"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "6707644",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 09:21:12 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T17:21:14.482386+08:00",
+      "role": "DAILY_WIDE_INSTITUTIONAL_FLOW",
+      "row_count": 20529,
+      "source_version": "FINMIND_API_V4"
+    },
+    {
+      "body_file": "finmind_02_TaiwanStockInfo.response.bin",
+      "data_array_present": true,
+      "dataset": "TaiwanStockInfo",
+      "field_names": [
+        "date",
+        "industry_category",
+        "stock_id",
+        "stock_name",
+        "type"
+      ],
+      "http_status": 200,
+      "json_message": "success",
+      "json_status": 200,
+      "raw_response_bytes": 594825,
+      "raw_response_sha256": "9b97e8f0c1705696f7978d9d34c236d66f93f1fa26aed717ca31b434cec7b891",
+      "request": {
+        "endpoint": "https://api.finmindtrade.com/api/v4/data",
+        "query": {
+          "dataset": "TaiwanStockInfo"
+        }
+      },
+      "response_headers_without_secrets": {
+        "access-control-allow-origin": "*",
+        "connection": "close",
+        "content-length": "594825",
+        "content-type": "application/json",
+        "date": "Mon, 24 Aug 2026 09:21:13 GMT",
+        "server": "uvicorn"
+      },
+      "retrieved_at": "2026-08-24T17:21:14.929456+08:00",
+      "role": "CURRENT_MARKET_AND_NAME_MAPPING",
+      "row_count": 4308,
+      "source_version": "FINMIND_API_V4"
+    }
+  ],
+  "schema_version": "finmind_institutional_mvp_capture_v1",
+  "usage_preflight": {
+    "api_request_limit": 6000,
+    "remaining_before": 3328,
+    "user_count_before": 2672
+  }
+}

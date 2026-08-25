@@ -1,0 +1,83 @@
+{
+  "artifact_id": "finmind-institutional-mvp-protocol-v1-2026-08-24-r1",
+  "authentication": {
+    "credential_environment_name": "FINMIND_API_TOKEN",
+    "credential_value_may_be_logged": false,
+    "credential_value_may_be_persisted": false,
+    "header_scheme": "AUTHORIZATION_BEARER",
+    "no_anonymous_fallback": true
+  },
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "execution_permissions": {
+    "formal_candidate_prior_allowed": false,
+    "formal_holdout_allowed": false,
+    "formal_pit_universe_allowed": false,
+    "mvp_candidate_observation_allowed": true,
+    "order_submission_allowed": false,
+    "outcome_generation_allowed": false,
+    "production_strategy_binding_allowed": false
+  },
+  "fixed_requests": [
+    {
+      "dataset": "TaiwanStockInstitutionalInvestorsBuySellWide",
+      "role": "DAILY_WIDE_INSTITUTIONAL_FLOW",
+      "start_date": "2026-08-18"
+    },
+    {
+      "dataset": "TaiwanStockInfo",
+      "role": "CURRENT_MARKET_AND_NAME_MAPPING"
+    }
+  ],
+  "http_contract": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "method": "GET",
+    "transport_version": "FINMIND_API_V4"
+  },
+  "mvp_contract": {
+    "candidate_limit": 20,
+    "candidate_rule": "FOREIGN_INVESTOR_NET_GT_0_AND_INVESTMENT_TRUST_NET_GT_0_AND_DEALER_NET_GT_0;_RANK_DESCENDING_BY_SUM_OF_THREE_NET_SHARES",
+    "candidate_type": "POST_CLOSE_NEXT_SESSION_OBSERVATION",
+    "market_mapping": "LATEST_TAIWAN_STOCK_INFO_ROW_PER_SYMBOL;_CURRENT_MAPPING_ONLY",
+    "session_date": "2026-08-18",
+    "source_scope": "FINMIND_WIDE_DAILY_FLOW_SCOPE_NOT_EQUIVALENT_TO_OFFICIAL_TWSE_TPEX_TRADE_SCOPE",
+    "universe_mode": "CURRENT_PROVIDER_MAPPED_SYMBOLS_ONLY",
+    "usable_from_session": "2026-08-19"
+  },
+  "mvp_limitations": [
+    "NOT_A_DATE_EFFECTIVE_PIT_UNIVERSE",
+    "CURRENT_MARKET_MAPPING_CAN_HAVE_SURVIVORSHIP_AND_TRANSFER_BIAS",
+    "POST_CLOSE_DATA_IS_NOT_SAME_SESSION_INTRADAY_SIGNAL",
+    "NO_PRICE_COVERAGE_OR_RETURN_EVIDENCE_IN_THIS_MVP",
+    "NO_FORMAL_BACKTEST_OR_HOLDOUT_CLAIM",
+    "NO_ORDER_OR_PRODUCTION_STRATEGY_AUTHORITY"
+  ],
+  "probe_scope": {
+    "is_formal_evaluation": false,
+    "is_formal_pit_acquisition": false,
+    "purpose": "FINMIND_DAILY_INSTITUTIONAL_CANDIDATE_MVP",
+    "read_price_or_kbar_data": false
+  },
+  "registered_at": "2026-08-24T11:20:00+08:00",
+  "request_budget": {
+    "data_requests": 2,
+    "minimum_remaining_after_probe": 100,
+    "usage_preflight_required": true
+  },
+  "response_capture": {
+    "capture_raw_provider_responses": true,
+    "capture_secret_headers": false,
+    "immutable_output_directory": "finmind_institutional_mvp_capture_v1_2026-08-24-r1",
+    "summary_may_include_institutional_flow_values": false
+  },
+  "schema_version": "finmind_institutional_mvp_protocol_v1",
+  "upstream_references": {
+    "formal_evaluation_protocol": {
+      "artifact_id": "formal-evaluation-gate-v1",
+      "canonical_sha256": "b769cf1b672e15d599cf610d22bda49d37981ddc36ae999b120b52702b197dc4"
+    },
+    "finmind_pit_reference_semantics_resolution": {
+      "artifact_id": "finmind-pit-reference-semantics-resolution-v1-2026-08-24-r1",
+      "canonical_sha256": "9b2f93a1ddcdedd2d9a9efeb9b9c729490fc57b67a3ed250c8ae860503720bfa"
+    }
+  }
+}

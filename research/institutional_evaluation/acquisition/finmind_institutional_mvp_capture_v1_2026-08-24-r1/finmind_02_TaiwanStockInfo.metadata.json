@@ -1,0 +1,35 @@
+{
+  "body_file": "finmind_02_TaiwanStockInfo.response.bin",
+  "data_array_present": true,
+  "dataset": "TaiwanStockInfo",
+  "field_names": [
+    "date",
+    "industry_category",
+    "stock_id",
+    "stock_name",
+    "type"
+  ],
+  "http_status": 200,
+  "json_message": "success",
+  "json_status": 200,
+  "raw_response_bytes": 594825,
+  "raw_response_sha256": "9b97e8f0c1705696f7978d9d34c236d66f93f1fa26aed717ca31b434cec7b891",
+  "request": {
+    "endpoint": "https://api.finmindtrade.com/api/v4/data",
+    "query": {
+      "dataset": "TaiwanStockInfo"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-origin": "*",
+    "connection": "close",
+    "content-length": "594825",
+    "content-type": "application/json",
+    "date": "Mon, 24 Aug 2026 09:21:13 GMT",
+    "server": "uvicorn"
+  },
+  "retrieved_at": "2026-08-24T17:21:14.929456+08:00",
+  "role": "CURRENT_MARKET_AND_NAME_MAPPING",
+  "row_count": 4308,
+  "source_version": "FINMIND_API_V4"
+}

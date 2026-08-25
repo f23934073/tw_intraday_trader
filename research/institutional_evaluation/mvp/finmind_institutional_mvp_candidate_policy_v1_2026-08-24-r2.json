@@ -1,0 +1,39 @@
+{
+  "artifact_id": "finmind-institutional-mvp-candidate-policy-v1-2026-08-24-r2",
+  "candidate_contract": {
+    "candidate_limit": 20,
+    "candidate_rule": "FOREIGN_INVESTOR_NET_GT_0_AND_INVESTMENT_TRUST_NET_GT_0_AND_CANONICAL_DEALER_NET_GT_0",
+    "dealer_total_net_formula": "IF_ANY_DEALER_SELF_OR_HEDGING_FIELD_IS_NONZERO:(Dealer_self_buy-Dealer_self_sell)+(Dealer_Hedging_buy-Dealer_Hedging_sell);_ELSE:(Dealer_buy-Dealer_sell)",
+    "market_mapping": "LATEST_TAIWAN_STOCK_INFO_ROW_PER_SYMBOL;_CURRENT_MAPPING_ONLY",
+    "rank_rule": "DESCENDING_BY_SUM_OF_FOREIGN_TRUST_AND_DEALER_TOTAL_NET_SHARES",
+    "session_date": "2026-08-18",
+    "usable_from_session": "2026-08-19"
+  },
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "execution_permissions": {
+    "formal_candidate_prior_allowed": false,
+    "formal_holdout_allowed": false,
+    "formal_pit_universe_allowed": false,
+    "mvp_candidate_observation_allowed": true,
+    "order_submission_allowed": false,
+    "outcome_generation_allowed": false,
+    "production_strategy_binding_allowed": false
+  },
+  "input_capture": {
+    "artifact_id": "finmind-institutional-mvp-capture-v1-2026-08-24-r1",
+    "canonical_sha256": "01aa72b4b2e8b4f53f08a97e38c38c62bcb7e996e5215b1e2cec8710a94f4d98"
+  },
+  "mvp_limitations": [
+    "NOT_A_DATE_EFFECTIVE_PIT_UNIVERSE",
+    "CURRENT_MARKET_MAPPING_CAN_HAVE_SURVIVORSHIP_AND_TRANSFER_BIAS",
+    "POST_CLOSE_DATA_IS_NOT_SAME_SESSION_INTRADAY_SIGNAL",
+    "NO_PRICE_COVERAGE_OR_RETURN_EVIDENCE",
+    "NO_FORMAL_BACKTEST_OR_HOLDOUT_CLAIM",
+    "NO_ORDER_OR_PRODUCTION_STRATEGY_AUTHORITY"
+  ],
+  "schema_version": "finmind_institutional_mvp_candidate_policy_v1",
+  "supersedes": {
+    "artifact_id": "finmind-institutional-mvp-r1-legacy-dealer-observation-v1-2026-08-24-r1",
+    "canonical_sha256": "139ac08b7f5cf715ef2a9ba84af8ca936d90b774114864242d428da34197b197"
+  }
+}

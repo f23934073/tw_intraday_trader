@@ -1,0 +1,31 @@
+{
+  "artifact_id": "finmind-institutional-mvp-r1-legacy-dealer-observation-v1-2026-08-24-r1",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "evidence_scope": {
+    "backtest_or_holdout_read": false,
+    "institutional_flow_fields_read": true,
+    "price_or_kbar_read": false,
+    "provider_call_performed": false,
+    "return_or_pnl_read": false
+  },
+  "input_capture": {
+    "artifact_id": "finmind-institutional-mvp-capture-v1-2026-08-24-r1",
+    "canonical_sha256": "01aa72b4b2e8b4f53f08a97e38c38c62bcb7e996e5215b1e2cec8710a94f4d98"
+  },
+  "mvp_only": true,
+  "observed_result": {
+    "current_market_mapped_flow_rows": 2267,
+    "eligible_candidate_count": 0,
+    "session_date": "2026-08-18",
+    "usable_from_session": "2026-08-19"
+  },
+  "policy": {
+    "candidate_rule": "FOREIGN_INVESTOR_NET_GT_0_AND_INVESTMENT_TRUST_NET_GT_0_AND_LEGACY_DEALER_NET_GT_0",
+    "dealer_net_formula": "Dealer_buy - Dealer_sell",
+    "disposition": "SUPERSEDED_BY_R2_DEALER_TOTAL_POLICY",
+    "market_mapping": "LATEST_TAIWAN_STOCK_INFO_ROW_PER_SYMBOL;_CURRENT_MAPPING_ONLY",
+    "rank_rule": "DESCENDING_BY_SUM_OF_FOREIGN_TRUST_AND_LEGACY_DEALER_NET_SHARES"
+  },
+  "schema_version": "finmind_institutional_mvp_legacy_dealer_observation_v1",
+  "status": "SUPERSEDED"
+}

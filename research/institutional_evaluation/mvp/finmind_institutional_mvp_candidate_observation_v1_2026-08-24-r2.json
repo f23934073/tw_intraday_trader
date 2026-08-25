@@ -1,0 +1,253 @@
+{
+  "artifact_id": "finmind-institutional-mvp-candidate-observation-v1-2026-08-24-r2",
+  "candidate_observation": {
+    "candidate_count_before_limit": 17,
+    "candidate_limit": 20,
+    "candidates": [
+      {
+        "dealer_net_shares": 749638,
+        "foreign_investor_net_shares": 14344696,
+        "investment_trust_net_shares": 121559,
+        "market": "TWSE",
+        "name": "陽明",
+        "rank": 1,
+        "source_session": "2026-08-18",
+        "symbol": "2609",
+        "three_way_net_shares": 15215893,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 159096,
+        "foreign_investor_net_shares": 9866323,
+        "investment_trust_net_shares": 883000,
+        "market": "TWSE",
+        "name": "興富發",
+        "rank": 2,
+        "source_session": "2026-08-18",
+        "symbol": "2542",
+        "three_way_net_shares": 10908419,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 60670,
+        "foreign_investor_net_shares": 7937559,
+        "investment_trust_net_shares": 209705,
+        "market": "TWSE",
+        "name": "遠東新",
+        "rank": 3,
+        "source_session": "2026-08-18",
+        "symbol": "1402",
+        "three_way_net_shares": 8207934,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 100962,
+        "foreign_investor_net_shares": 4589058,
+        "investment_trust_net_shares": 2063000,
+        "market": "TWSE",
+        "name": "長華*",
+        "rank": 4,
+        "source_session": "2026-08-18",
+        "symbol": "8070",
+        "three_way_net_shares": 6753020,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 48243,
+        "foreign_investor_net_shares": 3009503,
+        "investment_trust_net_shares": 718000,
+        "market": "TWSE",
+        "name": "可寧衛*",
+        "rank": 5,
+        "source_session": "2026-08-18",
+        "symbol": "8422",
+        "three_way_net_shares": 3775746,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 43631,
+        "foreign_investor_net_shares": 2803338,
+        "investment_trust_net_shares": 191000,
+        "market": "TWSE",
+        "name": "正新",
+        "rank": 6,
+        "source_session": "2026-08-18",
+        "symbol": "2105",
+        "three_way_net_shares": 3037969,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 229804,
+        "foreign_investor_net_shares": 2659460,
+        "investment_trust_net_shares": 98185,
+        "market": "TPEX",
+        "name": "富喬",
+        "rank": 7,
+        "source_session": "2026-08-18",
+        "symbol": "1815",
+        "three_way_net_shares": 2987449,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 1800,
+        "foreign_investor_net_shares": 2140785,
+        "investment_trust_net_shares": 5000,
+        "market": "TWSE",
+        "name": "裕民",
+        "rank": 8,
+        "source_session": "2026-08-18",
+        "symbol": "2606",
+        "three_way_net_shares": 2147585,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 177500,
+        "foreign_investor_net_shares": 971561,
+        "investment_trust_net_shares": 486000,
+        "market": "TWSE",
+        "name": "聯茂",
+        "rank": 9,
+        "source_session": "2026-08-18",
+        "symbol": "6213",
+        "three_way_net_shares": 1635061,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 317624,
+        "foreign_investor_net_shares": 319123,
+        "investment_trust_net_shares": 639000,
+        "market": "TPEX",
+        "name": "台半",
+        "rank": 10,
+        "source_session": "2026-08-18",
+        "symbol": "5425",
+        "three_way_net_shares": 1275747,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 45853,
+        "foreign_investor_net_shares": 785270,
+        "investment_trust_net_shares": 202000,
+        "market": "TWSE",
+        "name": "騰輝電子-KY",
+        "rank": 11,
+        "source_session": "2026-08-18",
+        "symbol": "6672",
+        "three_way_net_shares": 1033123,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 67996,
+        "foreign_investor_net_shares": 222844,
+        "investment_trust_net_shares": 43968,
+        "market": "TWSE",
+        "name": "旭隼",
+        "rank": 12,
+        "source_session": "2026-08-18",
+        "symbol": "6409",
+        "three_way_net_shares": 334808,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 26506,
+        "foreign_investor_net_shares": 119550,
+        "investment_trust_net_shares": 113000,
+        "market": "TWSE",
+        "name": "一詮",
+        "rank": 13,
+        "source_session": "2026-08-18",
+        "symbol": "2486",
+        "three_way_net_shares": 259056,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 13554,
+        "foreign_investor_net_shares": 67058,
+        "investment_trust_net_shares": 153000,
+        "market": "TWSE",
+        "name": "帆宣",
+        "rank": 14,
+        "source_session": "2026-08-18",
+        "symbol": "6196",
+        "three_way_net_shares": 233612,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 1453,
+        "foreign_investor_net_shares": 47288,
+        "investment_trust_net_shares": 136000,
+        "market": "TWSE",
+        "name": "禾伸堂",
+        "rank": 15,
+        "source_session": "2026-08-18",
+        "symbol": "3026",
+        "three_way_net_shares": 184741,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 14053,
+        "foreign_investor_net_shares": 85552,
+        "investment_trust_net_shares": 83000,
+        "market": "TWSE",
+        "name": "新代",
+        "rank": 16,
+        "source_session": "2026-08-18",
+        "symbol": "7750",
+        "three_way_net_shares": 182605,
+        "usable_from_session": "2026-08-19"
+      },
+      {
+        "dealer_net_shares": 1000,
+        "foreign_investor_net_shares": 8931,
+        "investment_trust_net_shares": 1100,
+        "market": "TPEX",
+        "name": "創新服務",
+        "rank": 17,
+        "source_session": "2026-08-18",
+        "symbol": "7828",
+        "three_way_net_shares": 11031,
+        "usable_from_session": "2026-08-19"
+      }
+    ],
+    "current_market_mapped_flow_rows": 2267,
+    "session_date": "2026-08-18",
+    "usable_from_session": "2026-08-19"
+  },
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "evidence_scope": {
+    "backtest_or_holdout_read": false,
+    "institutional_flow_fields_read": true,
+    "price_or_kbar_read": false,
+    "provider_call_performed": false,
+    "return_or_pnl_read": false
+  },
+  "execution_permissions": {
+    "formal_candidate_prior_allowed": false,
+    "formal_holdout_allowed": false,
+    "formal_pit_universe_allowed": false,
+    "mvp_candidate_observation_allowed": true,
+    "order_submission_allowed": false,
+    "outcome_generation_allowed": false,
+    "production_strategy_binding_allowed": false
+  },
+  "input_candidate_policy": {
+    "artifact_id": "finmind-institutional-mvp-candidate-policy-v1-2026-08-24-r2",
+    "canonical_sha256": "48db00974a2a5f916eef92bdc4cccef039d342d528457ada72fd216f8c23a18a"
+  },
+  "input_capture": {
+    "artifact_id": "finmind-institutional-mvp-capture-v1-2026-08-24-r1",
+    "canonical_sha256": "01aa72b4b2e8b4f53f08a97e38c38c62bcb7e996e5215b1e2cec8710a94f4d98",
+    "flow_raw_response_sha256": "81b763a10af6e99dc06a03656088c984351cc5f60ebec022f8c6d6954551c640",
+    "stock_info_raw_response_sha256": "9b97e8f0c1705696f7978d9d34c236d66f93f1fa26aed717ca31b434cec7b891"
+  },
+  "mvp_limitations": [
+    "NOT_A_DATE_EFFECTIVE_PIT_UNIVERSE",
+    "CURRENT_MARKET_MAPPING_CAN_HAVE_SURVIVORSHIP_AND_TRANSFER_BIAS",
+    "POST_CLOSE_DATA_IS_NOT_SAME_SESSION_INTRADAY_SIGNAL",
+    "NO_PRICE_COVERAGE_OR_RETURN_EVIDENCE",
+    "NO_FORMAL_BACKTEST_OR_HOLDOUT_CLAIM",
+    "NO_ORDER_OR_PRODUCTION_STRATEGY_AUTHORITY"
+  ],
+  "schema_version": "finmind_institutional_mvp_candidate_observation_v1",
+  "status": "MVP_CANDIDATE_OBSERVATION_ONLY"
+}
