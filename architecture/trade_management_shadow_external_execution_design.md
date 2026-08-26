@@ -1,6 +1,6 @@
 # PR-TM-012C1 narrow external-sandbox execution design
 
-Status: **PROPOSED FOR REVIEW — NOT APPROVED — NOT INSTALLED**
+Status: **REPOSITORY IMPLEMENTATION DRAFT — NOT APPROVED — NOT INSTALLED — NOT ENABLED**
 Production Shadow Gate: **NOT_PASSED**
 
 ## 1. Objective
@@ -13,8 +13,8 @@ their data-only and decision-only boundaries:
 - no supervisor component may create inputs, orders, fills, matches, Positions, or Shadow decisions;
 - no process may call a broker order API, enable CA, or subscribe to trade callbacks.
 
-This document does not authorize implementation, installation, scheduling, permission changes, or a
-formal session.
+The repository-only implementation draft described in section 11 is now present. This document still
+does not authorize installation, scheduling, permission changes, or a formal session.
 
 ## 2. Recommended deployment boundary
 
@@ -80,7 +80,7 @@ terminal disposition.
 | `C0_RUNNING` | One child PID, immutable stdout/stderr path | wait; no retry |
 | `C0_COMPLETE` | Exit 0, immutable C0 artifact and sidecar exist, and no C0 `.write.lock` remains | `C1_READY_TO_START`; otherwise terminal `BLOCKED` |
 | `C1_READY_TO_START` | No per-date promotion lock remains; canonical bundle manifest, review approval, sidecars, and four exact approved input digests pass; no draft path is accepted | start only C1 |
-| `C1_RUNNING` | One child PID; 09:00–13:30 capture owns its lifecycle | wait or watchdog termination |
+| `C1_RUNNING` | One recorded child PID; 09:00–13:30 capture owns its lifecycle | wait for natural terminal exit; emergency termination remains outside the supervisor |
 | `TERMINAL` | C1 terminal exit plus artifact inventory | stop; never start another child |
 
 The supervisor must never retry C0 or C1 automatically. A rerun requires a new reviewed session/output
@@ -139,7 +139,7 @@ Before C0 starts, the supervisor must prove:
 
 - the checkout commit equals the approved commit;
 - `/usr/bin/git status --porcelain --untracked-files=all` returns empty output;
-- Python and dependency lock digests match the approved runtime;
+- Python, dependency-lock, and complete pre-built virtual-environment tree digests match the approved runtime;
 - the environment file is owner-only and contains both named DSNs without printing values;
 - Local Paper and Shadow DSNs are distinct;
 - the runtime identity covers C0, C1, prepare, review, and promotion entrypoints plus their runtime modules;
@@ -156,8 +156,8 @@ same unchanged checkout so its runtime identity equals C0.
 - Pre-open child startup has one bounded timeout and no retry.
 - C1 is allowed to run through the 13:30 close and post-close finalization window.
 - The current C1 CLI has no independently approved cooperative signal-stop contract. Therefore the
-  supervisor must not be approved to send automatic `SIGTERM` during a formal capture yet. Its normal
-  watchdog records liveness and waits through the bounded post-close finalization window.
+  supervisor must not be approved to send automatic `SIGTERM` during a formal capture yet. It records
+  the child PID and waits without a C1 timeout for natural post-close finalization.
 - A later cooperative-stop change must first prove that SIGTERM closes admission, drains or accounts
   for pending evidence, writes `INCOMPLETE/BLOCKED`, and exits within a bounded grace period. Until
   then, emergency termination is an explicit operator action and the supervisor terminal disposition,
@@ -194,3 +194,19 @@ Rollback removes or unloads only the proposed user-level service and its sandbox
 does not delete evidence, canonical inputs, database rows, the runtime checkout, or the existing Codex
 automation. After rollback, verify no supervisor/C0/C1 PID remains and keep Production Shadow Gate at
 `NOT_PASSED`.
+
+## 11. Repository implementation draft
+
+The following reviewable files implement the control plane without installing or enabling it:
+
+- `runtime/trade_management_external_supervisor.py`: pure no-retry state machine and exact C0/C1 argv construction;
+- `runtime/trade_management_external_adapters.py`: reviewed-calendar, immutable lock/disposition, clean commit, source/runtime/venv digests, `0600` secret, canonical review-promotion, and C0/C1 artifact gates;
+- `runtime/trade_management_external_git.py`: the Git-only read-only identity/status allowlist used by input workflows and formal admission;
+- `runtime/trade_management_external_process.py`: the Shadow-only subprocess adapter for C0 provider-worker, frozen rehearsal, C0, and C1 commands;
+- `scripts/run_trade_management_shadow_external_supervisor.py`: a thin CLI that accepts only one immutable independently approved spec;
+- `architecture/deployment/`: disabled/unapproved approval, sandbox, launchd, and installation-checklist templates;
+- `tests/test_trade_management_external_supervisor.py`: fake/stub-only state, race, digest, secret, argv, and deployment-boundary regressions.
+
+C0's provider worker and frozen pytest rehearsal now use the shared child-process allowlist. Pytest plugin autoload is disabled. Git runs with its original reviewed argv plus a fixed environment that disables fsmonitor, optional locks, system/global configuration, and source-index writes. The supervisor rechecks the approved commit, clean status, source identity, approved files, reviewed calendar, and full virtual-environment tree immediately before each C0/C1 start.
+
+The shipped approval JSON remains `NOT_APPROVED`; the launchd plist remains `Disabled=true`; the sandbox template denies all network because provider egress is unresolved. The CLI therefore has no valid repository-supplied approval artifact and cannot be used for a formal run from this checkout. No automation, secret permission, runtime checkout, provider/DSN connection, or C0/C1 session was changed or executed by this implementation phase.

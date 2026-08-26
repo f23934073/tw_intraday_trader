@@ -6,10 +6,10 @@ import argparse
 import json
 import os
 import socket
-import subprocess
 import sys
 from datetime import date, datetime, time
 from pathlib import Path
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 if __package__ in {None, ""}:
@@ -30,6 +30,11 @@ from runtime.trade_management_premarket import (
     ShadowRehearsalEvidence,
 )
 from runtime.trade_management_artifact_io import write_json_digest_pair_exclusive
+from runtime.trade_management_external_process import (
+    REHEARSAL_TARGETS,
+    run_c0_provider_worker,
+    run_c0_rehearsal,
+)
 from runtime.trade_management_shadow_validation import SHADOW_VALIDATION_VERSION
 from runtime.trade_management_runtime_identity import (
     RUNTIME_IDENTITY_PATHS,
@@ -43,17 +48,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TAIPEI = ZoneInfo("Asia/Taipei")
 PROVIDER_WORKER_ARG = "--provider-preflight-worker"
 PROVIDER_WORKER_SENTINEL = "__TM_C0_PROVIDER_PREFLIGHT__="
-REHEARSAL_TARGETS = tuple(
-    sorted(
-        (
-            "tests/test_trade_management_c1_session.py",
-            "tests/test_trade_management_operational_composition.py",
-            "tests/test_trade_management_replay.py",
-            "tests/test_trade_management_shadow_operation.py",
-            "tests/test_trade_management_shadow_validation.py",
-        )
-    )
-)
+
+
+class _CompletedProcessResult(Protocol):
+    returncode: int
+    stdout: str
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--market-date", type=date.fromisoformat, required=True)
@@ -278,12 +279,12 @@ def _loopback_bind_supported() -> bool:
     return True
 
 
-def _run_provider_preflight_worker() -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(Path(__file__).resolve()), PROVIDER_WORKER_ARG],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
+def _run_provider_preflight_worker() -> _CompletedProcessResult:
+    return run_c0_provider_worker(
+        python_executable=sys.executable,
+        c0_script=Path(__file__).resolve(),
+        project_root=PROJECT_ROOT,
+        worker_argument=PROVIDER_WORKER_ARG,
     )
 
 
@@ -449,13 +450,10 @@ def _postgres_preflight(
 def _rehearsal(*, skip: bool) -> ShadowRehearsalEvidence:
     passed = False
     if not skip:
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", *REHEARSAL_TARGETS],
-            cwd=PROJECT_ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=120,
+        result = run_c0_rehearsal(
+            python_executable=sys.executable,
+            project_root=PROJECT_ROOT,
+            targets=REHEARSAL_TARGETS,
         )
         passed = result.returncode == 0
     return ShadowRehearsalEvidence(

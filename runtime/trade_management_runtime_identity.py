@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from collections.abc import Iterable
 from pathlib import Path
+
+from runtime.trade_management_external_git import run_git_head
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,7 @@ RUNTIME_IDENTITY_PATHS = (
     "trading",
     "scripts/preflight_trade_management_shadow.py",
     "scripts/run_trade_management_shadow_c1.py",
+    "scripts/run_trade_management_shadow_external_supervisor.py",
     "scripts/prepare_trade_management_shadow_inputs.py",
     "scripts/review_trade_management_shadow_inputs.py",
     "scripts/promote_trade_management_shadow_inputs.py",
@@ -25,14 +27,7 @@ RUNTIME_IDENTITY_PATHS = (
 
 
 def git_head(project_root: Path = PROJECT_ROOT) -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=project_root,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip()
+    return run_git_head(project_root)
 
 
 def runtime_code_identity(

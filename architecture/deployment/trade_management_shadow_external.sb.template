@@ -1,0 +1,30 @@
+;; TEMPLATE ONLY — NOT APPROVED, NOT INSTALLED, NETWORK INTENTIONALLY DENIED.
+;; Replace every placeholder, review denial logs, and bind the rendered digest
+;; into an APPROVED_FOR_INSTALLATION execution spec before installation.
+
+(version 1)
+(deny default)
+
+(allow process-fork)
+(allow process-exec
+  (literal "/ABSOLUTE/PINNED_CHECKOUT/.venv/bin/python")
+  (literal "/ABSOLUTE/RESOLVED/PYTHON")
+  (literal "/usr/bin/git"))
+
+(allow file-read*
+  (subpath "/System")
+  (subpath "/usr/lib")
+  (subpath "/usr/share")
+  (subpath "/ABSOLUTE/RESOLVED/PYTHON_RUNTIME_ROOT")
+  (subpath "/ABSOLUTE/PINNED_CHECKOUT")
+  (literal "/ABSOLUTE/OWNER_ONLY_SECRETS/trade_management_shadow.env"))
+
+(allow file-write*
+  (subpath "/ABSOLUTE/OWNER_ONLY_RUNTIME/artifacts")
+  (subpath "/ABSOLUTE/OWNER_ONLY_RUNTIME/records")
+  (subpath "/ABSOLUTE/OWNER_ONLY_RUNTIME/locks")
+  (subpath "/private/tmp/REVIEWED_TM_SHADOW_RUNTIME"))
+
+;; Provider endpoint and loopback rules remain unresolved. A rendered profile
+;; with this deny-only network section cannot pass the installation gate.
+(deny network*)

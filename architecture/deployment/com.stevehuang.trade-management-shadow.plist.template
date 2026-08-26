@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- TEMPLATE ONLY: NOT APPROVED, NOT INSTALLED, DISABLED. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.stevehuang.trade-management-shadow</string>
+  <key>Disabled</key>
+  <true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/sandbox-exec</string>
+    <string>-f</string>
+    <string>/ABSOLUTE/PINNED_CHECKOUT/architecture/deployment/trade_management_shadow_external.sb</string>
+    <string>/ABSOLUTE/PINNED_CHECKOUT/.venv/bin/python</string>
+    <string>/ABSOLUTE/PINNED_CHECKOUT/scripts/run_trade_management_shadow_external_supervisor.py</string>
+    <string>--approval-spec</string>
+    <string>/ABSOLUTE/OWNER_ONLY_CONFIG/trade_management_shadow_external_execution_approval.json</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/ABSOLUTE/PINNED_CHECKOUT</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONDONTWRITEBYTECODE</key>
+    <string>1</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>TZ</key>
+    <string>Asia/Taipei</string>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>35</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>35</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>35</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>35</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>35</integer></dict>
+  </array>
+</dict>
+</plist>
