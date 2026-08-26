@@ -69,7 +69,11 @@ from simulation.continuous_strategy import (
     AutomatedStrategyConfig,
     AutomatedStrategyStateError,
     ContinuousPaperStrategyController,
-    LocalPaperKillSwitch,
+)
+from simulation.kill_switch import (
+    KillSwitchAdmissionBlocked,
+    KillSwitchPersistenceUnavailable,
+    KillSwitchStateConflict,
 )
 from simulation.service import (
     SimulationService,
@@ -100,6 +104,10 @@ from strategy_catalog.web_projection import (
     version_projection,
 )
 from trading.local_paper import session_archive_record
+from trading.kill_switch import (
+    KillSwitchContractError,
+    KillSwitchOperationConflict,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 SIMULATION_STREAM_PATH = "/ws/simulation/projection"
@@ -121,7 +129,6 @@ _atomic_strategy_service: AtomicStrategyCatalogService | None = None
 _incremental_scheduler: AfterCloseIncrementalScheduler | None = None
 _automated_strategy_controller: ContinuousPaperStrategyController | None = None
 _local_paper_settings_repository: JsonLocalPaperSettingsRepository | None = None
-_local_paper_kill_switch = LocalPaperKillSwitch()
 _runtime_composition_lock = RLock()
 _atomic_strategy_csrf_token = secrets.token_urlsafe(32)
 _HTTP_DEFAULT_PORTS = {"http": 80, "https": 443}
@@ -314,7 +321,26 @@ class AutomatedStrategyStartRequest(BaseModel):
 class AutomatedStrategyKillRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    reason: str = Field(min_length=1, pattern=r".*\S.*")
+    actor_id: str = Field(min_length=1, max_length=128, pattern=r".*\S.*")
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=96,
+        pattern=r".*\S.*",
+    )
+    reason: str = Field(min_length=1, max_length=500, pattern=r".*\S.*")
+
+
+class AutomatedStrategyKillResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor_id: str = Field(min_length=1, max_length=128, pattern=r".*\S.*")
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=96,
+        pattern=r".*\S.*",
+    )
+    expected_revision: int = Field(ge=0, strict=True)
+    reason: str = Field(min_length=1, max_length=500, pattern=r".*\S.*")
 
 
 class DatasetSyncRequest(BaseModel):
@@ -618,7 +644,7 @@ def get_automated_strategy_controller() -> ContinuousPaperStrategyController:
                         strategy_set_version_id,
                     )
                 ),
-                kill_switch=_local_paper_kill_switch,
+                kill_switch=composition.kill_switch,
             )
         return _automated_strategy_controller
 
@@ -1477,6 +1503,10 @@ def start_automated_strategy(
         raise HTTPException(status_code=422, detail=str(error)) from error
     except AutomatedStrategyStateError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    except KillSwitchAdmissionBlocked as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except KillSwitchPersistenceUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 @app.post("/api/simulation/automated-strategy/stop")
@@ -1493,29 +1523,67 @@ def stop_automated_strategy(
         raise HTTPException(status_code=409, detail=str(error)) from error
 
 
-@app.post("/api/simulation/automated-strategy/kill-switch")
+@app.post(
+    "/api/simulation/automated-strategy/kill-switch",
+    status_code=status.HTTP_201_CREATED,
+)
 def engage_automated_strategy_kill_switch(
     payload: AutomatedStrategyKillRequest,
+    response: Response,
     request: Request,
     x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
 ) -> dict[str, Any]:
-    """Emergency-stop every process-local automated Local Paper intent."""
+    """Emergency-stop all automated Local Paper intent admission."""
 
     _require_atomic_mutation(request, x_strategy_csrf)
-    with runtime_composition_lease():
-        return get_automated_strategy_controller().engage_kill_switch(payload.reason)
+    try:
+        with runtime_composition_lease():
+            result = get_automated_strategy_controller().engage_kill_switch(
+                actor_id=payload.actor_id,
+                idempotency_key=payload.idempotency_key,
+                reason=payload.reason,
+            )
+        if result["operation"]["idempotent"]:
+            response.status_code = status.HTTP_200_OK
+        return result
+    except KillSwitchOperationConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except KillSwitchContractError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except KillSwitchPersistenceUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
-@app.post("/api/simulation/automated-strategy/kill-switch/reset")
+@app.post(
+    "/api/simulation/automated-strategy/kill-switch/reset",
+    status_code=status.HTTP_201_CREATED,
+)
 def reset_automated_strategy_kill_switch(
+    payload: AutomatedStrategyKillResetRequest,
+    response: Response,
     request: Request,
     x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
 ) -> dict[str, Any]:
     """Explicitly clear the kill switch without restarting a strategy."""
 
     _require_atomic_mutation(request, x_strategy_csrf)
-    with runtime_composition_lease():
-        return get_automated_strategy_controller().reset_kill_switch()
+    try:
+        with runtime_composition_lease():
+            result = get_automated_strategy_controller().reset_kill_switch(
+                actor_id=payload.actor_id,
+                idempotency_key=payload.idempotency_key,
+                expected_revision=payload.expected_revision,
+                reason=payload.reason,
+            )
+        if result["operation"]["idempotent"]:
+            response.status_code = status.HTTP_200_OK
+        return result
+    except (KillSwitchOperationConflict, KillSwitchStateConflict) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except KillSwitchContractError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except KillSwitchPersistenceUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 # ---------------------------------------------------------------------------

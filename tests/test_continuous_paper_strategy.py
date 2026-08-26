@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from threading import Event, Lock, Thread
 from time import monotonic, sleep
 import pytest
 
@@ -22,7 +23,10 @@ from simulation.continuous_strategy import (
     AutomatedStrategyConfig,
     AutomatedStrategyStateError,
     ContinuousPaperStrategyController,
-    LocalPaperKillSwitch,
+)
+from simulation.kill_switch import (
+    DurableLocalPaperKillSwitch,
+    KillSwitchAdmissionBlocked,
 )
 from simulation.service import SimulationService
 from simulation.strategy_flow import StrategyPaperFlowService
@@ -47,6 +51,16 @@ class MutableClock:
 
     def session_date(self) -> date:
         return self.value.date()
+
+
+def durable_kill_switch(
+    clock: MutableClock,
+    journal: InMemoryJournalRepository | None = None,
+) -> DurableLocalPaperKillSwitch:
+    return DurableLocalPaperKillSwitch.recover(
+        journal=journal or InMemoryJournalRepository(),
+        clock=clock,
+    )
 
 
 class FakeFlow:
@@ -331,6 +345,7 @@ def controller(
         signal_reader=lambda: signal_snapshot or live_signal(at=resolved_clock.now()),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=resolved_clock,
+        kill_switch=durable_kill_switch(resolved_clock),
     )
     instance.start(config(), background=False)
     return instance, resolved_flow, resolved_projection
@@ -387,6 +402,7 @@ def test_exact_strategy_set_submits_pipeline_owned_auditable_entry() -> None:
         signal_reader=lambda: live_signal(),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=MutableClock(),
+        kill_switch=durable_kill_switch(MutableClock()),
         atomic_resolver=lambda strategy_set_version_id: (
             resolved
             if strategy_set_version_id == "paper-entry-set-v1"
@@ -441,6 +457,7 @@ def test_exact_strategy_set_passes_feature_requests_to_atomic_reader() -> None:
         ),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=MutableClock(),
+        kill_switch=durable_kill_switch(MutableClock()),
         atomic_resolver=lambda _: resolved,
     )
     instance.start(
@@ -483,11 +500,13 @@ def test_exact_streaming_first_entry_watches_book_before_hard_risk() -> None:
         session_id=session_id,
         clock=clock,
     )
+    switch = durable_kill_switch(clock, journal)
     flow = StrategyPaperFlowService(
         commands=commands,
         journal=journal,
         session_id=session_id,
         clock=clock,
+        kill_switch=switch,
     )
     resolved = atomic_resolution()
     instance = ContinuousPaperStrategyController(
@@ -496,6 +515,7 @@ def test_exact_streaming_first_entry_watches_book_before_hard_risk() -> None:
         signal_reader=lambda: live_signal(at=clock.now()),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=clock,
+        kill_switch=switch,
         atomic_resolver=lambda _: resolved,
     )
     instance.start(
@@ -558,6 +578,7 @@ def test_start_fails_closed_when_existing_automated_owner_differs() -> None:
         signal_reader=lambda: live_signal(),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=MutableClock(),
+        kill_switch=durable_kill_switch(MutableClock()),
         atomic_resolver=lambda _: atomic_resolution(),
     )
 
@@ -894,6 +915,7 @@ def test_background_controller_stops_and_restart_does_not_auto_resume() -> None:
         signal_reader=lambda: {"status": "unavailable", "items": []},
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=MutableClock(),
+        kill_switch=durable_kill_switch(MutableClock()),
     )
 
     started = instance.start(config())
@@ -907,7 +929,7 @@ def test_background_controller_stops_and_restart_does_not_auto_resume() -> None:
 
 def test_global_kill_switch_stops_new_intents_fail_closed() -> None:
     clock = MutableClock()
-    switch = LocalPaperKillSwitch()
+    switch = durable_kill_switch(clock)
     flow = FakeFlow()
     instance = ContinuousPaperStrategyController(
         flow=flow,
@@ -918,7 +940,11 @@ def test_global_kill_switch_stops_new_intents_fail_closed() -> None:
         kill_switch=switch,
     )
     instance.start(config(), background=False)
-    switch.engage("operator emergency stop", at=clock.now())
+    switch.engage(
+        actor_id="local-operator",
+        operation_id="controller-kill-switch-test",
+        reason="operator emergency stop",
+    )
 
     status = instance.run_once()
 
@@ -927,7 +953,153 @@ def test_global_kill_switch_stops_new_intents_fail_closed() -> None:
     assert status["kill_switch"]["engaged"] is True
     assert flow.intents == []
 
-    with pytest.raises(Exception, match="kill switch 尚未解除"):
+    with pytest.raises(KillSwitchAdmissionBlocked, match="kill switch is engaged"):
+        instance.start(config(), background=False)
+
+
+def test_engage_cannot_return_before_an_overlapping_start_is_linearized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = MutableClock()
+    switch = durable_kill_switch(clock)
+    instance = ContinuousPaperStrategyController(
+        flow=FakeFlow(),
+        projection_reader=ProjectionReader(),
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+        kill_switch=switch,
+    )
+    admission_checked = Event()
+    release_start = Event()
+    completion_lock = Lock()
+    completions: list[str] = []
+    start_errors: list[Exception] = []
+    original_assert = switch.assert_start_allowed
+
+    def delayed_start_admission() -> None:
+        original_assert()
+        admission_checked.set()
+        assert release_start.wait(timeout=1)
+
+    monkeypatch.setattr(switch, "assert_start_allowed", delayed_start_admission)
+
+    def start() -> None:
+        try:
+            instance.start(config(), background=False)
+        except Exception as error:
+            start_errors.append(error)
+        finally:
+            with completion_lock:
+                completions.append("start")
+
+    def engage() -> None:
+        instance.engage_kill_switch(
+            actor_id="local-operator",
+            idempotency_key="overlapping-start-engage",
+            reason="concurrency regression",
+        )
+        with completion_lock:
+            completions.append("engage")
+
+    start_thread = Thread(target=start)
+    engage_thread = Thread(target=engage)
+    start_thread.start()
+    assert admission_checked.wait(timeout=1)
+    engage_thread.start()
+    wait_until(lambda: switch.control_state.value == "ENGAGED")
+    release_start.set()
+    start_thread.join(timeout=2)
+    engage_thread.join(timeout=2)
+
+    assert not start_thread.is_alive()
+    assert not engage_thread.is_alive()
+    assert start_errors == []
+    assert completions == ["start", "engage"]
+    assert instance.status()["state"] == "KILLED"
+
+
+def test_recovered_engagement_is_killed_before_first_status_and_reset_stays_stopped() -> None:
+    clock = MutableClock()
+    journal = InMemoryJournalRepository()
+    durable_kill_switch(clock, journal).engage(
+        actor_id="local-operator",
+        operation_id="recovered-controller-engage",
+        reason="restart recovery",
+    )
+    recovered = durable_kill_switch(clock, journal)
+    flow = FakeFlow()
+
+    instance = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=ProjectionReader(),
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+        kill_switch=recovered,
+    )
+
+    first_status = instance.status()
+    assert first_status["state"] == "KILLED"
+    assert first_status["decision"] == "KILL_SWITCH_ENGAGED"
+    assert first_status["kill_switch"]["recovered"] is True
+    with pytest.raises(KillSwitchAdmissionBlocked, match="kill switch is engaged"):
+        instance.start(config(), background=False)
+    stopped_while_engaged = instance.stop()
+    assert stopped_while_engaged["state"] == "KILLED"
+    assert stopped_while_engaged["decision"] == "KILL_SWITCH_ENGAGED"
+
+    reset = instance.reset_kill_switch(
+        actor_id="local-operator",
+        idempotency_key="recovered-controller-reset",
+        expected_revision=1,
+        reason="review complete",
+    )
+
+    assert reset["state"] == "STOPPED"
+    assert reset["decision"] == "STOPPED"
+    assert reset["kill_switch"]["revision"] == 2
+    assert reset["operation"]["idempotent"] is False
+    assert flow.intents == []
+
+
+def test_durable_engage_remains_authoritative_when_controller_checkpoint_fails() -> None:
+    clock = MutableClock()
+    switch = durable_kill_switch(clock)
+
+    class FailingCheckpointFlow(FakeFlow):
+        def __init__(self) -> None:
+            super().__init__()
+            self.checkpoint_calls = 0
+
+        def checkpoint(self, _payload, *, occurred_at) -> None:
+            assert occurred_at == clock.now()
+            self.checkpoint_calls += 1
+            if self.checkpoint_calls > 1:
+                raise RuntimeError("injected controller checkpoint failure")
+
+    flow = FailingCheckpointFlow()
+    instance = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=ProjectionReader(),
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+        kill_switch=switch,
+    )
+    instance.start(config(), background=False)
+
+    engaged = instance.engage_kill_switch(
+        actor_id="local-operator",
+        idempotency_key="checkpoint-failure-engage",
+        reason="durable authority test",
+    )
+
+    assert engaged["state"] == "KILLED"
+    assert engaged["kill_switch"]["control_state"] == "ENGAGED"
+    assert engaged["kill_switch"]["revision"] == 1
+    assert "checkpoint 寫入失敗" in engaged["last_error"]
+    with pytest.raises(KillSwitchAdmissionBlocked, match="kill switch is engaged"):
         instance.start(config(), background=False)
 
 
@@ -940,6 +1112,7 @@ def test_calendar_artifact_is_required_and_out_of_coverage_fails_closed() -> Non
         signal_reader=lambda: live_signal(at=clock.now()),
         calendar=calendar,
         clock=clock,
+        kill_switch=durable_kill_switch(clock),
     )
     instance.start(config(), background=False)
 
@@ -971,11 +1144,13 @@ def test_exact_runtime_checkpoint_preserves_effective_risk_and_rejects_drift() -
         session_id=session_id,
         clock=clock,
     )
+    switch = durable_kill_switch(clock, journal)
     flow = StrategyPaperFlowService(
         commands=commands,
         journal=journal,
         session_id=session_id,
         clock=clock,
+        kill_switch=switch,
     )
     resolved = atomic_resolution()
     run_config = AutomatedStrategyConfig.create(
@@ -992,6 +1167,7 @@ def test_exact_runtime_checkpoint_preserves_effective_risk_and_rejects_drift() -
         signal_reader=lambda: live_signal(at=clock.now()),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=clock,
+        kill_switch=switch,
         atomic_resolver=lambda _: resolved,
     )
     first_status = first.start(run_config, background=False)
@@ -1003,6 +1179,7 @@ def test_exact_runtime_checkpoint_preserves_effective_risk_and_rejects_drift() -
         signal_reader=lambda: live_signal(at=clock.now()),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=clock,
+        kill_switch=switch,
         atomic_resolver=lambda _: resolved,
     )
     replayed_status = restarted.start(run_config, background=False)
@@ -1037,6 +1214,7 @@ def test_exact_runtime_checkpoint_preserves_effective_risk_and_rejects_drift() -
         signal_reader=lambda: live_signal(at=clock.now()),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=clock,
+        kill_switch=switch,
         atomic_resolver=lambda _: resolved,
     )
     with pytest.raises(AutomatedStrategyStateError, match="Effective Hard Risk 已漂移"):
@@ -1085,11 +1263,13 @@ def test_real_flow_controller_completes_entry_and_stop_loss_exit() -> None:
         session_id=session_id,
         clock=clock,
     )
+    switch = durable_kill_switch(clock, journal)
     flow = StrategyPaperFlowService(
         commands=commands,
         journal=journal,
         session_id=session_id,
         clock=clock,
+        kill_switch=switch,
     )
 
     def executable_projection() -> dict:
@@ -1115,6 +1295,7 @@ def test_real_flow_controller_completes_entry_and_stop_loss_exit() -> None:
         signal_reader=lambda: live_signal(at=clock.now()),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=clock,
+        kill_switch=switch,
     )
     instance.start(
         AutomatedStrategyConfig.create(
@@ -1160,6 +1341,7 @@ def test_real_flow_controller_completes_entry_and_stop_loss_exit() -> None:
         signal_reader=lambda: live_signal(at=clock.now()),
         calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
         clock=clock,
+        kill_switch=switch,
     )
     restarted.start(
         AutomatedStrategyConfig.create(

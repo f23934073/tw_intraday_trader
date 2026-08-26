@@ -200,10 +200,14 @@ activation key。所有 mutation 都受 loopback、完整 Origin 與 CSRF 防護
 策略 runtime checkpoint 也會用 exact Strategy Set owner 與 pipeline digest 恢復 signal dedup
 狀態。預設 memory adapter 則不提供跨 process 恢復。
 
-MVP audit 限制：start activation 已保存 actor、完整 config 與 durable idempotency result；
-stop、kill-switch engage/reset 目前仍是 process-local control，尚未各自保存 actor 與 durable
-idempotency operation。這項限制必須在多使用者、外網、自動 promotion 或任何正式交易前
-補齊；目前不能把 Local Paper control audit 宣稱為完整多使用者稽核。
+Kill Switch engage/reset 使用固定 `local-paper-global-control-v1` Trading Journal session，保存
+actor、reason、retry-stable idempotency operation 與連續 revision。reset 必須帶目前 exact
+engaged revision；Journal metadata／replay／append 不確定時會進入 `RECOVERY_REQUIRED`，禁止
+automated start 與新 strategy intent。PostgreSQL backend 可從完整 process restart 恢復；memory
+backend 會明示 `EPHEMERAL_MEMORY / restart_safe=false`，不能作為 durability Gate。reset 成功後
+仍須人工 start，且不會自動 cancel 或平倉。一般 stop 的 durable audit 仍是 backlog；完整操作與
+destructive UAT 見 `architecture/local_paper_kill_switch_runbook.md`。缺少一次性
+`TEST_POSTGRES_DSN` 時，PostgreSQL UAT 必須標示 `BLOCKED / NOT PASSED`。
 
 自動控制器只把意圖送入既有
 `Journal → ProposedOrderCommand → RiskGate → ApprovedOrderCommand → SimulationService`

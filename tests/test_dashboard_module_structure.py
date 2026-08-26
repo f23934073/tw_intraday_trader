@@ -75,6 +75,12 @@ def test_simulation_workspace_exposes_explicit_automated_strategy_controls() -> 
     assert "loadAutomatedStrategyStatus" in simulation
     assert "submitAutomatedStrategy" in simulation
     assert "stopAutomatedStrategy" in simulation
+    assert "pendingKillOperation" in simulation
+    assert "pendingResetOperation" in simulation
+    assert "expected_revision" in simulation
+    assert 'control_state === "RECOVERY_REQUIRED"' in simulation
+    assert "killSwitch.durability" in simulation
+    assert "operator review completed" in simulation
     assert "pollAutomatedStrategyStatus" in APP
     assert (
         './workspaces/simulation.js?v=20260823-local-paper-settings-v1'

@@ -19,10 +19,15 @@ from runtime.in_memory import InMemoryProjectionRepository
 from runtime.ports import JournalRepository, OrderCommandHandler, ProjectionRepository
 from runtime.trading_persistence import build_journal_repository
 from simulation.application import LocalPaperCommandService
+from simulation.kill_switch import (
+    DurableLocalPaperKillSwitch,
+    KillSwitchDurability,
+)
 from simulation.service import SimulationService
 from simulation.settings import LocalPaperSettings, SETTINGS_SCHEMA_VERSION
 from simulation.strategy_flow import StrategyPaperFlowService
 from trading.journal import JournalSession
+from trading.postgres_journal import PostgresJournalRepository
 from trading.local_paper import (
     daily_baseline_record,
     latest_local_paper_daily_baseline,
@@ -106,6 +111,7 @@ class RuntimeComposition:
     simulation_service: OrderCommandHandler
     local_paper_commands: LocalPaperCommandService
     strategy_paper_flow: StrategyPaperFlowService
+    kill_switch: DurableLocalPaperKillSwitch
     clock: Clock
     journal: JournalRepository
     projections: ProjectionRepository
@@ -160,6 +166,15 @@ class RuntimeComposition:
             journal
             if journal is not None
             else build_journal_repository(resolved_persistence)
+        )
+        kill_switch = DurableLocalPaperKillSwitch.recover(
+            journal=resolved_journal,
+            clock=resolved_clock,
+            durability=(
+                KillSwitchDurability.POSTGRESQL
+                if isinstance(resolved_journal, PostgresJournalRepository)
+                else KillSwitchDurability.EPHEMERAL_MEMORY
+            ),
         )
         resolved_settings = local_paper_settings or LocalPaperSettings.defaults()
         resolved_simulation = simulation_service or SimulationService(
@@ -329,7 +344,9 @@ class RuntimeComposition:
                 journal=resolved_journal,
                 session_id=local_paper_session.session_id,
                 clock=resolved_clock,
+                kill_switch=kill_switch,
             ),
+            kill_switch=kill_switch,
             clock=resolved_clock,
             journal=resolved_journal,
             projections=projections or InMemoryProjectionRepository(),

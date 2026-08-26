@@ -44,6 +44,9 @@ export function createSimulationWorkspace(context) {
   const automatedStrategyError = document.getElementById("automated-strategy-error");
   let automatedStrategyCsrf = "";
   let pendingAutomatedStartKey = "";
+  let pendingKillOperation = null;
+  let pendingResetOperation = null;
+  let automatedStrategySnapshot = null;
   let localPaperSettings = null;
 
       async function loadAutomatedStrategySecurity() {
@@ -56,15 +59,27 @@ export function createSimulationWorkspace(context) {
       }
 
       function renderAutomatedStrategy(payload) {
+        automatedStrategySnapshot = payload;
         const running = payload?.state === "RUNNING";
-        const failed = payload?.state === "ERROR";
+        const killSwitch = payload?.kill_switch || {};
+        const recoveryRequired = killSwitch.control_state === "RECOVERY_REQUIRED";
+        const engaged = killSwitch.control_state === "ENGAGED";
+        const failed = payload?.state === "ERROR" || recoveryRequired;
         automatedStrategyBadge.className = `automated-strategy-badge ${running ? "running" : failed ? "error" : "stopped"}`;
-        automatedStrategyBadge.textContent = running ? "執行中" : failed ? "已阻擋" : "未啟動";
-        automatedStrategyStatus.innerHTML = `<strong>${escapeHtml(payload?.decision || "STOPPED")}</strong> · ${escapeHtml(payload?.message || "自動模擬策略尚未啟動")}`;
-        automatedStrategyStart.disabled = running;
+        automatedStrategyBadge.textContent = running ? "執行中" : recoveryRequired ? "需要復原" : engaged ? "緊急停止" : failed ? "已阻擋" : "未啟動";
+        const killSwitchDetail = [
+          `Kill Switch ${killSwitch.control_state || "UNKNOWN"}`,
+          killSwitch.revision == null ? "revision 未知" : `revision ${killSwitch.revision}`,
+          killSwitch.durability || "durability 未知",
+          killSwitch.reason || null,
+          killSwitch.engaged_at || null
+        ].filter(Boolean).map(escapeHtml).join(" · ");
+        automatedStrategyStatus.innerHTML = `<strong>${escapeHtml(payload?.decision || "STOPPED")}</strong> · ${escapeHtml(payload?.message || "自動模擬策略尚未啟動")}<br>${killSwitchDetail}`;
+        automatedStrategyStart.disabled = running || Boolean(killSwitch.engaged);
         automatedStrategyStop.disabled = !running;
-        automatedStrategyKill.disabled = Boolean(payload?.kill_switch?.engaged);
-        automatedStrategyKillReset.disabled = !payload?.kill_switch?.engaged;
+        automatedStrategyKill.disabled = recoveryRequired;
+        automatedStrategyKill.textContent = engaged ? "再次確認緊急停止" : "緊急停止";
+        automatedStrategyKillReset.disabled = !engaged || recoveryRequired;
         [automatedStrategySet, automatedStopLoss, automatedTakeProfit, automatedMaxDailyLoss].forEach((input) => {
           input.disabled = running;
         });
@@ -159,16 +174,45 @@ export function createSimulationWorkspace(context) {
         const path = engaged
           ? "/api/simulation/automated-strategy/kill-switch"
           : "/api/simulation/automated-strategy/kill-switch/reset";
+        let operation = engaged ? pendingKillOperation : pendingResetOperation;
+        if (!operation && engaged) {
+          const reason = window.prompt("請輸入啟用緊急停止的原因：", "local dashboard emergency stop");
+          if (!reason?.trim()) return;
+          operation = {
+            actor_id: "local-operator",
+            idempotency_key: newIdempotencyKey("local-paper-kill-engage"),
+            reason: reason.trim()
+          };
+          pendingKillOperation = operation;
+        }
+        if (!operation && !engaged) {
+          const revision = automatedStrategySnapshot?.kill_switch?.revision;
+          if (!Number.isInteger(revision)) {
+            automatedStrategyError.textContent = "Kill Switch revision 尚未確認，請重新讀取狀態。";
+            automatedStrategyError.style.display = "block";
+            return;
+          }
+          if (!window.confirm(`確定解除 revision ${revision} 的緊急停止？解除後仍須手動啟動策略。`)) return;
+          const reason = window.prompt("請輸入解除緊急停止的檢查結論：", "operator review completed");
+          if (!reason?.trim()) return;
+          operation = {
+            actor_id: "local-operator",
+            idempotency_key: newIdempotencyKey("local-paper-kill-reset"),
+            expected_revision: revision,
+            reason: reason.trim()
+          };
+          pendingResetOperation = operation;
+        }
         try {
           const response = await fetch(path, {
             method: "POST",
-            headers: engaged
-              ? { "Content-Type": "application/json", "X-Strategy-CSRF": automatedStrategyCsrf }
-              : { "X-Strategy-CSRF": automatedStrategyCsrf },
-            body: engaged ? JSON.stringify({ reason: "local dashboard emergency stop" }) : undefined
+            headers: { "Content-Type": "application/json", "X-Strategy-CSRF": automatedStrategyCsrf },
+            body: JSON.stringify(operation)
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+          if (engaged) pendingKillOperation = null;
+          else pendingResetOperation = null;
           renderAutomatedStrategy(payload);
         } catch (error) {
           automatedStrategyError.textContent = `無法更新緊急停止：${error.message}`;

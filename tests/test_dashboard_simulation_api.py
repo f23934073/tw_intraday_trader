@@ -17,6 +17,7 @@ from dashboard.service import DashboardService
 from market_data.models import RealtimeQuoteUpdate
 from market_data.provider import MarketDataUsage, MockProvider
 from runtime.composition import RuntimeComposition
+from runtime.in_memory import InMemoryJournalRepository
 from simulation.continuous_strategy import AutomatedStrategyConfig
 from simulation.settings import JsonLocalPaperSettingsRepository
 
@@ -116,18 +117,56 @@ class FakeAutomatedStrategyController:
     def status(self) -> dict:
         return {"state": "RUNNING", "decision": "WAITING_SIGNAL"}
 
-    def engage_kill_switch(self, reason: str) -> dict:
+    def engage_kill_switch(
+        self,
+        *,
+        actor_id: str,
+        idempotency_key: str,
+        reason: str,
+    ) -> dict:
         return {
             "state": "KILLED",
             "decision": "KILL_SWITCH_ENGAGED",
-            "kill_switch": {"engaged": True, "reason": reason},
+            "kill_switch": {
+                "control_state": "ENGAGED",
+                "engaged": True,
+                "revision": 1,
+                "reason": reason,
+                "last_actor_id": actor_id,
+                "last_operation_id": idempotency_key,
+            },
+            "operation": {
+                "operation_id": idempotency_key,
+                "operation_revision": 1,
+                "idempotent": False,
+            },
         }
 
-    def reset_kill_switch(self) -> dict:
+    def reset_kill_switch(
+        self,
+        *,
+        actor_id: str,
+        idempotency_key: str,
+        expected_revision: int,
+        reason: str,
+    ) -> dict:
         return {
             "state": "STOPPED",
             "decision": "STOPPED",
-            "kill_switch": {"engaged": False, "reason": None},
+            "kill_switch": {
+                "control_state": "DISENGAGED",
+                "engaged": False,
+                "revision": expected_revision + 1,
+                "reason": None,
+                "last_actor_id": actor_id,
+                "last_operation_id": idempotency_key,
+            },
+            "operation": {
+                "operation_id": idempotency_key,
+                "reason": reason,
+                "operation_revision": expected_revision + 1,
+                "idempotent": False,
+            },
         }
 
 
@@ -742,7 +781,11 @@ def test_automated_controller_is_constructed_once_under_concurrent_first_access(
 ) -> None:
     start = Barrier(2)
     constructed: list[object] = []
-    composition = SimpleNamespace(strategy_paper_flow=object(), clock=object())
+    composition = SimpleNamespace(
+        strategy_paper_flow=object(),
+        clock=object(),
+        kill_switch=object(),
+    )
     simulation = SimpleNamespace(projection=lambda: {})
     momentum = SimpleNamespace(snapshot=lambda: {})
 
@@ -934,9 +977,136 @@ def test_automated_strategy_mutations_require_csrf_and_exact_origin(monkeypatch)
     assert client.post(
         "/api/simulation/automated-strategy/kill-switch",
         headers={"X-Strategy-CSRF": token},
-        json={"reason": "operator test"},
+        json={
+            "actor_id": "local-operator",
+            "idempotency_key": "api-kill-csrf-1",
+            "reason": "operator test",
+        },
     ).json()["state"] == "KILLED"
     assert client.post(
         "/api/simulation/automated-strategy/kill-switch/reset",
         headers={"X-Strategy-CSRF": token},
+        json={
+            "actor_id": "local-operator",
+            "idempotency_key": "api-reset-csrf-1",
+            "expected_revision": 1,
+            "reason": "operator reviewed",
+        },
     ).json()["state"] == "STOPPED"
+
+
+def test_kill_switch_api_is_revisioned_idempotent_and_does_not_block_manual_orders(
+    monkeypatch,
+) -> None:
+    clock = FixedClock(datetime(2026, 8, 26, 10, 0, tzinfo=ZoneInfo("Asia/Taipei")))
+    composition = RuntimeComposition.create(
+        MockProvider(),
+        journal=InMemoryJournalRepository(),
+        clock=clock,
+        start_simulation_streaming=False,
+    )
+    controller = server.ContinuousPaperStrategyController(
+        flow=composition.strategy_paper_flow,
+        projection_reader=composition.simulation_service.projection,
+        signal_reader=lambda: {"status": "unavailable", "items": []},
+        calendar=server.ReviewedEquityCalendar.from_path(server.twse_calendar_2026.PATH),
+        clock=clock,
+        kill_switch=composition.kill_switch,
+    )
+    monkeypatch.setattr(
+        server,
+        "get_automated_strategy_controller",
+        lambda: controller,
+    )
+    monkeypatch.setattr(server, "get_runtime_composition", lambda: composition)
+    headers = {"X-Strategy-CSRF": server._atomic_strategy_csrf_token}
+    engage_payload = {
+        "actor_id": "local-operator",
+        "idempotency_key": "api-durable-engage",
+        "reason": "operator observed anomaly",
+    }
+
+    with TestClient(server.app) as client:
+        engaged = client.post(
+            "/api/simulation/automated-strategy/kill-switch",
+            headers=headers,
+            json=engage_payload,
+        )
+        retried = client.post(
+            "/api/simulation/automated-strategy/kill-switch",
+            headers=headers,
+            json=engage_payload,
+        )
+        conflicting = client.post(
+            "/api/simulation/automated-strategy/kill-switch",
+            headers=headers,
+            json={**engage_payload, "reason": "different anomaly"},
+        )
+        stale = client.post(
+            "/api/simulation/automated-strategy/kill-switch/reset",
+            headers=headers,
+            json={
+                "actor_id": "local-operator",
+                "idempotency_key": "api-stale-reset",
+                "expected_revision": 0,
+                "reason": "stale browser",
+            },
+        )
+        invalid_revision = client.post(
+            "/api/simulation/automated-strategy/kill-switch/reset",
+            headers=headers,
+            json={
+                "actor_id": "local-operator",
+                "idempotency_key": "api-invalid-reset",
+                "expected_revision": True,
+                "reason": "invalid revision type",
+            },
+        )
+        extra_field = client.post(
+            "/api/simulation/automated-strategy/kill-switch",
+            headers=headers,
+            json={**engage_payload, "idempotency_key": "api-extra", "extra": True},
+        )
+        manual = client.post(
+            "/api/simulation/orders",
+            json={
+                "symbol": "3231",
+                "side": "BUY",
+                "lots": 1,
+                "limit_price": 106,
+                "idempotency_key": "manual-while-killed",
+            },
+        )
+        reset_payload = {
+            "actor_id": "local-operator",
+            "idempotency_key": "api-durable-reset",
+            "expected_revision": 1,
+            "reason": "operator review complete",
+        }
+        reset = client.post(
+            "/api/simulation/automated-strategy/kill-switch/reset",
+            headers=headers,
+            json=reset_payload,
+        )
+        reset_retry = client.post(
+            "/api/simulation/automated-strategy/kill-switch/reset",
+            headers=headers,
+            json=reset_payload,
+        )
+
+    assert engaged.status_code == 201
+    assert engaged.json()["kill_switch"]["revision"] == 1
+    assert retried.status_code == 200
+    assert retried.json()["operation"]["idempotent"] is True
+    assert conflicting.status_code == 409
+    assert stale.status_code == 409
+    assert invalid_revision.status_code == 422
+    assert extra_field.status_code == 422
+    assert manual.status_code == 201
+    assert manual.json()["order"]["origin"] == "MANUAL_WEB"
+    assert reset.status_code == 201
+    assert reset.json()["state"] == "STOPPED"
+    assert reset.json()["kill_switch"]["revision"] == 2
+    assert reset_retry.status_code == 200
+    assert reset_retry.json()["operation"]["idempotent"] is True
+    composition.simulation_service.close()
