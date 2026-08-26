@@ -11,6 +11,13 @@
   (literal "/ABSOLUTE/RESOLVED/PYTHON")
   (literal "/usr/bin/git"))
 
+;; dyld reads the root directory and these two security/boot flags before the
+;; pinned interpreter starts. Keep each startup allowance literal/name-bound.
+(allow file-read-data (literal "/"))
+(allow sysctl-read
+  (sysctl-name "security.mac.lockdown_mode_state")
+  (sysctl-name "kern.bootargs"))
+
 (allow file-read*
   (subpath "/System")
   (subpath "/usr/lib")

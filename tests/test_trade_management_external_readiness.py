@@ -148,6 +148,11 @@ def test_rendered_candidates_remain_disabled_and_network_denied(
     assert "/ABSOLUTE/" not in sandbox
     assert "/ABSOLUTE/" not in plist
     assert "(deny network*)" in sandbox
+    assert '(allow file-read-data (literal "/"))' in sandbox
+    assert '(sysctl-name "security.mac.lockdown_mode_state")' in sandbox
+    assert '(sysctl-name "kern.bootargs")' in sandbox
+    assert '(subpath "/")' not in sandbox
+    assert "(allow sysctl-read)" not in sandbox
     assert "RENDERED CANDIDATE — NOT APPROVED" in sandbox
     assert "<key>Disabled</key>" in plist
     assert "<true/>" in plist
