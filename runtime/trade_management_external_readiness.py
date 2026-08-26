@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import os
 import plistlib
+import re
 import stat
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
 
@@ -30,6 +32,11 @@ SANDBOX_TEMPLATE = "trade_management_shadow_external.sb.template"
 SANDBOX_RENDERED = "trade_management_shadow_external.sb"
 PLIST_TEMPLATE = "com.stevehuang.trade-management-shadow.plist.template"
 PLIST_RENDERED = "com.stevehuang.trade-management-shadow.plist"
+ENV_REFERENCE_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+DSN_KEYS = (
+    "LOCAL_PAPER_DATABASE_URL",
+    "TRADE_MANAGEMENT_SHADOW_DATABASE_URL",
+)
 
 
 class ReadinessBlocked(RuntimeError):
@@ -59,6 +66,13 @@ def provision_owner_only_environment(
         for key, value in parsed.items()
         if key in ENVIRONMENT_KEYS and value is not None and str(value).strip()
     }
+    for key in DSN_KEYS:
+        if key in values:
+            values[key] = _resolve_source_value(
+                key=key,
+                source_values=parsed,
+                resolving=(),
+            )
     _validate_environment(values)
     values["SJ_SIMULATION"] = "true"
     content = "".join(
@@ -222,6 +236,8 @@ def _validate_environment(values: Mapping[str, str]) -> None:
         raise ReadinessBlocked("LOCAL_PAPER_AND_SHADOW_DSNS_ARE_REQUIRED")
     if fill_dsn == shadow_dsn:
         raise ReadinessBlocked("SHADOW_DSN_MUST_BE_DEDICATED")
+    _validate_postgresql_dsn(fill_dsn)
+    _validate_postgresql_dsn(shadow_dsn)
     if values.get("SJ_SIMULATION", "true").lower() != "true":
         raise ReadinessBlocked("PROVIDER_SIMULATION_MUST_BE_TRUE")
     if any(
@@ -229,6 +245,47 @@ def _validate_environment(values: Mapping[str, str]) -> None:
         for value in values.values()
     ):
         raise ReadinessBlocked("ENVIRONMENT_VALUE_CONTAINS_CONTROL_CHARACTER")
+
+
+def _resolve_source_value(
+    *,
+    key: str,
+    source_values: Mapping[str, str | None],
+    resolving: tuple[str, ...],
+) -> str:
+    if key in resolving:
+        raise ReadinessBlocked("ENVIRONMENT_REFERENCE_CYCLE")
+    value = source_values.get(key)
+    if value is None:
+        raise ReadinessBlocked("ENVIRONMENT_REFERENCE_UNRESOLVED")
+
+    def replace(match: re.Match[str]) -> str:
+        return _resolve_source_value(
+            key=match.group(1),
+            source_values=source_values,
+            resolving=(*resolving, key),
+        )
+
+    resolved = ENV_REFERENCE_PATTERN.sub(replace, str(value))
+    if "${" in resolved:
+        raise ReadinessBlocked("ENVIRONMENT_REFERENCE_UNSUPPORTED")
+    return resolved
+
+
+def _validate_postgresql_dsn(value: str) -> None:
+    if "${" in value:
+        raise ReadinessBlocked("ENVIRONMENT_REFERENCE_UNRESOLVED")
+    try:
+        parsed = urlsplit(value)
+        parsed_port = parsed.port
+    except ValueError as exc:
+        raise ReadinessBlocked("POSTGRESQL_DSN_INVALID") from exc
+    if (
+        parsed.scheme not in {"postgres", "postgresql"}
+        or not parsed.hostname
+        or parsed_port is not None and not 0 < parsed_port < 65536
+    ):
+        raise ReadinessBlocked("POSTGRESQL_DSN_INVALID")
 
 
 def _render_text(template: str, replacements: Mapping[str, str]) -> str:

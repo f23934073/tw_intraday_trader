@@ -54,6 +54,69 @@ def test_provision_environment_filters_and_forces_safe_values(tmp_path: Path) ->
     assert "top-secret-value" not in repr(result)
 
 
+def test_provision_environment_resolves_source_local_dsn_references(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.env"
+    target = tmp_path / "config/trade_management_shadow.env"
+    source.write_text(
+        "\n".join(
+            (
+                "SHIOAJI_API_KEY=api-key",
+                "SHIOAJI_SECRET=top-secret-value",
+                "PostgreSQL_DSN=postgresql://localhost:5432/trading",
+                "LOCAL_PAPER_DATABASE_URL=${PostgreSQL_DSN}",
+                "TRADE_MANAGEMENT_SHADOW_DATABASE_URL=${PostgreSQL_DSN}?options=-csearch_path%3Dshadow",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    provision_owner_only_environment(source=source, target=target)
+
+    parsed = dotenv_values(target, interpolate=False)
+    assert parsed["LOCAL_PAPER_DATABASE_URL"] == (
+        "postgresql://localhost:5432/trading"
+    )
+    assert parsed["TRADE_MANAGEMENT_SHADOW_DATABASE_URL"] == (
+        "postgresql://localhost:5432/trading?options=-csearch_path%3Dshadow"
+    )
+    assert "PostgreSQL_DSN" not in parsed
+
+
+def test_provision_environment_rejects_unresolved_dsn_reference(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.env"
+    target = tmp_path / "config/trade_management_shadow.env"
+    _source_environment(source)
+    content = source.read_text(encoding="utf-8").replace(
+        "postgresql://paper",
+        "${MISSING_BASE_DSN}",
+    )
+    source.write_text(content, encoding="utf-8")
+    monkeypatch.setenv("MISSING_BASE_DSN", "postgresql://ambient")
+
+    with pytest.raises(
+        ReadinessBlocked,
+        match="ENVIRONMENT_REFERENCE_UNRESOLVED",
+    ):
+        provision_owner_only_environment(source=source, target=target)
+    assert not target.exists()
+
+
+def test_provision_environment_rejects_invalid_dsn(tmp_path: Path) -> None:
+    source = tmp_path / "source.env"
+    target = tmp_path / "config/trade_management_shadow.env"
+    _source_environment(source, shadow_dsn="not-a-postgresql-dsn")
+
+    with pytest.raises(ReadinessBlocked, match="POSTGRESQL_DSN_INVALID"):
+        provision_owner_only_environment(source=source, target=target)
+    assert not target.exists()
+
+
 def test_provision_environment_is_immutable(tmp_path: Path) -> None:
     source = tmp_path / "source.env"
     target = tmp_path / "config/trade_management_shadow.env"
