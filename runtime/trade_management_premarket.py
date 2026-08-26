@@ -192,6 +192,7 @@ class DataOnlyProviderPreflight:
     logout_succeeded: bool
     subscribe_trade: bool
     environment_identity: str | None
+    error_code: str | None = None
 
     @property
     def passed(self) -> bool:
@@ -201,6 +202,7 @@ class DataOnlyProviderPreflight:
             and self.logout_succeeded
             and not self.subscribe_trade
             and self.environment_identity is not None
+            and self.error_code is None
         )
 
     @property
@@ -212,6 +214,7 @@ class DataOnlyProviderPreflight:
                 "logout_succeeded": self.logout_succeeded,
                 "subscribe_trade": self.subscribe_trade,
                 "environment_identity": self.environment_identity,
+                "error_code": self.error_code,
             }
         )
 

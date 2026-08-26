@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import subprocess
 from dataclasses import replace
 from datetime import date, datetime, time
 from pathlib import Path
@@ -204,6 +205,73 @@ def test_postgres_preflight_digest_never_contains_a_dsn() -> None:
 
     assert "postgresql://" not in payload
     assert "password" not in payload.lower()
+
+
+def test_provider_preflight_contains_native_worker_signal(monkeypatch) -> None:
+    monkeypatch.setenv("SHIOAJI_API_KEY", "present")
+    monkeypatch.setenv("SHIOAJI_SECRET", "present")
+    monkeypatch.setattr(cli, "_loopback_bind_supported", lambda: True)
+    monkeypatch.setattr(
+        cli,
+        "_run_provider_preflight_worker",
+        lambda: subprocess.CompletedProcess([], -11, "", "native crash"),
+    )
+
+    result = cli._provider_preflight(skip_login=False)
+
+    assert result.error_code == "NATIVE_SIGNAL_11"
+    assert not result.passed
+    assert not result.login_succeeded
+    assert not result.logout_succeeded
+    assert not result.subscribe_trade
+
+
+def test_provider_preflight_decodes_successful_worker(monkeypatch) -> None:
+    monkeypatch.setenv("SHIOAJI_API_KEY", "present")
+    monkeypatch.setenv("SHIOAJI_SECRET", "present")
+    monkeypatch.setattr(cli, "_loopback_bind_supported", lambda: True)
+    payload = {
+        "credential_keys_present": ["API_KEY", "SECRET"],
+        "login_succeeded": True,
+        "logout_succeeded": True,
+        "subscribe_trade": False,
+        "environment_identity": "shioaji:1.7.2:simulation=true",
+        "error_code": None,
+    }
+    monkeypatch.setattr(
+        cli,
+        "_run_provider_preflight_worker",
+        lambda: subprocess.CompletedProcess(
+            [],
+            0,
+            "provider log\n"
+            + cli.PROVIDER_WORKER_SENTINEL
+            + json.dumps(payload)
+            + "\n",
+            "",
+        ),
+    )
+
+    assert cli._provider_preflight(skip_login=False) == provider()
+
+
+def test_provider_preflight_skips_native_worker_when_loopback_bind_is_denied(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("SHIOAJI_API_KEY", "present")
+    monkeypatch.setenv("SHIOAJI_SECRET", "present")
+    monkeypatch.setattr(cli, "_loopback_bind_supported", lambda: False)
+
+    def unexpected_worker():
+        raise AssertionError("native worker must not start")
+
+    monkeypatch.setattr(cli, "_run_provider_preflight_worker", unexpected_worker)
+
+    result = cli._provider_preflight(skip_login=False)
+
+    assert result.error_code == "LOOPBACK_BIND_DENIED"
+    assert not result.passed
+    assert not result.subscribe_trade
 
 
 def test_cli_writes_nonqualifying_ready_artifact_without_secret(

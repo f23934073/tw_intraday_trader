@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
 from datetime import date, datetime, time
@@ -34,6 +35,8 @@ from trading.migrations import migration_files
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TAIPEI = ZoneInfo("Asia/Taipei")
+PROVIDER_WORKER_ARG = "--provider-preflight-worker"
+PROVIDER_WORKER_SENTINEL = "__TM_C0_PROVIDER_PREFLIGHT__="
 REHEARSAL_TARGETS = tuple(
     sorted(
         (
@@ -142,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
             "logout_succeeded": provider.logout_succeeded,
             "subscribe_trade": provider.subscribe_trade,
             "environment_identity": provider.environment_identity,
+            "error_code": provider.error_code,
             "digest": provider.digest,
         },
         "postgres_preflight": {
@@ -197,6 +201,67 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _provider_preflight(*, skip_login: bool) -> DataOnlyProviderPreflight:
+    credentials = _provider_credentials()
+    if skip_login or len(credentials) != 2:
+        return DataOnlyProviderPreflight(
+            credential_keys_present=credentials,
+            login_succeeded=False,
+            logout_succeeded=False,
+            subscribe_trade=False,
+            environment_identity=None,
+            error_code=("SKIPPED" if skip_login else "CREDENTIALS_MISSING"),
+        )
+    if not _loopback_bind_supported():
+        return DataOnlyProviderPreflight(
+            credential_keys_present=credentials,
+            login_succeeded=False,
+            logout_succeeded=False,
+            subscribe_trade=False,
+            environment_identity=None,
+            error_code="LOOPBACK_BIND_DENIED",
+        )
+    result = _run_provider_preflight_worker()
+    if result.returncode != 0:
+        error_code = (
+            f"NATIVE_SIGNAL_{-result.returncode}"
+            if result.returncode < 0
+            else f"WORKER_EXIT_{result.returncode}"
+        )
+        return DataOnlyProviderPreflight(
+            credential_keys_present=credentials,
+            login_succeeded=False,
+            logout_succeeded=False,
+            subscribe_trade=False,
+            environment_identity=None,
+            error_code=error_code,
+        )
+    try:
+        payload_line = next(
+            line
+            for line in reversed(result.stdout.splitlines())
+            if line.startswith(PROVIDER_WORKER_SENTINEL)
+        )
+        payload = json.loads(payload_line.removeprefix(PROVIDER_WORKER_SENTINEL))
+        return DataOnlyProviderPreflight(
+            credential_keys_present=tuple(payload["credential_keys_present"]),
+            login_succeeded=payload["login_succeeded"],
+            logout_succeeded=payload["logout_succeeded"],
+            subscribe_trade=payload["subscribe_trade"],
+            environment_identity=payload["environment_identity"],
+            error_code=payload["error_code"],
+        )
+    except (KeyError, StopIteration, TypeError, ValueError, json.JSONDecodeError):
+        return DataOnlyProviderPreflight(
+            credential_keys_present=credentials,
+            login_succeeded=False,
+            logout_succeeded=False,
+            subscribe_trade=False,
+            environment_identity=None,
+            error_code="WORKER_OUTPUT_INVALID",
+        )
+
+
+def _provider_credentials() -> tuple[str, ...]:
     credentials: list[str] = []
     if os.getenv("SHIOAJI_API_KEY") or os.getenv("SJ_API_KEY"):
         credentials.append("API_KEY")
@@ -206,26 +271,57 @@ def _provider_preflight(*, skip_login: bool) -> DataOnlyProviderPreflight:
         or os.getenv("SJ_SEC_KEY")
     ):
         credentials.append("SECRET")
-    if skip_login or len(credentials) != 2:
-        return DataOnlyProviderPreflight(
-            credential_keys_present=tuple(credentials),
-            login_succeeded=False,
-            logout_succeeded=False,
-            subscribe_trade=False,
-            environment_identity=None,
-        )
+    return tuple(credentials)
+
+
+def _loopback_bind_supported() -> bool:
+    for socket_type in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+        try:
+            with socket.socket(socket.AF_INET, socket_type) as probe:
+                probe.bind(("127.0.0.1", 0))
+        except OSError:
+            return False
+    return True
+
+
+def _run_provider_preflight_worker() -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), PROVIDER_WORKER_ARG],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _provider_preflight_worker_main() -> int:
+    provider = _provider_preflight_in_process()
+    payload = {
+        "credential_keys_present": list(provider.credential_keys_present),
+        "login_succeeded": provider.login_succeeded,
+        "logout_succeeded": provider.logout_succeeded,
+        "subscribe_trade": provider.subscribe_trade,
+        "environment_identity": provider.environment_identity,
+        "error_code": provider.error_code,
+    }
+    print(PROVIDER_WORKER_SENTINEL + json.dumps(payload, sort_keys=True))
+    return 0
+
+
+def _provider_preflight_in_process() -> DataOnlyProviderPreflight:
+    credentials = _provider_credentials()
     stream = None
     identity = None
     login_succeeded = False
     logout_succeeded = False
+    error_code = None
     try:
         stream = ShioajiMomentumStream.connect_from_env(
             session_id="trade-management-c0-data-only-preflight"
         )
         identity = stream.environment_identity
         login_succeeded = True
-    except Exception:
-        pass
+    except Exception as error:
+        error_code = type(error).__name__.upper()
     finally:
         if stream is not None:
             try:
@@ -233,12 +329,14 @@ def _provider_preflight(*, skip_login: bool) -> DataOnlyProviderPreflight:
                 logout_succeeded = True
             except Exception:
                 logout_succeeded = False
+                error_code = error_code or "LOGOUT_FAILED"
     return DataOnlyProviderPreflight(
-        credential_keys_present=tuple(credentials),
+        credential_keys_present=credentials,
         login_succeeded=login_succeeded,
         logout_succeeded=logout_succeeded,
         subscribe_trade=False,
         environment_identity=identity,
+        error_code=error_code,
     )
 
 
@@ -377,4 +475,6 @@ def _git_identity() -> str:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == [PROVIDER_WORKER_ARG]:
+        raise SystemExit(_provider_preflight_worker_main())
     raise SystemExit(main())
