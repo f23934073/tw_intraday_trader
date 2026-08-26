@@ -6,10 +6,10 @@ Implement and verify a repository-only, uninstalled external execution control-p
 
 ## Scope Boundaries
 
-- Do not install or enable launchd or sandbox services.
-- Do not modify Codex automation configuration.
-- Do not connect to provider, PostgreSQL, or Local Paper DSNs.
-- Do not run C0 or C1, generate inputs, promote reviews, or create evidence.
+- Phases 1–5 were repository-only: no launchd/sandbox installation, automation mutation, provider/DSN access, or C0/C1 execution occurred.
+- The 2026-08-26 continuation authorizes readiness items 1–7 and conditional item 8, but every installation/execution transition remains fail-closed behind its preceding immutable review gate.
+- Do not invent secrets, DSNs, provider endpoints, review approvals, inputs, fills, or evidence.
+- Do not install/enable or run C0/C1 unless the rendered package is independently approved, the reviewed calendar/window and canonical inputs pass, and unattended external access is proven.
 - Do not add order, fill, Position, CA, trade-callback, or broker-order capability.
 - Preserve unrelated dirty-worktree changes and the legacy immutable packet.
 
@@ -50,6 +50,55 @@ Implement and verify a repository-only, uninstalled external execution control-p
 - [x] Stop only at APPROVE and record the final decision.
 - **Status:** complete — final decision `APPROVE`
 
+### Phase 6: Current-state admission audit
+
+- [x] Verify commit, dirty-worktree isolation, reviewed calendar coverage, dependency state, existing input promotion state, secret-path posture, sandbox support, and automation state.
+- [x] Freeze absolute runtime paths and identify every external permission or unavailable prerequisite before mutation.
+- **Status:** complete
+
+### Phase 7: Clean pinned runtime checkout
+
+- [x] Create an independent clean checkout starting from commit `19d4489bceab9e2cf06c12d31acf32e454428dd7` outside the concurrent source worktree.
+- [x] Prove clean status, absence of checkout `.env`, and path separation from future config/state roots; sandbox write-denial proof remains Phase 10.
+- **Status:** complete
+
+### Phase 8: Dependency and virtualenv identity
+
+- [x] Select or create a reviewable dependency lock without silently changing application dependencies.
+- [x] Build the isolated virtualenv and record interpreter plus full-tree SHA-256 identity.
+- **Status:** complete
+
+### Phase 9: Secure runtime roots and rendered drafts
+
+- [ ] Create owner-only external config/runtime roots and validate existing secret/DSN material without printing values.
+- [ ] Render sandbox, launchd, and approval-package candidates with exact absolute paths while keeping them disabled and uninstalled.
+- **Status:** in_progress
+
+### Phase 10: Sandbox and egress rehearsal
+
+- [ ] Capture provider/loopback egress inventory from approved non-order operations only.
+- [ ] Prove source-write, arbitrary process, generic Python, forbidden network, and non-approved path denials in the rendered sandbox.
+- **Status:** pending
+
+### Phase 11: Automation coordination
+
+- [ ] Inspect the existing `pr-tm-012c1-shadow` automation and preserve its full safety prompt.
+- [ ] Pause it or convert it to monitor-only only after external runner installation eligibility is otherwise proven; read back persisted state and create immutable pause evidence.
+- **Status:** pending
+
+### Phase 12: Immutable installation review package
+
+- [ ] Bind all file, runtime, denial, egress, automation, and reviewer evidence into a `0600` approval spec/sidecar.
+- [ ] Perform autonomous adversarial review; remediate and repeat until `APPROVE`, otherwise remain `BLOCKED`.
+- **Status:** pending
+
+### Phase 13: Conditional installation and formal session
+
+- [ ] Install/enable only the exact approved rendered artifacts with no shell or alternate runner.
+- [ ] On a reviewed trading day inside the pre-open window, run only the existing C0 then C1 supervisor path; preserve truthful terminal artifacts and never retry.
+- [ ] Keep a single day at Production Shadow Gate `NOT_PASSED` and report any missing fill as `INSUFFICIENT_EVIDENCE`.
+- **Status:** pending — conditional on Phases 6–12
+
 ## Success Criteria
 
 1. The supervisor can only construct and invoke the two reviewed entrypoints with exact argv.
@@ -66,3 +115,13 @@ Implement and verify a repository-only, uninstalled external execution control-p
 | Import-boundary fixture applied the control-plane no-trading-import rule to the existing C0 data plane | 1 | Scope the no-trading rule to supervisor modules while retaining the subprocess-import assertion across C0 and identity code. |
 | New lock-retention assertions were inserted below the following test during a combined patch | 1 | Move them back into the ownership-lock test; no production file was affected. |
 | First Popen refactor compile had positional argv after keyword role | 1 | Name the `argv=` argument in all four allowlisted captured-process calls. |
+| Phase 6 input inventory returned a missing-directory error for canonical 2026-08-27 inputs | 1 | Record the absence as a formal execution blocker; inspect the existing draft packet without generating or promoting inputs. |
+| Phase 6 external-root inventory reported the three proposed roots absent | 1 | Treat absence as expected pre-provisioning state; do not fall back to the repository `.env` or dirty checkout. |
+| Exact readiness branch lookup returned an invalid/missing ref | 1 | Treat this as proof the scoped branch name is available; create it once from the approved draft commit. |
+| Runtime checkout inventory reported `.env` absent | 1 | This is the required fail-closed source/config separation, not a missing-secret fallback; provision a separate filtered `0600` config in Phase 9. |
+| `uv lock --check --offline` could not read uv cache internal `.git` under Codex sandbox | 1 | Classify as a local sandbox read restriction, then rerun the same non-mutating offline check with narrowly scoped external permission. |
+| Frozen offline venv sync lacked cached `httpx2==2.12.0` | 1 | Preserve the lock and partial venv as non-evidence; switch to one network-enabled `uv sync --frozen --all-extras` so downloaded artifacts remain hash-bound to the reviewed lock. |
+| Default frozen sync installed the local project editable and modified tracked egg-info source inventory | 1 | Reject that venv for formal use; sync with `--no-install-project` and restore only the generated tracked file change before clean-status verification. |
+| Dedicated clean runtime full suite has one price-coverage source-digest failure | 1 | Do not import unrelated dirty source changes; isolate the failure, run the exact frozen C0 rehearsal plus external-runner fixtures, and retain the full-suite mismatch as an installation-review finding. |
+| First venv tree digest call passed relative `.venv` | 1 | The adapter correctly requires absolute paths; rerun once with the frozen absolute runtime checkout path. |
+| First readiness fixture treated the metadata key name `provider_secret_alias_count` as a secret-value leak | 1 | Use a distinctive fixture value and assert that exact value is absent; keep safe alias-count metadata. |

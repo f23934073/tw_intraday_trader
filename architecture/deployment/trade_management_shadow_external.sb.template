@@ -23,7 +23,7 @@
   (subpath "/ABSOLUTE/OWNER_ONLY_RUNTIME/artifacts")
   (subpath "/ABSOLUTE/OWNER_ONLY_RUNTIME/records")
   (subpath "/ABSOLUTE/OWNER_ONLY_RUNTIME/locks")
-  (subpath "/private/tmp/REVIEWED_TM_SHADOW_RUNTIME"))
+  (subpath "/ABSOLUTE/OWNER_ONLY_RUNTIME/tmp"))
 
 ;; Provider endpoint and loopback rules remain unresolved. A rendered profile
 ;; with this deny-only network section cannot pass the installation gate.

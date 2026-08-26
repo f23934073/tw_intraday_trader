@@ -27,6 +27,8 @@
     <string>1</string>
     <key>TZ</key>
     <string>Asia/Taipei</string>
+    <key>TMPDIR</key>
+    <string>/ABSOLUTE/OWNER_ONLY_RUNTIME/tmp</string>
   </dict>
   <key>ProcessType</key>
   <string>Background</string>

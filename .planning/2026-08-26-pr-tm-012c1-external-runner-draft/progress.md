@@ -24,3 +24,18 @@
 - Final full repository regression: `1643 passed, 61 skipped`.
 - Final syntax, CLI help, JSON, plist, forbidden-process scan, subprocess/import boundary, read-only Git adapter, and scoped `git diff --check` validations passed.
 - Final autonomous adversarial review decision: `APPROVE` for the repository-only uninstalled draft. Formal installation/execution remains blocked and Production Shadow Gate remains `NOT_PASSED`.
+- Created scoped commit `19d4489bceab9e2cf06c12d31acf32e454428dd7` with 16 approved-scope files; no push and no unrelated dirty changes included.
+- User authorized the gated installation-readiness continuation covering items 1–8.
+- Restored the isolated planning context and added Phases 6–13. Current phase: Phase 6 current-state admission audit.
+- Phase 6 audit confirmed the current checkout is ineligible for formal execution and the reviewed calendar covers 2026-08-27 as a trading day.
+- Confirmed no dependency lock and no canonical 2026-08-27 input bundle; the existing draft is truthfully blocked and must not be promoted.
+- Completed Phase 6 with explicit blockers and path choices. Current phase: Phase 7 clean pinned runtime checkout.
+- Completed Phase 7: created and verified the dedicated clean runtime worktree without a checkout `.env`. Current phase: Phase 8 dependency and virtualenv identity.
+- Generated the first offline `uv.lock` candidate in the dedicated worktree; dependency-content review is in progress.
+- Offline frozen venv build stopped because one locked dev wheel was absent from cache; no fallback version or formal evidence was accepted.
+- Completed one hash-bound online download for missing locked wheels, then removed the editable local-project install and restored its sole tracked side effect. The venv candidate now requires regression verification.
+- Dedicated runtime full regression: `1566 passed, 61 skipped, 1 failed`; failure isolated to pre-existing price-coverage digest drift outside this scope. Exact Shadow suites remain to be checked.
+- Exact Shadow regression passed (`72 passed`); recorded lock and full venv-tree digests and staged only `uv.lock` on the dedicated readiness branch.
+- Completed Phase 8 with clean commit `63bfe56ad8cbf54bacc84100aa1cf81bc12b8d96`. Current phase: Phase 9 secure roots and rendered drafts.
+- Implemented the narrow readiness builder and disabled-template TMPDIR binding; focused `41 passed`, full current-worktree regression `1658 passed, 65 skipped`. Autonomous code review is next.
+- Readiness builder review loop ended at `APPROVE` after two P1 fixes. Final focused `42 passed`; final full current-worktree regression `1659 passed, 65 skipped`; compile, plist, CLI, and forbidden-capability scans passed.
