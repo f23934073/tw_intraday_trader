@@ -1170,7 +1170,7 @@ R5 v2 接受後，只能另行決定 R6 要：
 | G0 | Contract design | Independent Review closes semantics/identity/persistence/test blockers | PASSED / CONTRACT FROZEN |
 | G1 | Pure domain＋artifact | Golden math, matching, canonical bytes, bounded-memory tests pass | PASSED / FORMAL GATE APPROVED |
 | G2 | PostgreSQL＋application | Idempotency, CAS, tamper, redaction, security tests pass | PASSED / FORMAL GATE APPROVED |
-| G3 | Full preflight | 28.3M bars produce 128,802 complete matches, zero external calls | NOT AUTHORIZED |
+| G3 | Full preflight | 28.3M bars produce 128,802 complete matches, zero external calls | PASSED / FORMAL GATE APPROVED |
 | G4 | Formal replay | 128,802 accepted episodes and formal SQL pass | NOT AUTHORIZED |
 | G5 | Research disposition | Metrics reviewed; HOLD/reject/candidate recorded without lifecycle mutation | NOT AUTHORIZED |
 
@@ -1187,6 +1187,7 @@ backtest/research_replay/domain.py
 backtest/research_replay/ports.py
 backtest/research_replay/application.py
 backtest/research_replay/artifact_store.py
+backtest/research_replay/dataset_adapter.py
 backtest/research_replay/postgres_repository.py
 backtest/migrations/<next>_r5_signal_ledger_replays.sql
 scripts/preflight_vwap_signal_ledger_replay.py
@@ -1210,7 +1211,8 @@ R5 revision 1: COMPLETE / INVALID / SEALED
 R5 revision 2 design: APPROVED / G0 PASSED / CONTRACT FROZEN
 R5 revision 2 G1 implementation: APPROVED / FORMAL GATE PASSED
 R5 revision 2 G2: APPROVED / FORMAL GATE PASSED / PROGRESS 50%
-R5 revision 2 G3-G5: NOT AUTHORIZED
+R5 revision 2 G3: APPROVED / FORMAL GATE PASSED / PROGRESS 66.7%
+R5 revision 2 G4-G5: NOT AUTHORIZED
 R5 revision 2 execution: NOT AUTHORIZED
 R6: BLOCKED / NOT AUTHORIZED
 Local Paper / Broker / Real-money: PROHIBITED

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import unicodedata
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 from uuid import uuid4
 
@@ -11,10 +13,20 @@ from backtest.domain import digest
 from .domain import (
     CONTROL_CONTRACT_VERSION,
     ResearchReplayIntegrityError,
+    build_ledger_manifest,
+    build_match_manifest,
+    build_match_plan,
+    layer_multiplicity_digest,
     require_sha256,
     verify_postflight,
 )
-from .ports import ReplayArtifactStorePort, SignalReplayRepositoryPort
+from .ports import (
+    BaselinePreflightEvidence,
+    ExternalCallAuditPort,
+    OrderedDatasetPort,
+    ReplayArtifactStorePort,
+    SignalReplayRepositoryPort,
+)
 
 
 REQUEST_SCHEMA_VERSION = "r5-signal-ledger-replay-request-v2"
@@ -36,6 +48,139 @@ class SignalReplayConflict(ValueError):
 
 class SignalReplayNotAccepted(ValueError):
     """Economics were requested before an accepted postflight exists."""
+
+
+@dataclass(frozen=True)
+class SignalReplayPreflightResult:
+    ledger_manifest: dict[str, Any]
+    match_manifest: dict[str, Any]
+    ledger_path: Path
+    match_plan_path: Path
+    strategy_evaluation_count: int
+    provider_call_count: int
+    broker_call_count: int
+
+    def to_audit_dict(self) -> dict[str, Any]:
+        match = self.match_manifest
+        return {
+            "schema_version": "r5-signal-ledger-preflight-operation-audit-v2",
+            "baseline_run_id": match["baseline_run_id"],
+            "dataset_id": match["dataset_id"],
+            "dataset_digest": match["dataset_digest"],
+            "dataset_bars_sha256": match["dataset_bars_sha256"],
+            "ledger_manifest_digest": self.ledger_manifest[
+                "ledger_manifest_digest"
+            ],
+            "preflight_digest": match["match_plan_manifest_digest"],
+            "signal_count": match["signal_count"],
+            "matched_entry_count": match["matched_entry_count"],
+            "matched_exit_count": match["matched_exit_count"],
+            "missing_entry_count": match["missing_entry_count"],
+            "missing_exit_count": match["missing_exit_count"],
+            "duplicate_match_count": match["duplicate_match_count"],
+            "strategy_evaluation_count": self.strategy_evaluation_count,
+            "provider_call_count": self.provider_call_count,
+            "broker_call_count": self.broker_call_count,
+            "ledger_path": str(self.ledger_path),
+            "match_plan_path": str(self.match_plan_path),
+        }
+
+
+class SignalReplayPreflightService:
+    """Build the provider-free G3 ledger and full-Dataset match plan."""
+
+    _FROZEN_SIGNAL_COUNT = 128_802
+    _AUDIT_FIELDS = frozenset(
+        {"strategy_evaluation_count", "provider_call_count", "broker_call_count"}
+    )
+
+    def __init__(self, *, artifacts: ReplayArtifactStorePort) -> None:
+        self._artifacts = artifacts
+
+    def build_full_preflight(
+        self,
+        *,
+        evidence: BaselinePreflightEvidence,
+        dataset: OrderedDatasetPort,
+        external_calls: ExternalCallAuditPort,
+    ) -> SignalReplayPreflightResult:
+        before = self._audit_snapshot(external_calls)
+        if any(before.values()):
+            raise ResearchReplayIntegrityError(
+                "G3 preflight 啟動前已有 strategy/provider/broker call evidence"
+            )
+        ledger_manifest = build_ledger_manifest(
+            identity=evidence.identity,
+            ledger=evidence.ledger,
+            order_derivation=evidence.order_derivation,
+        )
+        ledger_path = self._artifacts.publish_ledger(
+            manifest=ledger_manifest,
+            ledger_rows=evidence.ledger.rows,
+            order_rows=evidence.order_derivation.rows,
+        )
+        match_plan = build_match_plan(
+            ledger_rows=evidence.ledger.rows,
+            bars=dataset.iter_observed_bars(),
+        )
+        match_manifest = build_match_manifest(
+            ledger_manifest=ledger_manifest,
+            match_plan=match_plan,
+        )
+        self._require_complete_preflight(
+            ledger_manifest=ledger_manifest,
+            match_manifest=match_manifest,
+            ledger_rows=evidence.ledger.rows,
+        )
+        match_plan_path = self._artifacts.publish_match_plan(
+            manifest=match_manifest,
+            match_rows=match_plan.rows,
+        )
+        after = self._audit_snapshot(external_calls)
+        if before != after or any(after.values()):
+            raise ResearchReplayIntegrityError(
+                "G3 preflight 禁止 strategy evaluation/provider/broker calls"
+            )
+        return SignalReplayPreflightResult(
+            ledger_manifest=ledger_manifest,
+            match_manifest=match_manifest,
+            ledger_path=ledger_path,
+            match_plan_path=match_plan_path,
+            strategy_evaluation_count=after["strategy_evaluation_count"],
+            provider_call_count=after["provider_call_count"],
+            broker_call_count=after["broker_call_count"],
+        )
+
+    @classmethod
+    def _audit_snapshot(cls, audit: ExternalCallAuditPort) -> dict[str, int]:
+        snapshot = dict(audit.snapshot())
+        if set(snapshot) != cls._AUDIT_FIELDS or any(
+            type(value) is not int or value < 0 for value in snapshot.values()
+        ):
+            raise ResearchReplayIntegrityError("G3 external-call audit schema 不合法")
+        return snapshot
+
+    @classmethod
+    def _require_complete_preflight(
+        cls,
+        *,
+        ledger_manifest: Mapping[str, Any],
+        match_manifest: Mapping[str, Any],
+        ledger_rows: tuple[dict[str, Any], ...],
+    ) -> None:
+        expected = cls._FROZEN_SIGNAL_COUNT
+        if not (
+            ledger_manifest["ledger_signal_count"] == expected
+            and match_manifest["signal_count"] == expected
+            and match_manifest["matched_entry_count"] == expected
+            and match_manifest["matched_exit_count"] == expected
+            and match_manifest["missing_entry_count"] == 0
+            and match_manifest["missing_exit_count"] == 0
+            and match_manifest["duplicate_match_count"] == 0
+            and match_manifest["match_signal_multiplicity_digest"]
+            == layer_multiplicity_digest(ledger_rows)
+        ):
+            raise ResearchReplayIntegrityError("G3 full preflight coverage/parity 不完整")
 
 
 def _strict_text(value: object, label: str, *, maximum: int) -> str:

@@ -559,3 +559,56 @@
 - User authorized a local scoped commit containing only R5 v2 G1/G2 code,
   tests, migration, architecture, and isolated planning evidence. Push and all
   unrelated shared-worktree files remain excluded.
+
+## 2026-08-25 R5 revision 2 G3 start
+
+- Created scoped local commit `3ff0182 feat(backtest): add R5 v2 replay
+  foundation`; no push and no unrelated dirty-worktree files were included.
+- Updated the frozen Gate record to G3 `AUTHORIZED / IN PROGRESS`; formal
+  progress remains 50% until independent G3 Review passes.
+- Implemented the first G3 candidate slice: read-only baseline evidence,
+  exact full-Dataset source adapter, provider-free preflight service/CLI, and
+  focused tests.
+- Focused no-DSN result at this checkpoint: `38 passed`.
+- Formal 28,325,340-bar execution and PostgreSQL read-only integration remain
+  pending; no durable Replay, Local Paper, broker, or real-money action occurred.
+
+## 2026-08-25 R5 revision 2 G3 candidate completion
+
+- Disposable PostgreSQL read-only evidence regression passed after separating
+  G3 snapshot reads from the G2 row-lock path; Replay table counts stayed zero.
+- Formal full-Dataset preflight completed with exit `0` and published canonical
+  ledger, match-plan, and operation-audit artifacts under
+  `data/backtest/research_replay`.
+- Formal counts: `128802` signals, entries, and exits; zero missing entry, zero
+  missing exit, zero duplicate match, and zero strategy/provider/broker calls.
+- Independent artifact reload audit exited `0`; both bidirectional parity
+  differences are zero and both manifest digests rebuild.
+- Full no-DSN: `1487 passed, 57 skipped`; full disposable PostgreSQL 17.11:
+  `1544 passed`. Compilation and `git diff --check` pass; disposable DB removed.
+- Application PostgreSQL remains untouched by migration 015 and has no R5 v2
+  Replay relations. G4 registration/execution is still not authorized.
+- **Disposition:** `G3 IMPLEMENTED / EXECUTED / FORMAL REVIEW REQUIRED`;
+  formal progress remains 50% pending independent Review.
+
+## 2026-08-26 R5 revision 2 G3 provenance remediation
+
+- Reproduced the Review boundary: canonical operation-audit fields were not
+  compared with immutable ledger and match provenance.
+- Added exact schema identity and three-way baseline/Dataset provenance checks.
+- Added canonical valid-shape tamper regressions for schema version, baseline
+  Run ID, Dataset ID, Dataset digest, and Dataset payload SHA-256.
+- Focused G1/G3 regression passes `31 passed`; the unchanged formal artifacts
+  re-audit with 128,802 signals and zero parity differences.
+- Python compilation and scoped `git diff --check` pass. No full Dataset scan,
+  PostgreSQL operation, Replay execution, G4 work, commit, or push occurred.
+- **Disposition:** `G3 REMEDIATION CANDIDATE / FORMAL RE-REVIEW REQUIRED`;
+  formal progress remains 50%.
+
+## 2026-08-26 R5 revision 2 G3 approval and commit authorization
+
+- Independent short re-review approved G3 with no new finding.
+- Recorded `G3 APPROVED / FORMAL GATE PASSED`; formal progress is 66.7%.
+- User authorized a local scoped G3 commit followed by G4 start. Push and all
+  unrelated shared-worktree files remain excluded; G5, R6, Local Paper,
+  provider, broker, and real-money remain unauthorized.

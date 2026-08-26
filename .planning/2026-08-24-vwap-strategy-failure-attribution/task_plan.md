@@ -214,6 +214,26 @@ Explain why the completed atomic `above_vwap_entry_v1` backtest failed, using it
   alias regressions; rerun focused PostgreSQL and full no-DSN/PostgreSQL suites.
 - **Status:** complete / G2 independently approved and Formal Gate passed
 
+### R5.7: Execute revision-2 G3 Full Dataset preflight
+
+- [x] Create the scoped G1/G2 commit before opening the next Gate.
+- [x] Add a read-only repeatable PostgreSQL baseline-evidence boundary that
+  does not apply migrations or create Replay state.
+- [x] Add an exact canonical full-Dataset adapter that preserves raw source-bar
+  bytes and verifies manifest, count, order, and payload SHA-256.
+- [x] Add provider-free preflight orchestration, canonical operation audit,
+  CLI composition, and focused regressions.
+- [x] Run disposable PostgreSQL focused regression for the read-only evidence
+  path and confirm all Replay tables remain empty.
+- [x] Execute the formal 28,325,340-bar preflight and verify 128,802 complete
+  matches, zero missing/duplicates, canonical digest replay, and zero external
+  calls.
+- [x] Bind the operation-audit schema, baseline Run, Dataset ID, Dataset digest,
+  and Dataset payload SHA-256 to both immutable ledger and match manifests;
+  reject canonical valid-shape provenance substitution.
+- [x] Re-audit the existing formal artifacts without rescanning the Dataset.
+- **Status:** complete / G3 independently approved and Formal Gate passed
+
 ## Gate
 
 This phase passes only when the failure attribution is reproducible from immutable evidence and the next experiment cannot reuse the same evidence as both hypothesis-generation and validation. Passing this phase authorizes research implementation only; it does not authorize Local Paper or broker execution.
@@ -229,6 +249,7 @@ Gate R5 revision 1 execution: COMPLETE / INVALID / ACCEPTANCE REJECTED
 Gate R5 contract revision 2: APPROVED / G0 PASSED / CONTRACT FROZEN
 Gate R5 revision 2 G1: APPROVED / FORMAL GATE PASSED
 Gate R5 revision 2 G2: APPROVED / FORMAL GATE PASSED / PROGRESS 50%
+Gate R5 revision 2 G3: APPROVED / FORMAL GATE PASSED / PROGRESS 66.7%
 Gate R6 v1: SUPERSEDED / NOT AUTHORIZED
 Gate R6 revision 2: BLOCKED ON ACCEPTED R5 V2 / NOT AUTHORIZED
 ```
@@ -258,3 +279,7 @@ Gate R6 revision 2: BLOCKED ON ACCEPTED R5 V2 / NOT AUTHORIZED
 | Commit packaging format probe emitted unquoted path literals in Python | 1 | No file was changed; pass the file list as individually quoted `Path(...)` values. |
 | G1 related-regression command named a nonexistent cash-admission application test file | 1 | Use `rg --files tests` and rerun only the actual domain, CLI, API, and PostgreSQL test modules; no test or product code ran in the failed attempt. |
 | New G2 remediation probes fail on numeric revision alias and cancel progress reset | 1 | Expected red phase: implement exact integer validation and progress-preserving cancellation before rerunning. |
+| G3 read-only evidence initially used `SELECT ... FOR SHARE` | 1 | PostgreSQL correctly rejected row locks in a read-only transaction; preserve row locks for G2 mutations and use repeatable-read snapshot queries without locks for G3. |
+| First full no-DSN command disabled incremental sync globally | 1 | Two scheduler contract tests correctly failed; rerun with their enabled default and retain the first result as an environment-command error. |
+| First application schema-state `psql` probes lost SQL string quoting | 2 | Both read-only sessions aborted without mutation; use a parameterized psycopg query for final `to_regclass` evidence. |
+| Disposable database cleanup verification query lost LIKE quoting | 1 | The query did not mutate state; list database names with a simpler read-only query and confirm no G3 test database remains. |

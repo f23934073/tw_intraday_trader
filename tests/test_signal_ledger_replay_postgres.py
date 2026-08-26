@@ -381,6 +381,31 @@ def _create(context, key="replay-create-key-0001", note="seal R5 v2 replay"):
     )
 
 
+def test_g3_preflight_evidence_read_is_repeatable_and_creates_no_replay_state(
+    postgres_test_connection, tmp_path
+) -> None:
+    context = _setup(postgres_test_connection, tmp_path)
+
+    evidence = context["repository"].load_preflight_evidence(
+        context["baseline"]["run_id"]
+    )
+
+    assert evidence.identity["baseline_run_id"] == context["baseline"]["run_id"]
+    assert evidence.dataset_manifest["dataset_id"] == context["config"].dataset_id
+    assert evidence.ledger.rows == context["ledger"].rows
+    assert evidence.order_derivation.rows == context["derivation"].rows
+    with postgres_test_connection.cursor() as cursor:
+        for table in (
+            "r5_signal_ledger_replay_heads",
+            "r5_signal_ledger_replay_registrations",
+            "r5_signal_ledger_replay_operations",
+            "r5_signal_ledger_replay_results",
+            "r5_signal_ledger_replay_result_chunks",
+        ):
+            cursor.execute(f"SELECT COUNT(*) FROM backtest.{table}")
+            assert cursor.fetchone()[0] == 0
+
+
 def test_postgresql_replay_and_different_key_noop_are_durable(
     postgres_test_connection, tmp_path
 ) -> None:

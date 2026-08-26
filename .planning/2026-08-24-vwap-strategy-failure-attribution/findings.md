@@ -563,3 +563,69 @@
 - The baseline has no row in `backtest_qualifications`; `INSUFFICIENT_EVIDENCE` is the Run summary verdict. A new research family/qualification has not yet been created.
 - A first lookup guessed schema `strategy_catalog.strategy_versions` and failed read-only. The actual catalog migration/table name must be located before reading frozen parameters.
 - The authoritative table is `backtest.strategy_versions`; the corrected lookup succeeded and resolved the parameter evidence.
+
+## 2026-08-25 R5 revision 2 G3 authorization
+
+- The user authorized G3 only after scoped commit `3ff0182`; G4 formal Replay,
+  G5 disposition, R6, Local Paper, providers, brokers, and real-money remain
+  outside the active scope.
+- The existing pure matcher streams the full Dataset and retains only bounded
+  per-symbol waiting/pending state; the 128,802 derived match rows are then
+  published through the existing external-sort artifact boundary.
+- G3 requires exact raw `bars.jsonl` bytes for entry/exit lineage. The new
+  Dataset adapter verifies PostgreSQL registration against the local canonical
+  manifest, exact HistoricalBar bytes, timestamp/symbol order, count, and
+  payload SHA-256 while streaming.
+- Baseline evidence is read in a repeatable-read, read-only PostgreSQL
+  transaction with migration application disabled. The preflight composition
+  has no strategy-evaluation, provider, broker, or simulation port.
+
+## 2026-08-25 R5 revision 2 G3 execution evidence
+
+- Formal preflight completed in one invocation over all `28,325,340` canonical
+  Kbars with Dataset payload SHA-256
+  `216d306d2df5ec3f6221e6e96c3998129774c966f844e9d923634d96f275c31d`.
+- Ledger manifest digest is
+  `b393bb79c917a446d836ee776ebe32fb25e3cf4da2761ee023db632ce2fa72a6`;
+  match-plan/preflight digest is
+  `65e16a54e8508c7f4489a95270f35f2cf8c06c3af7ccbad3b82e3300f19a7e58`.
+- Counts are exact: signals `128,802`, matched entries `128,802`, matched exits
+  `128,802`, missing entries/exits `0`, duplicate matches `0`.
+- Independent artifact reload rebuilt canonical manifests and payloads;
+  ledger-minus-match and match-minus-ledger multiplicity are both `0`.
+- Strategy evaluation, provider, and broker call counts are all `0`.
+- Application PostgreSQL has not applied migration 015; all five R5 v2 Replay
+  relations are absent. G3 therefore created no durable Replay state. Applying
+  migration 015 belongs to separately authorized G4, not this preflight.
+- Full no-DSN passes `1487 passed, 57 skipped`; full disposable PostgreSQL
+  17.11 passes `1544 passed`. The disposable database was removed.
+- G3 is an implementation/execution candidate only. It requires independent
+  Formal Review before progress can advance beyond 50% or G4 can be authorized.
+
+## 2026-08-26 R5 revision 2 G3 Review remediation
+
+- Independent Review found that the operation auditor verified canonical bytes,
+  counts, parity, and artifact digests but did not bind its declared baseline
+  and Dataset provenance to the immutable ledger and match manifests.
+- The auditor now requires the exact operation-audit schema version and exact
+  equality for `baseline_run_id`, `dataset_id`, `dataset_digest`, and
+  `dataset_bars_sha256` across the audit, ledger manifest, and match manifest.
+- Canonical valid-shape substitutions for each provenance field are regression
+  tested and fail closed. Digest substitutions use valid 64-hex values so the
+  test exercises provenance binding rather than input-shape rejection.
+- The existing formal artifacts re-audit successfully with 128,802 signals,
+  entries, and exits; both bidirectional parity differences remain zero. No
+  Dataset rescan, PostgreSQL mutation, Replay execution, or G4 work occurred.
+- **Disposition:** `G3 REMEDIATION CANDIDATE / FORMAL RE-REVIEW REQUIRED`;
+  formal progress remains 50%.
+
+## 2026-08-26 R5 revision 2 G3 approval
+
+- Independent short re-review found no new finding and closed the provenance
+  blocker after exact schema and three-way immutable-manifest verification.
+- Accepted evidence: five canonical valid-shape substitutions fail closed,
+  formal 128,802-row artifacts re-audit with `0/0` bidirectional differences,
+  focused regression `31 passed`, compilation, and `git diff --check`.
+- **Disposition:** `G3 APPROVED / FORMAL GATE PASSED`; formal progress is
+  66.7%. G4-G5, R6, Local Paper, broker, and real-money remain separately
+  gated.

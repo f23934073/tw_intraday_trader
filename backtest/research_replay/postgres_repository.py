@@ -26,6 +26,7 @@ from .application import (
     SignalReplayNotAccepted,
     verify_create_request,
 )
+from .ports import BaselinePreflightEvidence
 from .domain import (
     CONTROL_CONTRACT_VERSION,
     ResearchReplayIntegrityError,
@@ -144,6 +145,7 @@ class SignalReplayPostgresRepository:
         *,
         pool: Any | None = None,
         owns_pool: bool = False,
+        apply_schema: bool = True,
     ) -> None:
         if (connection is None) == (pool is None):
             raise ValueError("exactly one of connection or pool is required")
@@ -151,11 +153,13 @@ class SignalReplayPostgresRepository:
         self._pool = pool
         self._owns_pool = owns_pool
         if pool is None:
-            apply_migrations(connection)
+            if apply_schema:
+                apply_migrations(connection)
             self._set_search_path(connection)
         else:
             with pool.connection() as checked_out:
-                apply_migrations(checked_out)
+                if apply_schema:
+                    apply_migrations(checked_out)
                 self._set_search_path(checked_out)
 
     def replay_create_operation(
@@ -173,6 +177,22 @@ class SignalReplayPostgresRepository:
                 idempotency_key=idempotency_key,
                 request_digest=request_digest,
             )
+
+    def load_preflight_evidence(
+        self, baseline_run_id: str
+    ) -> BaselinePreflightEvidence:
+        """Read authoritative G3 inputs without creating durable replay state."""
+
+        with self._transaction(read_only=True) as cursor:
+            evidence = self._baseline_evidence(
+                cursor, baseline_run_id, lock_rows=False
+            )
+        return BaselinePreflightEvidence(
+            identity=dict(evidence["identity"]),
+            dataset_manifest=dict(evidence["dataset_manifest"]),
+            ledger=evidence["ledger_build"],
+            order_derivation=evidence["order_build"],
+        )
 
     def create_replay(
         self,
@@ -633,9 +653,16 @@ class SignalReplayPostgresRepository:
                 raise ResearchReplayIntegrityError("accepted postflight current evidence conflict")
             return result
 
-    def _baseline_evidence(self, cursor: Any, baseline_run_id: str) -> dict[str, Any]:
+    def _baseline_evidence(
+        self,
+        cursor: Any,
+        baseline_run_id: str,
+        *,
+        lock_rows: bool = True,
+    ) -> dict[str, Any]:
         cursor.execute(
-            "SELECT * FROM backtest_runs WHERE run_id = %s FOR SHARE",
+            "SELECT * FROM backtest_runs WHERE run_id = %s"
+            + (" FOR SHARE" if lock_rows else ""),
             (baseline_run_id,),
         )
         raw_run = cursor.fetchone()
@@ -671,8 +698,8 @@ class SignalReplayPostgresRepository:
              AND head.current_revision = registration.revision
             WHERE registration.baseline_run_id = %s
               AND registration.contract_version = %s
-            FOR SHARE OF registration
-            """,
+            """
+            + (" FOR SHARE OF registration" if lock_rows else ""),
             (baseline_run_id, V1_CONTROL_CONTRACT_VERSION),
         )
         v1_rows = cursor.fetchall()
@@ -712,7 +739,8 @@ class SignalReplayPostgresRepository:
         ):
             raise ResearchReplayIntegrityError("R5 v1 signal multiplicity 已漂移")
         cursor.execute(
-            "SELECT * FROM backtest_datasets WHERE dataset_id = %s FOR SHARE",
+            "SELECT * FROM backtest_datasets WHERE dataset_id = %s"
+            + (" FOR SHARE" if lock_rows else ""),
             (baseline["dataset_id"],),
         )
         raw_dataset = cursor.fetchone()
@@ -784,6 +812,7 @@ class SignalReplayPostgresRepository:
             "ledger_build": ledger_build,
             "order_build": order_build,
             "identity": identity,
+            "dataset_manifest": manifest,
             "v1_preflight": v1_preflight,
             "v1_postflight": v1_postflight,
         }
@@ -1273,12 +1302,16 @@ class SignalReplayPostgresRepository:
             raise
 
     @contextmanager
-    def _transaction(self):
+    def _transaction(self, *, read_only: bool = False):
         if self._pool is None:
             assert self._connection is not None
             try:
                 with self._connection.cursor() as cursor:
                     cursor.execute("SET search_path TO backtest, public")
+                    if read_only:
+                        cursor.execute(
+                            "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+                        )
                     yield cursor
                 self._connection.commit()
             except Exception:
@@ -1288,6 +1321,10 @@ class SignalReplayPostgresRepository:
         with self._pool.connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SET search_path TO backtest, public")
+                if read_only:
+                    cursor.execute(
+                        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+                    )
                 yield cursor
 
     def close(self) -> None:

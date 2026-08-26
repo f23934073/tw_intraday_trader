@@ -8,13 +8,32 @@ the authorized slice.
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Protocol
 
-from .domain import ObservedBar
+from .domain import LedgerBuild, ObservedBar, OrderDerivationBuild
+
+
+@dataclass(frozen=True)
+class BaselinePreflightEvidence:
+    identity: dict[str, Any]
+    dataset_manifest: dict[str, Any]
+    ledger: LedgerBuild
+    order_derivation: OrderDerivationBuild
+
+
+class BaselineSignalEvidencePort(Protocol):
+    def load_preflight_evidence(
+        self, baseline_run_id: str
+    ) -> BaselinePreflightEvidence: ...
 
 
 class OrderedDatasetPort(Protocol):
     def iter_observed_bars(self) -> Iterable[ObservedBar]: ...
+
+
+class ExternalCallAuditPort(Protocol):
+    def snapshot(self) -> Mapping[str, int]: ...
 
 
 class ReplayArtifactStorePort(Protocol):
