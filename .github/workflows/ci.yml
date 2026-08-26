@@ -76,5 +76,12 @@ jobs:
       - name: Install PostgreSQL test dependencies
         run: python -m pip install -e ".[dev,postgres]"
 
-      - name: Run Journal migration and adapter contract test
-        run: python -m pytest tests/test_journal.py tests/test_local_paper_projection.py tests/test_postgres_journal.py -q
+      - name: Run PostgreSQL durability tests
+        run: >-
+          python -m pytest
+          tests/test_journal.py
+          tests/test_local_paper_projection.py
+          tests/test_postgres_journal.py
+          tests/test_kill_switch_postgres.py
+          tests/test_local_paper_postgres.py
+          -q
