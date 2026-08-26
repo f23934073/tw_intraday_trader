@@ -1,0 +1,149 @@
+{
+  "activation": {
+    "exact_digest_required_on_every_resume": true,
+    "generic_resume_allowed": false,
+    "historical_kbar_requests_allowed": true,
+    "repository_wide_lock_required_for_process_lifetime": true,
+    "scan_authorized": true
+  },
+  "artifact_id": "price-coverage-scan-activation-v1-2026-08-26-r3",
+  "authorized_at": "2026-08-26T10:29:59+08:00",
+  "authorized_by": "research-owner",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "execution_lock": {
+    "dataset_materialization_allowed": false,
+    "formal_coverage_audit_allowed": false,
+    "holdout_allowed": false,
+    "order_submission_allowed": false,
+    "outcome_generation_allowed": false,
+    "population_freeze_allowed": false,
+    "trade_subscription_allowed": false
+  },
+  "job": {
+    "active_job_kind": "PRICE_COVERAGE_SCAN",
+    "job_id": "dataset-download-r3-e9981217a1d36c213e121db3ebaa26e7",
+    "prepared_job_kind": "PRICE_COVERAGE_PREPARED",
+    "start_target_index": 0,
+    "target_count": 2781,
+    "target_dataset_id": "dataset-r3-e9981217a1d36c213e121db3ebaa26e7"
+  },
+  "lineage": {
+    "predecessor_checkpoint_inheritance_allowed": false,
+    "quarantine_revision_canonical_sha256": "f44d1e87a81fd9aedded1d7bc1a42e2032d564e437431fe47f5d62fcf3db27af",
+    "request_canonical_sha256": "f04d7e78ba5c79390bf471c53741efbadf061aafd89abe5682654a9594047256",
+    "summary_merge_with_r0_r1_r2_allowed": false,
+    "target_manifest_canonical_sha256": "61dc598c47e3168f67c36862606d12b3bad2fce709e58d1a7543e663c0453827",
+    "target_order_canonical_sha256": "470032790f69f25a98a61d13686598776dcc1d8819379427113ebcc44305331e"
+  },
+  "provider_environment": {
+    "adapter_class": "market_data.provider.ShioajiProvider",
+    "historical_query": "Shioaji.kbars",
+    "identity": "shioaji:1.7.2:simulation=true",
+    "provider": "shioaji",
+    "simulation": true,
+    "subscribe_trade": false
+  },
+  "schema_version": "price_coverage_scan_activation_v1",
+  "scope": {
+    "outcome_read_allowed": false,
+    "price_payload_inspection_allowed": false,
+    "purpose": "RAW_PRICE_COVERAGE_INVENTORY_ONLY",
+    "research_eligible": false,
+    "return_or_pnl_read_allowed": false
+  },
+  "source_snapshot": {
+    "files": [
+      {
+        "content_sha256": "33c8619a686f6dbda9568d653139f03acf44059eb598938e03198070a161d574",
+        "git_blob_oid": "9fb3e0bda7a4aefea688174187f0f576f0ad627b",
+        "path": "market_data/provider.py"
+      },
+      {
+        "content_sha256": "670db1f667619cdd9c41abbf16cf7bbb924fde97499542f765fcad93fa09af54",
+        "git_blob_oid": "46bc30b50891c74f9dac4d883b9b753631ae1d2c",
+        "path": "market_data/models.py"
+      },
+      {
+        "content_sha256": "d7ce6f451d87634883d929a680810314ec1dd9972154b3422def8861a498106f",
+        "git_blob_oid": "0de045d8c94c7c9d1c1b629d9aff20c3c6f1c0bf",
+        "path": "premarket/artifacts.py"
+      },
+      {
+        "content_sha256": "879c74e68bda00bc44491f4a3389f1dda6dfd8cee6ab0e12e299963cc0621862",
+        "git_blob_oid": "47608b63de247ec920b30ffaf8071e4ebc3b25e3",
+        "path": "premarket/models.py"
+      },
+      {
+        "content_sha256": "fa2f8516dfed4629780509d4898ac086994077abed4e1ad3fce528dd69a0e960",
+        "git_blob_oid": "c1140b53d8202611866e3e22cf7f5d6f7aef1fd4",
+        "path": "backtest/domain.py"
+      },
+      {
+        "content_sha256": "71b04ba955acac5b95c1e65c08091c1dd3b5e0eae1098e8da8ee8eb321b65f21",
+        "git_blob_oid": "edb60da288af287707058c6f3990bd81f7e2bf35",
+        "path": "backtest/repository.py"
+      },
+      {
+        "content_sha256": "d9f5999668e873c1bca2d9732ec3934f4f4256dd7d055b9dd16c810723551ea6",
+        "git_blob_oid": "822256f40f75f14c7e21c7aa9690e870189cff7a",
+        "path": "backtest/postgres_repository.py"
+      },
+      {
+        "content_sha256": "89a440b4395c40c880e8971e15c9922d9a56880e7296c41323f4e0ea1e3da750",
+        "git_blob_oid": "31632ef2ae67b29168b10b74fccaa4e54dcc3d9b",
+        "path": "backtest/sqlite_repository.py"
+      },
+      {
+        "content_sha256": "9beed7cb1e7dd702096fea01fd62a981a4247f6bfbf4e78c38d6a0611eb07e34",
+        "git_blob_oid": "a1a7039c8d30633f5960675a4f05496ccd36c1f8",
+        "path": "backtest/dataset.py"
+      },
+      {
+        "content_sha256": "7abd3d3ba479907e836277294272733178b634c05ca598e8e7b4ffa3843d21c9",
+        "git_blob_oid": "d781cf5eccebf3a8ec8c151ddba9c5d9cd175fba",
+        "path": "backtest/historical_download.py"
+      },
+      {
+        "content_sha256": "398d60b2b08daa9a5e1d89644501f3eabb9121aed09795979a5eb6da2450aa58",
+        "git_blob_oid": "11e4429bd0f0b4306ea257abcad14bfa1eb74fc7",
+        "path": "backtest/price_coverage_initialization.py"
+      },
+      {
+        "content_sha256": "55333e109c09641c63ea5880a9b5b696985556abfcbd5d00039d52986e67a48b",
+        "git_blob_oid": "b86fb94119508e0fb1a6bd4fa2ddc0ba4d14d1a3",
+        "path": "backtest/price_coverage_activation.py"
+      },
+      {
+        "content_sha256": "aa32c0d8709a424c2fc7c862c541a3f1aab698a6dec635be11a6543ba7ffe853",
+        "git_blob_oid": "7c5cea3241bc08bc33c683229f2d2241e1d724fa",
+        "path": "backtest/price_coverage_repository.py"
+      },
+      {
+        "content_sha256": "70b60fcd25411eea1ed9a03b66e142e968f581df33b19d1cea0f4960929c7f13",
+        "git_blob_oid": "bc06ab08d9413553c7934ab637f95ab622d81263",
+        "path": "scripts/register_price_coverage_r3_activation.py"
+      },
+      {
+        "content_sha256": "d1e5dc219ca8af292c203698378dad682c2cf0f16b60143a078642da2915e9c2",
+        "git_blob_oid": "f671e533353177011ece47463ab965cf50be199a",
+        "path": "scripts/run_price_coverage_r3_scan.py"
+      },
+      {
+        "content_sha256": "9f1a3fadf0ba195b62ea9d82ab045e7ec7464ea256b4bd3db8edc8f30bfb61f6",
+        "git_blob_oid": "e0867ae8caa994e578c3d1e740dc022f7391a935",
+        "path": "scripts/download_backtest_history.py"
+      },
+      {
+        "content_sha256": "5e11278c7945a3c5b2a56fc44043f179fd12e836480414f71c1ef87654d5b18d",
+        "git_blob_oid": "d69c0fa6ca0ec11b1b57e40e236e03396b5c249f",
+        "path": "config/backtest.py"
+      }
+    ],
+    "git_object_format": "sha1",
+    "pinned_source_paths_clean": true,
+    "repository_commit": "f751843a270c074706c838cb609330716fe12757",
+    "repository_tree_oid": "c3dd92bfd144ec67c4e4516ba6e97f296d15d36e",
+    "repository_worktree_clean": false
+  },
+  "status": "AUTHORIZED_FOR_HISTORICAL_KBAR_COVERAGE_SCAN"
+}

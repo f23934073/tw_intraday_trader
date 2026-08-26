@@ -22,11 +22,16 @@ REV2 = (
     ACQUISITION
     / "price_coverage_scan_configuration_v2_2026-08-26-r3-rev2.json"
 )
+ACTIVATION = (
+    ACQUISITION
+    / "price_coverage_scan_activation_v1_2026-08-26-r3.json"
+)
 R2 = ACQUISITION / "price_coverage_scan_configuration_v1_2026-08-21-r2.json"
 
 TARGET_DIGEST = "61dc598c47e3168f67c36862606d12b3bad2fce709e58d1a7543e663c0453827"
 CONFIG_DIGEST = "a970a91d22501f4ec670d2c3e40e7ac71c9405ce9031c881bb639034f8c29c5b"
 REV2_DIGEST = "f44d1e87a81fd9aedded1d7bc1a42e2032d564e437431fe47f5d62fcf3db27af"
+ACTIVATION_DIGEST = "ce5ecd701915309664320832df89201666083d0e5147488139a2048055e50c4f"
 R2_DIGEST = "d60502f51897bdf4492717ec49f07b52b09c5f7f60b8c5764d10b4295dc22797"
 JOB_ID = "dataset-download-r3-e9981217a1d36c213e121db3ebaa26e7"
 REQUEST_DIGEST = "f04d7e78ba5c79390bf471c53741efbadf061aafd89abe5682654a9594047256"
@@ -68,6 +73,8 @@ def test_r3_artifacts_and_predecessor_are_immutable_exact() -> None:
     assert _sidecar(CONFIG) == f"{CONFIG_DIGEST}\n"
     assert _canonical_digest(_load(REV2)) == REV2_DIGEST
     assert _sidecar(REV2) == f"{REV2_DIGEST}\n"
+    assert _canonical_digest(_load(ACTIVATION)) == ACTIVATION_DIGEST
+    assert _sidecar(ACTIVATION) == f"{ACTIVATION_DIGEST}\n"
     assert _canonical_digest(_load(R2)) == R2_DIGEST
     assert _sidecar(R2) == f"{R2_DIGEST}\n"
 
@@ -214,8 +221,14 @@ def test_r3_artifacts_contain_no_secret_or_price_payload_fields() -> None:
     target = _load(TARGET)
     config = _load(CONFIG)
     rev2 = _load(REV2)
+    activation = _load(ACTIVATION)
     serialized = canonical_json(
-        {"target": target, "config": config, "rev2": rev2}
+        {
+            "target": target,
+            "config": config,
+            "rev2": rev2,
+            "activation": activation,
+        }
     ).lower()
 
     for forbidden in (
@@ -229,6 +242,62 @@ def test_r3_artifacts_contain_no_secret_or_price_payload_fields() -> None:
         '"holdout_outcome":',
     ):
         assert forbidden not in serialized
+
+
+def test_r3_activation_is_raw_scan_only_and_reconstructs_pinned_sources() -> None:
+    activation = _load(ACTIVATION)
+    snapshot = activation["source_snapshot"]
+    commit = snapshot["repository_commit"]
+
+    assert activation["status"] == (
+        "AUTHORIZED_FOR_HISTORICAL_KBAR_COVERAGE_SCAN"
+    )
+    assert activation["authorized_by"] == "research-owner"
+    assert activation["authorized_at"] == "2026-08-26T10:29:59+08:00"
+    assert activation["activation"] == {
+        "exact_digest_required_on_every_resume": True,
+        "generic_resume_allowed": False,
+        "historical_kbar_requests_allowed": True,
+        "repository_wide_lock_required_for_process_lifetime": True,
+        "scan_authorized": True,
+    }
+    assert all(value is False for value in activation["execution_lock"].values())
+    assert activation["scope"] == {
+        "outcome_read_allowed": False,
+        "price_payload_inspection_allowed": False,
+        "purpose": "RAW_PRICE_COVERAGE_INVENTORY_ONLY",
+        "research_eligible": False,
+        "return_or_pnl_read_allowed": False,
+    }
+    assert subprocess.run(
+        ["git", "cat-file", "-t", commit],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == "commit"
+    assert snapshot["repository_tree_oid"] == subprocess.run(
+        ["git", "rev-parse", f"{commit}^{{tree}}"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    for entry in snapshot["files"]:
+        committed = subprocess.run(
+            ["git", "show", f"{commit}:{entry['path']}"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        ).stdout
+        assert hashlib.sha256(committed).hexdigest() == entry["content_sha256"]
+        assert subprocess.run(
+            ["git", "rev-parse", f"{commit}:{entry['path']}"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip() == entry["git_blob_oid"]
 
 
 def test_r3_rev2_quarantines_original_registration_without_overwrite() -> None:
