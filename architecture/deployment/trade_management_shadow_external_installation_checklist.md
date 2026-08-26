@@ -13,6 +13,7 @@ This checklist cannot authorize a formal run. Complete it in a clean runtime che
 - [ ] Runtime write roots, approval spec/sidecar, and the owner-only secret file are outside the pinned checkout; roots are `0700`, files are `0600`, and the checkout contains no `.env` fallback.
 - [ ] The secret contains exactly one Shioaji API-key alias, one secret alias, distinct Local Paper and Shadow DSNs, and `SJ_SIMULATION=true`; no secret appears in plist, approval spec, logs, or artifacts.
 - [ ] Provider egress and loopback endpoint inventory is captured; the rendered sandbox permits only reviewed endpoints and denial tests prove other destinations fail.
+- [ ] OS-level denial proves the admitted Python runtime cannot be invoked with `-c`, an unreviewed `-m`, an alternate script, or an alternate argv by any process in the service sandbox; application-level argv validation alone does not satisfy this item.
 - [ ] Closed-date, missing-input, C0-blocked, no-fill, exact child graph, lock contention, stale-lock, crash retention, and source-write denial fixtures pass in the rendered sandbox.
 - [ ] The existing Codex automation is paused or converted to a monitor, with immutable evidence bound into the approval spec.
 - [ ] No automatic C1 signal is configured. Emergency termination remains an explicit operator action and retains lock, logs, Journal, and incomplete artifacts.
@@ -21,6 +22,7 @@ This checklist cannot authorize a formal run. Complete it in a clean runtime che
 ## Installation and rollback gate
 
 - Do not copy, load, bootstrap, enable, or start the plist while the template contains placeholders, `Disabled=true`, the profile denies all network, or the approval spec is absent/`NOT_APPROVED`.
+- Do not treat a native wrapper around only the supervisor as satisfying executable confinement while C0, its provider worker/rehearsal, or C1 still require the allowlisted standalone interpreter.
 - Installation must use the reviewed rendered paths without a shell wrapper or environment-variable expansion.
 - Rollback unloads only this user service. It never deletes locks, logs, C0/C1 artifacts, canonical inputs, records, database rows, or the pinned checkout.
 - A completed single day remains evidence-only and cannot change Production Shadow Gate from `NOT_PASSED`.

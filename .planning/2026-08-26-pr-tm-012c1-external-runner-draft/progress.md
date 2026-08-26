@@ -39,3 +39,30 @@
 - Completed Phase 8 with clean commit `63bfe56ad8cbf54bacc84100aa1cf81bc12b8d96`. Current phase: Phase 9 secure roots and rendered drafts.
 - Implemented the narrow readiness builder and disabled-template TMPDIR binding; focused `41 passed`, full current-worktree regression `1658 passed, 65 skipped`. Autonomous code review is next.
 - Readiness builder review loop ended at `APPROVE` after two P1 fixes. Final focused `42 passed`; final full current-worktree regression `1659 passed, 65 skipped`; compile, plist, CLI, and forbidden-capability scans passed.
+- Committed the builder on main as `8301067` and cherry-picked it into the dedicated runtime branch as `dd3d3ae`.
+- Provisioned the filtered external environment and rendered disabled/deny-network deployment candidates; no service was installed or enabled.
+- Completed Phase 9 with clean rendered commit `d7c26c0a76e7cb7d489ca63b60d789c4aac442d8` and recorded runtime/venv/deployment digests. Current phase: Phase 10 sandbox and egress rehearsal.
+- Phase 10 uncovered and fixed two readiness P1s: the sandbox lacked three literal/name-bound dyld startup reads, and the provisioned DSNs retained an unresolved `${PostgreSQL_DSN}` after helper-key filtering.
+- Scoped main commits are `1576bf6` (sandbox startup) and `39431a8` (deterministic source-local DSN resolution); focused readiness/supervisor regression is `45 passed` after the DSN fix.
+- The current-worktree full suite reached `1671 passed, 65 skipped, 2 failed`; both failures are unrelated migration 016 versus older migration-list expectations.
+- Created immutable owner-only `trade_management_shadow_v2.env`; sanitized read-back proves configured Local Paper/Shadow database separation, but no DB connectivity was attempted.
+- Exact sandbox digest `596d94ab...89e5` passes pinned Python startup, non-allowlisted exec denial, source-write denial, fixed-IP network denial, non-approved env read denial, obsolete-v1 read denial, and `0600` dedicated-state write.
+- Exact sandbox also proves a blocker: macOS `process-exec` cannot constrain Python argv, so `python -c` remains possible whenever the pinned interpreter is allowed.
+- Locked Shioaji 1.7.3 inspection found dynamic site configuration and Solace properties but no complete stable hostname/port contract; provider network allowlist remains empty and deny-all.
+- Completed autonomous evidence re-review at `APPROVE` for truthful `BLOCKED` artifacts only. Dedicated runtime commit is `15a852cc15734051ea0ce6dc6b149af5a0c1f7d2`; no approval spec, service installation, automation mutation, C0, or C1 action occurred.
+- Phase 10 is complete with `BLOCKED` disposition. Phases 11–13 are gated and intentionally not executed; Production Shadow Gate remains `NOT_PASSED`.
+- Final read-back confirms automation remains active/unchanged and 2026-08-27 still has only an unreviewed, ineligible, unbound draft packet with no canonical input directory. Formal item 8 therefore remains blocked and was not attempted.
+- User authorized the next gated stage. Added Phases 14–16 for native fixed-launcher feasibility/implementation/review and official provider-contract research; current phase is Phase 14. No external runtime mutation or formal execution is authorized by these phases.
+## 2026-08-26 Phase 14 continuation
+
+- Verified that the pinned CPython 3.12.6 distribution and Apple clang toolchain could build an embedded interpreter, subject to explicit library-path and post-link identity checks.
+- Reconstructed the formal process graph and found four standalone Python roles: C0, the C0 provider worker, the fixed pytest rehearsal, and C1.
+- Rejected the single outer native launcher before implementation: the sandbox must still admit the interpreter for reviewed descendants, so generic Python remains available; removing it breaks the reviewed run.
+- Preserved the narrow scope. No source implementation, build output, installation, automation change, provider login, C0, or C1 was performed.
+- Advanced to official provider egress contract research while Phase 15 remains truthfully blocked.
+- Official Shioaji login/callback/simulation documentation was reviewed without provider login or connection. It confirms Solace usage but does not publish a complete stable endpoint contract.
+- Inspected locked `shioaji==1.7.3` package metadata and compiled-core strings read-only. Dynamic site configuration/fallback behavior confirms that incidental embedded values cannot serve as an authoritative complete allowlist.
+- Retained the immutable provider inventory and empty allowlist unchanged. Updated repository design/checklist text to state both unresolved boundaries explicitly; launchd, sandbox installation, automation, C0, and C1 remain untouched.
+- Final adversarial review is `APPROVE` for the documentation-only truthful `BLOCKED` disposition. No P0/P1/P2 remains in this scoped update; formal installation/execution eligibility is still false.
+- A subsequent independent review requested one P1 and three P2 documentation corrections. Applied only those corrections; autonomous re-review remains to be completed before commit eligibility.
+- Independent remediation re-review is `APPROVE`: all four documentation findings are resolved with no new P0/P1/P2. The runtime checkout and immutable provider evidence remain unchanged.

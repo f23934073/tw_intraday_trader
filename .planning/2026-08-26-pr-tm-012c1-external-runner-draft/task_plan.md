@@ -70,34 +70,53 @@ Implement and verify a repository-only, uninstalled external execution control-p
 
 ### Phase 9: Secure runtime roots and rendered drafts
 
-- [ ] Create owner-only external config/runtime roots and validate existing secret/DSN material without printing values.
-- [ ] Render sandbox, launchd, and approval-package candidates with exact absolute paths while keeping them disabled and uninstalled.
-- **Status:** in_progress
+- [x] Create owner-only external config/runtime roots and validate existing secret/DSN material without printing values.
+- [x] Render sandbox and launchd candidates with exact absolute paths while keeping them disabled and uninstalled; the approval spec remains Phase 12 because installation evidence is incomplete.
+- **Status:** complete
 
 ### Phase 10: Sandbox and egress rehearsal
 
-- [ ] Capture provider/loopback egress inventory from approved non-order operations only.
-- [ ] Prove source-write, arbitrary process, generic Python, forbidden network, and non-approved path denials in the rendered sandbox.
-- **Status:** pending
+- [x] Capture provider/loopback egress inventory from approved non-order operations only; preserve an empty provider allowlist and explicit connectivity blockers.
+- [x] Rehearse source-write, arbitrary process, generic Python, forbidden network, and non-approved path boundaries against the exact rendered sandbox; record the generic-Python denial as a truthful failure.
+- **Status:** complete — `BLOCKED` by unresolved provider endpoints and lack of OS-level Python argv enforcement
 
 ### Phase 11: Automation coordination
 
-- [ ] Inspect the existing `pr-tm-012c1-shadow` automation and preserve its full safety prompt.
+- [x] Inspect the existing `pr-tm-012c1-shadow` automation and preserve its full safety prompt.
 - [ ] Pause it or convert it to monitor-only only after external runner installation eligibility is otherwise proven; read back persisted state and create immutable pause evidence.
-- **Status:** pending
+- **Status:** blocked by Phase 10; existing automation intentionally remains active and unchanged
 
 ### Phase 12: Immutable installation review package
 
 - [ ] Bind all file, runtime, denial, egress, automation, and reviewer evidence into a `0600` approval spec/sidecar.
 - [ ] Perform autonomous adversarial review; remediate and repeat until `APPROVE`, otherwise remain `BLOCKED`.
-- **Status:** pending
+- **Status:** blocked; no approval spec created because installation eligibility is false
 
 ### Phase 13: Conditional installation and formal session
 
 - [ ] Install/enable only the exact approved rendered artifacts with no shell or alternate runner.
 - [ ] On a reviewed trading day inside the pre-open window, run only the existing C0 then C1 supervisor path; preserve truthful terminal artifacts and never retry.
 - [ ] Keep a single day at Production Shadow Gate `NOT_PASSED` and report any missing fill as `INSUFFICIENT_EVIDENCE`.
-- **Status:** pending — conditional on Phases 6–12
+- **Status:** blocked — conditional gates are not satisfied; C0/C1 not executed
+
+### Phase 14: Native fixed-launcher feasibility and contract
+
+- [x] Verify the pinned CPython embedding prerequisites and determine whether a non-shell fixed supervisor invocation could close the complete child-process boundary.
+- [x] Define the required source/build/runtime identity checks, sandbox transition, argv/environment contracts, and explicit rejection criteria before coding; no launcher identity was created because the candidate was rejected before implementation.
+- **Status:** complete — `BLOCKED`; a single outer launcher leaves four allowlisted Python child roles and does not close the OS-level generic-interpreter boundary
+
+### Phase 15: Repository-only launcher implementation and review
+
+- [ ] Implement the smallest native infrastructure adapter and immutable build/rehearsal entrypoints without adding provider, DB, C0, C1, or trading capability.
+- [ ] Prove generic standalone Python denial, fixed in-process supervisor argv, warnings-as-errors, sanitizer/static checks, exact digests, and fail-closed error behavior.
+- [ ] Run autonomous severity-first review; remediate every P0/P1/P2 until `APPROVE` or preserve a truthful `BLOCKED` disposition.
+- **Status:** blocked by Phase 14; implementation intentionally not started because the proposed adapter cannot satisfy its acceptance contract without changing reviewed child-process semantics
+
+### Phase 16: Official provider egress contract research
+
+- [x] Inspect only official Shioaji/Sinotrade primary documentation and locked-package evidence for a complete runtime hostname/port contract; do not login or connect.
+- [x] Update the immutable provider inventory only if sources establish a complete reviewable allowlist; otherwise retain an empty allowlist and `BLOCKED`.
+- **Status:** complete — `BLOCKED`; no official complete stable hostname/port contract exists in the reviewed sources, so the immutable empty allowlist was retained unchanged
 
 ## Success Criteria
 

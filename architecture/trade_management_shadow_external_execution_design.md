@@ -70,6 +70,12 @@ run. A macOS sandbox rule can constrain executable paths but cannot by itself pr
 relationships; the fixed-hash supervisor/exec wrapper must enforce both and emit their digests in its
 terminal disposition.
 
+Current implementation note: the repository draft performs exact argv checks inside Python, but the
+rendered sandbox must still admit the same standalone interpreter for C0, the provider worker, the
+rehearsal, and C1. A separate process can therefore invoke that admitted interpreter with different
+argv. The required OS-level generic-Python denial is **not implemented** and cannot be inferred from
+the application checks.
+
 ## 4. Admission state machine
 
 | State | Required evidence | Allowed transition |
@@ -185,8 +191,9 @@ Independent review must approve all of the following before any installation:
   automatic process termination is installed;
 - proof that the Codex automation is paused or converted to a monitor so two collectors cannot start.
 
-Current disposition: **BLOCKED FOR REVIEW**. The current Codex automation remains active and unchanged;
-therefore an external service must not be installed or enabled yet.
+Current disposition: **BLOCKED — INSTALLATION INELIGIBLE**. The execution-boundary and provider-egress
+gates are unsatisfied, and the current Codex automation remains active and unchanged; therefore an
+external service must not be installed or enabled.
 
 ## 10. Rollback
 
@@ -210,3 +217,28 @@ The following reviewable files implement the control plane without installing or
 C0's provider worker and frozen pytest rehearsal now use the shared child-process allowlist. Pytest plugin autoload is disabled. Git runs with its original reviewed argv plus a fixed environment that disables fsmonitor, optional locks, system/global configuration, and source-index writes. The supervisor rechecks the approved commit, clean status, source identity, approved files, reviewed calendar, and full virtual-environment tree immediately before each C0/C1 start.
 
 The shipped approval JSON remains `NOT_APPROVED`; the launchd plist remains `Disabled=true`; the sandbox template denies all network because provider egress is unresolved. The CLI therefore has no valid repository-supplied approval artifact and cannot be used for a formal run from this checkout. No automation, secret permission, runtime checkout, provider/DSN connection, or C0/C1 session was changed or executed by this implementation phase.
+
+## 12. 2026-08-26 feasibility disposition
+
+Two installation blockers remain independently fail-closed:
+
+1. **Execution boundary — BLOCKED.** The pinned CPython distribution is technically embeddable, but a
+   single native wrapper around the supervisor does not remove the four standalone Python roles in
+   the reviewed process graph: C0, C0 provider worker, frozen pytest rehearsal, and C1. Keeping Python
+   in the sandbox allowlist preserves generic interpreter capability; removing it breaks the existing
+   entrypoints. Implementing multiple embedded roles or moving the child boundaries in-process would
+   change reviewed behavior and exceeds the narrow launcher proposal.
+2. **Provider egress — BLOCKED.** The following official pages were retrieved on 2026-08-26
+   (Asia/Taipei): [Login](https://sinotrade.github.io/tutor/login/) confirms a Solace connection and
+   shows a redacted/runtime-selected `<IP>:80` example;
+   [Event Callback](https://sinotrade.github.io/tutor/callback/event_cb/) confirms Solace broker use;
+   [Simulation Mode](https://sinotrade.github.io/tutor/simulation/) lists supported APIs. These pages
+   do not provide a complete stable hostname/port contract for simulation login, contract acquisition,
+   and market data. The locked `shioaji==1.7.3` compiled core SHA-256 is
+   `931ae62a76e1e5e7a88a4cfe00da6f3952a94a9e09ee0d296f58773911a004f3`; its embedded strings and any
+   single observed session are not an authoritative, complete allowlist. This provenance is non-authorizing
+   and does not modify or promote the existing immutable provider inventory.
+
+Consequently the provider allowlist remains empty, the sandbox remains deny-network, the plist remains
+disabled/uninstalled, the existing automation remains unchanged, and no approval spec may be promoted.
+Phase 12 and any formal C0/C1 run remain `BLOCKED`; Production Shadow Gate remains `NOT_PASSED`.
