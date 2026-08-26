@@ -445,3 +445,36 @@
   formal Replay remains `0 / 7`.
 - Migration 017, matrix revision 2, PostgreSQL mutation, and G3 were not
   executed and still require separate authorization.
+
+## 2026-08-26 A1 scoped commit and implementation start
+
+- Created scoped commit `ec41932` (`docs(r6): freeze amendment a1 contract`)
+  containing exactly five approved A1 planning/Review files; no push occurred.
+- User then explicitly authorized the next phase. Began the A1 implementation
+  inventory for Migration 017, matrix revision 2, build-binding v2, common
+  eligibility, and durable preflight registration.
+- Formal progress remains `50%` and formal Replay remains `0 / 7` while the
+  implementation and PostgreSQL acceptance are incomplete.
+- Added the initial forward-only Migration 017 candidate and advanced the pure
+  protocol/algorithm/build-binding identities to the frozen A1 roots.
+- Independent import-time reconstruction matches the frozen A1 protocol and
+  algorithm digests. The first focused run produced `33 passed, 1 failed`; the
+  sole failure is the intentional historical digest assertion that now needs
+  explicit v1/v2 coverage.
+
+## 2026-08-26 A1 implementation candidate verified
+
+- Implemented Migration 017, additive revision-2 activation, matrix-owned
+  protocol history, exact build binding v2, common eligibility artifacts,
+  durable preflight registration, and preflight-bound attempt admission.
+- Preserved revision-1 durable replay and added fail-closed checks for protocol
+  lineage, slot/Version binding, filesystem member type, response-loss replay,
+  artifact drift, and active-revision terminal updates.
+- Bounded no-DSN scope: `65 passed, 1 skipped`.
+- Disposable PostgreSQL 17 scope: `28 passed`.
+- Complete no-DSN regression: `1688 passed, 86 skipped`.
+- Python compilation, CLI help, and scoped `git diff --check`: passed.
+- Formal G3 was not started because application configuration raises a
+  fail-closed error when PostgreSQL is selected without
+  `BACKTEST_DATABASE_URL` or a shared PostgreSQL DSN. Formal progress remains
+  `50%`, Formal Replay remains `0 / 7`, and G4-G5/trading remain blocked.

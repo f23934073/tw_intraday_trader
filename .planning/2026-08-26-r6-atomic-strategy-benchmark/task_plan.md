@@ -90,7 +90,8 @@ execution mutation.
   Dataset source-row digest bytes, excluding the JSONL LF.
 - [x] Obtain independent G0 Amendment A1 Review before changing product code,
   creating matrix revision 2, or rerunning G3.
-- **Status:** passed / contract frozen; implementation separately unauthorized
+- **Status:** passed / contract frozen; implementation explicitly authorized
+  and in progress
 
 ### R6.G1: Version admission plus pure domain and artifact implementation
 
@@ -136,11 +137,13 @@ execution mutation.
 
 - [x] Implement one-pass bounded Dataset evaluation for seven isolated
   strategy/Feature runtimes.
-- [ ] Persist all-or-none G3 preflight registration without consuming family
-  head or attempt sequence.
+- [x] Implement all-or-none G3 preflight registration without consuming family
+  head or attempt sequence; formal application PostgreSQL registration is not
+  executed yet.
 - [ ] Generate and audit all seven signal ledgers/match plans without provider,
   broker, lifecycle, or result publication.
-- **Status:** blocked on G0 Amendment A1 Review and implementation
+- **Status:** implementation candidate verified; formal full-Dataset rerun is
+  blocked because the application PostgreSQL DSN is not configured
 
 ### R6.G4: Formal seven-attempt replay
 
@@ -165,7 +168,7 @@ R6 G0 historical revision: PASSED
 R6 G0 Amendment A1: PASSED / CONTRACT FROZEN
 R6 G1: PASSED
 R6 G2: PASSED
-R6 G3: BLOCKED ON A1 IMPLEMENTATION
+R6 G3: IMPLEMENTATION VERIFIED / FORMAL EXECUTION BLOCKED ON APPLICATION DSN
 Formal progress: 50%
 Remaining: 50%
 R6 formal replay: 0 / 7 / NOT AUTHORIZED
@@ -195,3 +198,4 @@ Local Paper / Broker / Real-money: PROHIBITED
 | First autonomous-review patch used a wrapped sentence that did not exactly match the file | 1 | `apply_patch` failed atomically with no file change; split the edit into smaller exact-context patches. |
 | Build-binding patch assumed a non-exact nearby sentence | 1 | `apply_patch` failed atomically; applied the source-manifest and registration edits as smaller exact-context patches. |
 | Scoped A1 `git add` could not create `.git/index.lock` in the sandbox | 1 | Retry the same exact five-path staging command with explicit Git-index escalation; unrelated paths remain excluded. |
+| First A1 domain/application focused run retained the historical algorithm digest assertion | 1 | Preserve the historical v1 constant in code and update the current A1 regression to the frozen v2 digest while adding explicit v1 compatibility coverage. |

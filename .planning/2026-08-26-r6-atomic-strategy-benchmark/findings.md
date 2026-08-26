@@ -705,3 +705,58 @@
 - This disposition does not authorize Migration 017, matrix revision 2,
   PostgreSQL mutation, G3 execution, Local Paper, provider, broker, or
   real-money work.
+
+## 2026-08-26 A1 implementation intake
+
+- User explicitly authorized the next phase after scoped A1 commit `ec41932`.
+- Migration 016 is revision-1-only: matrix/release checks require revision 1,
+  family active revision is nullable, slots are unique by family/sequence, and
+  operation/outbox/attempt references are not yet aggregate-safe across matrix
+  revisions.
+- Existing G3 candidate already has a provider-free one-pass preflight and
+  canonical artifact verifier, but its protocol/build binding and preflight
+  schemas are revision 1 and it has no durable accepted-preflight repository
+  operation.
+- Implementation must keep domain/application ports independent of PostgreSQL:
+  A1 eligibility and exact build-binding verification belong in pure modules;
+  Migration 017 and transaction/CAS behavior remain adapter responsibilities.
+- G4, result metrics, lifecycle, Local Paper, provider, broker, and real-money
+  paths remain prohibited.
+- A1 changes the pure identities rather than only filtering output: protocol
+  schema becomes v2, algorithm contract becomes v2, all seven hypothesis/
+  Version-binding/hypothesis/slot roots change, matrix revision becomes 2, and
+  build binding adds the preflight implementation digest.
+- The common eligibility mask must be computed before any strategy runtime is
+  opened. Exact 12:45 and 13:30 observed source rows determine eligibility;
+  excluded sessions still contribute to Dataset SHA/count and source-only
+  previous-close state but never enter Feature or strategy state.
+- Current application/repository APIs expose revision-1 matrix sealing and a
+  read-only preflight context only. A1 requires separate activation and
+  preflight-registration commands rather than overloading the historical seal
+  operation.
+
+## 2026-08-26 A1 implementation verification
+
+- Migration 017 now installs additive matrix-protocol history, revision-2
+  matrix ownership, accepted-preflight persistence, composite foreign keys,
+  and attempt-to-preflight admission without mutating revision-1 evidence.
+- Matrix revision 2 activation, accepted-preflight registration, operation and
+  outbox replay, and attempt admission all use PostgreSQL serialization and
+  exact identity preconditions. Historical revision-1 seal replay remains
+  available after activation.
+- The A1 preflight computes the common Dataset-only eligibility mask before any
+  strategy runtime state, enforces exact 12:45/13:30 anchors and the 0.95
+  coverage floor, excludes ineligible symbol-sessions from all seven runtimes,
+  and publishes the exact 31-member provider-free artifact tree.
+- Artifact reload rejects unknown members, non-canonical bytes, symlinks,
+  non-regular files, lineage drift, and slot/Version substitutions. Accepted
+  preflight bytes are reverified again before the first attempt can consume a
+  slot.
+- Disposable PostgreSQL 17 focused acceptance passed `28 passed`; bounded
+  no-DSN A1 tests passed `65 passed, 1 skipped`; the complete no-DSN suite
+  passed `1688 passed, 86 skipped`. Python compilation, both CLI help paths,
+  and scoped `git diff --check` passed.
+- Formal G3 remains unexecuted. The configured backend is PostgreSQL but no
+  `BACKTEST_DATABASE_URL` or shared PostgreSQL DSN is available, so no
+  application matrix activation, full 28,325,340-bar scan, durable formal
+  preflight registration, family-head mutation, or attempt was performed.

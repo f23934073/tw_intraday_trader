@@ -1,5 +1,9 @@
 # R6 Revision 2 G0 Review Request
 
+> Historical Review request for matrix revision 1. The current contract Review
+> target is `g0_a1_review_request.md`; this file is retained as immutable Review
+> history and must not be used to authorize another G3 execution.
+
 ## Requested disposition
 
 ```text
