@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from threading import Event, Thread
 from time import monotonic, sleep
 from zoneinfo import ZoneInfo
 
@@ -11,6 +12,10 @@ from market_data.models import RealtimeQuoteUpdate
 from market_data.provider import MarketDataProvider, MockProvider
 from runtime.in_memory import InMemoryJournalRepository
 from simulation.application import LocalPaperCommandService
+from simulation.kill_switch import (
+    DurableLocalPaperKillSwitch,
+    KillSwitchAdmissionBlocked,
+)
 from simulation.service import (
     SimulationService,
     SimulationStateError,
@@ -21,7 +26,11 @@ from simulation.strategy_flow import (
     StrategyPaperFlowService,
     StrategyPaperIntent,
 )
-from trading.journal import JournalSession
+from trading.journal import JournalAppendResult, JournalRecord, JournalSession
+from trading.kill_switch import (
+    KILL_SWITCH_CONTROL_SESSION_ID,
+    KILL_SWITCH_ENGAGED_KIND,
+)
 from trading.risk import CommandSide
 from trading.local_paper import (
     LOCAL_PAPER_PROJECTION_NAME,
@@ -89,6 +98,20 @@ def paper_flow(
     provider: MarketDataProvider | None = None,
 ):
     journal = InMemoryJournalRepository()
+    flow, simulation, kill_switch = _controlled_flow(
+        journal=journal,
+        starting_cash=starting_cash,
+        provider=provider,
+    )
+    return flow, simulation, journal
+
+
+def _controlled_flow(
+    *,
+    journal: InMemoryJournalRepository,
+    starting_cash: Decimal = Decimal("300000"),
+    provider: MarketDataProvider | None = None,
+):
     journal.start_session(
         JournalSession(
             session_id=_SESSION_ID,
@@ -108,16 +131,67 @@ def paper_flow(
         session_id=_SESSION_ID,
         clock=FixedClock(),
     )
+    kill_switch = DurableLocalPaperKillSwitch.recover(
+        journal=journal,
+        clock=FixedClock(),
+    )
     return (
         StrategyPaperFlowService(
             commands=commands,
             journal=journal,
             session_id=_SESSION_ID,
             clock=FixedClock(),
+            kill_switch=kill_switch,
         ),
         simulation,
-        journal,
+        kill_switch,
     )
+
+
+class BlockingJournal(InMemoryJournalRepository):
+    def __init__(self, blocked_kind: str) -> None:
+        super().__init__()
+        self.blocked_kind = blocked_kind
+        self.entered = Event()
+        self.release = Event()
+
+    def append(self, record: JournalRecord) -> JournalAppendResult:
+        if record.kind == self.blocked_kind and not self.release.is_set():
+            self.entered.set()
+            if not self.release.wait(timeout=2):
+                raise AssertionError("test did not release blocked Journal append")
+        return super().append(record)
+
+
+class IntentBlockingFailingCheckpointJournal(InMemoryJournalRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.intent_entered = Event()
+        self.release_intent = Event()
+        self.fail_checkpoint = False
+
+    def append(self, record: JournalRecord) -> JournalAppendResult:
+        if record.kind == STRATEGY_PAPER_INTENT_KIND:
+            self.intent_entered.set()
+            if not self.release_intent.wait(timeout=2):
+                raise AssertionError("test did not release strategy intent")
+        return super().append(record)
+
+    def save_checkpoint(self, checkpoint) -> None:
+        if self.fail_checkpoint:
+            raise RuntimeError("injected checkpoint failure")
+        super().save_checkpoint(checkpoint)
+
+
+class FailingKindJournal(InMemoryJournalRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_kind: str | None = None
+
+    def append(self, record: JournalRecord) -> JournalAppendResult:
+        if record.kind == self.fail_kind:
+            raise RuntimeError(f"injected {record.kind} append failure")
+        return super().append(record)
 
 
 def intent(
@@ -172,6 +246,191 @@ def test_strategy_buy_is_journaled_risk_checked_filled_and_idempotent() -> None:
         session_id=_SESSION_ID,
         starting_cash=simulation.starting_cash,
     ).digest == checkpoint.digest
+
+
+def test_submit_admitted_first_finishes_before_concurrent_engage_returns() -> None:
+    journal = BlockingJournal(STRATEGY_PAPER_INTENT_KIND)
+    flow, simulation, kill_switch = _controlled_flow(journal=journal)
+    submitted: list[dict] = []
+    engaged: list[dict] = []
+    submit_thread = Thread(
+        target=lambda: submitted.append(
+            flow.submit(intent("concurrent-submit-first", CommandSide.BUY, "106"))
+        )
+    )
+    engage_thread = Thread(
+        target=lambda: engaged.append(
+            kill_switch.engage(
+                actor_id="local-operator",
+                operation_id="concurrent-engage-second",
+                reason="concurrency test",
+            )
+        )
+    )
+
+    submit_thread.start()
+    assert journal.entered.wait(timeout=1)
+    engage_thread.start()
+    sleep(0.02)
+    assert engage_thread.is_alive()
+    journal.release.set()
+    submit_thread.join(timeout=2)
+    engage_thread.join(timeout=2)
+
+    assert not submit_thread.is_alive()
+    assert not engage_thread.is_alive()
+    assert submitted[0]["order"]["status"] == "FILLED"
+    assert engaged[0]["kill_switch"]["control_state"] == "ENGAGED"
+    kinds = [item.record.kind for item in journal.records(_SESSION_ID)]
+    assert kinds[0] == STRATEGY_PAPER_INTENT_KIND
+    assert journal.records(_SESSION_ID)[0].sequence < journal.records(
+        KILL_SWITCH_CONTROL_SESSION_ID
+    )[0].sequence
+    simulation.close()
+
+
+def test_engage_linearized_first_blocks_concurrent_submit_before_intent_journal() -> None:
+    journal = BlockingJournal(KILL_SWITCH_ENGAGED_KIND)
+    flow, simulation, kill_switch = _controlled_flow(journal=journal)
+    engaged: list[dict] = []
+    submit_errors: list[Exception] = []
+    engage_thread = Thread(
+        target=lambda: engaged.append(
+            kill_switch.engage(
+                actor_id="local-operator",
+                operation_id="concurrent-engage-first",
+                reason="concurrency test",
+            )
+        )
+    )
+
+    def submit() -> None:
+        try:
+            flow.submit(intent("concurrent-submit-second", CommandSide.BUY, "106"))
+        except Exception as error:
+            submit_errors.append(error)
+
+    submit_thread = Thread(target=submit)
+    engage_thread.start()
+    assert journal.entered.wait(timeout=1)
+    submit_thread.start()
+    sleep(0.02)
+    assert journal.records(_SESSION_ID) == ()
+    journal.release.set()
+    engage_thread.join(timeout=2)
+    submit_thread.join(timeout=2)
+
+    assert not engage_thread.is_alive()
+    assert not submit_thread.is_alive()
+    assert engaged[0]["kill_switch"]["control_state"] == "ENGAGED"
+    assert len(submit_errors) == 1
+    assert isinstance(submit_errors[0], KillSwitchAdmissionBlocked)
+    assert journal.records(_SESSION_ID) == ()
+    assert simulation.orders() == []
+    simulation.close()
+
+
+def test_recovery_required_blocks_automated_intent_before_journal_append() -> None:
+    class RecoveryRequiredCommands:
+        def admit_automated_intent(self, _operation):
+            raise SimulationStateError("LOCAL_PAPER_RECOVERY_REQUIRED")
+
+    journal = InMemoryJournalRepository()
+    journal.start_session(
+        JournalSession(
+            session_id=_SESSION_ID,
+            started_at=_NOW,
+            mode="LOCAL_PAPER_SIMULATION",
+            metadata={"execution_boundary": "LOCAL_ONLY"},
+        )
+    )
+    flow = StrategyPaperFlowService(
+        commands=RecoveryRequiredCommands(),
+        journal=journal,
+        session_id=_SESSION_ID,
+        clock=FixedClock(),
+        kill_switch=DurableLocalPaperKillSwitch.recover(
+            journal=journal,
+            clock=FixedClock(),
+        ),
+    )
+
+    with pytest.raises(SimulationStateError, match="RECOVERY_REQUIRED"):
+        flow.submit(intent("recovery-blocked", CommandSide.BUY, "106"))
+
+    assert journal.records(_SESSION_ID) == ()
+
+
+def test_checkpoint_failure_and_automated_intent_are_linearized() -> None:
+    journal = IntentBlockingFailingCheckpointJournal()
+    journal.start_session(
+        JournalSession(
+            session_id=_SESSION_ID,
+            started_at=_NOW,
+            mode="LOCAL_PAPER_SIMULATION",
+            metadata={"execution_boundary": "LOCAL_ONLY"},
+        )
+    )
+    simulation = SimulationService(
+        MockProvider(),
+        starting_cash=Decimal("500000"),
+        clock=FixedClock(),
+    )
+    commands = LocalPaperCommandService(
+        simulation=simulation,
+        journal=journal,
+        session_id=_SESSION_ID,
+        clock=FixedClock(),
+    )
+    flow = StrategyPaperFlowService(
+        commands=commands,
+        journal=journal,
+        session_id=_SESSION_ID,
+        clock=FixedClock(),
+        kill_switch=DurableLocalPaperKillSwitch.recover(
+            journal=journal,
+            clock=FixedClock(),
+        ),
+    )
+    automated_errors: list[Exception] = []
+    manual_errors: list[Exception] = []
+
+    def submit_automated() -> None:
+        try:
+            flow.submit(intent("linearized-recovery", CommandSide.BUY, "106"))
+        except Exception as error:
+            automated_errors.append(error)
+
+    def submit_manual() -> None:
+        try:
+            commands.submit_order(
+                symbol="3231",
+                side="BUY",
+                lots=1,
+                limit_price="106",
+                idempotency_key="manual-during-recovery-race",
+            )
+        except Exception as error:
+            manual_errors.append(error)
+
+    automated_thread = Thread(target=submit_automated)
+    automated_thread.start()
+    assert journal.intent_entered.wait(timeout=1)
+    journal.fail_checkpoint = True
+    manual_thread = Thread(target=submit_manual)
+    manual_thread.start()
+    sleep(0.02)
+    journal.release_intent.set()
+    automated_thread.join(timeout=2)
+    manual_thread.join(timeout=2)
+
+    assert not automated_thread.is_alive()
+    assert not manual_thread.is_alive()
+    assert len(automated_errors) == 1
+    assert len(manual_errors) == 1
+    kinds = [item.record.kind for item in journal.records(_SESSION_ID)]
+    assert kinds[0] == STRATEGY_PAPER_INTENT_KIND
+    assert sum(kind == "order_command.v1" for kind in kinds) == 1
 
 
 def test_strategy_intent_accepts_exact_odd_lot_share_quantity() -> None:
@@ -280,6 +539,34 @@ def test_later_bidask_fill_is_appended_to_journal_exactly_once() -> None:
     provider.emit_bidask(bid=105.4, ask=105.6)
     wait_until(lambda: simulation.session()["quote_queue_depth"] == 0)
     assert len(journal.records(_SESSION_ID)) == 5
+    simulation.close()
+
+
+def test_later_fill_append_failure_blocks_next_intent_before_journal() -> None:
+    journal = FailingKindJournal()
+    provider = StreamingMockProvider()
+    flow, simulation, _ = _controlled_flow(
+        journal=journal,
+        provider=provider,
+    )
+    submitted = flow.submit(
+        intent("later-fill-persistence-failure", CommandSide.BUY, "106")
+    )
+    assert submitted["order"]["status"] == "PENDING"
+    journal.fail_kind = "local_paper_fill.v1"
+
+    provider.emit_bidask(bid=105.4, ask=105.6)
+    wait_until(
+        lambda: simulation.orders()[0]["status"] == "FILLED"
+        and simulation.risk_snapshot("3231")["data_health_state"] == "BLOCKED"
+    )
+    record_count = len(journal.records(_SESSION_ID))
+    journal.fail_kind = None
+
+    with pytest.raises(SimulationStateError, match="RECOVERY_REQUIRED"):
+        flow.submit(intent("must-not-be-journaled", CommandSide.BUY, "106"))
+
+    assert len(journal.records(_SESSION_ID)) == record_count
     simulation.close()
 
 

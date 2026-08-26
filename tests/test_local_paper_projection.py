@@ -10,8 +10,11 @@ from trading.journal import (
     ProjectionCheckpoint,
 )
 from trading.local_paper import (
+    LOCAL_PAPER_CANCEL_COMMAND_KIND,
     LOCAL_PAPER_FILL_KIND,
+    LOCAL_PAPER_FILL_V2_KIND,
     LOCAL_PAPER_PROJECTION_NAME,
+    LocalPaperFill,
     LocalPaperProjection,
     ProjectionRecoveryError,
     journal_record_from_simulation_order,
@@ -65,17 +68,18 @@ def journal() -> InMemoryJournalRepository:
 def test_recovery_rebuilds_decimal_cash_positions_and_realized_pnl() -> None:
     repository = journal()
     buy = repository.append(fill_record("buy-1", side="BUY", price="10"))
-    before_sell = LocalPaperProjection(starting_cash=Decimal("10000"))
-    before_sell.apply(buy)
+    sell = repository.append(fill_record("sell-1", side="SELL", price="12"))
+    completed = LocalPaperProjection(starting_cash=Decimal("10000"))
+    completed.apply(buy)
+    completed.apply(sell)
     repository.save_checkpoint(
         ProjectionCheckpoint(
             session_id=SESSION_ID,
             projection_name=LOCAL_PAPER_PROJECTION_NAME,
-            journal_sequence=buy.sequence,
-            digest=before_sell.digest,
+            journal_sequence=sell.sequence,
+            digest=completed.digest,
         )
     )
-    repository.append(fill_record("sell-1", side="SELL", price="12"))
 
     restored = rebuild_local_paper_projection(
         repository,
@@ -87,6 +91,91 @@ def test_recovery_rebuilds_decimal_cash_positions_and_realized_pnl() -> None:
     assert restored.position("2330") is None
     assert restored.realized_pnl("2330") == Decimal("200")
     assert restored.last_sequence == 2
+
+
+def test_recovery_rejects_uncheckpointed_local_paper_tail() -> None:
+    repository = journal()
+    buy = repository.append(fill_record("buy-1", side="BUY", price="10"))
+    checkpointed = LocalPaperProjection(starting_cash=Decimal("10000"))
+    checkpointed.apply(buy)
+    repository.save_checkpoint(
+        ProjectionCheckpoint(
+            session_id=SESSION_ID,
+            projection_name=LOCAL_PAPER_PROJECTION_NAME,
+            journal_sequence=buy.sequence,
+            digest=checkpointed.digest,
+        )
+    )
+    repository.append(fill_record("sell-1", side="SELL", price="12"))
+
+    with pytest.raises(ProjectionRecoveryError, match="does not cover Journal tail"):
+        rebuild_local_paper_projection(
+            repository,
+            session_id=SESSION_ID,
+            starting_cash=Decimal("10000"),
+        )
+
+
+def test_recovery_rejects_unresolved_cancel_intent_after_checkpoint() -> None:
+    repository = journal()
+    buy = repository.append(fill_record("buy-1", side="BUY", price="10"))
+    checkpointed = LocalPaperProjection(starting_cash=Decimal("10000"))
+    checkpointed.apply(buy)
+    repository.save_checkpoint(
+        ProjectionCheckpoint(
+            session_id=SESSION_ID,
+            projection_name=LOCAL_PAPER_PROJECTION_NAME,
+            journal_sequence=buy.sequence,
+            digest=checkpointed.digest,
+        )
+    )
+    repository.append(
+        JournalRecord(
+            record_id="cancel-command:pending-1",
+            session_id=SESSION_ID,
+            kind=LOCAL_PAPER_CANCEL_COMMAND_KIND,
+            occurred_at=AT,
+            payload={
+                "order_id": "pending-1",
+                "idempotency_key": "cancel-pending-1",
+            },
+        )
+    )
+
+    with pytest.raises(ProjectionRecoveryError, match="does not cover Journal tail"):
+        rebuild_local_paper_projection(
+            repository,
+            session_id=SESSION_ID,
+            starting_cash=Decimal("10000"),
+        )
+
+
+def test_legacy_v2_ignores_tax_field_and_preserves_original_monetary_truth() -> None:
+    record = JournalRecord(
+        record_id="legacy-v2-extra-tax",
+        session_id=SESSION_ID,
+        kind=LOCAL_PAPER_FILL_V2_KIND,
+        occurred_at=AT,
+        payload={
+            "order_id": "legacy-v2-extra-tax",
+            "symbol": "2330",
+            "name": "台積電",
+            "side": "SELL",
+            "quantity_shares": 100,
+            "fill_price": "12",
+            "commission": "1",
+            "tax": "99",
+            "gross_notional": "1200",
+            "net_cash_effect": "1199",
+            "cumulative_order_commission": "1",
+            "settings_digest": "a" * 64,
+        },
+    )
+
+    fill = LocalPaperFill.from_record(record)
+
+    assert fill.tax == Decimal("0")
+    assert fill.cash_effect == Decimal("1199")
 
 
 def test_recovery_ignores_unrelated_records_but_tracks_global_sequence() -> None:
@@ -121,6 +210,39 @@ def test_recovery_ignores_unrelated_records_but_tracks_global_sequence() -> None
 
     assert restored.last_sequence == fill.sequence
     assert restored.position("2330").quantity_shares == 100
+
+
+def test_recovery_allows_checkpoint_independent_strategy_record_tail() -> None:
+    repository = journal()
+    fill = repository.append(fill_record("buy-1", side="BUY", price="10"))
+    checkpointed = LocalPaperProjection(starting_cash=Decimal("10000"))
+    checkpointed.apply(fill)
+    repository.save_checkpoint(
+        ProjectionCheckpoint(
+            session_id=SESSION_ID,
+            projection_name=LOCAL_PAPER_PROJECTION_NAME,
+            journal_sequence=fill.sequence,
+            digest=checkpointed.digest,
+        )
+    )
+    strategy_record = repository.append(
+        JournalRecord(
+            record_id="strategy-checkpoint-1",
+            session_id=SESSION_ID,
+            kind="strategy_runtime_checkpoint.v1",
+            occurred_at=AT,
+            payload={"owner_strategy_id": "strategy-1"},
+        )
+    )
+
+    restored = rebuild_local_paper_projection(
+        repository,
+        session_id=SESSION_ID,
+        starting_cash=Decimal("10000"),
+    )
+
+    assert restored.cash == Decimal("9000")
+    assert restored.last_sequence == strategy_record.sequence
 
 
 def test_recovery_fails_closed_for_missing_or_corrupted_checkpoint() -> None:

@@ -12,6 +12,7 @@ from market_data.provider import (
     ShioajiProvider,
     _RollingRequestLimiter,
 )
+from market_data.models import LocalPaperProductClass
 from premarket.calendar import TaifexTradingCalendar
 from premarket.models import CompletenessStatus, ContractIdentityStatus
 from config.premarket import PREMARKET_CONTEXT_V0
@@ -160,6 +161,64 @@ def test_stock_identity_uses_contract_catalog_without_snapshot_request():
         "00909",
         "國泰數位支付服務",
     )
+
+
+def test_local_paper_descriptor_uses_explicit_shioaji_raw_mapping() -> None:
+    contract = SimpleNamespace(
+        code="2330",
+        name="台積電",
+        exchange=SimpleNamespace(value="TSE"),
+        security_type=SimpleNamespace(value="STK"),
+        category="24",
+    )
+    provider = object.__new__(ShioajiProvider)
+    provider._api = SimpleNamespace(
+        Contracts=SimpleNamespace(Stocks={"2330": contract}),
+    )
+    provider._environment_identity = "shioaji:1.7.2:simulation=true"
+
+    descriptor = provider.get_local_paper_instrument_descriptor("2330")
+
+    assert descriptor.normalized_product_class is LocalPaperProductClass.COMMON_STOCK
+    assert descriptor.exchange_raw == "TSE"
+    assert descriptor.security_type_raw == "STK"
+    assert descriptor.product_category_raw == "24"
+    assert descriptor.source_identity.endswith(":TSE:STK:24:2330")
+
+
+@pytest.mark.parametrize(
+    ("symbol", "exchange", "security_type", "category", "expected"),
+    [
+        ("2330", "TSE", "WRT", "24", LocalPaperProductClass.UNSUPPORTED),
+        ("0050", "TSE", "STK", "00", LocalPaperProductClass.UNSUPPORTED),
+        ("2330", "OES", "STK", "24", LocalPaperProductClass.UNKNOWN),
+        ("2330", "TSE", "UNTESTED", "24", LocalPaperProductClass.UNKNOWN),
+        ("2330", "TSE", "STK", "UNTESTED", LocalPaperProductClass.UNKNOWN),
+        ("2881A", "TSE", "STK", "17", LocalPaperProductClass.UNSUPPORTED),
+    ],
+)
+def test_local_paper_descriptor_fails_closed_for_non_allowlisted_raw_values(
+    symbol: str,
+    exchange: str,
+    security_type: str,
+    category: str,
+    expected: LocalPaperProductClass,
+) -> None:
+    contract = SimpleNamespace(
+        code=symbol,
+        name="Test",
+        exchange=exchange,
+        security_type=security_type,
+        category=category,
+    )
+    provider = object.__new__(ShioajiProvider)
+    provider._api = SimpleNamespace(
+        Contracts=SimpleNamespace(Stocks={symbol: contract}),
+    )
+
+    descriptor = provider.get_local_paper_instrument_descriptor(symbol)
+
+    assert descriptor.normalized_product_class is expected
 
 
 def test_market_snapshot_queries_include_tse_and_otc():

@@ -18,11 +18,26 @@ from config.local_paper import (
     LOCAL_PAPER_DEFAULT_DAILY_BUY_LIMIT_TWD,
     LOCAL_PAPER_DEFAULT_MINIMUM_COMMISSION_TWD,
     LOCAL_PAPER_DEFAULT_STARTING_CASH_TWD,
+    LOCAL_PAPER_V2_DEFAULT_SLIPPAGE_BPS,
+)
+from simulation.execution_costs import (
+    CALIBRATION_STATUS,
+    COMMISSION_RATE,
+    FEE_POLICY_VERSION,
+    MINIMUM_COMMISSION_TWD,
+    MONEY_QUANTUM as V2_MONEY_QUANTUM,
+    PRICE_TICK_POLICY_VERSION,
+    ROUNDING_POLICY_VERSION,
+    SELL_TAX_RATE,
+    SLIPPAGE_POLICY_VERSION,
+    cumulative_commission_for,
 )
 from trading.canonical_values import canonical_decimal_string
 
 
-SETTINGS_SCHEMA_VERSION = "local-paper-settings-v1"
+SETTINGS_SCHEMA_V1 = "local-paper-settings-v1"
+SETTINGS_SCHEMA_V2 = "local-paper-settings-v2"
+SETTINGS_SCHEMA_VERSION = SETTINGS_SCHEMA_V1
 MONEY_QUANTUM = Decimal("0.01")
 
 
@@ -46,6 +61,8 @@ class LocalPaperSettings:
     max_daily_buy_notional_twd: Decimal
     commission_rate: Decimal
     minimum_commission_twd: Decimal
+    slippage_bps: Decimal = Decimal("0")
+    schema_version: str = SETTINGS_SCHEMA_V1
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -53,12 +70,17 @@ class LocalPaperSettings:
             "max_daily_buy_notional_twd",
             "commission_rate",
             "minimum_commission_twd",
+            "slippage_bps",
         ):
             object.__setattr__(
                 self,
                 field_name,
                 _decimal(getattr(self, field_name), field_name),
             )
+        normalized_schema = str(self.schema_version).strip()
+        if normalized_schema not in {SETTINGS_SCHEMA_V1, SETTINGS_SCHEMA_V2}:
+            raise ValueError("不支援的 local-paper settings schema")
+        object.__setattr__(self, "schema_version", normalized_schema)
         if self.starting_cash_twd <= 0:
             raise ValueError("starting_cash_twd 必須大於 0")
         if self.max_daily_buy_notional_twd <= 0:
@@ -67,6 +89,8 @@ class LocalPaperSettings:
             raise ValueError("commission_rate 必須介於 0 與 0.01")
         if self.minimum_commission_twd < 0:
             raise ValueError("minimum_commission_twd 不可小於 0")
+        if not Decimal("0") <= self.slippage_bps <= Decimal("100"):
+            raise ValueError("slippage_bps 必須介於 0 與 100")
         try:
             normalized_minimum = self.minimum_commission_twd.quantize(
                 MONEY_QUANTUM,
@@ -76,6 +100,14 @@ class LocalPaperSettings:
             raise ValueError("minimum_commission_twd 必須是有效金額") from error
         if normalized_minimum != self.minimum_commission_twd:
             raise ValueError("minimum_commission_twd 必須以 0.01 元為單位")
+        if self.schema_version == SETTINGS_SCHEMA_V1:
+            if self.slippage_bps != 0:
+                raise ValueError("v1 settings 不支援 slippage_bps")
+        elif (
+            self.commission_rate != COMMISSION_RATE
+            or self.minimum_commission_twd != MINIMUM_COMMISSION_TWD
+        ):
+            raise ValueError("v2 fee policy 必須使用 tw_stock_standard_v1")
 
     @classmethod
     def defaults(cls) -> "LocalPaperSettings":
@@ -91,7 +123,56 @@ class LocalPaperSettings:
         )
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, object]) -> "LocalPaperSettings":
+    def v2_from_v1(
+        cls,
+        settings: "LocalPaperSettings",
+    ) -> "LocalPaperSettings":
+        return cls(
+            starting_cash_twd=settings.starting_cash_twd,
+            max_daily_buy_notional_twd=settings.max_daily_buy_notional_twd,
+            commission_rate=COMMISSION_RATE,
+            minimum_commission_twd=MINIMUM_COMMISSION_TWD,
+            slippage_bps=Decimal(LOCAL_PAPER_V2_DEFAULT_SLIPPAGE_BPS),
+            schema_version=SETTINGS_SCHEMA_V2,
+        )
+
+    @classmethod
+    def from_mapping(
+        cls,
+        value: Mapping[str, object],
+        *,
+        schema_version: str | None = None,
+    ) -> "LocalPaperSettings":
+        if not isinstance(value, Mapping):
+            raise ValueError("local-paper settings 必須是 mapping")
+        resolved_schema = str(
+            schema_version
+            or value.get("settings_schema_version")
+            or SETTINGS_SCHEMA_V1
+        ).strip()
+        if resolved_schema == SETTINGS_SCHEMA_V2:
+            if "slippage_bps" not in value:
+                raise ValueError("v2 settings 缺少 slippage_bps")
+            required = {
+                "security_scope": "TWSE_TPEX_COMMON_STOCK",
+                "order_condition": "CASH",
+                "commission_rate": canonical_decimal_string(COMMISSION_RATE),
+                "minimum_commission_twd": canonical_decimal_string(
+                    MINIMUM_COMMISSION_TWD
+                ),
+                "sell_tax_rate": canonical_decimal_string(SELL_TAX_RATE),
+                "money_quantum_twd": canonical_decimal_string(V2_MONEY_QUANTUM),
+                "fee_policy_version": FEE_POLICY_VERSION,
+                "rounding_policy_version": ROUNDING_POLICY_VERSION,
+                "slippage_policy_version": SLIPPAGE_POLICY_VERSION,
+                "price_tick_policy_version": PRICE_TICK_POLICY_VERSION,
+                "calibration_status": CALIBRATION_STATUS,
+            }
+            if (
+                value.get("day_trade") is not False
+                or any(value.get(key) != expected for key, expected in required.items())
+            ):
+                raise ValueError("v2 settings policy identity 不完整或不一致")
         return cls(
             starting_cash_twd=_decimal(value["starting_cash_twd"], "starting_cash_twd"),
             max_daily_buy_notional_twd=_decimal(
@@ -103,10 +184,15 @@ class LocalPaperSettings:
                 value.get("minimum_commission_twd", "0"),
                 "minimum_commission_twd",
             ),
+            slippage_bps=_decimal(
+                value.get("slippage_bps", "0"),
+                "slippage_bps",
+            ),
+            schema_version=resolved_schema,
         )
 
-    def to_dict(self) -> dict[str, str]:
-        return {
+    def to_dict(self) -> dict[str, object]:
+        base = {
             "starting_cash_twd": canonical_decimal_string(
                 self.starting_cash_twd
             ),
@@ -117,6 +203,28 @@ class LocalPaperSettings:
             "minimum_commission_twd": canonical_decimal_string(
                 self.minimum_commission_twd
             ),
+        }
+        if self.schema_version == SETTINGS_SCHEMA_V1:
+            return base
+        return {
+            "settings_schema_version": SETTINGS_SCHEMA_V2,
+            "starting_cash_twd": base["starting_cash_twd"],
+            "max_daily_buy_notional_twd": base["max_daily_buy_notional_twd"],
+            "slippage_bps": canonical_decimal_string(self.slippage_bps),
+            "security_scope": "TWSE_TPEX_COMMON_STOCK",
+            "order_condition": "CASH",
+            "day_trade": False,
+            "commission_rate": canonical_decimal_string(COMMISSION_RATE),
+            "minimum_commission_twd": canonical_decimal_string(
+                MINIMUM_COMMISSION_TWD
+            ),
+            "sell_tax_rate": canonical_decimal_string(SELL_TAX_RATE),
+            "money_quantum_twd": canonical_decimal_string(V2_MONEY_QUANTUM),
+            "fee_policy_version": FEE_POLICY_VERSION,
+            "rounding_policy_version": ROUNDING_POLICY_VERSION,
+            "slippage_policy_version": SLIPPAGE_POLICY_VERSION,
+            "price_tick_policy_version": PRICE_TICK_POLICY_VERSION,
+            "calibration_status": CALIBRATION_STATUS,
         }
 
     @property
@@ -132,6 +240,8 @@ class LocalPaperSettings:
         normalized = _decimal(gross, "gross")
         if normalized <= 0:
             return Decimal("0")
+        if self.schema_version == SETTINGS_SCHEMA_V2:
+            return cumulative_commission_for(normalized)
         calculated = (normalized * self.commission_rate).quantize(
             MONEY_QUANTUM,
             rounding=ROUND_HALF_UP,
@@ -175,7 +285,7 @@ class LocalPaperSettingsState:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "schema_version": SETTINGS_SCHEMA_VERSION,
+            "schema_version": self.document_schema_version,
             "revision": self.revision,
             "active": self.active.to_dict(),
             "draft": self.draft.to_dict(),
@@ -184,6 +294,20 @@ class LocalPaperSettingsState:
             "draft_settings_revision": self.draft_settings_revision,
             "updated_at": self.updated_at,
         }
+
+    @property
+    def document_schema_version(self) -> str:
+        if (
+            self.active.schema_version == SETTINGS_SCHEMA_V2
+            or self.draft.schema_version == SETTINGS_SCHEMA_V2
+        ):
+            return SETTINGS_SCHEMA_V2
+        return SETTINGS_SCHEMA_V1
+
+    def v2_draft(self) -> LocalPaperSettings:
+        if self.draft.schema_version == SETTINGS_SCHEMA_V2:
+            return self.draft
+        return LocalPaperSettings.v2_from_v1(self.draft)
 
 
 class JsonLocalPaperSettingsRepository:
@@ -199,12 +323,29 @@ class JsonLocalPaperSettingsRepository:
                 return LocalPaperSettingsState.defaults()
             try:
                 raw = json.loads(self._path.read_text(encoding="utf-8"))
-                if raw.get("schema_version") != SETTINGS_SCHEMA_VERSION:
+                if not isinstance(raw, Mapping):
+                    raise ValueError("local-paper settings document 必須是 mapping")
+                document_schema = str(raw.get("schema_version") or "")
+                if document_schema not in {SETTINGS_SCHEMA_V1, SETTINGS_SCHEMA_V2}:
                     raise ValueError("不支援的 local-paper settings schema")
                 return LocalPaperSettingsState(
                     revision=int(raw["revision"]),
-                    active=LocalPaperSettings.from_mapping(raw["active"]),
-                    draft=LocalPaperSettings.from_mapping(raw["draft"]),
+                    active=LocalPaperSettings.from_mapping(
+                        raw["active"],
+                        schema_version=(
+                            SETTINGS_SCHEMA_V1
+                            if document_schema == SETTINGS_SCHEMA_V1
+                            else None
+                        ),
+                    ),
+                    draft=LocalPaperSettings.from_mapping(
+                        raw["draft"],
+                        schema_version=(
+                            SETTINGS_SCHEMA_V1
+                            if document_schema == SETTINGS_SCHEMA_V1
+                            else None
+                        ),
+                    ),
                     active_session_id=str(raw["active_session_id"]),
                     active_settings_revision=int(raw["active_settings_revision"]),
                     draft_settings_revision=int(raw["draft_settings_revision"]),

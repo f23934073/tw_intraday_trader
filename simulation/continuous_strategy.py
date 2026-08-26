@@ -14,6 +14,7 @@ from features.specifications import FeatureRequestSpec
 from market_data.equity_calendar import ReviewedEquityCalendar
 from runtime.clock import TAIPEI, Clock
 from simulation.execution_policy import EXECUTABLE_BOOK_MAX_AGE_SECONDS
+from simulation.kill_switch import DurableLocalPaperKillSwitch
 from simulation.atomic_runtime import (
     AtomicPaperRuntimeResolution,
     PaperSetStatus,
@@ -71,46 +72,6 @@ class _StrategyFlow(Protocol):
     ) -> Mapping[str, Any]: ...
 
     def clear_entry_quote_watch(self, *, owner_strategy_id: str) -> None: ...
-
-
-class LocalPaperKillSwitch:
-    """Process-local emergency stop; reset always requires an explicit call."""
-
-    def __init__(self) -> None:
-        self._lock = RLock()
-        self._engaged = False
-        self._reason: str | None = None
-        self._engaged_at: datetime | None = None
-
-    def engage(self, reason: str, *, at: datetime) -> dict[str, Any]:
-        normalized = reason.strip()
-        if not normalized:
-            raise ValueError("kill switch reason 不可為空")
-        with self._lock:
-            self._engaged = True
-            self._reason = normalized
-            self._engaged_at = at
-            return self.status()
-
-    def reset(self) -> dict[str, Any]:
-        with self._lock:
-            self._engaged = False
-            self._reason = None
-            self._engaged_at = None
-            return self.status()
-
-    def status(self) -> dict[str, Any]:
-        with self._lock:
-            return {
-                "engaged": self._engaged,
-                "reason": self._reason,
-                "engaged_at": _iso(self._engaged_at),
-            }
-
-    @property
-    def engaged(self) -> bool:
-        with self._lock:
-            return self._engaged
 
 
 class AutomatedStrategyStateError(RuntimeError):
@@ -236,7 +197,7 @@ class ContinuousPaperStrategyController:
             [tuple[FeatureRequestSpec, ...]], Mapping[str, Any]
         ]
         | None = None,
-        kill_switch: LocalPaperKillSwitch | None = None,
+        kill_switch: DurableLocalPaperKillSwitch,
     ) -> None:
         self._flow = flow
         self._projection_reader = projection_reader
@@ -245,7 +206,7 @@ class ContinuousPaperStrategyController:
         self._clock = clock
         self._atomic_resolver = atomic_resolver
         self._atomic_signal_reader = atomic_signal_reader
-        self._kill_switch = kill_switch or LocalPaperKillSwitch()
+        self._kill_switch = kill_switch
         self._lock = RLock()
         self._stop = Event()
         self._thread: Thread | None = None
@@ -264,6 +225,19 @@ class ContinuousPaperStrategyController:
         self._consumed_signal_digests: set[str] = set()
         self._atomic_resolution: AtomicPaperRuntimeResolution | None = None
         self._effective_risk_evidence: Mapping[str, Any] | None = None
+        kill_switch_state = str(self._kill_switch.status()["control_state"])
+        if kill_switch_state != "DISENGAGED":
+            self._state = "KILLED"
+            self._decision = (
+                "KILL_SWITCH_RECOVERY_REQUIRED"
+                if kill_switch_state == "RECOVERY_REQUIRED"
+                else "KILL_SWITCH_ENGAGED"
+            )
+            self._message = (
+                "Kill Switch Journal 需要復原；禁止產生新意圖"
+                if kill_switch_state == "RECOVERY_REQUIRED"
+                else "全域 Local Paper kill switch 已啟用；禁止產生新意圖"
+            )
 
     def start(
         self,
@@ -271,11 +245,8 @@ class ContinuousPaperStrategyController:
         *,
         background: bool = True,
     ) -> dict[str, Any]:
-        if self._kill_switch.engaged:
-            raise AutomatedStrategyStateError(
-                "Local Paper kill switch 尚未解除，禁止啟動策略"
-            )
         with self._lock:
+            self._kill_switch.assert_start_allowed()
             if self._state == "RUNNING":
                 raise AutomatedStrategyStateError("自動模擬策略已在執行")
             atomic_resolution = None
@@ -394,9 +365,10 @@ class ContinuousPaperStrategyController:
                 raise AutomatedStrategyStateError("自動模擬策略 worker 無法停止")
         with self._lock:
             self._thread = None
-            self._state = "STOPPED"
-            self._decision = "STOPPED"
-            self._message = "自動模擬策略已停止；既有本機持倉不會自動清除"
+            if not self._synchronize_kill_switch_locked():
+                self._state = "STOPPED"
+                self._decision = "STOPPED"
+                self._message = "自動模擬策略已停止；既有本機持倉不會自動清除"
             self._write_runtime_checkpoint_locked()
             status = self._status_locked()
             owner = self._atomic_owner_strategy_id_locked()
@@ -406,31 +378,57 @@ class ContinuousPaperStrategyController:
     def close(self) -> None:
         self.stop()
 
-    def engage_kill_switch(self, reason: str) -> dict[str, Any]:
-        self._kill_switch.engage(reason, at=self._clock.now())
-        self._stop.set()
+    def engage_kill_switch(
+        self,
+        *,
+        actor_id: str,
+        idempotency_key: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        transition = self._kill_switch.engage(
+            actor_id=actor_id,
+            operation_id=idempotency_key,
+            reason=reason,
+        )
         with self._lock:
-            self._state = "KILLED"
-            self._decision = "KILL_SWITCH_ENGAGED"
-            self._message = "全域 Local Paper kill switch 已啟用；禁止產生新意圖"
-            self._write_runtime_checkpoint_locked()
+            blocking = self._synchronize_kill_switch_locked()
+            self._write_control_checkpoint_best_effort_locked()
             status = self._status_locked()
             owner = self._atomic_owner_strategy_id_locked()
-        self._clear_entry_quote_watch(owner)
-        return status
+        if blocking:
+            self._clear_entry_quote_watch(owner)
+        return {**status, "operation": transition["operation"]}
 
-    def reset_kill_switch(self) -> dict[str, Any]:
-        self._kill_switch.reset()
+    def reset_kill_switch(
+        self,
+        *,
+        actor_id: str,
+        idempotency_key: str,
+        expected_revision: int,
+        reason: str,
+    ) -> dict[str, Any]:
+        transition = self._kill_switch.reset(
+            actor_id=actor_id,
+            operation_id=idempotency_key,
+            reason=reason,
+            expected_revision=expected_revision,
+        )
         with self._lock:
-            if self._state == "KILLED":
+            blocking = self._synchronize_kill_switch_locked()
+            if not blocking and self._state == "KILLED":
                 self._state = "STOPPED"
                 self._decision = "STOPPED"
                 self._message = "kill switch 已解除；必須重新手動啟動策略"
-            self._write_runtime_checkpoint_locked()
-            return self._status_locked()
+            self._write_control_checkpoint_best_effort_locked()
+            status = self._status_locked()
+            owner = self._atomic_owner_strategy_id_locked()
+        if blocking:
+            self._clear_entry_quote_watch(owner)
+        return {**status, "operation": transition["operation"]}
 
     def status(self) -> dict[str, Any]:
         with self._lock:
+            self._synchronize_kill_switch_locked()
             return self._status_locked()
 
     def run_once(self) -> dict[str, Any]:
@@ -463,8 +461,19 @@ class ContinuousPaperStrategyController:
         self._last_checked_at = now
         if self._kill_switch.engaged:
             self._state = "KILLED"
-            self._decision = "KILL_SWITCH_ENGAGED"
-            self._message = "全域 Local Paper kill switch 已啟用；禁止產生新意圖"
+            recovery_required = (
+                self._kill_switch.control_state.value == "RECOVERY_REQUIRED"
+            )
+            self._decision = (
+                "KILL_SWITCH_RECOVERY_REQUIRED"
+                if recovery_required
+                else "KILL_SWITCH_ENGAGED"
+            )
+            self._message = (
+                "Kill Switch Journal 需要復原；禁止產生新意圖"
+                if recovery_required
+                else "全域 Local Paper kill switch 已啟用；禁止產生新意圖"
+            )
             self._stop.set()
             return
         local = now.astimezone(TAIPEI)
@@ -1056,6 +1065,33 @@ class ContinuousPaperStrategyController:
             },
             occurred_at=occurred_at,
         )
+
+    def _write_control_checkpoint_best_effort_locked(self) -> None:
+        """Keep durable control authoritative if a run checkpoint cannot append."""
+
+        try:
+            self._write_runtime_checkpoint_locked()
+        except Exception as error:
+            self._last_error = (
+                "Kill Switch 已生效，但 strategy runtime checkpoint 寫入失敗："
+                f"{type(error).__name__}"
+            )
+
+    def _synchronize_kill_switch_locked(self) -> bool:
+        """Reflect authoritative control state without manufacturing a transition."""
+
+        control_state = str(self._kill_switch.status()["control_state"])
+        if control_state == "DISENGAGED":
+            return False
+        self._stop.set()
+        self._state = "KILLED"
+        if control_state == "RECOVERY_REQUIRED":
+            self._decision = "KILL_SWITCH_RECOVERY_REQUIRED"
+            self._message = "Kill Switch Journal 需要復原；禁止產生新意圖"
+        else:
+            self._decision = "KILL_SWITCH_ENGAGED"
+            self._message = "全域 Local Paper kill switch 已啟用；禁止產生新意圖"
+        return True
 
     def _status_locked(self) -> dict[str, Any]:
         return {

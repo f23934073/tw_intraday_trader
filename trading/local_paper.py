@@ -6,10 +6,26 @@ import hashlib
 import json
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from enum import StrEnum
 from collections.abc import Mapping
 
+from market_data.models import (
+    LocalPaperInstrumentDescriptorV1,
+    LocalPaperProductClass,
+)
+from simulation.execution_costs import (
+    FEE_POLICY_VERSION,
+    MONEY_QUANTUM,
+    PRICE_TICK_POLICY_VERSION,
+    ROUNDING_POLICY_VERSION,
+    SELL_TAX_RATE,
+    SLIPPAGE_POLICY_VERSION,
+    ReferenceSource,
+    cumulative_commission_for,
+    decide_fixed_adverse_slippage,
+    is_valid_common_stock_tick,
+)
 from trading.journal import (
     JournalAppendResult,
     JournalRecord,
@@ -22,10 +38,23 @@ from trading.risk import OrderCommand
 
 LOCAL_PAPER_FILL_KIND = "local_paper_fill.v1"
 LOCAL_PAPER_FILL_V2_KIND = "local_paper_fill.v2"
+LOCAL_PAPER_FILL_V3_KIND = "local_paper_fill.v3"
 LOCAL_PAPER_ORDER_STATE_KIND = "local_paper_order_state.v1"
+LOCAL_PAPER_CANCEL_COMMAND_KIND = "local_paper_cancel_command.v1"
 LOCAL_PAPER_DAILY_BASELINE_KIND = "local_paper_daily_baseline.v1"
 LOCAL_PAPER_SESSION_ARCHIVE_KIND = "local_paper_session_archive.v1"
 LOCAL_PAPER_PROJECTION_NAME = "local_paper.v1"
+_LOCAL_PAPER_ORDER_STATE_DIGEST_FIELD = "order_state_digest"
+_LOCAL_PAPER_CHECKPOINT_MUTATION_KINDS = frozenset(
+    {
+        LOCAL_PAPER_FILL_KIND,
+        LOCAL_PAPER_FILL_V2_KIND,
+        LOCAL_PAPER_FILL_V3_KIND,
+        LOCAL_PAPER_ORDER_STATE_KIND,
+        LOCAL_PAPER_CANCEL_COMMAND_KIND,
+        LOCAL_PAPER_DAILY_BASELINE_KIND,
+    }
+)
 
 
 class LocalPaperSide(StrEnum):
@@ -46,6 +75,9 @@ class LocalPaperFill:
     quantity_shares: int
     fill_price: Decimal
     commission: Decimal = Decimal("0")
+    tax: Decimal = Decimal("0")
+    gross_amount: Decimal | None = None
+    net_cash_effect: Decimal | None = None
     owner_origin: str = "MANUAL_WEB"
     owner_strategy_id: str | None = None
     owner_strategy_version: str | None = None
@@ -59,14 +91,35 @@ class LocalPaperFill:
             raise ValueError("name must not be empty")
         if self.quantity_shares <= 0:
             raise ValueError("quantity_shares must be positive")
-        if self.fill_price <= 0:
+        if not self.fill_price.is_finite() or self.fill_price <= 0:
             raise ValueError("fill_price must be positive")
-        if self.commission < 0:
+        if not self.commission.is_finite() or self.commission < 0:
             raise ValueError("commission must not be negative")
+        if not self.tax.is_finite() or self.tax < 0:
+            raise ValueError("tax must not be negative")
+        if self.gross_amount is not None and not self.gross_amount.is_finite():
+            raise ValueError("gross_amount must be finite")
+        if self.net_cash_effect is not None and not self.net_cash_effect.is_finite():
+            raise ValueError("net_cash_effect must be finite")
+
+    @property
+    def cash_effect(self) -> Decimal:
+        if self.net_cash_effect is not None:
+            return self.net_cash_effect
+        gross = self.fill_price * self.quantity_shares
+        return (
+            -(gross + self.commission)
+            if self.side is LocalPaperSide.BUY
+            else gross - self.commission - self.tax
+        )
 
     @classmethod
     def from_record(cls, record: JournalRecord) -> "LocalPaperFill":
-        if record.kind not in {LOCAL_PAPER_FILL_KIND, LOCAL_PAPER_FILL_V2_KIND}:
+        if record.kind not in {
+            LOCAL_PAPER_FILL_KIND,
+            LOCAL_PAPER_FILL_V2_KIND,
+            LOCAL_PAPER_FILL_V3_KIND,
+        }:
             raise ValueError("record is not a local-paper fill")
         try:
             fill = cls(
@@ -77,6 +130,28 @@ class LocalPaperFill:
                 quantity_shares=int(record.payload["quantity_shares"]),
                 fill_price=Decimal(str(record.payload["fill_price"])),
                 commission=Decimal(str(record.payload.get("commission", "0"))),
+                tax=(
+                    Decimal(str(record.payload["tax"]))
+                    if record.kind == LOCAL_PAPER_FILL_V3_KIND
+                    else Decimal("0")
+                ),
+                gross_amount=(
+                    Decimal(
+                        str(
+                            record.payload.get("gross_amount")
+                            or record.payload.get("gross_notional")
+                        )
+                    )
+                    if record.kind
+                    in {LOCAL_PAPER_FILL_V2_KIND, LOCAL_PAPER_FILL_V3_KIND}
+                    else None
+                ),
+                net_cash_effect=(
+                    Decimal(str(record.payload["net_cash_effect"]))
+                    if record.kind
+                    in {LOCAL_PAPER_FILL_V2_KIND, LOCAL_PAPER_FILL_V3_KIND}
+                    else None
+                ),
                 owner_origin=str(record.payload.get("owner_origin", "MANUAL_WEB")),
                 owner_strategy_id=(
                     str(record.payload["owner_strategy_id"])
@@ -90,8 +165,10 @@ class LocalPaperFill:
                 ),
             )
             if record.kind == LOCAL_PAPER_FILL_V2_KIND:
-                gross_notional = Decimal(str(record.payload["gross_notional"]))
-                net_cash_effect = Decimal(str(record.payload["net_cash_effect"]))
+                gross_notional = fill.gross_amount
+                net_cash_effect = fill.net_cash_effect
+                assert gross_notional is not None
+                assert net_cash_effect is not None
                 cumulative_commission = Decimal(
                     str(record.payload["cumulative_order_commission"])
                 )
@@ -110,6 +187,8 @@ class LocalPaperFill:
                 ):
                     raise ValueError("invalid local-paper v2 accounting evidence")
                 int(settings_digest, 16)
+            elif record.kind == LOCAL_PAPER_FILL_V3_KIND:
+                _validate_v3_fill(record, fill)
             return fill
         except (InvalidOperation, KeyError, TypeError, ValueError) as error:
             raise ProjectionRecoveryError(
@@ -117,6 +196,233 @@ class LocalPaperFill:
             ) from error
 
 
+def _validate_sha256(value: object, field_name: str) -> str:
+    normalized = str(value).strip().lower()
+    if len(normalized) != 64:
+        raise ValueError(f"{field_name} must be SHA-256")
+    int(normalized, 16)
+    return normalized
+
+
+def _validate_v3_fill(record: JournalRecord, fill: LocalPaperFill) -> None:
+    payload = record.payload
+    required_fields = {
+        "commission",
+        "tax",
+        "gross_amount",
+        "net_cash_effect",
+        "reference_price",
+        "reference_source",
+        "configured_slippage_bps",
+        "realized_slippage_bps",
+        "slippage_cost",
+        "cumulative_order_gross",
+        "cumulative_order_commission",
+        "cumulative_order_tax",
+        "fee_policy_version",
+        "rounding_policy_version",
+        "slippage_policy_version",
+        "price_tick_policy_version",
+        "settings_digest",
+        "instrument_descriptor_snapshot",
+        "instrument_descriptor_digest",
+        "limit_price",
+        "fill_source",
+        "provider_identity",
+        "execution_authority",
+        "fill_sequence",
+    }
+    if not required_fields.issubset(payload):
+        raise ValueError("local-paper v3 evidence is incomplete")
+    assert fill.gross_amount is not None
+    assert fill.net_cash_effect is not None
+    expected_gross = fill.fill_price * fill.quantity_shares
+    expected_net = (
+        -(expected_gross + fill.commission)
+        if fill.side is LocalPaperSide.BUY
+        else expected_gross - fill.commission - fill.tax
+    )
+    cumulative_commission = Decimal(
+        str(payload["cumulative_order_commission"])
+    )
+    cumulative_gross = Decimal(str(payload["cumulative_order_gross"]))
+    cumulative_tax = Decimal(str(payload["cumulative_order_tax"]))
+    reference_price = Decimal(str(payload["reference_price"]))
+    configured_bps = Decimal(str(payload["configured_slippage_bps"]))
+    realized_bps = Decimal(str(payload["realized_slippage_bps"]))
+    slippage_cost = Decimal(str(payload["slippage_cost"]))
+    limit_price = Decimal(str(payload["limit_price"]))
+    reference_source = ReferenceSource(str(payload["reference_source"]))
+    fill_sequence = payload["fill_sequence"]
+    if (
+        isinstance(fill_sequence, bool)
+        or not isinstance(fill_sequence, int)
+        or fill_sequence <= 0
+    ):
+        raise ValueError("fill_sequence must be positive")
+    if not all(
+        value.is_finite()
+        for value in (
+            cumulative_commission,
+            cumulative_gross,
+            cumulative_tax,
+            reference_price,
+            configured_bps,
+            realized_bps,
+            slippage_cost,
+            limit_price,
+        )
+    ):
+        raise ValueError("local-paper v3 contains non-finite evidence")
+    if fill.gross_amount != expected_gross or fill.net_cash_effect != expected_net:
+        raise ValueError("invalid local-paper v3 monetary evidence")
+    if fill.side is LocalPaperSide.SELL and fill.net_cash_effect < 0:
+        raise ValueError("SELL net cash effect must not be negative")
+    if cumulative_commission < fill.commission or cumulative_tax < fill.tax:
+        raise ValueError("invalid local-paper v3 cumulative accounting")
+    previous_gross = cumulative_gross - expected_gross
+    expected_cumulative_commission = cumulative_commission_for(cumulative_gross)
+    expected_previous_commission = cumulative_commission_for(previous_gross)
+    if (
+        previous_gross < 0
+        or cumulative_commission != expected_cumulative_commission
+        or fill.commission
+        != expected_cumulative_commission - expected_previous_commission
+    ):
+        raise ValueError("invalid local-paper v3 commission evidence")
+    if fill_sequence == 1 and (
+        cumulative_gross != expected_gross
+        or cumulative_commission != fill.commission
+        or cumulative_tax != fill.tax
+    ):
+        raise ValueError("invalid first local-paper v3 cumulative evidence")
+    if any(
+        value != value.quantize(MONEY_QUANTUM, rounding=ROUND_DOWN)
+        for value in (
+            fill.commission,
+            fill.tax,
+            cumulative_commission,
+            cumulative_tax,
+        )
+    ):
+        raise ValueError("local-paper v3 costs must use whole-TWD rounding")
+    if fill.side is LocalPaperSide.BUY and fill.tax != 0:
+        raise ValueError("BUY tax must be zero")
+    expected_tax = (
+        Decimal("0")
+        if fill.side is LocalPaperSide.BUY
+        else (expected_gross * SELL_TAX_RATE).quantize(
+            MONEY_QUANTUM,
+            rounding=ROUND_DOWN,
+        )
+    )
+    if fill.tax != expected_tax:
+        raise ValueError("invalid local-paper v3 tax evidence")
+    if reference_price <= 0 or not 0 <= configured_bps <= 100:
+        raise ValueError("invalid local-paper v3 slippage inputs")
+    if not is_valid_common_stock_tick(fill.fill_price):
+        raise ValueError("fill price violates common-stock tick policy")
+    if not is_valid_common_stock_tick(reference_price):
+        raise ValueError("reference price violates common-stock tick policy")
+    if not is_valid_common_stock_tick(limit_price):
+        raise ValueError("limit price violates common-stock tick policy")
+    if fill.side is LocalPaperSide.BUY:
+        if fill.fill_price < reference_price or fill.fill_price > limit_price:
+            raise ValueError("BUY fill violates adverse price or limit")
+        if reference_source not in {
+            ReferenceSource.BEST_ASK,
+            ReferenceSource.SNAPSHOT_COMPATIBILITY,
+        }:
+            raise ValueError("BUY reference source is invalid")
+    else:
+        if fill.fill_price > reference_price or fill.fill_price < limit_price:
+            raise ValueError("SELL fill violates adverse price or limit")
+        if reference_source not in {
+            ReferenceSource.BEST_BID,
+            ReferenceSource.SNAPSHOT_COMPATIBILITY,
+        }:
+            raise ValueError("SELL reference source is invalid")
+    expected_slippage = decide_fixed_adverse_slippage(
+        side=fill.side.value,
+        reference_price=reference_price,
+        reference_source=reference_source,
+        configured_slippage_bps=configured_bps,
+        limit_price=limit_price,
+    )
+    if (
+        not expected_slippage.limit_satisfied
+        or expected_slippage.adjusted_price != fill.fill_price
+    ):
+        raise ValueError("invalid local-paper v3 adverse slippage evidence")
+    expected_slippage_cost = (
+        abs(fill.fill_price - reference_price) * fill.quantity_shares
+    )
+    expected_realized_bps = (
+        abs(fill.fill_price - reference_price)
+        / reference_price
+        * Decimal("10000")
+    )
+    if (
+        slippage_cost != expected_slippage_cost
+        or realized_bps != expected_realized_bps
+    ):
+        raise ValueError("invalid local-paper v3 slippage evidence")
+    if str(payload["fee_policy_version"]) != FEE_POLICY_VERSION:
+        raise ValueError("invalid local-paper v3 fee policy")
+    if str(payload["rounding_policy_version"]) != ROUNDING_POLICY_VERSION:
+        raise ValueError("invalid local-paper v3 rounding policy")
+    if str(payload["slippage_policy_version"]) != SLIPPAGE_POLICY_VERSION:
+        raise ValueError("invalid local-paper v3 slippage policy")
+    if str(payload["price_tick_policy_version"]) != PRICE_TICK_POLICY_VERSION:
+        raise ValueError("invalid local-paper v3 tick policy")
+    _validate_sha256(payload["settings_digest"], "settings_digest")
+    snapshot = payload["instrument_descriptor_snapshot"]
+    if not isinstance(snapshot, Mapping):
+        raise ValueError("instrument descriptor snapshot must be a mapping")
+    if snapshot.get("schema_version") != "local-paper-instrument-descriptor-v1":
+        raise ValueError("instrument descriptor schema is invalid")
+    descriptor_fields = (
+        "symbol",
+        "exchange_raw",
+        "security_type_raw",
+        "product_category_raw",
+        "normalized_product_class",
+        "source_identity",
+    )
+    if any(not isinstance(snapshot.get(field), str) for field in descriptor_fields):
+        raise ValueError("instrument descriptor fields must be strings")
+    descriptor = LocalPaperInstrumentDescriptorV1(
+        symbol=str(snapshot["symbol"]),
+        exchange_raw=str(snapshot["exchange_raw"]),
+        security_type_raw=str(snapshot["security_type_raw"]),
+        product_category_raw=str(snapshot["product_category_raw"]),
+        normalized_product_class=LocalPaperProductClass(
+            str(snapshot["normalized_product_class"])
+        ),
+        source_identity=str(snapshot["source_identity"]),
+    )
+    if (
+        descriptor.symbol != fill.symbol
+        or descriptor.normalized_product_class
+        is not LocalPaperProductClass.COMMON_STOCK
+        or descriptor.exchange_raw not in {"TWSE", "TPEX", "TSE", "OTC"}
+        or descriptor.digest
+        != _validate_sha256(
+            payload["instrument_descriptor_digest"],
+            "instrument_descriptor_digest",
+        )
+    ):
+        raise ValueError("instrument descriptor evidence is invalid")
+    if payload["execution_authority"] is not False:
+        raise ValueError("local-paper execution authority must be false")
+    if not isinstance(payload["fill_source"], str) or not payload[
+        "fill_source"
+    ].strip():
+        raise ValueError("fill_source must not be empty")
+    if not isinstance(payload["provider_identity"], str) or not payload[
+        "provider_identity"
+    ].strip():
+        raise ValueError("provider_identity must not be empty")
 @dataclass(frozen=True)
 class LocalPaperPosition:
     symbol: str
@@ -148,7 +454,11 @@ def journal_record_from_simulation_order(
             order.get("last_fill_quantity") or order["filled_quantity"]
         )
         fill_price = Decimal(
-            str(order.get("last_fill_price") or order["filled_price"])
+            str(
+                order.get("last_fill_price_decimal")
+                or order.get("last_fill_price")
+                or order["filled_price"]
+            )
         )
         fill = LocalPaperFill(
             order_id=order_id,
@@ -157,7 +467,14 @@ def journal_record_from_simulation_order(
             side=LocalPaperSide(str(order["side"])),
             quantity_shares=fill_quantity,
             fill_price=fill_price,
-            commission=Decimal(str(order.get("last_fill_commission") or "0")),
+            commission=Decimal(
+                str(
+                    order.get("last_fill_commission_decimal")
+                    or order.get("last_fill_commission")
+                    or "0"
+                )
+            ),
+            tax=Decimal(str(order.get("last_fill_tax") or "0")),
             owner_origin=str(order.get("origin", "MANUAL_WEB")),
             owner_strategy_id=(
                 str(order["strategy_id"])
@@ -183,15 +500,22 @@ def journal_record_from_simulation_order(
             raise ProjectionRecoveryError("invalid settings digest") from error
     gross_notional = fill.quantity_shares * fill.fill_price
     cumulative_order_commission = Decimal(
-        str(order.get("filled_commission") or "0")
+        str(
+            order.get("filled_commission_decimal")
+            or order.get("filled_commission")
+            or "0"
+        )
     )
     if cumulative_order_commission < fill.commission:
         raise ProjectionRecoveryError("invalid cumulative order commission")
     net_cash_effect = (
         -gross_notional - fill.commission
         if fill.side is LocalPaperSide.BUY
-        else gross_notional - fill.commission
+        else gross_notional - fill.commission - fill.tax
     )
+    v3_requested = order.get("fee_policy_version") is not None
+    if v3_requested and normalized_settings_digest is None:
+        raise ProjectionRecoveryError("local-paper v3 requires settings digest")
     provenance: dict[str, object] = {}
     provenance_fields = (
         "fill_source",
@@ -212,11 +536,85 @@ def journal_record_from_simulation_order(
             "provider_identity": provider_identity,
             "execution_authority": order["execution_authority"],
         }
-    return JournalRecord(
+    v3_payload: dict[str, object] = {}
+    if v3_requested:
+        try:
+            stored_net_cash_effect = Decimal(
+                str(order["last_net_cash_effect"])
+            )
+            cumulative_order_tax = Decimal(str(order["filled_tax"]))
+            reference_price = Decimal(str(order["last_reference_price"]))
+            configured_slippage_bps = Decimal(
+                str(order["configured_slippage_bps"])
+            )
+            realized_slippage_bps = Decimal(
+                str(order["last_realized_slippage_bps"])
+            )
+            slippage_cost = Decimal(str(order["last_slippage_cost"]))
+            limit_price = Decimal(
+                str(order.get("limit_price_decimal") or order["limit_price"])
+            )
+            descriptor_snapshot = order["instrument_descriptor_snapshot"]
+            if not isinstance(descriptor_snapshot, Mapping):
+                raise ValueError("instrument descriptor must be a mapping")
+            v3_payload = {
+                "reference_price": canonical_decimal_string(reference_price),
+                "reference_source": str(order["last_reference_source"]),
+                "configured_slippage_bps": canonical_decimal_string(
+                    configured_slippage_bps
+                ),
+                "realized_slippage_bps": canonical_decimal_string(
+                    realized_slippage_bps
+                ),
+                "slippage_cost": canonical_decimal_string(slippage_cost),
+                "gross_amount": canonical_decimal_string(gross_notional),
+                "cumulative_order_gross": canonical_decimal_string(
+                    Decimal(
+                        str(
+                            order.get("filled_amount_decimal")
+                            or order["filled_amount"]
+                        )
+                    )
+                ),
+                "commission": canonical_decimal_string(fill.commission),
+                "cumulative_order_commission": canonical_decimal_string(
+                    cumulative_order_commission
+                ),
+                "tax": canonical_decimal_string(fill.tax),
+                "cumulative_order_tax": canonical_decimal_string(
+                    cumulative_order_tax
+                ),
+                "net_cash_effect": canonical_decimal_string(
+                    stored_net_cash_effect
+                ),
+                "fee_policy_version": str(order["fee_policy_version"]),
+                "rounding_policy_version": str(
+                    order["rounding_policy_version"]
+                ),
+                "slippage_policy_version": str(
+                    order["slippage_policy_version"]
+                ),
+                "price_tick_policy_version": str(
+                    order["price_tick_policy_version"]
+                ),
+                "settings_digest": normalized_settings_digest,
+                "instrument_descriptor_snapshot": dict(descriptor_snapshot),
+                "instrument_descriptor_digest": str(
+                    order["instrument_descriptor_digest"]
+                ),
+                "limit_price": canonical_decimal_string(limit_price),
+            }
+        except (InvalidOperation, KeyError, TypeError, ValueError) as error:
+            raise ProjectionRecoveryError(
+                "incomplete local-paper v3 fill evidence"
+            ) from error
+    record = JournalRecord(
         record_id=f"local-paper-fill:{order_id}:{occurred_at.isoformat()}",
         session_id=session_id,
         kind=(
-            LOCAL_PAPER_FILL_V2_KIND
+            LOCAL_PAPER_FILL_V3_KIND
+            if v3_requested
+            else LOCAL_PAPER_FILL_V2_KIND
             if normalized_settings_digest is not None
             else LOCAL_PAPER_FILL_KIND
         ),
@@ -228,6 +626,7 @@ def journal_record_from_simulation_order(
             "side": fill.side.value,
             "quantity_shares": fill.quantity_shares,
             "fill_price": str(fill.fill_price),
+            **v3_payload,
             **(
                 {
                     "gross_notional": canonical_decimal_string(gross_notional),
@@ -238,7 +637,7 @@ def journal_record_from_simulation_order(
                     ),
                     "settings_digest": normalized_settings_digest,
                 }
-                if normalized_settings_digest is not None
+                if normalized_settings_digest is not None and not v3_requested
                 else {}
             ),
             "fill_sequence": fill_sequence,
@@ -252,6 +651,9 @@ def journal_record_from_simulation_order(
             order_id if fill_sequence == 1 else f"{order_id}:{fill_sequence}"
         ),
     )
+    if v3_requested:
+        LocalPaperFill.from_record(record)
+    return record
 
 
 def order_state_record_from_simulation_order(
@@ -280,18 +682,39 @@ def order_state_record_from_simulation_order(
         "quantity",
         "remaining_quantity",
         "limit_price",
+        "limit_price_decimal",
         "status",
         "submitted_at",
         "updated_at",
         "filled_price",
         "filled_quantity",
         "filled_amount",
+        "filled_amount_decimal",
         "filled_commission",
+        "filled_commission_decimal",
+        "filled_tax",
+        "filled_slippage_cost",
         "last_fill_price",
+        "last_fill_price_decimal",
         "last_fill_quantity",
         "last_fill_commission",
+        "last_fill_commission_decimal",
+        "last_fill_tax",
+        "last_reference_price",
+        "last_reference_source",
+        "configured_slippage_bps",
+        "last_realized_slippage_bps",
+        "last_slippage_cost",
+        "last_net_cash_effect",
+        "fee_policy_version",
+        "rounding_policy_version",
+        "slippage_policy_version",
+        "price_tick_policy_version",
+        "instrument_descriptor_snapshot",
+        "instrument_descriptor_digest",
         "fill_sequence",
         "reason",
+        "waiting_reason",
         "attempt",
         "predecessor_order_id",
         "timeout_at",
@@ -299,7 +722,7 @@ def order_state_record_from_simulation_order(
         "trading_date",
         "opening_equity",
     )
-    return JournalRecord(
+    unsigned = JournalRecord(
         record_id=f"local-paper-order-state:{order_id}:{identity}",
         session_id=session_id,
         kind=LOCAL_PAPER_ORDER_STATE_KIND,
@@ -307,6 +730,21 @@ def order_state_record_from_simulation_order(
         payload={field: order.get(field) for field in payload_fields},
         idempotency_scope=f"{session_id}:local-paper-order-state",
         idempotency_key=f"{order_id}:{identity}",
+    )
+    return JournalRecord(
+        record_id=unsigned.record_id,
+        session_id=unsigned.session_id,
+        kind=unsigned.kind,
+        occurred_at=unsigned.occurred_at,
+        payload={
+            **unsigned.payload,
+            _LOCAL_PAPER_ORDER_STATE_DIGEST_FIELD: hashlib.sha256(
+                unsigned.payload_bytes
+            ).hexdigest(),
+        },
+        idempotency_scope=unsigned.idempotency_scope,
+        idempotency_key=unsigned.idempotency_key,
+        schema_version=unsigned.schema_version,
     )
 
 
@@ -456,6 +894,10 @@ class LocalPaperProjection:
         self._positions: dict[str, LocalPaperPosition] = {}
         self._realized_pnl: dict[str, Decimal] = {}
         self._buy_notional_by_date: dict[date, Decimal] = {}
+        self._v3_order_accounting: dict[
+            str,
+            tuple[int, Decimal, Decimal, Decimal],
+        ] = {}
         self._last_sequence = 0
 
     @property
@@ -486,19 +928,36 @@ class LocalPaperProjection:
     def apply(self, result: JournalAppendResult) -> None:
         if result.sequence <= self._last_sequence:
             raise ProjectionRecoveryError("Journal sequence must be strictly increasing")
-        if result.record.kind in {LOCAL_PAPER_FILL_KIND, LOCAL_PAPER_FILL_V2_KIND}:
+        if result.record.kind in {
+            LOCAL_PAPER_FILL_KIND,
+            LOCAL_PAPER_FILL_V2_KIND,
+            LOCAL_PAPER_FILL_V3_KIND,
+        }:
+            if (
+                result.record.kind == LOCAL_PAPER_FILL_V3_KIND
+                and self._settings_digest is None
+            ):
+                raise ProjectionRecoveryError(
+                    "local-paper v3 recovery requires session settings digest"
+                )
             if self._settings_digest is not None and (
-                result.record.kind != LOCAL_PAPER_FILL_V2_KIND
+                result.record.kind
+                not in {LOCAL_PAPER_FILL_V2_KIND, LOCAL_PAPER_FILL_V3_KIND}
                 or result.record.payload.get("settings_digest")
                 != self._settings_digest
             ):
                 raise ProjectionRecoveryError(
                     "Journal fill settings digest conflicts with session"
                 )
-            self._apply_fill(
-                LocalPaperFill.from_record(result.record),
-                occurred_at=result.record.occurred_at,
+            fill = LocalPaperFill.from_record(result.record)
+            v3_accounting = (
+                self._validated_v3_order_accounting(result.record, fill)
+                if result.record.kind == LOCAL_PAPER_FILL_V3_KIND
+                else None
             )
+            self._apply_fill(fill, occurred_at=result.record.occurred_at)
+            if v3_accounting is not None:
+                self._v3_order_accounting[fill.order_id] = v3_accounting
         self._last_sequence = result.sequence
 
     @property
@@ -539,10 +998,10 @@ class LocalPaperProjection:
         ).hexdigest()
 
     def _apply_fill(self, fill: LocalPaperFill, *, occurred_at: datetime) -> None:
-        value = fill.quantity_shares * fill.fill_price
+        value = fill.gross_amount or fill.quantity_shares * fill.fill_price
         current = self._positions.get(fill.symbol)
         if fill.side is LocalPaperSide.BUY:
-            if value + fill.commission > self._cash:
+            if -fill.cash_effect > self._cash:
                 raise ProjectionRecoveryError("Journal fill exceeds available cash")
             if current is None:
                 self._positions[fill.symbol] = LocalPaperPosition(
@@ -570,7 +1029,7 @@ class LocalPaperProjection:
                     ) / quantity,
                     commission_cost=current.commission_cost + fill.commission,
                 )
-            self._cash -= value + fill.commission
+            self._cash += fill.cash_effect
             trading_date = occurred_at.date()
             self._buy_notional_by_date[trading_date] = (
                 self._buy_notional_by_date.get(trading_date, Decimal("0"))
@@ -583,12 +1042,13 @@ class LocalPaperProjection:
         allocated_buy_commission = (
             current.commission_cost * fill.quantity_shares / current.quantity_shares
         )
-        self._cash += value - fill.commission
+        self._cash += fill.cash_effect
         self._realized_pnl[fill.symbol] = (
             self.realized_pnl(fill.symbol)
             + (fill.fill_price - current.average_price) * fill.quantity_shares
             - allocated_buy_commission
             - fill.commission
+            - fill.tax
         )
         remaining = current.quantity_shares - fill.quantity_shares
         if remaining == 0:
@@ -599,6 +1059,40 @@ class LocalPaperProjection:
                 quantity_shares=remaining,
                 commission_cost=current.commission_cost - allocated_buy_commission,
             )
+
+    def _validated_v3_order_accounting(
+        self,
+        record: JournalRecord,
+        fill: LocalPaperFill,
+    ) -> tuple[int, Decimal, Decimal, Decimal]:
+        payload = record.payload
+        sequence = int(payload["fill_sequence"])
+        cumulative_gross = Decimal(str(payload["cumulative_order_gross"]))
+        cumulative_commission = Decimal(
+            str(payload["cumulative_order_commission"])
+        )
+        cumulative_tax = Decimal(str(payload["cumulative_order_tax"]))
+        previous = self._v3_order_accounting.get(
+            fill.order_id,
+            (0, Decimal("0"), Decimal("0"), Decimal("0")),
+        )
+        expected = (
+            previous[0] + 1,
+            previous[1] + (fill.gross_amount or Decimal("0")),
+            previous[2] + fill.commission,
+            previous[3] + fill.tax,
+        )
+        actual = (
+            sequence,
+            cumulative_gross,
+            cumulative_commission,
+            cumulative_tax,
+        )
+        if actual != expected:
+            raise ProjectionRecoveryError(
+                "local-paper v3 cumulative order evidence is inconsistent"
+            )
+        return actual
 
 
 def rebuild_local_paper_projection(
@@ -620,16 +1114,27 @@ def rebuild_local_paper_projection(
         settings_digest=settings_digest,
     )
     checkpoint_digest = projection.digest if checkpoint and checkpoint.journal_sequence == 0 else None
+    uncheckpointed_mutation = False
     for result in journal.records(session_id):
         projection.apply(result)
         if checkpoint is not None and result.sequence == checkpoint.journal_sequence:
             checkpoint_digest = projection.digest
+        elif (
+            checkpoint is not None
+            and result.sequence > checkpoint.journal_sequence
+            and result.record.kind in _LOCAL_PAPER_CHECKPOINT_MUTATION_KINDS
+        ):
+            uncheckpointed_mutation = True
 
     if checkpoint is not None:
         if checkpoint_digest is None:
             raise ProjectionRecoveryError("checkpoint sequence is absent from Journal")
         if checkpoint_digest != checkpoint.digest:
             raise ProjectionRecoveryError("local-paper checkpoint digest mismatch")
+        if require_checkpoint and uncheckpointed_mutation:
+            raise ProjectionRecoveryError(
+                "local-paper checkpoint does not cover Journal tail"
+            )
     return projection
 
 
@@ -637,6 +1142,7 @@ def latest_local_paper_order_states(
     journal: JournalRepository,
     *,
     session_id: str,
+    require_integrity: bool = False,
 ) -> tuple[Mapping[str, object], ...]:
     """Return the latest durable state snapshot for every local-paper order."""
 
@@ -651,10 +1157,14 @@ def latest_local_paper_order_states(
             continue
         if result.record.kind != LOCAL_PAPER_ORDER_STATE_KIND:
             continue
-        order_id = str(result.record.payload.get("order_id") or "")
+        payload = _verified_order_state_payload(
+            result.record,
+            require_integrity=require_integrity,
+        )
+        order_id = str(payload.get("order_id") or "")
         if not order_id:
             raise ProjectionRecoveryError("order state record is missing order_id")
-        latest[order_id] = result.record.payload
+        latest[order_id] = payload
     represented_keys = {
         str(state.get("idempotency_key") or "") for state in latest.values()
     }
@@ -704,6 +1214,37 @@ def latest_local_paper_order_states(
             ),
         )
     )
+
+
+def _verified_order_state_payload(
+    record: JournalRecord,
+    *,
+    require_integrity: bool,
+) -> Mapping[str, object]:
+    stored_digest = record.payload.get(_LOCAL_PAPER_ORDER_STATE_DIGEST_FIELD)
+    if stored_digest is None:
+        if require_integrity:
+            raise ProjectionRecoveryError("order state integrity evidence is missing")
+        return record.payload
+    unsigned_payload = {
+        key: value
+        for key, value in record.payload.items()
+        if key != _LOCAL_PAPER_ORDER_STATE_DIGEST_FIELD
+    }
+    unsigned = JournalRecord(
+        record_id=record.record_id,
+        session_id=record.session_id,
+        kind=record.kind,
+        occurred_at=record.occurred_at,
+        payload=unsigned_payload,
+        idempotency_scope=record.idempotency_scope,
+        idempotency_key=record.idempotency_key,
+        schema_version=record.schema_version,
+    )
+    expected_digest = hashlib.sha256(unsigned.payload_bytes).hexdigest()
+    if stored_digest != expected_digest:
+        raise ProjectionRecoveryError("order state integrity digest mismatch")
+    return record.payload
 
 
 def latest_local_paper_daily_baseline(

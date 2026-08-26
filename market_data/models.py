@@ -11,8 +11,11 @@ StockData 是系統的核心資料結構。
     Candidate、BuyScoreResult 等衍生資訊不放進 StockData。
 """
 
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 
 
 @dataclass
@@ -82,3 +85,71 @@ class RealtimeQuoteUpdate:
     ask_price: float | None = None
     bid_volume_lots: int | None = None
     ask_volume_lots: int | None = None
+
+
+class LocalPaperProductClass(StrEnum):
+    """Product admission result for the frozen Local Paper cost policy."""
+
+    COMMON_STOCK = "COMMON_STOCK"
+    UNSUPPORTED = "UNSUPPORTED"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class LocalPaperInstrumentDescriptorV1:
+    """Provider-neutral, read-only evidence used before Local Paper execution."""
+
+    symbol: str
+    exchange_raw: str
+    security_type_raw: str
+    product_category_raw: str
+    normalized_product_class: LocalPaperProductClass
+    source_identity: str
+
+    def __post_init__(self) -> None:
+        normalized_symbol = str(self.symbol).strip().upper()
+        exchange_raw = str(self.exchange_raw).strip().upper()
+        security_type_raw = str(self.security_type_raw).strip().upper()
+        product_category_raw = str(self.product_category_raw).strip().upper()
+        source_identity = str(self.source_identity).strip()
+        if not normalized_symbol:
+            raise ValueError("instrument descriptor symbol must not be empty")
+        if not exchange_raw:
+            raise ValueError("instrument descriptor exchange_raw must not be empty")
+        if not security_type_raw:
+            raise ValueError("instrument descriptor security_type_raw must not be empty")
+        if not product_category_raw:
+            raise ValueError("instrument descriptor product_category_raw must not be empty")
+        if not source_identity:
+            raise ValueError("instrument descriptor source_identity must not be empty")
+        object.__setattr__(self, "symbol", normalized_symbol)
+        object.__setattr__(self, "exchange_raw", exchange_raw)
+        object.__setattr__(self, "security_type_raw", security_type_raw)
+        object.__setattr__(self, "product_category_raw", product_category_raw)
+        object.__setattr__(
+            self,
+            "normalized_product_class",
+            LocalPaperProductClass(self.normalized_product_class),
+        )
+        object.__setattr__(self, "source_identity", source_identity)
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "schema_version": "local-paper-instrument-descriptor-v1",
+            "symbol": self.symbol,
+            "exchange_raw": self.exchange_raw,
+            "security_type_raw": self.security_type_raw,
+            "product_category_raw": self.product_category_raw,
+            "normalized_product_class": self.normalized_product_class.value,
+            "source_identity": self.source_identity,
+        }
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                self.to_dict(),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()

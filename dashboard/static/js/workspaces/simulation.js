@@ -28,8 +28,7 @@ export function createSimulationWorkspace(context) {
   const simulationSettingsError = document.getElementById("simulation-settings-error");
   const simulationStartingCash = document.getElementById("simulation-starting-cash");
   const simulationDailyBuyLimit = document.getElementById("simulation-daily-buy-limit");
-  const simulationCommissionRate = document.getElementById("simulation-commission-rate");
-  const simulationMinimumCommission = document.getElementById("simulation-minimum-commission");
+  const simulationSlippageBps = document.getElementById("simulation-slippage-bps");
   const automatedStrategyForm = document.getElementById("automated-strategy-form");
   const automatedStrategySet = document.getElementById("automated-strategy-set");
   const automatedStopLoss = document.getElementById("automated-stop-loss");
@@ -44,6 +43,9 @@ export function createSimulationWorkspace(context) {
   const automatedStrategyError = document.getElementById("automated-strategy-error");
   let automatedStrategyCsrf = "";
   let pendingAutomatedStartKey = "";
+  let pendingKillOperation = null;
+  let pendingResetOperation = null;
+  let automatedStrategySnapshot = null;
   let localPaperSettings = null;
 
       async function loadAutomatedStrategySecurity() {
@@ -56,15 +58,27 @@ export function createSimulationWorkspace(context) {
       }
 
       function renderAutomatedStrategy(payload) {
+        automatedStrategySnapshot = payload;
         const running = payload?.state === "RUNNING";
-        const failed = payload?.state === "ERROR";
+        const killSwitch = payload?.kill_switch || {};
+        const recoveryRequired = killSwitch.control_state === "RECOVERY_REQUIRED";
+        const engaged = killSwitch.control_state === "ENGAGED";
+        const failed = payload?.state === "ERROR" || recoveryRequired;
         automatedStrategyBadge.className = `automated-strategy-badge ${running ? "running" : failed ? "error" : "stopped"}`;
-        automatedStrategyBadge.textContent = running ? "執行中" : failed ? "已阻擋" : "未啟動";
-        automatedStrategyStatus.innerHTML = `<strong>${escapeHtml(payload?.decision || "STOPPED")}</strong> · ${escapeHtml(payload?.message || "自動模擬策略尚未啟動")}`;
-        automatedStrategyStart.disabled = running;
+        automatedStrategyBadge.textContent = running ? "執行中" : recoveryRequired ? "需要復原" : engaged ? "緊急停止" : failed ? "已阻擋" : "未啟動";
+        const killSwitchDetail = [
+          `Kill Switch ${killSwitch.control_state || "UNKNOWN"}`,
+          killSwitch.revision == null ? "revision 未知" : `revision ${killSwitch.revision}`,
+          killSwitch.durability || "durability 未知",
+          killSwitch.reason || null,
+          killSwitch.engaged_at || null
+        ].filter(Boolean).map(escapeHtml).join(" · ");
+        automatedStrategyStatus.innerHTML = `<strong>${escapeHtml(payload?.decision || "STOPPED")}</strong> · ${escapeHtml(payload?.message || "自動模擬策略尚未啟動")}<br>${killSwitchDetail}`;
+        automatedStrategyStart.disabled = running || Boolean(killSwitch.engaged);
         automatedStrategyStop.disabled = !running;
-        automatedStrategyKill.disabled = Boolean(payload?.kill_switch?.engaged);
-        automatedStrategyKillReset.disabled = !payload?.kill_switch?.engaged;
+        automatedStrategyKill.disabled = recoveryRequired;
+        automatedStrategyKill.textContent = engaged ? "再次確認緊急停止" : "緊急停止";
+        automatedStrategyKillReset.disabled = !engaged || recoveryRequired;
         [automatedStrategySet, automatedStopLoss, automatedTakeProfit, automatedMaxDailyLoss].forEach((input) => {
           input.disabled = running;
         });
@@ -159,16 +173,45 @@ export function createSimulationWorkspace(context) {
         const path = engaged
           ? "/api/simulation/automated-strategy/kill-switch"
           : "/api/simulation/automated-strategy/kill-switch/reset";
+        let operation = engaged ? pendingKillOperation : pendingResetOperation;
+        if (!operation && engaged) {
+          const reason = window.prompt("請輸入啟用緊急停止的原因：", "local dashboard emergency stop");
+          if (!reason?.trim()) return;
+          operation = {
+            actor_id: "local-operator",
+            idempotency_key: newIdempotencyKey("local-paper-kill-engage"),
+            reason: reason.trim()
+          };
+          pendingKillOperation = operation;
+        }
+        if (!operation && !engaged) {
+          const revision = automatedStrategySnapshot?.kill_switch?.revision;
+          if (!Number.isInteger(revision)) {
+            automatedStrategyError.textContent = "Kill Switch revision 尚未確認，請重新讀取狀態。";
+            automatedStrategyError.style.display = "block";
+            return;
+          }
+          if (!window.confirm(`確定解除 revision ${revision} 的緊急停止？解除後仍須手動啟動策略。`)) return;
+          const reason = window.prompt("請輸入解除緊急停止的檢查結論：", "operator review completed");
+          if (!reason?.trim()) return;
+          operation = {
+            actor_id: "local-operator",
+            idempotency_key: newIdempotencyKey("local-paper-kill-reset"),
+            expected_revision: revision,
+            reason: reason.trim()
+          };
+          pendingResetOperation = operation;
+        }
         try {
           const response = await fetch(path, {
             method: "POST",
-            headers: engaged
-              ? { "Content-Type": "application/json", "X-Strategy-CSRF": automatedStrategyCsrf }
-              : { "X-Strategy-CSRF": automatedStrategyCsrf },
-            body: engaged ? JSON.stringify({ reason: "local dashboard emergency stop" }) : undefined
+            headers: { "Content-Type": "application/json", "X-Strategy-CSRF": automatedStrategyCsrf },
+            body: JSON.stringify(operation)
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+          if (engaged) pendingKillOperation = null;
+          else pendingResetOperation = null;
           renderAutomatedStrategy(payload);
         } catch (error) {
           automatedStrategyError.textContent = `無法更新緊急停止：${error.message}`;
@@ -229,6 +272,9 @@ export function createSimulationWorkspace(context) {
         document.getElementById("overview-order-count").textContent = String((simulation.orders || []).filter((order) => isActiveSimulationOrder(order.status)).length);
         const dailyReservedBuyNotional = Number(session.daily_reserved_buy_notional || 0);
         const commissionInclusiveCashReservation = Number(session.reserved_cash || 0);
+        const explicitCostLabels = session.cost_policy_enabled
+          ? `累計手續費 ${formatNumber(session.commission_total || 0, 0)} 元；證交稅 ${formatNumber(session.tax_total || 0, 0)} 元；診斷滑價 ${formatNumber(session.slippage_cost_total || 0, 0)} 元`
+          : null;
         const reservationLabels = [
           dailyReservedBuyNotional > 0
             ? `今日掛單保留買入額度：${formatNumber(dailyReservedBuyNotional, 0)} 元`
@@ -241,7 +287,7 @@ export function createSimulationWorkspace(context) {
           ? `委託警示：${latestAlert.message || latestAlert.code}（${formatOrderTime(latestAlert.created_at)}）`
           : session.available_cash === null || session.available_cash === undefined
             ? "買進以賣一、賣出以買一判斷模擬成交；未達限價則保留在委託清單。"
-            : `可用虛擬現金：${formatNumber(session.available_cash, 0)} 元；今日剩餘買入額度：${formatNumber(session.daily_remaining_buy_notional, 0)} 元${reservationLabels ? `；${reservationLabels}` : ""}。買進以賣一、賣出以買一判斷模擬成交。`;
+            : `可用虛擬現金：${formatNumber(session.available_cash, 0)} 元；今日剩餘買入額度：${formatNumber(session.daily_remaining_buy_notional, 0)} 元${reservationLabels ? `；${reservationLabels}` : ""}${explicitCostLabels ? `；${explicitCostLabels}` : ""}。買進以賣一、賣出以買一判斷，v2 再套固定不利滑價。`;
       }
 
       function renderLocalPaperSettings(payload) {
@@ -251,12 +297,16 @@ export function createSimulationWorkspace(context) {
         const blockers = payload.apply_blockers || {};
         simulationStartingCash.value = draft.starting_cash_twd || "";
         simulationDailyBuyLimit.value = draft.max_daily_buy_notional_twd || "";
-        simulationCommissionRate.value = String(Number(draft.commission_rate || 0) * 100);
-        simulationMinimumCommission.value = draft.minimum_commission_twd || "0";
-        simulationSettingsActive.textContent = `目前套用：起始現金 ${formatNumber(active.starting_cash_twd, 0)} 元；每日買入 ${formatNumber(active.max_daily_buy_notional_twd, 0)} 元；手續費 ${formatNumber(Number(active.commission_rate || 0) * 100, 4)}%；最低 ${formatNumber(active.minimum_commission_twd, 2)} 元。`;
-        simulationSettingsApply.disabled = blockers.automated_strategy_running || !payload.has_unapplied_changes;
-        simulationSettingsMessage.textContent = payload.has_unapplied_changes
-          ? "草稿尚未套用。套用會建立新的模擬帳戶。"
+        simulationSlippageBps.value = draft.slippage_bps || "5";
+        const activePolicy = active.settings_schema_version === "local-paper-settings-v2"
+          ? `v2 · 滑價 ${active.slippage_bps} bps · 手續費／證交稅 frozen policy`
+          : "v1 legacy（不補稅、不回算滑價）";
+        simulationSettingsActive.textContent = `目前套用：起始現金 ${formatNumber(active.starting_cash_twd, 0)} 元；每日買入 ${formatNumber(active.max_daily_buy_notional_twd, 0)} 元；${activePolicy}。`;
+        simulationSettingsApply.disabled = blockers.automated_strategy_running || payload.draft_is_preview || !payload.has_unapplied_changes;
+        simulationSettingsMessage.textContent = payload.draft_is_preview
+          ? "這是尚未寫入檔案的 v2 草稿預覽；請先儲存，再套用建立新帳戶。"
+          : payload.has_unapplied_changes
+            ? "v2 草稿尚未套用。套用會建立新的模擬帳戶。"
           : "目前沒有未套用的設定。";
         simulationSettingsMessage.classList.add("visible");
       }
@@ -286,8 +336,7 @@ export function createSimulationWorkspace(context) {
               revision: localPaperSettings.revision,
               starting_cash_twd: simulationStartingCash.value,
               max_daily_buy_notional_twd: simulationDailyBuyLimit.value,
-              commission_rate: String(Number(simulationCommissionRate.value) / 100),
-              minimum_commission_twd: simulationMinimumCommission.value
+              slippage_bps: simulationSlippageBps.value
             })
           });
           const payload = await response.json().catch(() => ({}));
@@ -297,6 +346,7 @@ export function createSimulationWorkspace(context) {
         } catch (error) {
           simulationSettingsError.textContent = `無法儲存設定：${error.message}`;
           simulationSettingsError.style.display = "block";
+          simulationSettingsError.focus();
         } finally {
           simulationSettingsSave.disabled = false;
           simulationSettingsSave.textContent = "儲存設定草稿";
@@ -331,10 +381,12 @@ export function createSimulationWorkspace(context) {
         } catch (error) {
           simulationSettingsError.textContent = `無法套用設定：${error.message}`;
           simulationSettingsError.style.display = "block";
+          simulationSettingsError.focus();
         } finally {
           simulationSettingsApply.textContent = "套用並建立新帳戶";
           simulationSettingsApply.disabled = Boolean(
             localPaperSettings?.apply_blockers?.automated_strategy_running
+            || localPaperSettings?.draft_is_preview
             || !localPaperSettings?.has_unapplied_changes
           );
         }
@@ -358,7 +410,7 @@ export function createSimulationWorkspace(context) {
               </div>
               <div class="pnl ${positive ? "positive" : "negative"}">${formatPercent(position.unrealized_pnl_pct)}</div>
               <div class="pnl-note">未實現損益 ${position.unrealized_pnl >= 0 ? "+" : ""}${formatNumber(position.unrealized_pnl, 0)} 元 · 市值 ${formatNumber(position.market_value, 0)} 元</div>
-              <p class="position-footer"><strong>平均成交價：</strong>${formatNumber(position.average_price)} · <strong>最新成交：</strong>${formatNumber(position.current_price)} · <strong>買一／賣一：</strong>${formatNumber(position.bid_price)}／${formatNumber(position.ask_price)}<br><strong>行情時間：</strong>${escapeHtml(formatQuoteTime(position.last_quote_at))} · <strong>已實現損益：</strong>${position.realized_pnl >= 0 ? "+" : ""}${formatNumber(position.realized_pnl, 0)} 元。</p>
+              <p class="position-footer"><strong>平均成交價：</strong>${formatNumber(position.average_price)} · <strong>進場手續費：</strong>${formatNumber(position.commission_cost, 0)} 元 · <strong>最新成交：</strong>${formatNumber(position.current_price)} · <strong>買一／賣一：</strong>${formatNumber(position.bid_price)}／${formatNumber(position.ask_price)}<br><strong>行情時間：</strong>${escapeHtml(formatQuoteTime(position.last_quote_at))} · <strong>已實現損益：</strong>${position.realized_pnl >= 0 ? "+" : ""}${formatNumber(position.realized_pnl, 0)} 元。</p>
             </article>
           `;
         }).join("");
@@ -412,6 +464,8 @@ export function createSimulationWorkspace(context) {
               ? " · 等待新的 Shioaji 五檔"
               : order.waiting_reason === "LIMIT_NOT_REACHED"
                 ? `${quoteSummary} · 未達限價`
+                : order.waiting_reason === "SLIPPAGE_ADJUSTED_LIMIT_NOT_REACHED"
+                  ? `${quoteSummary} · 不利滑價調整後超出限價，未消耗五檔量`
                 : "";
           const note = order.reason
             ? escapeHtml(order.reason)
@@ -421,6 +475,10 @@ export function createSimulationWorkspace(context) {
           const quoteTime = order.last_quote_at
             ? ` · 五檔 ${escapeHtml(formatQuoteTime(order.last_quote_at))}`
             : "";
+          const hasFillEvidence = Number(order.filled_quantity || 0) > 0;
+          const fillEvidence = hasFillEvidence && order.last_reference_price != null
+            ? `<p class="order-card-note"><strong>成本證據：</strong>參考價 ${escapeHtml(String(order.last_reference_price))}（${escapeHtml(order.last_reference_source || "UNKNOWN")}）→ 成交價 ${escapeHtml(String(order.last_fill_price_decimal || order.last_fill_price))}；手續費 ${escapeHtml(String(order.filled_commission_decimal || order.filled_commission || 0))} 元；證交稅 ${escapeHtml(String(order.filled_tax || 0))} 元；診斷滑價 ${escapeHtml(String(order.filled_slippage_cost || 0))} 元（設定 ${escapeHtml(String(order.configured_slippage_bps || 0))} bps，不另行扣款）。</p>`
+            : "";
           return `
             <article class="order-card">
               <div class="order-card-top">
@@ -429,6 +487,7 @@ export function createSimulationWorkspace(context) {
               </div>
               <div class="order-card-meta">${formatOrderTime(order.updated_at)} · ${escapeHtml(order.origin === "MANUAL_WEB" ? "網頁手動" : order.origin === "STRATEGY_AUTOMATED" ? "策略模擬" : order.origin)}${quoteTime}</div>
               <p class="order-card-note">${note}</p>
+              ${fillEvidence}
               ${isActiveSimulationOrder(order.status) ? `<button class="cancel-order" type="button" data-cancel-order="${escapeHtml(order.order_id)}">取消委託</button>` : ""}
               ${["CANCELLED", "EXPIRED"].includes(order.status) && Number(order.remaining_quantity || 0) > 0 ? `<button class="retry-order" type="button" data-retry-order="${escapeHtml(order.order_id)}">重試未成交餘量</button>` : ""}
             </article>

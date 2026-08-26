@@ -20,7 +20,13 @@ from time import monotonic, sleep
 from typing import TYPE_CHECKING, Callable
 from zoneinfo import ZoneInfo
 
-from market_data.models import KBar, RealtimeQuoteUpdate, StockData
+from market_data.models import (
+    KBar,
+    LocalPaperInstrumentDescriptorV1,
+    LocalPaperProductClass,
+    RealtimeQuoteUpdate,
+    StockData,
+)
 from premarket.artifacts import canonical_json, sha256_text_digest
 from premarket.models import (
     CompletenessStatus,
@@ -102,6 +108,14 @@ class MarketDataProvider:
         """Resolve canonical symbol/name; default providers may use a snapshot."""
         stock = self.get_stock(symbol)
         return stock.symbol, stock.name
+
+    def get_local_paper_instrument_descriptor(
+        self,
+        symbol: str,
+    ) -> LocalPaperInstrumentDescriptorV1 | None:
+        """Return cost-policy admission evidence without guessing by symbol."""
+
+        return None
 
     def get_market_stocks(self) -> list[StockData]:
         raise NotImplementedError
@@ -300,6 +314,28 @@ class MockProvider(MarketDataProvider):
         if symbol not in self._raw:
             raise KeyError(f"Symbol not found in mock data: {symbol}")
         return self._maybe_noisy(self._build(self._raw[symbol]))
+
+    def get_local_paper_instrument_descriptor(
+        self,
+        symbol: str,
+    ) -> LocalPaperInstrumentDescriptorV1:
+        if symbol not in self._raw:
+            raise KeyError(f"Symbol not found in mock data: {symbol}")
+        raw = self._raw[symbol]
+        market = str(raw.get("market") or "").strip().upper()
+        product_class = (
+            LocalPaperProductClass.COMMON_STOCK
+            if market in {"TWSE", "TPEX"}
+            else LocalPaperProductClass.UNKNOWN
+        )
+        return LocalPaperInstrumentDescriptorV1(
+            symbol=str(raw["symbol"]),
+            exchange_raw=market or "UNKNOWN",
+            security_type_raw="MOCK_COMMON_STOCK",
+            product_category_raw="MOCK_ORDINARY_SHARE",
+            normalized_product_class=product_class,
+            source_identity=f"mock-contract-catalog-v1:{market}:{raw['symbol']}",
+        )
 
     def get_market_stocks(self) -> list[StockData]:
         return [self._maybe_noisy(self._build(d)) for d in self._raw.values()]
@@ -683,6 +719,72 @@ class ShioajiProvider(MarketDataProvider):
             str(getattr(contract, "name", "")).strip(),
         )
 
+    def get_local_paper_instrument_descriptor(
+        self,
+        symbol: str,
+    ) -> LocalPaperInstrumentDescriptorV1:
+        """Classify only explicit Shioaji 1.7 stock-catalog raw identities."""
+
+        contract = self._stock_contract(symbol)
+        normalized_symbol = str(getattr(contract, "code", "")).strip().upper()
+        exchange_raw = self._raw_enum_value(getattr(contract, "exchange", ""))
+        security_type_raw = self._raw_enum_value(
+            getattr(contract, "security_type", "")
+        )
+        product_category_raw = str(getattr(contract, "category", "")).strip().upper()
+        # Shioaji's STK catalog also contains ETFs.  Admission therefore
+        # requires an ordinary-share code plus a reviewed TWSE/TPEX industry
+        # category; every unreviewed raw value stays fail-closed.
+        ordinary_share_code = len(normalized_symbol) == 4 and normalized_symbol.isdigit()
+        twse_common_stock_categories = {
+            "01", "02", "03", "04", "05", "06", "08", "09", "10", "11",
+            "12", "14", "15", "16", "17", "18", "19", "20", "21", "22",
+            "23", "24", "25", "26", "27", "28", "29", "30", "31", "35",
+            "36", "37", "38",
+        }
+        tpex_common_stock_categories = {
+            "02", "03", "04", "05", "06", "08", "10", "11", "14", "15",
+            "16", "17", "20", "21", "22", "23", "24", "25", "26", "27",
+            "28", "29", "30", "31", "32", "33", "35", "36", "37", "38",
+        }
+        common_stock_category = (
+            exchange_raw == "TSE"
+            and product_category_raw in twse_common_stock_categories
+        ) or (
+            exchange_raw == "OTC"
+            and product_category_raw in tpex_common_stock_categories
+        )
+        if (
+            security_type_raw == "STK"
+            and ordinary_share_code
+            and common_stock_category
+        ):
+            product_class = LocalPaperProductClass.COMMON_STOCK
+        elif exchange_raw in {"TSE", "OTC"} and (
+            security_type_raw == "WRT"
+            or product_category_raw in {"00", "80"}
+            or not ordinary_share_code
+        ):
+            product_class = LocalPaperProductClass.UNSUPPORTED
+        else:
+            product_class = LocalPaperProductClass.UNKNOWN
+        provider_identity = getattr(
+            self,
+            "_environment_identity",
+            "shioaji:contract-catalog",
+        )
+        return LocalPaperInstrumentDescriptorV1(
+            symbol=normalized_symbol,
+            exchange_raw=exchange_raw or "UNKNOWN",
+            security_type_raw=security_type_raw or "UNKNOWN",
+            product_category_raw=product_category_raw or "UNKNOWN",
+            normalized_product_class=product_class,
+            source_identity=(
+                f"{provider_identity}:contracts:{exchange_raw}:"
+                f"{security_type_raw}:{product_category_raw}:{normalized_symbol}"
+            ),
+        )
+
     def get_market_stocks(self) -> list[StockData]:
         """取得 TSE 與 OTC 股票快照，按 Shioaji 限制分批查詢。"""
         contracts = [
@@ -807,6 +909,11 @@ class ShioajiProvider(MarketDataProvider):
         if contract is None:
             raise KeyError(f"Contract not found: {symbol}")
         return contract
+
+    @staticmethod
+    def _raw_enum_value(value: object) -> str:
+        raw = getattr(value, "value", value)
+        return str(raw).strip().upper()
 
     def _on_tick_stk_v1(self, *callback_args: object) -> None:
         event = callback_args[-1] if callback_args else None

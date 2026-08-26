@@ -13,7 +13,7 @@ from config.trading_persistence import (
 )
 from runtime.composition import RuntimeComposition
 from runtime.in_memory import InMemoryJournalRepository, InMemoryProjectionRepository
-from simulation.settings import LocalPaperSettings
+from simulation.settings import LocalPaperSettings, SETTINGS_SCHEMA_V2
 from trading.journal import JournalRecord, JournalSession
 from trading.local_paper import (
     LOCAL_PAPER_FILL_KIND,
@@ -150,6 +150,71 @@ def test_settings_bound_session_recovery_validates_complete_policy() -> None:
             local_paper_settings_revision=8,
             local_paper_session_id="local-paper-settings-bound-test",
         )
+
+
+def test_v2_session_pins_cost_policies_and_replays_fill_v3_exactly() -> None:
+    journal = InMemoryJournalRepository()
+    settings = LocalPaperSettings.v2_from_v1(LocalPaperSettings.defaults())
+    session_id = "local-paper-settings-v2-test"
+    first = RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        local_paper_settings=settings,
+        local_paper_settings_revision=3,
+        local_paper_session_id=session_id,
+    )
+
+    order, _ = first.local_paper_commands.submit_order(
+        symbol="3231",
+        side="BUY",
+        lots=1,
+        limit_price="106",
+        idempotency_key="v2-runtime-buy",
+    )
+    expected_session = first.simulation_service.session()
+    first.close()
+
+    session = journal.session(session_id)
+    assert session is not None
+    assert session.metadata["settings_schema"] == SETTINGS_SCHEMA_V2
+    assert session.metadata["fee_policy_version"] == "tw_stock_standard_v1"
+    assert session.metadata["rounding_policy_version"] == "twd_round_down_v1"
+    assert session.metadata["sell_tax_rate"] == "0.003"
+    assert session.metadata["configured_slippage_bps"] == "5"
+    assert session.metadata["instrument_descriptor_schema"] == (
+        "local-paper-instrument-descriptor-v1"
+    )
+    assert order["last_fill_commission_decimal"] == "151"
+    assert any(
+        result.record.kind == "local_paper_fill.v3"
+        for result in journal.records(session_id)
+    )
+
+    restored = RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        local_paper_settings=settings,
+        local_paper_settings_revision=3,
+        local_paper_session_id=session_id,
+    )
+
+    assert restored.simulation_service.settings == settings
+    restored_session = restored.simulation_service.session()
+    for field_name in (
+        "available_cash",
+        "reserved_cash",
+        "daily_filled_buy_notional",
+        "realized_pnl",
+        "commission_total",
+        "tax_total",
+        "slippage_cost_total",
+    ):
+        assert restored_session[field_name] == expected_session[field_name]
+    restored_order = restored.simulation_service.orders()[0]
+    assert restored_order["filled_tax"] == "0"
+    assert restored_order["filled_commission_decimal"] == "151"
+    assert restored_order["filled_slippage_cost"] == "500.0"
+    restored.close()
 
 
 def test_legacy_default_session_uses_explicit_compatibility_policy() -> None:

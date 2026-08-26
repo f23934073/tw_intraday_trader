@@ -35,12 +35,15 @@ def test_simulation_ui_exposes_reserved_cash_and_fail_closed_quote_health() -> N
     assert "含手續費現金保留" in SIMULATION
 
 
-def test_local_paper_settings_page_exposes_cash_daily_limit_and_commission() -> None:
+def test_local_paper_settings_page_exposes_v2_editable_and_frozen_cost_fields() -> None:
     assert "本機模擬設定" in HTML
     assert 'id="simulation-starting-cash"' in HTML
     assert 'id="simulation-daily-buy-limit"' in HTML
-    assert 'id="simulation-commission-rate"' in HTML
-    assert 'id="simulation-minimum-commission"' in HTML
+    assert 'id="simulation-slippage-bps"' in HTML
+    assert 'id="simulation-commission-rate"' not in HTML
+    assert 'id="simulation-minimum-commission"' not in HTML
+    assert "固定成本政策" in HTML
+    assert "賣出證交稅 0.3%" in HTML
     assert 'fetch("/api/simulation/settings"' in SIMULATION
     assert 'fetch("/api/simulation/settings/apply"' in SIMULATION
     assert "今日剩餘買入額度" in SIMULATION
@@ -56,8 +59,8 @@ def test_simulation_positions_use_websocket_with_http_fallback() -> None:
     assert 'state.simulationSocketState = "fallback"' in SIMULATION
     assert "if (simulationSocketIsOpen()) return;" in SIMULATION
     assert "loadSnapshot(false).finally(bootstrapSimulationStream)" in APP
-    assert "/static/js/app.js?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1" in HTML
-    assert '"./workspaces/simulation.js?v=20260823-local-paper-settings-v1"' in APP
+    assert "/static/js/app.js?v=20260826-local-paper-tax-slippage-v2" in HTML
+    assert '"./workspaces/simulation.js?v=20260826-local-paper-tax-slippage-v2"' in APP
 
 
 def test_pending_simulation_orders_explain_live_quote_state() -> None:

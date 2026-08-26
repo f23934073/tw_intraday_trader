@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 from runtime.clock import TAIPEI, Clock
 from simulation.application import LocalPaperCommandService
+from simulation.kill_switch import DurableLocalPaperKillSwitch
 from simulation.service import SimulationStateError, SimulationValidationError
 from trading.canonical_values import canonical_decimal_string
 from trading.journal import (
@@ -158,50 +159,62 @@ class StrategyPaperFlowService:
         journal: JournalRepository,
         session_id: str,
         clock: Clock,
+        kill_switch: DurableLocalPaperKillSwitch,
     ) -> None:
         self._commands = commands
         self._journal = journal
         self._session_id = session_id
         self._clock = clock
+        self._kill_switch = kill_switch
 
     def submit(self, intent: StrategyPaperIntent) -> dict[str, Any]:
         if intent.signaled_at > self._clock.now():
             raise SimulationValidationError("策略訊號時間不可晚於目前時間")
         if intent.signaled_at.astimezone(TAIPEI).date() != self._clock.session_date():
             raise SimulationValidationError("策略訊號必須屬於目前本機模擬交易日")
-        try:
-            appended = self._journal.append(
-                JournalRecord(
-                    record_id=f"strategy-paper-intent:{intent.intent_id}",
-                    session_id=self._session_id,
-                    kind=STRATEGY_PAPER_INTENT_KIND,
-                    occurred_at=intent.signaled_at,
-                    payload=intent.journal_payload(),
-                    idempotency_scope=f"{self._session_id}:strategy-paper-intent",
-                    idempotency_key=intent.intent_id,
-                )
-            )
-        except JournalConflictError as error:
-            raise SimulationStateError("策略意圖識別碼與既有內容衝突") from error
 
-        order, order_idempotent = self._commands.submit_strategy_order(
-            intent_id=intent.intent_id,
-            strategy_id=intent.strategy_id,
-            strategy_version=intent.strategy_version,
-            symbol=intent.symbol,
-            side=intent.side.value,
-            quantity_shares=intent.quantity_shares,
-            limit_price=intent.limit_price,
+        def submit_admitted() -> dict[str, Any]:
+            try:
+                appended = self._journal.append(
+                    JournalRecord(
+                        record_id=f"strategy-paper-intent:{intent.intent_id}",
+                        session_id=self._session_id,
+                        kind=STRATEGY_PAPER_INTENT_KIND,
+                        occurred_at=intent.signaled_at,
+                        payload=intent.journal_payload(),
+                        idempotency_scope=(
+                            f"{self._session_id}:strategy-paper-intent"
+                        ),
+                        idempotency_key=intent.intent_id,
+                    )
+                )
+            except JournalConflictError as error:
+                raise SimulationStateError(
+                    "策略意圖識別碼與既有內容衝突"
+                ) from error
+
+            order, order_idempotent = self._commands.submit_strategy_order(
+                intent_id=intent.intent_id,
+                strategy_id=intent.strategy_id,
+                strategy_version=intent.strategy_version,
+                symbol=intent.symbol,
+                side=intent.side.value,
+                quantity_shares=intent.quantity_shares,
+                limit_price=intent.limit_price,
+            )
+            return {
+                "mode": "LOCAL_PAPER_SIMULATION",
+                "session_id": self._session_id,
+                "intent": intent.journal_payload(),
+                "intent_sequence": appended.sequence,
+                "intent_idempotent": appended.idempotent,
+                "order_idempotent": order_idempotent,
+                "order": order,
+            }
+
+        return self._kill_switch.admit_automated_intent(
+            lambda: self._commands.admit_automated_intent(submit_admitted)
         )
-        return {
-            "mode": "LOCAL_PAPER_SIMULATION",
-            "session_id": self._session_id,
-            "intent": intent.journal_payload(),
-            "intent_sequence": appended.sequence,
-            "intent_idempotent": appended.idempotent,
-            "order_idempotent": order_idempotent,
-            "order": order,
-        }
 
     def activate_run(
         self,
@@ -216,6 +229,7 @@ class StrategyPaperFlowService:
     ) -> Mapping[str, Any]:
         """Journal one exact-set activation before installing its Risk Policy."""
 
+        self._commands.assert_mutation_allowed()
         policy, risk_evidence = self._commands.prepare_strategy_risk_policy(
             owner_strategy_id=owner_strategy_id,
             operator_max_daily_loss=operator_max_daily_loss,
