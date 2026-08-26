@@ -206,3 +206,75 @@
 - This was a documentation/status-only update. No product test was rerun, no
   PostgreSQL row or artifact changed, and no commit, push, G2 implementation,
   Local Paper, provider, broker, or real-money operation was performed.
+
+## 2026-08-26 G1 scoped commit and G2 implementation candidate
+
+- Created scoped commit `26371ed` containing only the independently approved
+  R6 G0/G1 plan, domain/artifact implementation, G1 publication verifier, and
+  tests. No push was performed and unrelated shared-worktree changes remained
+  unstaged.
+- Implemented Migration 016 with stable family, immutable matrix/slot,
+  monotonic attempt, durable operation/outbox, private result-quarantine, and
+  release tables. SQLite and missing PostgreSQL have no fallback path.
+- Implemented exact frozen research/protocol/hypothesis/build/matrix identity
+  reconstruction, transactionally verified G1 Version publication evidence,
+  response-loss idempotency, head/revision CAS, strict attempt ordering, exact
+  retry/cancellation transitions, terminal failure sealing, and monotonic
+  progress preservation.
+- Added `BenchmarkResultReader` as the public visibility barrier. Before a
+  verified family release, only redacted attempt status/integrity codes are
+  returned; quarantine payloads and locators are absent.
+- Disposable PostgreSQL 17 G2/migration tests pass `14 passed`; the current
+  full no-DSN worktree passes `1674 passed, 76 skipped`. Compilation and
+  `git diff --check` pass. Both disposable PostgreSQL containers and their test
+  data were removed.
+- No application family/matrix/attempt was created, no 28.3M-bar Dataset scan
+  ran, and no formal Replay, result publication, Local Paper, provider, broker,
+  CA, trade subscription, or real-money path was opened.
+- G2 is an implementation/review candidate only. Formal Gate remains unpassed;
+  G3-G5 remain unauthorized and formal Replay stays `0/7`.
+
+## 2026-08-26 G2 Review remediation complete
+
+- Recorded the independent four-P1 `REQUEST CHANGES` result without opening G3.
+- Replaced transition response-loss field checks with canonical request/result/
+  outbox reconstruction and added a synchronized outer-evidence tamper test.
+- Added the frozen diagnostic allowlist to Migration 016 plus the public reader,
+  with PostgreSQL write rejection and post-constraint read-tamper coverage.
+- Expanded matrix admission to the complete G1 durable publication verifier and
+  added a self-consistent frozen-actor graph substitution regression.
+- Replaced the public generic transition with explicit server-owned commands and
+  exact exception-to-outcome mapping; integrity failure now always closes as
+  `REJECTED_FINAL` and cannot be retried.
+- Initial no-DSN remediation scope passed `22 passed, 16 skipped`.
+- First PostgreSQL run passed all R6 cases but exposed the expected migration
+  acceptance-count drift (`attempts` constraints `16 -> 17`); after updating the
+  acceptance inventory, disposable PostgreSQL 17 passed `22 passed`.
+- Full no-DSN worktree regression passed `1678 passed, 80 skipped`.
+- Python compilation and scoped `git diff --check` pass. G2 remains formally
+  unpassed pending independent re-review; formal progress is `33.3%` and G3-G5
+  remain unauthorized.
+
+## 2026-08-26 G2 progress-only replay remediation
+
+- Added the Reviewer's exact PostgreSQL regression: durable progress
+  `0.300000`, cancellation request progress null, and synchronized operation/
+  outbox progress substitution to `0.900000`.
+- Confirmed the regression failed before the fix because replay returned the
+  forged progress.
+- Added Migration 016 transition CAS evidence and transactionally recorded it
+  for every attempt transition.
+- Replay now reconstructs progress from that independent evidence. The exact
+  regression passes, focused no-DSN passes `51 passed, 17 skipped`, disposable
+  PostgreSQL 17 G2/migration passes `19 passed`, and full no-DSN passes
+  `1678 passed, 81 skipped`.
+- G2 is not marked passed. Formal progress remains `33.3%`; no application
+  family, matrix, attempt, G3 preflight, formal Replay, or trading path opened.
+
+## 2026-08-26 G2 approval recorded
+
+- Recorded the independent no-finding decision as `R6 G2: PASSED`.
+- Formal progress is now `50%`; the remaining `50%` is G3 preflight, G4 seven
+  formal attempts, and G5 comparative disposition.
+- G3 is authorized separately by the operator but was not started in the G2
+  commit scope. No durable family/matrix/attempt or trading state was created.

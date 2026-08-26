@@ -369,3 +369,90 @@
 - G1 approval only removes G2's prerequisite blocker. G2 is ready for a
   separate authorization but is not started; G3-G5, formal Replay, Local Paper,
   broker, and real-money execution remain unauthorized.
+
+## 2026-08-26 G2 implementation findings
+
+- Migration 016 was free and is now the authoritative PostgreSQL-only R6
+  persistence owner. It does not reuse fake Backtest Runs or the R5 replay
+  ledger for benchmark attempts.
+- The stable family ID is independent of replaceable implementation bytes;
+  implementation and Migration 016 byte digests enter the revision-1 matrix
+  build binding, so code drift cannot reset the twenty-attempt family budget.
+- Matrix seal revalidates the complete frozen G1 Version/configuration,
+  lifecycle event/projection, publish result, and outbox roots in the same
+  transaction before inserting family, matrix, seven slots, operation, release
+  placeholder, and outbox.
+- Attempt mutations use the family lock plus exact status/revision/generation
+  guards. Retry preserves the same attempt/slot/head identity; cancellation
+  preserves the greatest durable progress; final non-accepted status blocks
+  family release.
+- Same-key replay is rebound to the stored request and durable matrix/attempt
+  scope. Same-key/different-digest, second matrix revision, self-consistent
+  operation-result tamper, matrix/slot projection tamper, lifecycle tamper, and
+  concurrent head consumption fail closed.
+- Performance publication remains unavailable in G2. An `ACCEPTED` transition
+  requires the future G4 postflight/quarantine use case, and all pre-release
+  product reads are redacted.
+
+## 2026-08-26 independent G2 Review and remediation findings
+
+- Independent Review returned `REQUEST CHANGES` with four P1 boundaries:
+  transition replay trusted a self-consistent mutable result, redacted
+  diagnostics accepted arbitrary strings, matrix seal rebuilt only part of the
+  G1 publication graph, and the application caller selected failure outcome.
+- Transition outbox rows now contain one exact canonical operation-result
+  projection. Replay verifies the immutable request, operation result, outbox
+  payload, matrix/attempt scope, transition state machine, revisions,
+  generations, outcome, and monotonic progress before returning the historical
+  result. Synchronized result/outbox substitution is rejected by the original
+  request projection.
+- Diagnostic codes now use one exact server-owned allowlist. Migration 016
+  enforces JSON array/type/membership/uniqueness at write time, while the public
+  redacted reader independently revalidates the same list and rejects any
+  observed-value string.
+- Matrix seal now performs the complete G1 durable rebuild: current and stored
+  Template roots, canonical parameters/configuration, sealed Draft body and
+  revision, Version, publish request, lifecycle event/projection, publish
+  operation result, lifecycle outbox, and the four new publications' frozen
+  actor/session/change note.
+- The application no longer exposes a generic transition command. Explicit
+  cancel/complete/retry/seal commands own operator transitions, and exact
+  exception types map server-side to retryable infrastructure, final integrity,
+  or unclassified failure outcomes.
+- PostgreSQL adversarial coverage includes synchronized transition result plus
+  outbox tamper, diagnostic write/read injection, self-consistent G1 actor graph
+  substitution, and integrity-to-retryable substitution.
+- G2 is a remediation/re-review candidate only. Formal progress remains
+  `33.3%`; G3-G5, full-Dataset preflight, formal Replay, Local Paper, provider,
+  broker, and real-money execution remain unauthorized.
+
+## 2026-08-26 second independent G2 Review and progress remediation
+
+- Independent re-review closed the diagnostic allowlist, complete G1 graph,
+  and server-owned failure classification findings, but reproduced one
+  progress-only response-loss substitution.
+- A cancellation whose request progress is null preserved durable progress
+  `0.300000`; synchronously changing only operation result and outbox progress
+  to `0.900000` was accepted because replay copied progress from the result it
+  was supposed to verify.
+- Transition progress now has an independent transaction-local CAS projection
+  keyed by operation and target attempt revision. It preserves from/requested/
+  result progress plus status, generation, outcome, request digest, and result
+  digest.
+- Replay reconstructs canonical progress from this evidence and compares the
+  operation result and outbox against it. Neither mutable outer projection is
+  an authority for historical progress.
+- The exact progress-only regression now fails closed with
+  `R6_IDEMPOTENCY_CONFLICT`. G2 remains a re-review candidate only; formal
+  progress stays `33.3%` and G3-G5 remain unauthorized.
+
+## 2026-08-26 independent G2 approval
+
+- Independent Review found no remaining finding and approved `R6 G2: PASSED`.
+- The reviewer independently reproduced the `0.300000 -> 0.900000`
+  progress-only substitution and confirmed `R6_IDEMPOTENCY_CONFLICT`.
+- Transition evidence, mutation, operation, and outbox share one transaction;
+  missing evidence, field drift, or digest drift fails closed.
+- Formal progress advances to `50%`. G3 is separately authorized but not
+  started; G4-G5, formal Replay, Local Paper, provider, broker, and real-money
+  execution remain unauthorized.

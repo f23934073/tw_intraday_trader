@@ -78,16 +78,27 @@ execution mutation.
 
 ### R6.G2: PostgreSQL family and application implementation
 
-- [ ] Persist the sealed seven-slot family, monotonic attempts, immutable
+- [x] Persist the sealed seven-slot family, monotonic attempts, immutable
   operation results, and fail-closed result visibility.
-- [ ] Add concurrency, idempotency, tamper, cancellation, and security tests.
-- **Status:** ready for separate authorization / not started
+- [x] Add concurrency, idempotency, tamper, cancellation, and security tests.
+- [x] Keep formal Dataset preflight and performance payload publication outside
+  the G2 application boundary.
+- [x] Rebuild transition response-loss results from the immutable request plus
+  exact operation outbox, rejecting synchronized result/outbox substitution.
+- [x] Enforce the frozen non-observational diagnostic-code allowlist at both
+  PostgreSQL write and application read boundaries.
+- [x] Rebuild the complete G1 Template/Draft/Version/event/projection/
+  operation/outbox publication graph before matrix seal.
+- [x] Replace caller-selected status/outcome transitions with server-owned
+  failure mapping and explicit cancellation/retry/seal commands.
+- [x] Obtain independent Formal Gate Review before authorizing G3.
+- **Status:** passed / independently approved
 
 ### R6.G3: Full-Dataset preflight
 
 - [ ] Generate and audit all seven signal ledgers/match plans without provider,
   broker, lifecycle, or result publication.
-- **Status:** blocked on G2
+- **Status:** authorized / not started
 
 ### R6.G4: Formal seven-attempt replay
 
@@ -110,7 +121,10 @@ execution mutation.
 R5 v2: COMPLETE / RESEARCH REJECT
 R6 G0: PASSED / CONTRACT FROZEN
 R6 G1: PASSED
-R6 G2: READY FOR SEPARATE AUTHORIZATION / NOT STARTED
+R6 G2: PASSED
+R6 G3: AUTHORIZED / NOT STARTED
+Formal progress: 50%
+Remaining: 50%
 R6 formal replay: 0 / 7 / NOT AUTHORIZED
 Local Paper / Broker / Real-money: PROHIBITED
 ```
