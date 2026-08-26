@@ -234,6 +234,37 @@ Explain why the completed atomic `above_vwap_entry_v1` backtest failed, using it
 - [x] Re-audit the existing formal artifacts without rescanning the Dataset.
 - **Status:** complete / G3 independently approved and Formal Gate passed
 
+### R5.8: Execute revision-2 G4 Formal Replay
+
+- [x] Commit the independently approved G3 scope without unrelated worktree
+  changes.
+- [x] Revalidate the accepted G3 ledger/match artifacts and application
+  PostgreSQL preconditions before any mutation.
+- [x] Apply Migration 015 and create/replay the sole authoritative revision-2
+  registration under the frozen idempotency and revision-CAS contract.
+- [x] Execute exactly 128,802 provider-free one-lot episodes from the immutable
+  match plan and publish canonical result artifacts.
+- [x] Publish and independently verify the complete postflight, layer parity,
+  economics, costs, result digests, and zero external-call evidence.
+- [x] Run focused/disposable PostgreSQL/full regression and submit G4 for
+  independent Review before opening G5.
+- **Status:** complete / G4 independently approved and Formal Gate passed
+
+### R5.9: Remediate revision-2 G4 Review blockers
+
+- [x] Anchor Formal SQL to caller-supplied expected result/postflight digests and
+  exact terminal schemas.
+- [x] Recompute and validate diagnostics for all six adjacent parity boundaries,
+  including difference, duplicate, and multiplicity evidence.
+- [x] Add executable PostgreSQL negative regressions for self-consistent terminal
+  JSON/digest tampering.
+- [x] Terminalize a concurrent `CANCELLING` transition as `CANCELLED` while
+  preserving durable progress.
+- [x] Add a PostgreSQL barrier regression for cancel during replay publication.
+- [x] Reconstruct the existing accepted Replay, rerun strengthened read-only SQL,
+  and submit a short G4 re-review without entering G5.
+- **Status:** complete / G4 independently approved and Formal Gate passed
+
 ## Gate
 
 This phase passes only when the failure attribution is reproducible from immutable evidence and the next experiment cannot reuse the same evidence as both hypothesis-generation and validation. Passing this phase authorizes research implementation only; it does not authorize Local Paper or broker execution.
@@ -250,6 +281,7 @@ Gate R5 contract revision 2: APPROVED / G0 PASSED / CONTRACT FROZEN
 Gate R5 revision 2 G1: APPROVED / FORMAL GATE PASSED
 Gate R5 revision 2 G2: APPROVED / FORMAL GATE PASSED / PROGRESS 50%
 Gate R5 revision 2 G3: APPROVED / FORMAL GATE PASSED / PROGRESS 66.7%
+Gate R5 revision 2 G4: APPROVED / FORMAL GATE PASSED / PROGRESS 83.3%
 Gate R6 v1: SUPERSEDED / NOT AUTHORIZED
 Gate R6 revision 2: BLOCKED ON ACCEPTED R5 V2 / NOT AUTHORIZED
 ```
@@ -283,3 +315,10 @@ Gate R6 revision 2: BLOCKED ON ACCEPTED R5 V2 / NOT AUTHORIZED
 | First full no-DSN command disabled incremental sync globally | 1 | Two scheduler contract tests correctly failed; rerun with their enabled default and retain the first result as an environment-command error. |
 | First application schema-state `psql` probes lost SQL string quoting | 2 | Both read-only sessions aborted without mutation; use a parameterized psycopg query for final `to_regclass` evidence. |
 | Disposable database cleanup verification query lost LIKE quoting | 1 | The query did not mutate state; list database names with a simpler read-only query and confirm no G3 test database remains. |
+| G4 application preflight initially targeted container default database `postgres` | 1 | The read-only query failed before mutation; list databases and use the actual `tw_intraday_trader` application database. |
+| First formal G4 invocation returned no stdout and no durable/artifact mutation through the yielded execution cell | 1 | Confirm no PostgreSQL session, registration, result, or artifact remains; retry through an explicit long-lived PTY session with unbuffered diagnostics rather than repeating the same orchestration path. |
+| Two G4 session-monitor calls used malformed JavaScript property syntax | 2 | The polling calls failed locally and sent no stdin or signal to the worker; quote the `yield_time_ms` property and continue the same live session. |
+| G4 remediation disposable PostgreSQL start was blocked by Docker socket sandboxing | 1 | No container was created; rerun the same scoped Docker start with explicit sandbox escalation. |
+| G4 remediation PostgreSQL tests could not open the localhost test port in the sandbox | 1 | Both tests failed during fixture setup before schema or product execution; rerun the exact targeted tests with localhost network escalation. |
+| Formal SQL positive regression expected psql JSON spacing before the colon | 1 | The SQL Gate itself passed; relax only the stdout substring to PostgreSQL's actual JSON text formatting and rerun. |
+| Strengthened Formal SQL rejected the existing accepted Replay on the multiplicity-chain check | 1 | All other new checks passed; inspect the seven stored diagnostic/manifest digests before changing SQL or durable evidence. Do not rerun the same Gate unchanged. |

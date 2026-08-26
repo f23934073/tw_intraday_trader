@@ -629,3 +629,101 @@
 - **Disposition:** `G3 APPROVED / FORMAL GATE PASSED`; formal progress is
   66.7%. G4-G5, R6, Local Paper, broker, and real-money remain separately
   gated.
+
+## 2026-08-26 R5 revision 2 G4 implementation inventory
+
+- G2 already owns durable create/replay, revision CAS, status transitions,
+  terminal publication, redaction, and current-evidence reconstruction.
+- G4 is missing the provider-free formal execution composition: load the exact
+  sealed match plan, derive baseline cost identity, build one-lot episodes,
+  publish the immutable result, build postflight, and invoke the existing
+  atomic terminal publication boundary.
+- Migration 015 remains the latest numbered migration and is the frozen G4
+  schema. Applying it to application PostgreSQL is authorized only as part of
+  the eventual formal G4 execution.
+- The worker/composition must support deterministic continuation from `RUNNING`
+  after process loss, but it must not invent a new registration, contract
+  revision, Dataset, strategy evaluation, provider, or broker dependency.
+
+## 2026-08-26 R5 revision 2 G4 execution evidence
+
+- One authoritative registration was created for baseline
+  `run-91ad87981676414da87b928398fa43c9` at revision 1. Its replay ID is
+  `replay-e70d205528ef4e5f891f3d6f3c99997a`.
+- Formal result manifest digest is
+  `420ef2dd3c3e814e0691eef0531c2c6f787789278675d092b86df3e1f9fa3347`;
+  postflight digest is
+  `ca041816dd69454ce53d321fa8a78cb0188a267d5ab2b7c864eb58051a557ad9`.
+- The terminal state is `ACCEPTED` with exactly 128,802 episodes, modeled
+  entries, and modeled exits; provider and broker call counts are zero.
+- Formal repeatable-read SQL found one head, registration, operation, and
+  result; all terminal evidence matched, all three chunk projections contained
+  128,802 items, and four episode/entry/exit `EXCEPT ALL` differences were zero.
+- A same-key response-loss replay returned the same replay/result/postflight
+  identities with `replayed=true` and exit 0 after rebuilding current DB and
+  artifact evidence. It did not create a second revision or operation.
+- The accepted research summary is economically negative: 33,629 wins and
+  95,173 losses, profit factor `0.379778394606756598`, pre-slippage P&L
+  `-143,770,050`, explicit costs `289,116,272.865185625`, and net P&L
+  `-482,357,421.040185625`. G4 acceptance proves replay integrity, not strategy
+  eligibility; interpreting these metrics belongs to separately gated G5.
+- **Disposition:** `G4 IMPLEMENTED / EXECUTED / FORMAL REVIEW REQUIRED`;
+  formal progress remains 66.7% until independent Review.
+
+## 2026-08-26 R5 revision 2 G4 Review findings
+
+- Formal SQL independently recomputes only episode-to-entry and episode-to-exit
+  parity. The first four boundaries currently trust stored postflight booleans,
+  and the invocation has no externally supplied result/postflight digest anchor.
+  A self-consistent terminal-root rewrite can therefore evade the read-only Gate.
+- A cancel committed while the replay build is running changes registration to
+  `CANCELLING`. Publication then loses its status CAS, while the CLI exception
+  handler only terminalizes `RUNNING`, leaving the authoritative replay stuck.
+- Required remediation is scoped to SQL evidence, cancellation terminalization,
+  and PostgreSQL regressions. The existing immutable Replay artifact should not
+  need rebuilding. G5 and all execution integrations remain unauthorized.
+- **Disposition:** `G4 REMEDIATION REQUIRED / FORMAL GATE NOT PASSED`; formal
+  progress remains 66.7%.
+
+## 2026-08-26 R5 revision 2 G4 remediation evidence
+
+- Formal SQL now requires the externally reviewed result manifest and postflight
+  digests. It verifies exact result/summary/postflight/condition/diagnostic
+  schemas, manifest lineage, all diagnostic counts, all 12 directional parity
+  differences, all seven duplicate counts, and the adjacent parity-digest chain.
+- The ledger manifest's `ledger_semantic_multiplicity_digest` is intentionally a
+  different canonical projection from `r5-layer-parity-projection-v2`. Formal SQL
+  therefore anchors the parity chain to the match manifest's parity digest while
+  independently binding ledger-to-match lineage through manifest digest and
+  `ledger_rows_sha256` equality.
+- A real PostgreSQL fixture proves the strengthened SQL accepts the anchored
+  projection, rejects a self-consistent terminal root substitution, and rejects
+  a nonzero decision-to-ledger diagnostic even when the substituted postflight
+  digest is supplied as the expected root.
+- The publication-race regression pauses immediately before terminal CAS, saves
+  progress `0.42`, commits cancel, resumes publication, and verifies terminal
+  `CANCELLED` with no durable result/postflight row.
+- Existing formal response-loss reconstruction returned `replayed=true`, the
+  same revision/result/postflight identities, 128,802 episodes, and zero provider
+  or broker calls. Strengthened application SQL then passed every evidence flag.
+- Full no-DSN regression passes `1555 passed, 61 skipped`; full disposable
+  PostgreSQL 17 regression passes `1616 passed`. Compilation, scoped whitespace,
+  and `git diff --check` pass, and the disposable container was removed.
+- **Disposition:** `G4 REMEDIATION COMPLETE / FORMAL RE-REVIEW REQUIRED`;
+  formal progress remains 66.7% and G5 remains unauthorized.
+
+## 2026-08-26 R5 revision 2 G4 independent approval
+
+- Independent short re-review found no new blocking or important finding.
+- Formal SQL is externally anchored to the reviewed result and postflight
+  digests, verifies exact terminal schemas and all parity boundaries, and
+  fails closed on root substitution or diagnostic tampering.
+- Concurrent cancellation converges durably to `CANCELLED` with preserved
+  progress and without terminal result publication.
+- The accepted immutable Replay remains unchanged: result digest
+  `420ef2dd3c3e814e0691eef0531c2c6f787789278675d092b86df3e1f9fa3347`,
+  128,802 episodes, profit factor `0.379778394606756598`, and net P&L
+  `-482,357,421.040185625`.
+- **Disposition:** `G4 APPROVED / FORMAL GATE PASSED`; formal progress advances
+  to 83.3%. This approval establishes replay integrity only and does not make
+  the strategy eligible for promotion, Local Paper, broker, or real-money use.

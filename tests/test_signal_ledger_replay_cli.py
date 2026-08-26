@@ -20,6 +20,7 @@ from scripts.preflight_vwap_signal_ledger_replay import (
     _write_audit,
 )
 from scripts.audit_vwap_signal_ledger_replay import audit_preflight
+from scripts.execute_vwap_signal_ledger_replay import _parser as _execute_parser
 from tests.test_signal_ledger_replay_domain import (
     _bar,
     _decision,
@@ -256,3 +257,56 @@ def test_g3_cli_contract_is_provider_free_and_help_is_available() -> None:
     text = Path(source).read_text(encoding="utf-8")
     for prohibited in ("shioaji", "market_data", "broker", "simulation"):
         assert f"import {prohibited}" not in text
+
+
+def test_g4_cli_contract_has_no_execution_override_or_external_port() -> None:
+    help_text = _execute_parser().format_help()
+    source = Path(
+        __import__(
+            "scripts.execute_vwap_signal_ledger_replay", fromlist=["x"]
+        ).__file__
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "--baseline-run-id",
+        "--preflight-digest",
+        "--idempotency-key",
+        "--actor-id",
+        "--change-note",
+    ):
+        assert required in help_text
+    for prohibited_option in (
+        "--shares",
+        "--commission-rate",
+        "--sell-tax-rate",
+        "--slippage-bps",
+        "--dataset-id",
+        "--strategy-id",
+    ):
+        assert prohibited_option not in help_text
+    for prohibited_import in ("shioaji", "market_data", "broker", "simulation"):
+        assert f"import {prohibited_import}" not in source
+    assert 'current["status"] == "CANCELLING"' in source
+    assert "service.mark_cancelled(" in source
+
+
+def test_g4_formal_sql_is_read_only_multiplicity_aware_and_fail_closed() -> None:
+    sql = Path(
+        ".planning/2026-08-24-vwap-strategy-failure-attribution/"
+        "r5_v2_replay_acceptance_queries.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" in sql
+    assert sql.count("EXCEPT ALL") == 4
+    assert "expected_result_manifest_digest is required" in sql
+    assert "expected_postflight_digest is required" in sql
+    for evidence in (
+        "diagnostic_counts_match",
+        "diagnostic_differences_zero",
+        "diagnostic_duplicates_zero",
+        "diagnostic_multiplicity_chain_matches",
+        "exact_terminal_schemas_match",
+    ):
+        assert evidence in sql
+    assert "condition.value <> 'true'::jsonb" in sql
+    assert "1 / CASE WHEN :'r5_v2_gate_ok'::boolean THEN 1 ELSE 0 END" in sql

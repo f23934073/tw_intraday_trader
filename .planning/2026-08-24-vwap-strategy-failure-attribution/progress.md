@@ -612,3 +612,86 @@
 - User authorized a local scoped G3 commit followed by G4 start. Push and all
   unrelated shared-worktree files remain excluded; G5, R6, Local Paper,
   provider, broker, and real-money remain unauthorized.
+
+## 2026-08-26 R5 revision 2 G4 start
+
+- Created scoped local commit `3d9cdef feat(backtest): complete R5 v2 G3
+  preflight`; no push and no unrelated shared-worktree files were included.
+- User explicitly authorized G4 Formal Replay only. G5 disposition, R6, Local
+  Paper, provider, broker, and real-money remain outside the active scope.
+- Opened G4 as `AUTHORIZED / IN PROGRESS`; formal progress remains 66.7% until
+  independent G4 Review passes.
+- Implemented the first G4 candidate slice: server-owned execution evidence,
+  deterministic `SEALED/RUNNING` continuation, provider-free one-lot build,
+  immutable result publication, complete postflight, and the formal CLI.
+- The CLI exposes no shares, cost, Dataset, or strategy override and imports no
+  provider, broker, simulation, or market-data execution path.
+- Focused no-DSN G1-G4 result passes `40 passed, 17 skipped`; the skips are
+  explicit PostgreSQL cases. Compilation, CLI help, and `git diff --check`
+  pass. No application PostgreSQL migration or formal Replay has run yet.
+- Disposable PostgreSQL 17 focused integration passes `21 passed`, including
+  the real application execution composition and terminal fail-closed path.
+- The first application preflight query targeted the container default
+  `postgres` database and failed read-only because it has no `backtest` schema.
+  Listing database names located the actual `tw_intraday_trader` database; the
+  corrected read-only check found the completed baseline, READY Dataset, and
+  Migration 015 with zero heads, registrations, operations, and results.
+- The first formal G4 invocation returned from the yielded execution cell with
+  no stdout. Follow-up checks found no registration, result, result chunk,
+  result artifact, PostgreSQL session, or lock, so no G4 mutation occurred.
+  The next attempt will use a long-lived PTY with unbuffered output and an
+  explicit exit marker to preserve diagnostics.
+- The PTY invocation created the sole revision-1 registration and completed
+  the full provider-free replay in about 14 minutes. It published 128,802
+  episodes/entries/exits and terminal status `ACCEPTED` with exit 0.
+- Formal result digest is `420ef2dd3c3e814e0691eef0531c2c6f787789278675d092b86df3e1f9fa3347`;
+  postflight digest is `ca041816dd69454ce53d321fa8a78cb0188a267d5ab2b7c864eb58051a557ad9`.
+- The repeatable-read read-only SQL Gate passed with one authoritative
+  head/registration/operation/result, exact 128,802 chunk counts, terminal
+  evidence parity, and zero four-way `EXCEPT ALL` differences.
+- Same-key response-loss replay returned `replayed=true`, the same identities,
+  and exit 0 after complete current DB/artifact reconstruction. A second SQL
+  pass confirmed operation/revision counts stayed one.
+- Focused no-DSN passes `43 passed, 19 skipped`; focused disposable PostgreSQL
+  passes `62 passed`; full no-DSN passes `1537 passed, 59 skipped`; full
+  disposable PostgreSQL passes `1596 passed`. Compilation and
+  `git diff --check` pass; the disposable container was removed.
+- **Disposition:** `G4 IMPLEMENTED / EXECUTED / FORMAL REVIEW REQUIRED`;
+  formal progress stays 66.7%. G5, R6, Local Paper, provider, broker, and
+  real-money remain unauthorized.
+
+## 2026-08-26 R5 revision 2 G4 remediation start
+
+- Independent Review returned two P1 blockers: incomplete six-boundary SQL
+  recomputation/digest anchoring and a concurrent-cancel terminalization race.
+- Opened R5.9 remediation only. Formal progress remains 66.7%; G5, R6, Local
+  Paper, provider, broker, and real-money remain unauthorized.
+- Success requires PostgreSQL negative/race regressions plus reconstruction of
+  the existing accepted Replay under strengthened read-only SQL. No new formal
+  replay or result artifact is authorized or expected.
+- Implemented externally anchored Formal SQL with exact terminal schemas,
+  six-boundary directional/duplicate diagnostics, adjacent multiplicity digests,
+  and manifest/result/postflight lineage checks.
+- Added executor and CLI cancellation terminalization. The PostgreSQL barrier
+  regression proves progress `0.42` survives and the replay reaches `CANCELLED`
+  without result publication.
+- Targeted no-DSN passes `15 passed, 20 skipped`; the complete R5 v2 PostgreSQL
+  module passes `20 passed` on disposable PostgreSQL 17.
+- Existing accepted reconstruction completed with `replayed=true`, the original
+  result/postflight digests, revision 1, 128,802 episodes, and zero external
+  calls. Strengthened application SQL passed after distinguishing the ledger
+  semantic projection from the match/result layer-parity projection.
+- Full no-DSN regression passes `1555 passed, 61 skipped`; full disposable
+  PostgreSQL 17 regression passes `1616 passed`. Compilation, scoped whitespace,
+  and diff checks pass. The disposable PostgreSQL container was stopped and
+  auto-removed.
+- **Disposition:** `G4 REMEDIATION COMPLETE / FORMAL RE-REVIEW REQUIRED`;
+  formal progress stays 66.7%. No G5, R6, Local Paper, provider, broker, or
+  real-money work was performed.
+
+## 2026-08-26 R5 revision 2 G4 approval
+
+- Independent short re-review closed both G4 blockers with no new finding.
+- Recorded `G4 APPROVED / FORMAL GATE PASSED`; formal progress is 83.3%.
+- G5, R6, Local Paper, provider, broker, and real-money remain outside this
+  G4 closure commit.

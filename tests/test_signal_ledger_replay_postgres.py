@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from threading import Barrier
+import shutil
+import subprocess
+from threading import Barrier, Event
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -30,6 +33,7 @@ from backtest.research_control import (
 from backtest.research_replay.application import (
     REQUEST_SCHEMA_VERSION,
     SignalReplayApplicationService,
+    SignalReplayCancelled,
     SignalReplayConflict,
     SignalReplayNotAccepted,
 )
@@ -53,6 +57,16 @@ from backtest.research_replay.postgres_repository import (
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
+
+
+class _ZeroExternalCalls:
+    @staticmethod
+    def snapshot() -> dict[str, int]:
+        return {
+            "strategy_evaluation_count": 0,
+            "provider_call_count": 0,
+            "broker_call_count": 0,
+        }
 
 
 def _decision(index: int, symbol: str) -> dict[str, object]:
@@ -381,6 +395,228 @@ def _create(context, key="replay-create-key-0001", note="seal R5 v2 replay"):
     )
 
 
+def _run_g4_acceptance_sql(
+    *,
+    postgres_test_dsn: str,
+    baseline_run_id: str,
+    replay_id: str,
+    result_manifest_digest: str,
+    postflight_digest: str,
+) -> subprocess.CompletedProcess[str]:
+    executable = shutil.which("psql")
+    if executable is None:
+        pytest.skip("psql is required for formal R5 v2 acceptance SQL regression")
+    sql_path = (
+        Path(__file__).parents[1]
+        / ".planning"
+        / "2026-08-24-vwap-strategy-failure-attribution"
+        / "r5_v2_replay_acceptance_queries.sql"
+    )
+    return subprocess.run(
+        [
+            executable,
+            postgres_test_dsn,
+            "-X",
+            "-v",
+            f"baseline_run_id={baseline_run_id}",
+            "-v",
+            f"replay_id={replay_id}",
+            "-v",
+            f"expected_result_manifest_digest={result_manifest_digest}",
+            "-v",
+            f"expected_postflight_digest={postflight_digest}",
+            "-f",
+            str(sql_path),
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+
+def _install_formal_sql_fixture(postgres_test_connection, context, replay_id):
+    signal_count = 128802
+    layer_digest = "d" * 64
+    result_digest = "a" * 64
+    postflight_digest = "b" * 64
+    ledger_manifest = deepcopy(context["ledger_manifest"])
+    ledger_manifest["baseline_entry_decision_count"] = signal_count
+    ledger_manifest["v2_inception_order_derivation_count"] = signal_count
+    ledger_manifest["ledger_signal_count"] = signal_count
+    ledger_manifest["ledger_semantic_multiplicity_digest"] = layer_digest
+    match_manifest = deepcopy(context["match_manifest"])
+    for field in ("signal_count", "matched_entry_count", "matched_exit_count"):
+        match_manifest[field] = signal_count
+    match_manifest["missing_entry_count"] = 0
+    match_manifest["missing_exit_count"] = 0
+    match_manifest["duplicate_match_count"] = 0
+    match_manifest["match_signal_multiplicity_digest"] = layer_digest
+    replay = build_replay(
+        match_rows=context["match"].rows,
+        min_lot_shares=context["config"].min_lot_shares,
+        slippage_bps=context["config"].slippage_bps,
+        commission_rate=context["config"].commission_rate,
+        sell_tax_rate=context["config"].sell_tax_rate,
+    )
+    result_manifest = build_result_manifest(
+        replay_id=replay_id,
+        registration_revision=1,
+        ledger_manifest=context["ledger_manifest"],
+        match_manifest=context["match_manifest"],
+        replay=replay,
+        min_lot_shares=context["config"].min_lot_shares,
+        slippage_bps=context["config"].slippage_bps,
+        commission_rate=context["config"].commission_rate,
+        sell_tax_rate=context["config"].sell_tax_rate,
+    )
+    for field in ("episode_count", "modeled_entry_count", "modeled_exit_count"):
+        result_manifest[field] = signal_count
+    for field in (
+        "episode_signal_multiplicity_digest",
+        "modeled_entry_signal_multiplicity_digest",
+        "modeled_exit_signal_multiplicity_digest",
+    ):
+        result_manifest[field] = layer_digest
+    result_manifest["summary"]["episode_count"] = signal_count
+    result_manifest["summary"]["win_count"] = 0
+    result_manifest["summary"]["loss_count"] = signal_count
+    result_manifest["summary"]["tie_count"] = 0
+    result_manifest["result_manifest_digest"] = result_digest
+    postflight = build_postflight(
+        replay_id=replay_id,
+        registration_revision=1,
+        baseline_result_digest=context["baseline"]["result_digest"],
+        ledger_manifest=context["ledger_manifest"],
+        match_manifest=context["match_manifest"],
+        result_manifest=build_result_manifest(
+            replay_id=replay_id,
+            registration_revision=1,
+            ledger_manifest=context["ledger_manifest"],
+            match_manifest=context["match_manifest"],
+            replay=replay,
+            min_lot_shares=context["config"].min_lot_shares,
+            slippage_bps=context["config"].slippage_bps,
+            commission_rate=context["config"].commission_rate,
+            sell_tax_rate=context["config"].sell_tax_rate,
+        ),
+        decision_rows=context["ledger"].rows,
+        order_rows=context["derivation"].rows,
+        ledger_rows=context["ledger"].rows,
+        match_rows=context["match"].rows,
+        episode_rows=replay.episodes,
+        modeled_entry_rows=replay.modeled_entries,
+        modeled_exit_rows=replay.modeled_exits,
+        min_lot_shares=context["config"].min_lot_shares,
+        slippage_bps=context["config"].slippage_bps,
+        commission_rate=context["config"].commission_rate,
+        sell_tax_rate=context["config"].sell_tax_rate,
+        baseline_identity_valid=True,
+        v1_invalid_lineage_valid=True,
+        order_inception_seal_valid=True,
+        ledger_artifact_valid=True,
+        match_plan_artifact_valid=True,
+        result_artifact_valid=True,
+        v1_signal_multiplicity_valid=True,
+    )
+    for field in postflight["conditions"]:
+        if field != "schema_version":
+            postflight["conditions"][field] = True
+    layer_counts = {
+        "authoritative_entry_decision_count",
+        "order_derivation_count",
+        "ledger_signal_count",
+        "match_count",
+        "episode_count",
+        "modeled_entry_count",
+        "modeled_exit_count",
+    }
+    for field in postflight["diagnostics"]:
+        if field in layer_counts:
+            postflight["diagnostics"][field] = signal_count
+        elif field.endswith("_count"):
+            postflight["diagnostics"][field] = 0
+        elif field.endswith("_multiplicity_digest"):
+            postflight["diagnostics"][field] = layer_digest
+    postflight["verdict"] = "ACCEPTED"
+    postflight["result_manifest_digest"] = result_digest
+    postflight["postflight_digest"] = postflight_digest
+
+    with postgres_test_connection.transaction():
+        with postgres_test_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE backtest.r5_signal_ledger_replay_registrations
+                SET ledger_manifest_json = %s::jsonb,
+                    match_plan_manifest_json = %s::jsonb,
+                    status = 'ACCEPTED', progress = 1,
+                    postflight_digest = %s, postflight_json = %s::jsonb,
+                    result_manifest_digest = %s
+                WHERE replay_id = %s
+                """,
+                (
+                    canonical_json(ledger_manifest),
+                    canonical_json(match_manifest),
+                    postflight_digest,
+                    canonical_json(postflight),
+                    result_digest,
+                    replay_id,
+                ),
+            )
+            cursor.execute(
+                """
+                UPDATE backtest.r5_signal_ledger_replay_heads
+                SET status = 'ACCEPTED'
+                WHERE replay_id = %s
+                """,
+                (replay_id,),
+            )
+            cursor.execute(
+                """
+                INSERT INTO backtest.r5_signal_ledger_replay_results (
+                    replay_id, result_manifest_digest, result_manifest_json,
+                    postflight_digest, postflight_json
+                ) VALUES (%s, %s, %s::jsonb, %s, %s::jsonb)
+                """,
+                (
+                    replay_id,
+                    result_digest,
+                    canonical_json(result_manifest),
+                    postflight_digest,
+                    canonical_json(postflight),
+                ),
+            )
+            cursor.execute(
+                """
+                WITH tokens AS (
+                    SELECT value AS sequence,
+                           lpad(to_hex(value), 64, '0') AS token
+                    FROM generate_series(1, 128802) AS value
+                ), expanded AS (
+                    SELECT field_name, sequence,
+                           jsonb_build_object(
+                               'sequence', sequence,
+                               'signal_id', token,
+                               'semantic_key', token
+                           ) AS item
+                    FROM tokens
+                    CROSS JOIN unnest(ARRAY[
+                        'episodes', 'modeled_entries', 'modeled_exits'
+                    ]) AS field_name
+                )
+                INSERT INTO backtest.r5_signal_ledger_replay_result_chunks (
+                    replay_id, field_name, chunk_sequence,
+                    item_count, payload_json, payload_digest
+                )
+                SELECT %s, field_name, ((sequence - 1) / 100)::integer,
+                       COUNT(*), jsonb_agg(item ORDER BY sequence), repeat('f', 64)
+                FROM expanded
+                GROUP BY field_name, ((sequence - 1) / 100)::integer
+                """,
+                (replay_id,),
+            )
+    return result_digest, postflight_digest
+
+
 def test_g3_preflight_evidence_read_is_repeatable_and_creates_no_replay_state(
     postgres_test_connection, tmp_path
 ) -> None:
@@ -404,6 +640,28 @@ def test_g3_preflight_evidence_read_is_repeatable_and_creates_no_replay_state(
         ):
             cursor.execute(f"SELECT COUNT(*) FROM backtest.{table}")
             assert cursor.fetchone()[0] == 0
+
+
+def test_g4_execution_evidence_uses_sealed_registration_and_server_costs(
+    postgres_test_connection, tmp_path
+) -> None:
+    context = _setup(postgres_test_connection, tmp_path)
+    created, _ = _create(context)
+
+    evidence = context["repository"].load_execution_evidence(
+        created["replay_id"]
+    )
+
+    assert evidence.registration["replay_id"] == created["replay_id"]
+    assert evidence.registration["status"] == "SEALED"
+    assert evidence.baseline_result_digest == context["baseline"]["result_digest"]
+    assert evidence.decision_rows == context["ledger"].rows
+    assert evidence.cost_identity == {
+        "commission_rate": "0.001425",
+        "min_lot_shares": 1000,
+        "sell_tax_rate": "0.003",
+        "slippage_bps": "5",
+    }
 
 
 def test_postgresql_replay_and_different_key_noop_are_durable(
@@ -696,6 +954,225 @@ def test_invalid_postflight_is_durable_but_never_publishes_economics(
             "SELECT COUNT(*) FROM backtest.r5_signal_ledger_replay_results"
         )
         assert cursor.fetchone()[0] == 0
+
+
+def test_g4_application_executes_provider_free_and_publishes_terminal_postflight(
+    postgres_test_connection, tmp_path
+) -> None:
+    context = _setup(postgres_test_connection, tmp_path)
+    created, _ = _create(context)
+
+    executed = context["service"].execute_replay(
+        created["replay_id"],
+        external_calls=_ZeroExternalCalls(),
+    )
+
+    assert executed["registration"]["status"] == "INVALID"
+    assert executed["postflight"]["diagnostics"]["episode_count"] == 2
+    assert executed["postflight"]["diagnostics"]["provider_call_count"] == 0
+    assert executed["postflight"]["diagnostics"]["broker_call_count"] == 0
+    assert Path(executed["result_path"]).is_dir()
+    with pytest.raises(SignalReplayNotAccepted):
+        context["service"].get_economics(created["replay_id"])
+
+
+def test_g4_concurrent_cancel_terminalizes_without_losing_progress(
+    postgres_test_connection, postgres_test_dsn, tmp_path
+) -> None:
+    context = _setup(postgres_test_connection, tmp_path)
+    created, _ = _create(context)
+    postgres_test_connection.commit()
+    psycopg_pool = pytest.importorskip("psycopg_pool")
+    pool = psycopg_pool.ConnectionPool(
+        postgres_test_dsn, min_size=2, max_size=3, open=True
+    )
+    publication_ready = Event()
+    allow_publication = Event()
+
+    class _BlockingPublicationService(SignalReplayApplicationService):
+        def publish_result(self, replay_id, **values):
+            publication_ready.set()
+            if not allow_publication.wait(timeout=10):
+                raise TimeoutError("test publication barrier timed out")
+            return super().publish_result(replay_id, **values)
+
+    repository = SignalReplayPostgresRepository(pool=pool)
+    service = _BlockingPublicationService(
+        repository=repository,
+        artifacts=context["artifacts"],
+    )
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                service.execute_replay,
+                created["replay_id"],
+                external_calls=_ZeroExternalCalls(),
+            )
+            assert publication_ready.wait(timeout=10)
+            with postgres_test_connection.transaction():
+                with postgres_test_connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE backtest.r5_signal_ledger_replay_registrations
+                        SET progress = 0.42, progress_message = 'building'
+                        WHERE replay_id = %s AND status = 'RUNNING'
+                        """,
+                        (created["replay_id"],),
+                    )
+                    assert cursor.rowcount == 1
+            cancelling, _ = service.cancel_replay(created["replay_id"])
+            assert cancelling["status"] == "CANCELLING"
+            assert cancelling["progress"] == "0.42"
+            allow_publication.set()
+            with pytest.raises(SignalReplayCancelled, match="REPLAY_CANCELLED"):
+                future.result(timeout=10)
+    finally:
+        allow_publication.set()
+        pool.close()
+    postgres_test_connection.rollback()
+
+    current = context["repository"].get_replay(created["replay_id"])
+    assert current["status"] == "CANCELLED"
+    assert current["progress"] == "0.42"
+    assert current["postflight_digest"] is None
+    assert current["result_manifest_digest"] is None
+    with postgres_test_connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT COUNT(*) FROM backtest.r5_signal_ledger_replay_results"
+        )
+        assert cursor.fetchone()[0] == 0
+
+
+def test_g4_formal_sql_anchors_terminal_roots_and_rejects_diagnostic_tamper(
+    postgres_test_connection, postgres_test_dsn, tmp_path
+) -> None:
+    context = _setup(postgres_test_connection, tmp_path)
+    created, _ = _create(context)
+    replay_id = created["replay_id"]
+    result_digest, postflight_digest = _install_formal_sql_fixture(
+        postgres_test_connection,
+        context,
+        replay_id,
+    )
+
+    accepted = _run_g4_acceptance_sql(
+        postgres_test_dsn=postgres_test_dsn,
+        baseline_run_id=context["baseline"]["run_id"],
+        replay_id=replay_id,
+        result_manifest_digest=result_digest,
+        postflight_digest=postflight_digest,
+    )
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    assert '"diagnostic_differences_zero": true' in accepted.stdout
+
+    substituted_result_digest = "c" * 64
+    substituted_postflight_digest = "e" * 64
+    with postgres_test_connection.transaction():
+        with postgres_test_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT result_manifest_json, postflight_json
+                FROM backtest.r5_signal_ledger_replay_results
+                WHERE replay_id = %s
+                """,
+                (replay_id,),
+            )
+            result_manifest, postflight = map(deepcopy, cursor.fetchone())
+            result_manifest["summary"]["mean_net_return"] = "-0.99"
+            result_manifest["result_manifest_digest"] = substituted_result_digest
+            postflight["result_manifest_digest"] = substituted_result_digest
+            postflight["postflight_digest"] = substituted_postflight_digest
+            cursor.execute(
+                """
+                UPDATE backtest.r5_signal_ledger_replay_results
+                SET result_manifest_digest = %s,
+                    result_manifest_json = %s::jsonb,
+                    postflight_digest = %s,
+                    postflight_json = %s::jsonb
+                WHERE replay_id = %s
+                """,
+                (
+                    substituted_result_digest,
+                    canonical_json(result_manifest),
+                    substituted_postflight_digest,
+                    canonical_json(postflight),
+                    replay_id,
+                ),
+            )
+            cursor.execute(
+                """
+                UPDATE backtest.r5_signal_ledger_replay_registrations
+                SET result_manifest_digest = %s,
+                    postflight_digest = %s,
+                    postflight_json = %s::jsonb
+                WHERE replay_id = %s
+                """,
+                (
+                    substituted_result_digest,
+                    substituted_postflight_digest,
+                    canonical_json(postflight),
+                    replay_id,
+                ),
+            )
+
+    rejected_anchor = _run_g4_acceptance_sql(
+        postgres_test_dsn=postgres_test_dsn,
+        baseline_run_id=context["baseline"]["run_id"],
+        replay_id=replay_id,
+        result_manifest_digest=result_digest,
+        postflight_digest=postflight_digest,
+    )
+    assert rejected_anchor.returncode != 0
+    assert '"terminal_evidence_matches": false' in rejected_anchor.stdout
+
+    diagnostic_postflight_digest = "9" * 64
+    with postgres_test_connection.transaction():
+        with postgres_test_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT postflight_json
+                FROM backtest.r5_signal_ledger_replay_results
+                WHERE replay_id = %s
+                """,
+                (replay_id,),
+            )
+            postflight = deepcopy(cursor.fetchone()[0])
+            postflight["diagnostics"]["decision_minus_ledger_count"] = 1
+            postflight["postflight_digest"] = diagnostic_postflight_digest
+            cursor.execute(
+                """
+                UPDATE backtest.r5_signal_ledger_replay_results
+                SET postflight_digest = %s, postflight_json = %s::jsonb
+                WHERE replay_id = %s
+                """,
+                (
+                    diagnostic_postflight_digest,
+                    canonical_json(postflight),
+                    replay_id,
+                ),
+            )
+            cursor.execute(
+                """
+                UPDATE backtest.r5_signal_ledger_replay_registrations
+                SET postflight_digest = %s, postflight_json = %s::jsonb
+                WHERE replay_id = %s
+                """,
+                (
+                    diagnostic_postflight_digest,
+                    canonical_json(postflight),
+                    replay_id,
+                ),
+            )
+
+    rejected_diagnostic = _run_g4_acceptance_sql(
+        postgres_test_dsn=postgres_test_dsn,
+        baseline_run_id=context["baseline"]["run_id"],
+        replay_id=replay_id,
+        result_manifest_digest=substituted_result_digest,
+        postflight_digest=diagnostic_postflight_digest,
+    )
+    assert rejected_diagnostic.returncode != 0
+    assert '"diagnostic_differences_zero": false' in rejected_diagnostic.stdout
 
 
 def test_different_key_concurrent_creation_has_one_authoritative_replay(

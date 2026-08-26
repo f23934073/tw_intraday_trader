@@ -26,7 +26,7 @@ from .application import (
     SignalReplayNotAccepted,
     verify_create_request,
 )
-from .ports import BaselinePreflightEvidence
+from .ports import BaselinePreflightEvidence, ReplayExecutionEvidence
 from .domain import (
     CONTROL_CONTRACT_VERSION,
     ResearchReplayIntegrityError,
@@ -35,6 +35,7 @@ from .domain import (
     build_order_derivation,
     build_postflight,
     canonical_object_bytes,
+    cost_identity,
     layer_multiplicity_digest,
     require_sha256,
     verify_episode_row,
@@ -192,6 +193,29 @@ class SignalReplayPostgresRepository:
             dataset_manifest=dict(evidence["dataset_manifest"]),
             ledger=evidence["ledger_build"],
             order_derivation=evidence["order_build"],
+        )
+
+    def load_execution_evidence(self, replay_id: str) -> ReplayExecutionEvidence:
+        """Revalidate the sealed replay and return exact server-owned costs."""
+
+        with self._transaction() as cursor:
+            registration = self._registration_by_replay(
+                cursor, replay_id, lock=False
+            )
+            evidence = self._verify_current_registration(
+                cursor, registration=registration
+            )
+        config = BacktestRunConfig.from_dict(evidence["baseline"]["config"])
+        return ReplayExecutionEvidence(
+            registration=dict(registration),
+            baseline_result_digest=evidence["baseline"]["result_digest"],
+            decision_rows=evidence["ledger_build"].rows,
+            cost_identity=cost_identity(
+                min_lot_shares=config.min_lot_shares,
+                slippage_bps=config.slippage_bps,
+                commission_rate=config.commission_rate,
+                sell_tax_rate=config.sell_tax_rate,
+            ),
         )
 
     def create_replay(

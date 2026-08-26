@@ -12,6 +12,7 @@ from backtest.research_replay.application import (
     verify_create_request,
 )
 from backtest.research_replay.domain import CONTROL_CONTRACT_VERSION
+from backtest.research_replay.ports import ReplayExecutionEvidence
 from tests.test_signal_ledger_replay_artifacts import _publish_all
 
 
@@ -35,6 +36,7 @@ class _Repository:
         self.published = None
         self.accepted_read = None
         self.operation_replay = None
+        self.execution_evidence = None
 
     def replay_create_operation(self, **values):
         self.operation_replay_request = values
@@ -60,6 +62,10 @@ class _Repository:
     def get_replay(self, replay_id):
         assert replay_id == "replay-1"
         return dict(self.registration)
+
+    def load_execution_evidence(self, replay_id):
+        assert replay_id == "replay-1"
+        return deepcopy(self.execution_evidence)
 
     def transition_replay_status(self, replay_id, **values):
         self.transitions.append((replay_id, values))
@@ -109,6 +115,17 @@ def _service(tmp_path, *, status="SEALED"):
         "modeled_exits": list(replay.modeled_exits),
     }
     repository = _Repository(registration, accepted)
+    repository.execution_evidence = ReplayExecutionEvidence(
+        registration=registration,
+        baseline_result_digest=ledger_manifest["baseline_result_digest"],
+        decision_rows=ledger.rows,
+        cost_identity={
+            "commission_rate": "0.001425",
+            "min_lot_shares": 1000,
+            "sell_tax_rate": "0.003",
+            "slippage_bps": "5",
+        },
+    )
     return (
         SignalReplayApplicationService(repository=repository, artifacts=store),
         repository,
@@ -221,6 +238,32 @@ def test_cancel_and_failure_use_explicit_status_cas_contract(tmp_path) -> None:
     assert repository.transitions[0][1]["progress"] is None
     assert repository.transitions[1][1]["expected_statuses"] == ("CANCELLING",)
     assert repository.transitions[2][1]["status"] == "FAILED"
+
+
+def test_formal_execution_uses_server_costs_and_zero_external_calls(tmp_path) -> None:
+    service, repository, *_ = _service(tmp_path)
+
+    result = service.execute_replay(
+        "replay-1",
+        external_calls=_ZeroExternalCalls(),
+    )
+
+    assert result["registration"]["status"] == "INVALID"
+    assert result["result_manifest"]["summary"]["episode_count"] == 2
+    assert result["postflight"]["diagnostics"]["provider_call_count"] == 0
+    assert result["postflight"]["diagnostics"]["broker_call_count"] == 0
+    assert repository.transitions[0][1]["status"] == "RUNNING"
+    assert repository.published is not None
+
+
+class _ZeroExternalCalls:
+    @staticmethod
+    def snapshot():
+        return {
+            "strategy_evaluation_count": 0,
+            "provider_call_count": 0,
+            "broker_call_count": 0,
+        }
 
 
 def test_economics_are_redacted_before_result_artifact_lookup(tmp_path) -> None:

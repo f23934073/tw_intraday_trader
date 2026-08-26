@@ -16,6 +16,9 @@ from .domain import (
     build_ledger_manifest,
     build_match_manifest,
     build_match_plan,
+    build_postflight,
+    build_replay,
+    build_result_manifest,
     layer_multiplicity_digest,
     require_sha256,
     verify_postflight,
@@ -48,6 +51,10 @@ class SignalReplayConflict(ValueError):
 
 class SignalReplayNotAccepted(ValueError):
     """Economics were requested before an accepted postflight exists."""
+
+
+class SignalReplayCancelled(RuntimeError):
+    """A formal replay was cancelled before terminal publication."""
 
 
 @dataclass(frozen=True)
@@ -317,6 +324,126 @@ class SignalReplayApplicationService:
                 error_message, "error_message", maximum=4000
             ),
         )
+
+    def execute_replay(
+        self,
+        replay_id: str,
+        *,
+        external_calls: ExternalCallAuditPort,
+    ) -> dict[str, Any]:
+        """Build and publish the provider-free formal replay deterministically."""
+
+        replay = _strict_text(replay_id, "replay_id", maximum=200)
+        before = SignalReplayPreflightService._audit_snapshot(external_calls)
+        evidence = self._repository.load_execution_evidence(replay)
+        registration = evidence.registration
+        if registration["status"] == "ACCEPTED":
+            durable = self.get_economics(replay)
+            artifact = self._artifacts.load_result(
+                registration["result_manifest_digest"]
+            )
+            after = SignalReplayPreflightService._audit_snapshot(external_calls)
+            if before != after or any(after.values()):
+                raise ResearchReplayIntegrityError(
+                    "G4 replay 禁止 strategy evaluation/provider/broker calls"
+                )
+            return {
+                "registration": registration,
+                "result_manifest": durable["result_manifest"],
+                "postflight": registration["postflight"],
+                "result_path": str(artifact.path),
+                "replayed": True,
+            }
+        if registration["status"] == "SEALED":
+            registration, _ = self.start_replay(replay)
+        elif registration["status"] != "RUNNING":
+            raise SignalReplayConflict(
+                "R5_V2_EXECUTION_STATUS_CONFLICT: "
+                f"current={registration['status']}"
+            )
+
+        ledger = self._artifacts.load_ledger(
+            registration["ledger_manifest_digest"]
+        )
+        match = self._artifacts.load_match_plan(registration["preflight_digest"])
+        costs = evidence.cost_identity
+        built = build_replay(
+            match_rows=match.rows,
+            min_lot_shares=costs["min_lot_shares"],
+            slippage_bps=costs["slippage_bps"],
+            commission_rate=costs["commission_rate"],
+            sell_tax_rate=costs["sell_tax_rate"],
+        )
+        result_manifest = build_result_manifest(
+            replay_id=replay,
+            registration_revision=registration["revision"],
+            ledger_manifest=ledger.manifest,
+            match_manifest=match.manifest,
+            replay=built,
+            min_lot_shares=costs["min_lot_shares"],
+            slippage_bps=costs["slippage_bps"],
+            commission_rate=costs["commission_rate"],
+            sell_tax_rate=costs["sell_tax_rate"],
+        )
+        result_path = self._artifacts.publish_result(
+            manifest=result_manifest,
+            episode_rows=built.episodes,
+            modeled_entry_rows=built.modeled_entries,
+            modeled_exit_rows=built.modeled_exits,
+        )
+        after = SignalReplayPreflightService._audit_snapshot(external_calls)
+        if before != after or any(after.values()):
+            raise ResearchReplayIntegrityError(
+                "G4 replay 禁止 strategy evaluation/provider/broker calls"
+            )
+        postflight = build_postflight(
+            replay_id=replay,
+            registration_revision=registration["revision"],
+            baseline_result_digest=evidence.baseline_result_digest,
+            ledger_manifest=ledger.manifest,
+            match_manifest=match.manifest,
+            result_manifest=result_manifest,
+            decision_rows=evidence.decision_rows,
+            order_rows=ledger.order_rows,
+            ledger_rows=ledger.ledger_rows,
+            match_rows=match.rows,
+            episode_rows=built.episodes,
+            modeled_entry_rows=built.modeled_entries,
+            modeled_exit_rows=built.modeled_exits,
+            min_lot_shares=costs["min_lot_shares"],
+            slippage_bps=costs["slippage_bps"],
+            commission_rate=costs["commission_rate"],
+            sell_tax_rate=costs["sell_tax_rate"],
+            baseline_identity_valid=True,
+            v1_invalid_lineage_valid=True,
+            order_inception_seal_valid=True,
+            ledger_artifact_valid=True,
+            match_plan_artifact_valid=True,
+            result_artifact_valid=True,
+            v1_signal_multiplicity_valid=True,
+            strategy_evaluation_count=after["strategy_evaluation_count"],
+            provider_call_count=after["provider_call_count"],
+            broker_call_count=after["broker_call_count"],
+        )
+        try:
+            published = self.publish_result(
+                replay,
+                result_manifest_digest=result_manifest["result_manifest_digest"],
+                postflight=postflight,
+            )
+        except SignalReplayConflict as error:
+            current = self.get_replay(replay)
+            if current["status"] != "CANCELLING":
+                raise
+            self.mark_cancelled(replay, progress=current["progress"])
+            raise SignalReplayCancelled("R5_V2_REPLAY_CANCELLED") from error
+        return {
+            "registration": published,
+            "result_manifest": result_manifest,
+            "postflight": postflight,
+            "result_path": str(result_path),
+            "replayed": False,
+        }
 
     def publish_result(
         self,

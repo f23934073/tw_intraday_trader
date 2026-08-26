@@ -22,6 +22,14 @@ class BaselinePreflightEvidence:
     order_derivation: OrderDerivationBuild
 
 
+@dataclass(frozen=True)
+class ReplayExecutionEvidence:
+    registration: dict[str, Any]
+    baseline_result_digest: str
+    decision_rows: tuple[dict[str, Any], ...]
+    cost_identity: dict[str, Any]
+
+
 class BaselineSignalEvidencePort(Protocol):
     def load_preflight_evidence(
         self, baseline_run_id: str
@@ -92,6 +100,10 @@ class SignalReplayRepositoryPort(Protocol):
     ) -> tuple[dict[str, Any], bool]: ...
 
     def get_replay(self, replay_id: str) -> dict[str, Any]: ...
+
+    def load_execution_evidence(
+        self, replay_id: str
+    ) -> ReplayExecutionEvidence: ...
 
     def transition_replay_status(
         self,

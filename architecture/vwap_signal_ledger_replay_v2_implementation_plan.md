@@ -1171,7 +1171,7 @@ R5 v2 接受後，只能另行決定 R6 要：
 | G1 | Pure domain＋artifact | Golden math, matching, canonical bytes, bounded-memory tests pass | PASSED / FORMAL GATE APPROVED |
 | G2 | PostgreSQL＋application | Idempotency, CAS, tamper, redaction, security tests pass | PASSED / FORMAL GATE APPROVED |
 | G3 | Full preflight | 28.3M bars produce 128,802 complete matches, zero external calls | PASSED / FORMAL GATE APPROVED |
-| G4 | Formal replay | 128,802 accepted episodes and formal SQL pass | NOT AUTHORIZED |
+| G4 | Formal replay | 128,802 accepted episodes and formal SQL pass | PASSED / FORMAL GATE APPROVED |
 | G5 | Research disposition | Metrics reviewed; HOLD/reject/candidate recorded without lifecycle mutation | NOT AUTHORIZED |
 
 每個 Gate 需要獨立明確授權。G0 通過不代表可以實作，G1-G3 通過也不代表可以
@@ -1212,7 +1212,8 @@ R5 revision 2 design: APPROVED / G0 PASSED / CONTRACT FROZEN
 R5 revision 2 G1 implementation: APPROVED / FORMAL GATE PASSED
 R5 revision 2 G2: APPROVED / FORMAL GATE PASSED / PROGRESS 50%
 R5 revision 2 G3: APPROVED / FORMAL GATE PASSED / PROGRESS 66.7%
-R5 revision 2 G4-G5: NOT AUTHORIZED
+R5 revision 2 G4: APPROVED / FORMAL GATE PASSED / PROGRESS 83.3%
+R5 revision 2 G5: NOT AUTHORIZED
 R5 revision 2 execution: NOT AUTHORIZED
 R6: BLOCKED / NOT AUTHORIZED
 Local Paper / Broker / Real-money: PROHIBITED
