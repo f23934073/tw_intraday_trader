@@ -83,10 +83,10 @@ def live_events() -> tuple[EventEnvelope, ...]:
     )
 
 
-def build_operation(*, risk_provider=None, journal=None):
+def build_operation(*, risk_provider=None, journal=None, market_pipeline=None):
     journal = journal or InMemoryJournalRepository()
     operation = LiveTradeManagementShadowOperation(
-        market_pipeline=build_market_pipeline(),
+        market_pipeline=market_pipeline or build_market_pipeline(),
         shadow_config=config(code_identity="git:pr-tm-009-test"),
         risk_snapshot_provider=risk_provider or (lambda _event, _result: SNAPSHOT),
         journal=journal,
@@ -95,6 +95,7 @@ def build_operation(*, risk_provider=None, journal=None):
             started_at=THESIS.draft.signal_at.value,
             mode="TRADE_MANAGEMENT_SHADOW",
             metadata={
+                "execution_authority": False,
                 "execution_enabled": False,
                 "evidence_only": True,
                 "operation_version": LIVE_SHADOW_OPERATION_VERSION,
@@ -174,6 +175,54 @@ def test_duplicate_or_rejected_market_event_does_not_enter_shadow_chain() -> Non
     assert len(journal.records(THESIS.draft.session_id)) == 1
 
 
+def test_already_applied_canonical_result_enters_shadow_without_third_pipeline() -> None:
+    canonical_pipeline = build_market_pipeline()
+    operation, journal = build_operation(market_pipeline=canonical_pipeline)
+    event = live_events()[0]
+    assert canonical_pipeline.submit_market(
+        lambda sequence: replace(
+            event,
+            ingress_sequence=sequence,
+            payload=replace(event.payload, ingress_sequence=sequence),
+        )
+    ).accepted
+    result = canonical_pipeline.process_pending(occurred_at=event.received_at)[0]
+
+    operation.observe_applied_market(result)
+
+    assert operation.snapshot().consumed_event_count == 1
+    assert len(journal.records(THESIS.draft.session_id)) == 1
+
+
+def test_observed_rejected_canonical_result_never_enters_shadow() -> None:
+    canonical_pipeline = build_market_pipeline()
+    operation, journal = build_operation(market_pipeline=canonical_pipeline)
+    event = live_events()[0]
+    assert canonical_pipeline.submit_market(
+        lambda sequence: replace(
+            event,
+            ingress_sequence=sequence,
+            payload=replace(event.payload, ingress_sequence=sequence),
+        )
+    ).accepted
+    applied = canonical_pipeline.process_pending(occurred_at=event.received_at)[0]
+    assert canonical_pipeline.submit_market(
+        lambda sequence: replace(
+            event,
+            ingress_sequence=sequence,
+            payload=replace(event.payload, ingress_sequence=sequence),
+        )
+    ).accepted
+    duplicate = canonical_pipeline.process_pending(occurred_at=event.received_at)[0]
+
+    operation.observe_applied_market(applied)
+    with pytest.raises(ValueError, match="projection-applied"):
+        operation.observe_applied_market(duplicate)
+
+    assert operation.snapshot().consumed_event_count == 1
+    assert len(journal.records(THESIS.draft.session_id)) == 1
+
+
 def test_writer_failure_keeps_pending_evidence_and_retries_before_new_input() -> None:
     operation, journal = build_operation(journal=FailOnceDecisionJournal())
     first = live_events()[0]
@@ -185,7 +234,7 @@ def test_writer_failure_keeps_pending_evidence_and_retries_before_new_input() ->
     assert operation.snapshot().consumed_event_count == 1
     assert journal.records(THESIS.draft.session_id) == ()
 
-    assert operation.process_pending(occurred_at=first.received_at) == ()
+    assert operation.retry_pending_evidence(observed_at=first.received_at)
     assert len(journal.records(THESIS.draft.session_id)) == 1
 
 
@@ -230,6 +279,7 @@ def test_operation_requires_explicit_evidence_only_session() -> None:
                 started_at=THESIS.draft.signal_at.value,
                 mode="TRADE_MANAGEMENT_SHADOW",
                 metadata={
+                    "execution_authority": True,
                     "execution_enabled": True,
                     "evidence_only": False,
                     "operation_version": LIVE_SHADOW_OPERATION_VERSION,

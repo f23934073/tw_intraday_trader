@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import socket
@@ -40,12 +41,23 @@ PROVIDER_WORKER_SENTINEL = "__TM_C0_PROVIDER_PREFLIGHT__="
 REHEARSAL_TARGETS = tuple(
     sorted(
         (
+            "tests/test_trade_management_c1_session.py",
             "tests/test_trade_management_operational_composition.py",
             "tests/test_trade_management_replay.py",
             "tests/test_trade_management_shadow_operation.py",
             "tests/test_trade_management_shadow_validation.py",
         )
     )
+)
+RUNTIME_IDENTITY_PATHS = (
+    "config",
+    "market_data",
+    "runtime",
+    "trading",
+    "scripts/preflight_trade_management_shadow.py",
+    "scripts/run_trade_management_shadow_c1.py",
+    "pyproject.toml",
+    "uv.lock",
 )
 
 
@@ -85,20 +97,14 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--prepared-at must include a timezone offset")
     calendar = ReviewedEquityCalendar.from_path(CALENDAR_PATH)
     reviewed = calendar.is_trading_day(args.market_date)
-    code_identity = args.code_identity or _git_identity()
+    code_identity = args.code_identity or _runtime_code_identity()
     provider = _provider_preflight(skip_login=args.skip_provider_login)
     provider_name, provider_version, simulation = _provider_parts(
         provider.environment_identity
     )
     postgres = _postgres_preflight(
-        next(
-            (
-                value.strip()
-                for name in ("DATABASE_URL", "POSTGRESQL_DSN", "PostgreSQL_DSN")
-                if (value := os.getenv(name)) and value.strip()
-            ),
-            "",
-        )
+        (os.getenv("TRADE_MANAGEMENT_SHADOW_DATABASE_URL") or "").strip(),
+        session_id=args.session_id,
     )
     rehearsal = _rehearsal(skip=args.skip_rehearsal)
     manifest = ShadowPremarketManifest(
@@ -159,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
             "evidence_row_counts": {
                 table: count for table, count in postgres.evidence_row_counts
             },
+            "evidence_scope_session_id": postgres.evidence_scope_session_id,
             "error_code": postgres.error_code,
             "digest": postgres.digest,
         },
@@ -179,12 +186,12 @@ def main(argv: list[str] | None = None) -> int:
         "production_shadow_gate": "NOT_PASSED",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(artifact, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    with args.output.open("x", encoding="utf-8") as handle:
+        json.dump(artifact, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
     digest_path = args.output.with_suffix(args.output.suffix + ".sha256")
-    digest_path.write_text(report.digest + "\n", encoding="utf-8")
+    with digest_path.open("x", encoding="utf-8") as handle:
+        handle.write(report.digest + "\n")
     print(
         json.dumps(
             {
@@ -349,7 +356,11 @@ def _provider_parts(identity: str | None) -> tuple[str, str, bool]:
     return parts[0], parts[1], parts[2].split("=", 1)[1].lower() == "true"
 
 
-def _postgres_preflight(dsn: str) -> PostgresReadOnlyPreflight:
+def _postgres_preflight(
+    dsn: str,
+    *,
+    session_id: str,
+) -> PostgresReadOnlyPreflight:
     empty_counts = tuple((table, 0) for table in AUTHORITATIVE_EVIDENCE_TABLES)
     if not dsn:
         return PostgresReadOnlyPreflight(
@@ -361,6 +372,7 @@ def _postgres_preflight(dsn: str) -> PostgresReadOnlyPreflight:
             table_names=(),
             migration_versions=(),
             evidence_row_counts=empty_counts,
+            evidence_scope_session_id=session_id,
             error_code="DSN_MISSING",
         )
     try:
@@ -375,6 +387,7 @@ def _postgres_preflight(dsn: str) -> PostgresReadOnlyPreflight:
             table_names=(),
             migration_versions=(),
             evidence_row_counts=empty_counts,
+            evidence_scope_session_id=session_id,
             error_code="DRIVER_MISSING",
         )
     try:
@@ -412,7 +425,10 @@ def _postgres_preflight(dsn: str) -> PostgresReadOnlyPreflight:
                     if table not in tables:
                         counts.append((table, 0))
                         continue
-                    cursor.execute(f"SELECT COUNT(*) FROM trading.{table}")
+                    cursor.execute(
+                        f"SELECT COUNT(*) FROM trading.{table} WHERE session_id = %s",
+                        (session_id,),
+                    )
                     counts.append((table, int(cursor.fetchone()[0])))
             connection.rollback()
         finally:
@@ -426,6 +442,7 @@ def _postgres_preflight(dsn: str) -> PostgresReadOnlyPreflight:
             table_names=tables,
             migration_versions=migrations,
             evidence_row_counts=tuple(counts),
+            evidence_scope_session_id=session_id,
         )
     except Exception as error:
         return PostgresReadOnlyPreflight(
@@ -437,6 +454,7 @@ def _postgres_preflight(dsn: str) -> PostgresReadOnlyPreflight:
             table_names=(),
             migration_versions=(),
             evidence_row_counts=empty_counts,
+            evidence_scope_session_id=session_id,
             error_code=type(error).__name__.upper(),
         )
 
@@ -463,7 +481,7 @@ def _rehearsal(*, skip: bool) -> ShadowRehearsalEvidence:
     )
 
 
-def _git_identity() -> str:
+def _git_head() -> str:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=PROJECT_ROOT,
@@ -471,7 +489,32 @@ def _git_identity() -> str:
         capture_output=True,
         text=True,
     )
-    return f"git:{result.stdout.strip()}"
+    return result.stdout.strip()
+
+
+def _runtime_code_identity() -> str:
+    """Identify the exact runtime source tree, including uncommitted code."""
+
+    digest = hashlib.sha256()
+    files: list[Path] = []
+    for item in RUNTIME_IDENTITY_PATHS:
+        path = PROJECT_ROOT / item
+        if path.is_dir():
+            files.extend(
+                candidate
+                for candidate in path.rglob("*.py")
+                if "__pycache__" not in candidate.parts
+            )
+        elif path.is_file():
+            files.append(path)
+    for path in sorted(set(files), key=lambda item: item.relative_to(PROJECT_ROOT).as_posix()):
+        relative = path.relative_to(PROJECT_ROOT).as_posix().encode()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        content = path.read_bytes()
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return f"git:{_git_head()}:source-sha256:{digest.hexdigest()}"
 
 
 if __name__ == "__main__":

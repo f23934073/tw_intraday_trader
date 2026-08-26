@@ -140,8 +140,16 @@ def test_journal_session_binds_provider_paper_fill_and_no_execution() -> None:
     assert session.metadata["provider_simulation"] is True
     assert session.metadata["provider_identity"] == PROVIDER.environment_identity
     assert session.metadata["paper_fill_activation_id"] == ACTIVATION.activation_id
+    assert session.metadata["execution_authority"] is False
     assert session.metadata["execution_enabled"] is False
     assert session.metadata["evidence_only"] is True
+
+
+def test_capture_config_rejects_authority_or_non_simulation_provider() -> None:
+    with pytest.raises(ValueError, match="execution authority"):
+        config(execution_authority=True)
+    with pytest.raises(ValueError, match="provider simulation"):
+        config(provider=replace(PROVIDER, simulation=False))
 
 
 def test_runner_requires_matching_session_symbol_and_provider() -> None:

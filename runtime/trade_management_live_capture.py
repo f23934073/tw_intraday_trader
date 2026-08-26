@@ -86,6 +86,7 @@ class LiveShadowCaptureConfig:
     scheduled_open: datetime
     scheduled_close: datetime
     subscribe_ack_timeout_seconds: float = 30
+    execution_authority: bool = False
     execution_enabled: bool = False
     evidence_only: bool = True
 
@@ -106,6 +107,10 @@ class LiveShadowCaptureConfig:
             raise ValueError("capture window must remain within one market date")
         if self.subscribe_ack_timeout_seconds <= 0:
             raise ValueError("subscribe ACK timeout must be positive")
+        if not self.provider.simulation:
+            raise ValueError("live Shadow capture requires provider simulation")
+        if self.execution_authority:
+            raise ValueError("live Shadow capture cannot grant execution authority")
         if self.execution_enabled or not self.evidence_only:
             raise ValueError("live Shadow capture must remain evidence-only")
 
@@ -152,6 +157,7 @@ def live_shadow_journal_session(
             "connection_session_id": config.provider.connection_session_id,
             "paper_fill_activation_id": activation.activation_id,
             "paper_fill_source": activation.provenance.fill_source.value,
+            "execution_authority": False,
             "execution_enabled": False,
             "evidence_only": True,
         },

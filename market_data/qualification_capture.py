@@ -43,7 +43,11 @@ from market_data.momentum_stream import (
     StreamLifecycleEventType,
 )
 from market_data.order_book_store import OrderBookStore
-from market_data.pipeline import CanonicalMarketDataPipeline, PipelineProcessStatus
+from market_data.pipeline import (
+    CanonicalMarketDataPipeline,
+    PipelineProcessResult,
+    PipelineProcessStatus,
+)
 from runtime.clock import Clock, SystemClock
 
 
@@ -77,6 +81,14 @@ class QualificationCaptureStream(Protocol):
     def close(self) -> None: ...
 
 
+class CanonicalProcessObserver(Protocol):
+    """Optional application hook for the already-recorded canonical stream."""
+
+    def bind_market_pipeline(self, pipeline: CanonicalMarketDataPipeline) -> None: ...
+
+    def observe_canonical_result(self, result: PipelineProcessResult) -> None: ...
+
+
 @dataclass(frozen=True)
 class QualificationCaptureConfig:
     symbol: str
@@ -97,8 +109,8 @@ class QualificationCaptureConfig:
         object.__setattr__(self, "symbol", symbol)
         if not self.session_id.strip():
             raise ValueError("qualification session_id must not be empty")
-        if not 1 <= self.duration_seconds <= 3600:
-            raise ValueError("duration_seconds must be between 1 and 3600")
+        if not 1 <= self.duration_seconds <= 21600:
+            raise ValueError("duration_seconds must be between 1 and 21600")
         if self.subscribe_ack_timeout_seconds <= 0:
             raise ValueError("subscribe ACK timeout must be positive")
         if self.preopen_wait_timeout_seconds < 0:
@@ -132,12 +144,14 @@ class HistoricalQualificationCapture:
         prior_session_date: date,
         calendar_version: str,
         clock: Clock | None = None,
+        process_observer: CanonicalProcessObserver | None = None,
     ) -> None:
         self._stream = stream
         self._config = config
         self._prior_session_date = prior_session_date
         self._calendar_version = calendar_version
         self._clock = clock or SystemClock()
+        self._process_observer = process_observer
         self._subscription_ack = Event()
         self._capture_gate = Event()
         self._stop_worker = Event()
@@ -229,6 +243,8 @@ class HistoricalQualificationCapture:
             with self._lock:
                 self._pipeline = pipeline
                 self._queue = queue
+            if self._process_observer is not None:
+                self._process_observer.bind_market_pipeline(pipeline)
             worker = Thread(
                 target=self._consume,
                 name=f"qualification-{self._config.session_id}",
@@ -242,14 +258,15 @@ class HistoricalQualificationCapture:
             self._stream.close()
             self._stop_worker.set()
             worker.join(timeout=10)
+            if self._admission_failures:
+                raise RuntimeError(
+                    "INGRESS_ADMISSION_FAILED:" + "|".join(self._admission_failures)
+                )
             if worker.is_alive() or len(queue):
                 raise RuntimeError("QUEUE_DRAIN_TIMEOUT")
             callback_errors = tuple(getattr(self._stream, "callback_errors", ()))
             if callback_errors:
                 raise RuntimeError("CALLBACK_ERRORS:" + "|".join(callback_errors))
-            if self._admission_failures:
-                raise RuntimeError("INGRESS_ADMISSION_FAILED:" + "|".join(self._admission_failures))
-
             bar_digest = bars.finalize_session()
             book_digest = books.finalize_session()
             finalized_at = self._clock.now().astimezone(TAIPEI)
@@ -407,6 +424,18 @@ class HistoricalQualificationCapture:
             if pipeline is None or queue is None:
                 return
             results = pipeline.process_pending(occurred_at=self._clock.now())
+            if self._process_observer is not None:
+                try:
+                    for result in results:
+                        self._process_observer.observe_canonical_result(result)
+                except Exception as error:
+                    queue.close_all_admission()
+                    with self._lock:
+                        self._admission_failures.append(
+                            "PROCESS_OBSERVER_FAILED:"
+                            f"{type(error).__name__}:{error}"
+                        )
+                    return
             if any(
                 item.status is PipelineProcessStatus.RECORDER_FAILED
                 for item in results

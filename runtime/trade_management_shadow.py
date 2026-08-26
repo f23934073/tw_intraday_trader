@@ -83,7 +83,8 @@ class LiveTradeManagementShadowOperation:
         ):
             raise ValueError("Shadow Journal operation version is invalid")
         if (
-            journal_session.metadata.get("execution_enabled") is not False
+            journal_session.metadata.get("execution_authority") is not False
+            or journal_session.metadata.get("execution_enabled") is not False
             or journal_session.metadata.get("evidence_only") is not True
         ):
             raise ValueError("live Shadow operation requires evidence-only session")
@@ -173,6 +174,38 @@ class LiveTradeManagementShadowOperation:
 
     def snapshot(self) -> ShadowDecisionSnapshot:
         return self._shadow.snapshot()
+
+    def observe_applied_market(self, result: PipelineProcessResult) -> None:
+        """Consume one result already applied by the owning canonical pipeline.
+
+        Full-session capture owns admission, record-before-ingest, and queue
+        ordering.  This seam lets Trade Management observe that exact result
+        without creating another market-data pipeline.
+        """
+
+        self._require_open()
+        if result.status is not PipelineProcessStatus.MARKET_INGESTED:
+            raise ValueError("Shadow observation requires a canonical market result")
+        if not isinstance(result.message, EventEnvelope):
+            raise TypeError("canonical market result requires EventEnvelope")
+        if result.ingest_result is None or not result.ingest_result.projection_applied:
+            raise ValueError("Shadow observation requires projection-applied evidence")
+        observed_at = result.message.received_at
+        self._last_observed_at = max(self._last_observed_at, observed_at)
+        self._flush_pending_decisions(observed_at=observed_at)
+        self._admitted_message_count += 1
+        self._processed_message_count += 1
+        self._applied_event_count += 1
+        self._consume_result(result)
+
+    def retry_pending_evidence(self, *, observed_at: datetime) -> bool:
+        """Retry only the current durable append without consuming new input."""
+
+        self._require_open()
+        had_pending = bool(self._pending_decisions)
+        self._last_observed_at = max(self._last_observed_at, observed_at)
+        self._flush_pending_decisions(observed_at=observed_at)
+        return had_pending
 
     def metrics(self, *, observed_at: datetime) -> ShadowOperationMetrics:
         if observed_at.tzinfo is None or observed_at.utcoffset() is None:

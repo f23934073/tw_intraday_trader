@@ -47,7 +47,7 @@ def manifest(**changes) -> ShadowPremarketManifest:
         "provider_version": "1.7.2",
         "provider_simulation": True,
         "connection_session_id": "shioaji-20260821-c0",
-        "code_identity": "git:" + "b" * 40,
+        "code_identity": "git:" + "b" * 40 + ":source-sha256:" + "c" * 64,
         "migration_versions": (
             "001_journal.sql",
             "002_trading_schema.sql",
@@ -91,6 +91,7 @@ def postgres(**changes) -> PostgresReadOnlyPreflight:
         "evidence_row_counts": tuple(
             (table, 0) for table in AUTHORITATIVE_EVIDENCE_TABLES
         ),
+        "evidence_scope_session_id": "tm-shadow-20260821-2330",
     }
     values.update(changes)
     return PostgresReadOnlyPreflight(**values)
@@ -131,6 +132,7 @@ def test_ready_report_is_deterministic_and_never_qualifies_as_live() -> None:
     assert first.status is PremarketReadinessStatus.READY_FOR_SESSION
     assert first.blockers == ()
     assert not first.execution_enabled
+    assert not first.execution_authority
     assert not first.qualifying_real_session
 
 
@@ -142,8 +144,11 @@ def test_manifest_binds_all_runtime_versions_and_rejects_authority_upgrade() -> 
     assert value.to_dict()["validator_version"] == (
         "trade-management-shadow-validation-v1"
     )
+    assert value.to_dict()["execution_authority"] is False
     with pytest.raises(ValueError, match="evidence-only"):
         replace(value, execution_enabled=True)
+    with pytest.raises(ValueError, match="execution authority"):
+        replace(value, execution_authority=True)
     with pytest.raises(ValueError, match="cannot qualify"):
         replace(value, qualifying_real_session=True)
 
@@ -155,6 +160,15 @@ def test_manifest_binds_all_runtime_versions_and_rejects_authority_upgrade() -> 
         (
             {"provider": provider(subscribe_trade=True)},
             PremarketBlocker.TRADE_SUBSCRIPTION_ENABLED,
+        ),
+        (
+            {
+                "manifest": manifest(provider_simulation=False),
+                "provider": provider(
+                    environment_identity="shioaji:1.7.2:simulation=false"
+                ),
+            },
+            PremarketBlocker.PROVIDER_NOT_SIMULATION,
         ),
         (
             {"postgres": postgres(transaction_read_only=False)},
@@ -186,8 +200,11 @@ def test_preflight_failures_are_typed(change, expected) -> None:
         "rehearsal": rehearsal(),
     }
     values.update(change)
-
-    report = ShadowPremarketReadinessEvaluator().evaluate(manifest(), **values)
+    evaluated_manifest = values.pop("manifest", manifest())
+    report = ShadowPremarketReadinessEvaluator().evaluate(
+        evaluated_manifest,
+        **values,
+    )
 
     assert report.status is PremarketReadinessStatus.BLOCKED
     assert expected in report.blockers
@@ -205,6 +222,19 @@ def test_postgres_preflight_digest_never_contains_a_dsn() -> None:
 
     assert "postgresql://" not in payload
     assert "password" not in payload.lower()
+
+
+def test_postgres_evidence_scope_must_match_proposed_session() -> None:
+    report = ShadowPremarketReadinessEvaluator().evaluate(
+        manifest(),
+        trading_date_reviewed=True,
+        provider=provider(),
+        postgres=postgres(evidence_scope_session_id="another-session"),
+        rehearsal=rehearsal(),
+    )
+
+    assert report.status is PremarketReadinessStatus.BLOCKED
+    assert PremarketBlocker.POSTGRES_EVIDENCE_SCOPE_MISMATCH in report.blockers
 
 
 def test_provider_preflight_contains_native_worker_signal(monkeypatch) -> None:
@@ -279,10 +309,21 @@ def test_cli_writes_nonqualifying_ready_artifact_without_secret(
     tmp_path,
 ) -> None:
     monkeypatch.setattr(cli, "_provider_preflight", lambda **_: provider())
-    monkeypatch.setattr(cli, "_postgres_preflight", lambda _dsn: postgres())
+    monkeypatch.setattr(
+        cli,
+        "_postgres_preflight",
+        lambda _dsn, *, session_id: postgres(evidence_scope_session_id=session_id),
+    )
     monkeypatch.setattr(cli, "_rehearsal", lambda **_: rehearsal())
-    monkeypatch.setattr(cli, "_git_identity", lambda: "git:" + "b" * 40)
-    monkeypatch.setenv("PostgreSQL_DSN", "postgresql://secret@example/db")
+    monkeypatch.setattr(
+        cli,
+        "_runtime_code_identity",
+        lambda: "git:" + "b" * 40 + ":source-sha256:" + "c" * 64,
+    )
+    monkeypatch.setenv(
+        "TRADE_MANAGEMENT_SHADOW_DATABASE_URL",
+        "postgresql://secret@example/db",
+    )
     output = tmp_path / "preflight.json"
 
     result = cli.main(
@@ -304,9 +345,148 @@ def test_cli_writes_nonqualifying_ready_artifact_without_secret(
     assert result == 0
     assert '"status": "READY_FOR_SESSION"' in artifact
     assert '"qualifying_real_session": false' in artifact
+    assert '"execution_authority": false' in artifact
     assert '"production_shadow_gate": "NOT_PASSED"' in artifact
     assert "postgresql://" not in artifact
     assert output.with_suffix(".json.sha256").exists()
+
+
+def test_cli_prefers_dedicated_shadow_dsn(monkeypatch, tmp_path) -> None:
+    seen: list[str] = []
+    monkeypatch.setattr(cli, "_provider_preflight", lambda **_: provider())
+    monkeypatch.setattr(
+        cli,
+        "_postgres_preflight",
+        lambda dsn, *, session_id: (
+            seen.append(dsn) or postgres(evidence_scope_session_id=session_id)
+        ),
+    )
+    monkeypatch.setattr(cli, "_rehearsal", lambda **_: rehearsal())
+    monkeypatch.setattr(
+        cli,
+        "_runtime_code_identity",
+        lambda: "git:" + "b" * 40 + ":source-sha256:" + "c" * 64,
+    )
+    monkeypatch.setenv("TRADE_MANAGEMENT_SHADOW_DATABASE_URL", "postgresql://shadow")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://shared")
+
+    assert cli.main(
+        [
+            "--market-date",
+            "2026-08-21",
+            "--prepared-at",
+            PREPARED_AT.isoformat(),
+            "--session-id",
+            "tm-shadow-20260821-2330",
+            "--connection-session-id",
+            "shioaji-20260821-c0",
+            "--output",
+            str(tmp_path / "preflight.json"),
+        ]
+    ) == 0
+    assert seen == ["postgresql://shadow"]
+
+
+def test_cli_never_falls_back_to_shared_journal_dsn(monkeypatch, tmp_path) -> None:
+    seen: list[str] = []
+    monkeypatch.setattr(cli, "_provider_preflight", lambda **_: provider())
+    monkeypatch.setattr(
+        cli,
+        "_postgres_preflight",
+        lambda dsn, *, session_id: (
+            seen.append(dsn)
+            or postgres(
+                dsn_configured=False,
+                driver_version=None,
+                connected=False,
+                transaction_read_only=False,
+                table_names=(),
+                migration_versions=(),
+                evidence_scope_session_id=session_id,
+                error_code="DSN_MISSING",
+            )
+        ),
+    )
+    monkeypatch.setattr(cli, "_rehearsal", lambda **_: rehearsal())
+    monkeypatch.setattr(
+        cli,
+        "_runtime_code_identity",
+        lambda: "git:" + "b" * 40 + ":source-sha256:" + "c" * 64,
+    )
+    monkeypatch.setenv("TRADE_MANAGEMENT_SHADOW_DATABASE_URL", "")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://shared")
+
+    assert cli.main(
+        [
+            "--market-date",
+            "2026-08-21",
+            "--prepared-at",
+            PREPARED_AT.isoformat(),
+            "--session-id",
+            "tm-shadow-20260821-2330",
+            "--connection-session-id",
+            "shioaji-20260821-c0",
+            "--output",
+            str(tmp_path / "preflight.json"),
+        ]
+    ) == 2
+    assert seen == [""]
+
+
+def test_cli_refuses_to_overwrite_immutable_preflight_artifact(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(cli, "_provider_preflight", lambda **_: provider())
+    monkeypatch.setattr(
+        cli,
+        "_postgres_preflight",
+        lambda _dsn, *, session_id: postgres(
+            evidence_scope_session_id=session_id
+        ),
+    )
+    monkeypatch.setattr(cli, "_rehearsal", lambda **_: rehearsal())
+    monkeypatch.setattr(
+        cli,
+        "_runtime_code_identity",
+        lambda: "git:" + "b" * 40 + ":source-sha256:" + "c" * 64,
+    )
+    output = tmp_path / "preflight.json"
+    output.write_text("sealed\n")
+
+    with pytest.raises(FileExistsError):
+        cli.main(
+            [
+                "--market-date",
+                "2026-08-21",
+                "--prepared-at",
+                PREPARED_AT.isoformat(),
+                "--session-id",
+                "tm-shadow-20260821-2330",
+                "--connection-session-id",
+                "shioaji-20260821-c0",
+                "--output",
+                str(output),
+            ]
+        )
+
+    assert output.read_text() == "sealed\n"
+
+
+def test_runtime_code_identity_changes_with_source_content(monkeypatch, tmp_path) -> None:
+    source = tmp_path / "runtime" / "module.py"
+    source.parent.mkdir()
+    source.write_text("VALUE = 1\n")
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(cli, "RUNTIME_IDENTITY_PATHS", ("runtime",))
+    monkeypatch.setattr(cli, "_git_head", lambda: "d" * 40)
+
+    before = cli._runtime_code_identity()
+    source.write_text("VALUE = 2\n")
+    after = cli._runtime_code_identity()
+
+    assert before != after
+    assert before.startswith("git:" + "d" * 40 + ":source-sha256:")
 
 
 def test_premarket_core_has_no_provider_database_order_or_execution_authority() -> None:

@@ -57,6 +57,7 @@ class PremarketBlocker(StrEnum):
     CREDENTIALS_MISSING = "CREDENTIALS_MISSING"
     PROVIDER_PREFLIGHT_FAILED = "PROVIDER_PREFLIGHT_FAILED"
     PROVIDER_IDENTITY_MISMATCH = "PROVIDER_IDENTITY_MISMATCH"
+    PROVIDER_NOT_SIMULATION = "PROVIDER_NOT_SIMULATION"
     TRADE_SUBSCRIPTION_ENABLED = "TRADE_SUBSCRIPTION_ENABLED"
     POSTGRES_DSN_MISSING = "POSTGRES_DSN_MISSING"
     POSTGRES_DRIVER_MISSING = "POSTGRES_DRIVER_MISSING"
@@ -64,6 +65,7 @@ class PremarketBlocker(StrEnum):
     POSTGRES_NOT_READ_ONLY = "POSTGRES_NOT_READ_ONLY"
     POSTGRES_SCHEMA_MISMATCH = "POSTGRES_SCHEMA_MISMATCH"
     POSTGRES_MIGRATION_MISMATCH = "POSTGRES_MIGRATION_MISMATCH"
+    POSTGRES_EVIDENCE_SCOPE_MISMATCH = "POSTGRES_EVIDENCE_SCOPE_MISMATCH"
     POSTGRES_EVIDENCE_NOT_EMPTY = "POSTGRES_EVIDENCE_NOT_EMPTY"
     REHEARSAL_FAILED = "REHEARSAL_FAILED"
 
@@ -91,6 +93,7 @@ class ShadowPremarketManifest:
     risk_policy_version: str
     fill_model_version: str
     validator_version: str
+    execution_authority: bool = False
     execution_enabled: bool = False
     evidence_only: bool = True
     qualifying_real_session: bool = False
@@ -137,6 +140,8 @@ class ShadowPremarketManifest:
             raise ValueError("migration_versions must not be empty")
         if self.migration_versions != tuple(sorted(set(self.migration_versions))):
             raise ValueError("migration_versions must be unique and sorted")
+        if self.execution_authority:
+            raise ValueError("pre-market manifest cannot grant execution authority")
         if self.execution_enabled or not self.evidence_only:
             raise ValueError("pre-market manifest must remain evidence-only")
         if self.qualifying_real_session:
@@ -179,6 +184,7 @@ class ShadowPremarketManifest:
             "risk_policy_version": self.risk_policy_version,
             "fill_model_version": self.fill_model_version,
             "validator_version": self.validator_version,
+            "execution_authority": self.execution_authority,
             "execution_enabled": self.execution_enabled,
             "evidence_only": self.evidence_only,
             "qualifying_real_session": self.qualifying_real_session,
@@ -229,6 +235,7 @@ class PostgresReadOnlyPreflight:
     table_names: tuple[str, ...]
     migration_versions: tuple[str, ...]
     evidence_row_counts: tuple[tuple[str, int], ...]
+    evidence_scope_session_id: str
     error_code: str | None = None
 
     def __post_init__(self) -> None:
@@ -241,6 +248,10 @@ class PostgresReadOnlyPreflight:
             raise ValueError("evidence row counts must use the authoritative table order")
         if any(count < 0 for _, count in self.evidence_row_counts):
             raise ValueError("evidence row counts must not be negative")
+        _require_non_empty(
+            self.evidence_scope_session_id,
+            "evidence_scope_session_id",
+        )
 
     @property
     def evidence_empty(self) -> bool:
@@ -258,6 +269,7 @@ class PostgresReadOnlyPreflight:
                 "table_names": list(self.table_names),
                 "migration_versions": list(self.migration_versions),
                 "evidence_row_counts": [list(item) for item in self.evidence_row_counts],
+                "evidence_scope_session_id": self.evidence_scope_session_id,
                 "error_code": self.error_code,
             }
         )
@@ -317,11 +329,16 @@ class ShadowPremarketReadinessReport:
     rehearsal_digest: str
     status: PremarketReadinessStatus
     blockers: tuple[PremarketBlocker, ...]
+    execution_authority: bool = False
     execution_enabled: bool = False
     qualifying_real_session: bool = False
 
     def __post_init__(self) -> None:
-        if self.execution_enabled or self.qualifying_real_session:
+        if (
+            self.execution_authority
+            or self.execution_enabled
+            or self.qualifying_real_session
+        ):
             raise ValueError("pre-market report cannot enable or qualify execution")
         if self.status is PremarketReadinessStatus.READY_FOR_SESSION and self.blockers:
             raise ValueError("ready pre-market report cannot contain blockers")
@@ -342,6 +359,7 @@ class ShadowPremarketReadinessReport:
             "rehearsal_digest": self.rehearsal_digest,
             "status": self.status.value,
             "blockers": [item.value for item in self.blockers],
+            "execution_authority": self.execution_authority,
             "execution_enabled": self.execution_enabled,
             "qualifying_real_session": self.qualifying_real_session,
         }
@@ -374,6 +392,8 @@ class ShadowPremarketReadinessEvaluator:
             blockers.add(PremarketBlocker.TRADE_SUBSCRIPTION_ENABLED)
         if provider.environment_identity != manifest.provider_identity:
             blockers.add(PremarketBlocker.PROVIDER_IDENTITY_MISMATCH)
+        if not manifest.provider_simulation:
+            blockers.add(PremarketBlocker.PROVIDER_NOT_SIMULATION)
         if not postgres.dsn_configured:
             blockers.add(PremarketBlocker.POSTGRES_DSN_MISSING)
         if postgres.driver_version is None:
@@ -386,6 +406,8 @@ class ShadowPremarketReadinessEvaluator:
             blockers.add(PremarketBlocker.POSTGRES_SCHEMA_MISMATCH)
         if postgres.migration_versions != manifest.migration_versions:
             blockers.add(PremarketBlocker.POSTGRES_MIGRATION_MISMATCH)
+        if postgres.evidence_scope_session_id != manifest.session_id:
+            blockers.add(PremarketBlocker.POSTGRES_EVIDENCE_SCOPE_MISMATCH)
         if not postgres.evidence_empty:
             blockers.add(PremarketBlocker.POSTGRES_EVIDENCE_NOT_EMPTY)
         if not rehearsal.passed:
