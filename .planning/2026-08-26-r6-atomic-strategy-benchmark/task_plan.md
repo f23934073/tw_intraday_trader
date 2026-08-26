@@ -52,7 +52,45 @@ execution mutation.
   generation and error-code guards.
 - [x] Freeze the public bundle member tree, path/order/chunk rules, canonical
   payload byte stream, and reproducible payload SHA-256.
-- **Status:** passed / contract frozen
+- **Status:** passed historical revision / current execution superseded by the
+  frozen A1 contract
+
+### R6.G0-A1: Common cutoff and incomplete-signal amendment
+
+- [x] Reconcile the formal G3 failure with all seven exact Version entry
+  windows; confirm the latest end is already exclusive `12:45`.
+- [x] Freeze the common Dataset-only symbol/session eligibility rule using
+  exact `12:45` entry-reserve and `13:30` terminal-exit anchors.
+- [x] Freeze common-mask evidence, exclusion reasons, 95% coverage floor,
+  canonical artifact projections, and amended identity digests.
+- [x] Define same-family matrix revision 2, zero-attempt CAS, Migration 017,
+  and regression requirements without resetting the attempt budget.
+- [x] Freeze excluded-session source/reference/runtime state semantics.
+- [x] Freeze the exact 31-member G3 root, immutable PostgreSQL preflight
+  registration, response-loss replay, and accepted-preflight G4 barrier.
+- [x] Freeze additive matrix-protocol companion history and composite
+  cross-revision matrix/protocol/slot/attempt/preflight/release referential
+  integrity without rewriting revision-1 rows.
+- [x] Freeze both exact matrix unique targets: `(matrix_id, family_id)` for
+  operation/outbox/slot relationships and the matrix/family/revision triple for
+  protocol/release/preflight relationships, with cross-family substitution
+  regressions.
+- [x] Separate Migration 017 from matrix activation and restrict the latter's
+  family mutation to one `active_matrix_revision: 1 -> 2` CAS plus operational
+  `updated_at`, with every other family field preserved.
+- [x] Freeze exact database revision checks plus non-null matrix-bound
+  operation/outbox, exact outbox-operation, and exact transition/operation/
+  outbox-to-attempt aggregate foreign keys.
+- [x] Freeze one family-row lock boundary across Migration 017, activation,
+  preflight registration, and attempt admission.
+- [x] Freeze build-binding v2 with exact algorithm, preflight, and ordered
+  Migration 016/017 source manifests so runtime code cannot self-declare its
+  implementation identity.
+- [x] Freeze exact eligibility-anchor timestamp serialization and canonical
+  Dataset source-row digest bytes, excluding the JSONL LF.
+- [x] Obtain independent G0 Amendment A1 Review before changing product code,
+  creating matrix revision 2, or rerunning G3.
+- **Status:** passed / contract frozen; implementation separately unauthorized
 
 ### R6.G1: Version admission plus pure domain and artifact implementation
 
@@ -96,9 +134,13 @@ execution mutation.
 
 ### R6.G3: Full-Dataset preflight
 
+- [x] Implement one-pass bounded Dataset evaluation for seven isolated
+  strategy/Feature runtimes.
+- [ ] Persist all-or-none G3 preflight registration without consuming family
+  head or attempt sequence.
 - [ ] Generate and audit all seven signal ledgers/match plans without provider,
   broker, lifecycle, or result publication.
-- **Status:** authorized / not started
+- **Status:** blocked on G0 Amendment A1 Review and implementation
 
 ### R6.G4: Formal seven-attempt replay
 
@@ -119,10 +161,11 @@ execution mutation.
 
 ```text
 R5 v2: COMPLETE / RESEARCH REJECT
-R6 G0: PASSED / CONTRACT FROZEN
+R6 G0 historical revision: PASSED
+R6 G0 Amendment A1: PASSED / CONTRACT FROZEN
 R6 G1: PASSED
 R6 G2: PASSED
-R6 G3: AUTHORIZED / NOT STARTED
+R6 G3: BLOCKED ON A1 IMPLEMENTATION
 Formal progress: 50%
 Remaining: 50%
 R6 formal replay: 0 / 7 / NOT AUTHORIZED
@@ -147,3 +190,8 @@ Local Paper / Broker / Real-money: PROHIBITED
 | Direct diagnostic expected `BACKTEST_DATABASE_URL` in the shell environment | 1 | Read the already-supported settings object, which loads the repository `.env`, instead of assuming the variable is exported by the shell. |
 | Full shared-worktree regression failed in `test_trade_management_external_readiness.py` because the assertion treats the field name `provider_secret_alias_count` as if it contained the secret value | 1 | Preserve the unrelated concurrent Trade Management work; record `1655 passed, 65 skipped, 1 failed` and run an explicit all-other-tests regression without modifying that scope. |
 | First Gate-status patch used lowercase `formal replay` while the existing progress line uses `Formal Replay` | 1 | Confirmed the failed patch applied no changes; split the update into exact-context patches and preserved all Gate boundaries. |
+| G3 initially surfaced `match sequence drift` at the first session boundary | 2 | Reproduced with the formal Dataset and replaced the ambiguous ordering symptom with fail-fast incomplete-coverage evidence; slot 1 signal sequence 101 has an entry but no later same-session exit bar. No artifact or attempt was published. |
+| Review search used Markdown backticks inside a double-quoted shell command | 1 | The shell attempted command substitution for `UPDATE`; no workspace state changed. Subsequent searches avoid executable backticks. |
+| First autonomous-review patch used a wrapped sentence that did not exactly match the file | 1 | `apply_patch` failed atomically with no file change; split the edit into smaller exact-context patches. |
+| Build-binding patch assumed a non-exact nearby sentence | 1 | `apply_patch` failed atomically; applied the source-manifest and registration edits as smaller exact-context patches. |
+| Scoped A1 `git add` could not create `.git/index.lock` in the sandbox | 1 | Retry the same exact five-path staging command with explicit Git-index escalation; unrelated paths remain excluded. |

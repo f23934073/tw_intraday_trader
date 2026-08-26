@@ -278,3 +278,170 @@
   formal attempts, and G5 comparative disposition.
 - G3 is authorized separately by the operator but was not started in the G2
   commit scope. No durable family/matrix/attempt or trading state was created.
+
+## 2026-08-26 G2 commit and G3 start
+
+- Created scoped G2 commit `7b7ec7c` with 13 approved files; no push was
+  performed and unrelated worktree changes remain unstaged.
+- Opened G3 as an independent uncommitted slice. Initial work is restricted to
+  one-pass Dataset preflight, seven non-performance ledger/match artifacts, and
+  all-or-none preflight registration.
+- G4 formal attempts, episodes, summaries, comparisons, lifecycle, Local Paper,
+  provider, broker, and real-money paths remain prohibited.
+
+## 2026-08-26 G3 implementation and formal fail-closed result
+
+- Implemented the uncommitted G3 candidate: exact Dataset JSONL verification,
+  seven isolated strategy/Feature runtimes, first-trigger admission,
+  same-session next-bar/session-close matching, external-sort parity, exact
+  artifact verification, and atomic filesystem publication.
+- Installed the approved G2 schema in the application PostgreSQL and sealed the
+  reviewed matrix from commit `7b7ec7c`. Dry-run verified seven slots, Dataset
+  count `28,325,340`, binding identity, family head `0`, and attempt count `0`.
+- Formal execution failed closed before publication because slot 1
+  `breakout_previous_high_entry` signal sequence `101` has no strictly later
+  same-session exit after its matched entry bar.
+- Replaced the ambiguous sequence-drift symptom with an exact incomplete-match
+  diagnostic and fixed it with a regression. The combined G1-G3 focused scope
+  passes `58 passed, 18 skipped`; Python compilation and scoped
+  `git diff --check` pass.
+- A read-only PostgreSQL check after both failed executions confirms family
+  head `0`, attempt count `0`, and release state `NOT_READY`. The final G3
+  preflight directory remains empty.
+- Both failed executions cleaned their temporary directories. No final G3
+  artifact, attempt, episode, result, performance value, provider call, broker
+  call, Local Paper state, or real-money state exists.
+- Formal progress remains `50%`; G3 is blocked on frozen-contract remediation,
+  and G4-G5 remain unauthorized.
+
+## 2026-08-26 G0 Amendment A1 drafted
+
+- Corrected the initial cutoff assumption: all seven exact Versions already
+  end entry eligibility before `12:45`; the failure is incomplete per-symbol
+  session-tail coverage.
+- Added Section 14 as the only current contract candidate. It freezes the
+  common `12:45` entry-reserve anchor, exact `13:30` terminal-exit anchor,
+  Dataset-only common eligibility mask, missing-anchor reasons, 95% coverage
+  floor, exact artifacts, amended identity roots, matrix revision 2, Migration
+  017 CAS boundary, and adversarial test matrix.
+- Added `g0_a1_review_request.md` as the current Review handoff and marked the
+  original G0 request as historical revision-1 evidence.
+- Preserved the approved revision-1 text as immutable history and marked
+  Amendment A1 `REVIEW REQUIRED / NOT FROZEN`. G3-G5 remain blocked; formal
+  Replay stays `0/7` and formal progress stays `50%`.
+- No product/test code, migration, PostgreSQL state, artifact, Strategy
+  Version, lifecycle, Local Paper, provider, broker, or real-money path was
+  changed or executed.
+- Recomputed the canonical Amendment A1 algorithm contract root from the
+  document and confirmed digest
+  `d0d3b66395a06f600c698bad7890ad39f2dceec2963727814e5d3198643df0b6`;
+  six scoped Markdown files have balanced fences, EOF newlines, and no scoped
+  `git diff --check` error.
+
+## 2026-08-26 G0 Amendment A1 Review remediation
+
+- Recorded the independent `REQUEST CHANGES` decision without changing Gate
+  progress or authorizing Migration 017/G3.
+- Added exact excluded-session state semantics: excluded rows remain in source
+  lineage and previous-close evidence but never enter strategy/Feature state.
+- Froze the 31-member G3 root, v2 root schemas, complete reader verification,
+  atomic filesystem publication, and orphan-root retry behavior.
+- Froze one immutable PostgreSQL accepted-preflight registration with exact
+  request/result/idempotency/outbox evidence and a mandatory G4 admission
+  precondition.
+- Added Migration 017 composite matrix/slot/attempt/preflight/release integrity
+  and matrix-owned protocol history so revision 1 remains reconstructable.
+- Froze the revision-2 activation request/result and its exact CAS,
+  operation/outbox, response-loss, stale-revision, and no-third-matrix behavior.
+- Updated the re-review handoff and task plan. A1 remains `NOT FROZEN`; no
+  product code, migration, tests, PostgreSQL state, G3 artifact, attempt, or
+  trading path was changed.
+
+## 2026-08-26 G0 Amendment A1 second Review remediation
+
+- Recorded the second independent `REQUEST CHANGES` result without changing
+  Gate progress or authorizing Migration 017/G3.
+- Replaced the contradictory revision-1 matrix-column backfill with a separate
+  immutable matrix-protocol companion projection. Migration 017 may insert the
+  verified revision-1 companion but may not update/delete existing revision-1
+  matrix, family, slot, release, operation, outbox, or root rows.
+- Froze eligibility anchor timestamps as canonical Taipei second-precision
+  strings and anchor digests as SHA-256 over exact Dataset source-object bytes
+  excluding LF, with full `HistoricalBar` byte round-trip verification.
+- Updated the Implementation Plan, current A1 Review request, task plan, and
+  findings. A1 remains `RE-REVIEW REQUIRED / NOT FROZEN`; Migration 017,
+  product/tests, PostgreSQL, matrix revision 2, G3, attempts, and trading paths
+  remain untouched and unauthorized.
+
+## 2026-08-26 G0 Amendment A1 third Review remediation
+
+- Recorded the third independent `REQUEST CHANGES` result without changing
+  formal Gate progress or authorizing Migration 017/G3.
+- Added the exact `UNIQUE (matrix_id, family_id)` matrix key required to back
+  operation, outbox, and slot pair foreign keys. The existing required
+  matrix/family/revision triple remains the separate protocol, release, and
+  preflight foreign-key target.
+- Added PostgreSQL catalog acceptance and cross-family pair-substitution
+  regressions to the frozen test matrix, then synchronized the Implementation
+  Plan, A1 Review request, task plan, and findings.
+- No migration, product/test code, PostgreSQL state, matrix revision, G3
+  artifact, attempt, lifecycle, provider, broker, Local Paper, or real-money
+  path was created or changed. A1 remains `RE-REVIEW REQUIRED / NOT FROZEN`.
+
+## 2026-08-26 G0 Amendment A1 autonomous review cycle 1
+
+- Found and remediated the migration-versus-activation family mutation
+  ambiguity without changing formal Gate progress.
+- Migration 017 is now explicitly schema/additive-projection only. Revision-2
+  activation is a separate transaction whose sole family-row mutation is the
+  exact active-revision CAS plus operational `updated_at`; all other columns
+  require byte-equivalent before/after evidence.
+- Added the exact CAS predicate, affected-row requirement, and adversarial
+  before/after regression to the Implementation Plan and Review handoff.
+- No Migration 017, product code, PostgreSQL state, matrix revision, G3 run,
+  attempt, lifecycle, Local Paper, provider, broker, or real-money action was
+  performed. The autonomous review loop continues before disposition.
+
+## 2026-08-26 G0 Amendment A1 autonomous review cycle 2
+
+- Compared every Migration 016 matrix/family/attempt/operation/outbox/
+  transition/release relationship with the A1 Migration 017 contract.
+- Froze exact database checks for revisions 1/2, non-null matrix identity on
+  operations/outbox, exact outbox-operation aggregate identity, and exact
+  attempt aggregate identity for transition evidence and attempt-bound
+  operation/outbox rows.
+- Added catalog and substitution regressions for direct third revision, null
+  matrix identity, cross-family operation/outbox, and foreign attempt evidence.
+- No product or database action occurred. The autonomous review loop continues
+  with identity, artifact, and concurrency checks before final disposition.
+
+## 2026-08-26 G0 Amendment A1 autonomous review cycle 3
+
+- Added the missing family-row serialization contract for Migration 017 and
+  its race behavior against revision-1 attempt admission.
+- Confirmed the A1 protocol/algorithm/hypothesis roots are unaffected because
+  this is persistence and concurrency governance rather than research meaning.
+- No migration, PostgreSQL, artifact, attempt, or G3 operation was executed.
+  The loop proceeds to final exact-schema and verification checks.
+
+## 2026-08-26 G0 Amendment A1 autonomous review cycle 4
+
+- Closed the unanchored G3 implementation identity by adding exact
+  build-binding v2 algorithm, preflight, and persistence source manifests.
+- Added runtime-self-declaration and manifest path/order/byte/SHA substitution
+  regressions to the frozen acceptance matrix.
+- No implementation or database work occurred. The loop proceeds to digest,
+  schema, documentation, and focused regression verification.
+
+## 2026-08-26 G0 Amendment A1 final approval
+
+- Completed the operator-authorized review/fix loop with no remaining Blocking
+  or Important finding.
+- Rebuilt and matched all A1 protocol, hypothesis, Version-binding, slot, and
+  algorithm roots.
+- Focused verification passed: `54 passed`; Python compilation and scoped
+  `git diff --check` passed.
+- Marked A1 `PASSED / CONTRACT FROZEN`. Formal R6 progress remains `50%` and
+  formal Replay remains `0 / 7`.
+- Migration 017, matrix revision 2, PostgreSQL mutation, and G3 were not
+  executed and still require separate authorization.

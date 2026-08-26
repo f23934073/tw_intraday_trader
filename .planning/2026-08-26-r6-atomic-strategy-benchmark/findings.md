@@ -456,3 +456,252 @@
 - Formal progress advances to `50%`. G3 is separately authorized but not
   started; G4-G5, formal Replay, Local Paper, provider, broker, and real-money
   execution remain unauthorized.
+
+## 2026-08-26 G3 implementation intake
+
+- G2 was committed independently as `7b7ec7c`; unrelated shared-worktree files
+  and `.planning/.active_plan` were excluded.
+- G3 must evaluate all seven exact Versions against the same ordered 28,325,340
+  bar stream with isolated Feature/runtime state, first-trigger-only admission,
+  and same-session next-bar/session-close matching.
+- G3 may publish only non-performance ledger/match artifacts and one all-or-none
+  durable preflight root. It must not create attempts, advance family head,
+  calculate episodes/metrics, or expose any performance projection.
+- The existing pure domain already owns canonical ledger rows, bounded
+  first-trigger admission, match rows, manifests, and parity primitives. G3
+  should compose these rather than create a second strategy or matching formula.
+- The existing `AtomicBacktestStrategyAdapter` already binds exact Version,
+  Template, parameter schema, implementation, Feature Request, and isolated
+  `CompletedOneMinuteKbarFeatureAdapter` state. G3 can instantiate one adapter
+  per slot and reuse its strategy/Feature formulas.
+- `HistoricalDatasetCatalog.iter_bars_ordered()` verifies count/checksum but
+  exposes parsed bars, not exact source JSONL bytes. G3 needs a narrow canonical
+  source reader over the immutable `bars.jsonl` so every ledger/match source
+  digest is bound to the actual payload bytes while the overall line/SHA/EOF
+  evidence is computed once.
+- Match construction can remain one-pass: promote a waiting signal on the next
+  later same-symbol bar, update active matches only on subsequent bars, then use
+  the last later bar at session close. This reproduces `build_match_plan`
+  without seven full Dataset rescans.
+- Migration `017` is currently free. An all-or-none G3 preflight registration
+  can be added without rewriting the already approved Migration 016 schema.
+
+## 2026-08-26 G3 formal preflight failure evidence
+
+- The one-pass G3 candidate composes seven isolated exact-Version runtimes over
+  the canonical Dataset stream and keeps ledger/match publication atomic. It
+  does not calculate episodes, costs, P&L, metrics, or disposition.
+- The application PostgreSQL was idempotently prepared with the approved
+  Migration 016 and sealed matrix. The matrix remains at family head `0` with
+  zero attempts; this is a G2 prerequisite, not a G3 attempt mutation.
+- The first formal execution failed closed at the first session boundary. The
+  initial error was `G3 match sequence drift`; a regression showed that the
+  actual condition was an omitted match caused by incomplete coverage, not an
+  ordering race.
+- The fail-fast replay identifies exact slot `1`
+  (`breakout_previous_high_entry`, Version
+  `ecbfe315-0a0c-400c-9005-d33bb1db7e62`) and signal sequence `101`: the signal
+  obtains a later same-session entry bar, but that entry is already the final
+  observed bar for the symbol/session, so no strictly later terminal exit bar
+  exists.
+- Section 5 requires every admitted signal to have both a later same-session
+  entry and a still-later same-session exit. The candidate therefore must not
+  skip the signal, invent an exit, carry it overnight, publish partial
+  artifacts, or enter G4.
+- Both formal executions exited non-zero. The preflight root contains no final
+  artifact, and no R6 attempt, episode, metric, comparison, Local Paper,
+  provider, broker, or real-money state was created.
+- This is a frozen-contract versus observed-signal boundary, not authority to
+  revise the contract. G3 remains formally blocked pending independent Review
+  and an explicit contract-remediation decision.
+
+## 2026-08-26 G0 Amendment A1 contract analysis
+
+- All seven exact Versions already enforce an end-exclusive entry window no
+  later than `12:45`; ORB ends at `11:00`. The G3 failure is therefore not a
+  late-afternoon trigger and must not be remediated by a `13:28` cutoff.
+- The rejected slot-1 signal had a later entry but no still-later exit because
+  its symbol/session lacked a complete tail. Skipping only that signal would
+  create a strategy-dependent universe and invalidate the seven-slot fairness
+  claim.
+- Amendment A1 uses one Dataset-only eligibility mask shared by every slot.
+  Exact `12:45` and `13:30` Kbars are required before any strategy signal is
+  admitted. The rule consults timestamp existence only, never price, Feature,
+  return, P&L, or strategy outcome.
+- The `12:45` anchor guarantees a next observed entry no later than the common
+  deadline for any signal produced before the end-exclusive cutoff. The exact
+  `13:30` anchor supplies a strictly later terminal exit. Overnight, same-bar,
+  last-partial-bar, and synthetic exits remain prohibited.
+- Missing anchors produce a common excluded symbol/session with exact reason
+  codes. Duplicate anchors remain Dataset corruption. Eligible coverage must
+  be at least `0.950000000000000000` after 18-place `ROUND_HALF_EVEN`.
+- The common mask is an explicit canonical artifact bound into all seven
+  ledger/match/result/postflight roots. An admitted incomplete signal still
+  fails closed and cannot be reclassified as Dataset exclusion.
+- The amended protocol core digest is
+  `a4d645b5ea59fca5a90a00c9e14ca117366d87e4f310b88354fc73d03272f471`;
+  the amended algorithm contract digest is
+  `d0d3b66395a06f600c698bad7890ad39f2dceec2963727814e5d3198643df0b6`.
+  Exact per-slot downstream roots are frozen in Section 14 of the main plan.
+- The stable research family and 20-attempt budget remain unchanged. Matrix
+  revision 1 stays immutable with head/attempt zero. A reviewed Migration 017
+  is required to admit matrix revision 2 because Migration 016 currently
+  hard-codes revision 1 and uniqueness by `(family_id, slot_sequence)`.
+- This is a contract-only candidate. No product code, migration, database row,
+  matrix, attempt, artifact, provider, broker, Local Paper, or lifecycle state
+  was changed.
+
+## 2026-08-26 G0 Amendment A1 independent Review remediation
+
+- Independent Review accepted the common `12:45`/`13:30` eligibility concept
+  and all candidate identity roots, but returned `REQUEST CHANGES` for two P1
+  persistence gaps and one P2 runtime-state ambiguity.
+- The first P1 was that a filesystem G3 root had no exact top-level member
+  contract, durable PostgreSQL acceptance registration, response-loss mapping,
+  or mandatory G4 admission precondition.
+- The second P1 was that removing `UNIQUE(family_id, slot_sequence)` would leave
+  attempt `matrix_id` and `hypothesis_id` as independent foreign keys, allowing
+  a revision-2 attempt to reference a revision-1 hypothesis.
+- The P2 was that excluded sessions had no frozen effect on source-only
+  previous-close evidence versus strategy/Feature runtime state.
+- Remediation freezes an exact 31-file root, v2 preflight and slot-root schemas,
+  one immutable accepted-preflight aggregate, transactional operation/outbox,
+  and an exact accepted-preflight requirement before family-head mutation.
+- Migration 017 now requires composite matrix/family/revision,
+  matrix/family/slot/hypothesis, and preflight/matrix constraints. Attempts
+  cannot cross-bind a matrix revision, slot, hypothesis, family, or preflight.
+- A further schema audit found that `protocol_core` currently lives on the
+  family. Because A1 changes its digest, overwriting that row would destroy
+  revision-1 reconstruction. This first remediation proposed protocol columns
+  on each matrix and a revision-1 backfill; the next re-review section records
+  why that proposal was superseded by an additive companion table.
+- Revision-2 activation now has an exact request/result schema, expected active
+  revision/head/attempt preconditions, one CAS transaction, complete revision-1
+  and G1 publication rebuild, and operation/outbox replay behavior.
+- Excluded rows still count toward Dataset count/SHA/EOF/order and the
+  source-only previous-close map. They never enter strategy/Feature runtime,
+  evaluation, signal, or match evidence.
+- The remediation changes only planning/Review documents. Migration 017,
+  product/tests, matrix revision 2, PostgreSQL, G3, attempts, and trading paths
+  remain untouched and unauthorized pending independent re-review.
+
+## 2026-08-26 G0 Amendment A1 second re-review remediation
+
+- Independent re-review found that the first remediation simultaneously
+  prohibited revision-1 row mutation and required protocol columns to be
+  backfilled into the revision-1 matrix row. Those requirements could not both
+  be implemented.
+- Migration 017 now uses the additive
+  `atomic_entry_benchmark_matrix_protocols` companion table. It inserts one
+  fully rebuilt revision-1 projection without updating/deleting any existing
+  revision-1 row; revision 2 inserts its own companion row transactionally.
+- The companion is keyed and constrained by exact matrix/family/revision
+  identity. The family protocol remains immutable revision-1 inception evidence,
+  and all active reads fail closed unless the selected matrix has its exact
+  canonical companion projection.
+- Eligibility anchor lineage now defines the precise digest input as the exact
+  canonical Dataset source JSON object bytes excluding the JSONL LF. Timestamp
+  serialization, full `HistoricalBar` round-trip equality, and invalid
+  LF/reformatted/reduced projections are also frozen.
+- These contract clarifications do not change the already recomputed A1
+  protocol, hypothesis, Version-binding, hypothesis, slot, or algorithm roots.
+  A1 remains not frozen pending another independent re-review.
+
+## 2026-08-26 G0 Amendment A1 third re-review remediation
+
+- The third independent re-review confirmed the companion-table and anchor-byte
+  findings closed, but found one PostgreSQL DDL blocker: the contract required
+  operation, outbox, and slot `(matrix_id, family_id)` foreign keys without an
+  exact two-column referenced unique key.
+- Migration 017 now requires matrices to own both
+  `UNIQUE (matrix_id, family_id)` and
+  `UNIQUE (matrix_id, family_id, matrix_revision)`. The pair backs operation,
+  outbox, and slot relationships; the triple separately backs protocol,
+  release, and preflight relationships.
+- The acceptance matrix now requires PostgreSQL catalog proof of both keys and
+  negative inserts that substitute a foreign family across the two-column
+  operation/outbox/slot boundary. Cross-revision triple substitutions remain
+  independently rejected.
+- This is contract-only remediation. It does not create Migration 017, mutate
+  PostgreSQL, activate matrix revision 2, rerun G3, or change any identity root.
+  A1 remains `RE-REVIEW REQUIRED / NOT FROZEN` pending independent approval.
+
+## 2026-08-26 G0 Amendment A1 autonomous review cycle 1
+
+- The next adversarial pass found an activation-boundary ambiguity: the
+  migration list prohibited every family-row update while the later activation
+  contract required a family `active_matrix_revision` CAS.
+- The contract now separates those operations. Migration 017 performs schema
+  and additive revision-1 companion work without changing the family. The
+  separately invoked activation transaction may update only
+  `active_matrix_revision: 1 -> 2` and operational `updated_at`, with an exact
+  affected-row count of one.
+- Activation must compare canonical before/after family projections and roll
+  back if source lineage, baseline/protocol inception evidence, attempt policy,
+  head, release state, actor, or creation time changes.
+- The clarification does not change any frozen A1 identity root and does not
+  authorize migration, activation, PostgreSQL mutation, or G3 execution.
+
+## 2026-08-26 G0 Amendment A1 autonomous review cycle 2
+
+- Schema-to-contract comparison found that merely saying revision 2 is
+  permitted did not freeze replacements for the existing matrix/release
+  `matrix_revision=1` checks or constrain the family active revision. The
+  amended DDL contract now permits exactly revisions 1 and 2 and rejects every
+  other value at PostgreSQL.
+- Existing operation/outbox `matrix_id` columns are nullable, so a composite
+  pair foreign key alone could be bypassed. Migration 017 must first verify all
+  historical values, then set them non-null and bind outbox to the exact
+  operation matrix/family aggregate.
+- `atomic_entry_benchmark_transition_evidence` and attempt-bound operation/
+  outbox rows previously retained independent attempt references. The contract
+  now adds an exact `(attempt_id, family_id, matrix_id)` target and requires all
+  three paths to reference it when an attempt is present.
+- These changes close database substitution paths only; they do not change A1
+  research identity roots or authorize Migration 017/G3.
+
+## 2026-08-26 G0 Amendment A1 autonomous review cycle 3
+
+- Concurrency review found that validating head/attempt zero before DDL was not
+  enough unless Migration 017 held the same family-row serialization boundary
+  used by attempt admission and activation.
+- The migration must now acquire `SELECT ... FOR UPDATE` on the exact family
+  before reading mutable preconditions and retain it through schema validation
+  and commit. Activation, preflight registration, and attempt start are all
+  required to acquire that row before family-owned mutation.
+- A concurrent old-revision attempt either commits first and makes migration
+  preflight reject, or waits behind migration and then fails the superseded
+  revision/preflight contract. Both operations can never observe and consume
+  the same zero-attempt state.
+
+## 2026-08-26 G0 Amendment A1 autonomous review cycle 4
+
+- Identity review found that G3 saved `preflight_implementation_digest` in its
+  manifest but the matrix build binding did not seal an authoritative expected
+  value. A different runtime could therefore self-declare a new implementation
+  digest during publication.
+- The A1 build binding now advances to schema v2 and includes the preflight
+  implementation digest. Its exact source manifest freezes three ordered paths,
+  canonical row/body schemas, byte counts, and SHA values.
+- Persistence identity is now an exact ordered two-file source manifest for
+  Migration 016 and future Migration 017 rather than an undefined
+  concatenation. Algorithm identity retains the six-file Section 3.5 manifest.
+- Matrix activation, G3 publication, PostgreSQL preflight registration, and G4
+  admission all rebuild and compare the sealed digests. Matrix/build IDs remain
+  intentionally unfrozen until reviewed implementation bytes exist; upstream
+  protocol and hypothesis roots do not change.
+
+## 2026-08-26 G0 Amendment A1 autonomous final review
+
+- No Blocking or Important finding remains after four autonomous adversarial
+  review/remediation cycles.
+- Independent reconstruction matched the frozen protocol root, seven
+  hypothesis-spec digests, seven Version-binding digests, seven hypothesis IDs,
+  seven slot digests, and algorithm-contract root.
+- The final contract closes database aggregate substitution, family-row
+  serialization, revision-CAS, build-binding, source-manifest, and preflight
+  implementation-identity gaps without changing the research semantics.
+- Disposition: `PASSED / CONTRACT FROZEN`.
+- This disposition does not authorize Migration 017, matrix revision 2,
+  PostgreSQL mutation, G3 execution, Local Paper, provider, broker, or
+  real-money work.
