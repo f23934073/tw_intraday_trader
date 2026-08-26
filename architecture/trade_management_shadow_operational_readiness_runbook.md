@@ -278,13 +278,73 @@ proposed session scope. Run after C0 reports `READY_FOR_SESSION` and before 09:0
   --thesis-draft research/trade_management_shadow/session_inputs/YYYY-MM-DD/trade_thesis_draft.json \
   --shadow-policy research/trade_management_shadow/session_inputs/YYYY-MM-DD/shadow_policy.json \
   --risk-snapshot research/trade_management_shadow/session_inputs/YYYY-MM-DD/risk_snapshot.json \
+  --input-approval research/trade_management_shadow/session_inputs/YYYY-MM-DD/review_approval.json \
   --connection-session-id tm-c1-YYYYMMDD-2330 \
   --output research/trade_management_shadow/c1_YYYYMMDD.json
 ```
 
 The CLI verifies C0 digests and sidecar, current runtime source identity, reviewed trading date,
-provider simulation identity, authority flags, session/symbol/policy bindings, distinct DSNs, and the
-pre-open connection window before connecting to Shioaji. The output always retains
+provider simulation identity, authority flags, independently recomputed provider/PostgreSQL/rehearsal
+component digests, immutable review approval, canonical bundle manifest,
+all four approved file digests, RiskSnapshot provenance, session/symbol/policy bindings, distinct DSNs,
+absence of incomplete C0/promotion commit locks, and the pre-open connection window before connecting
+to Shioaji. RiskSnapshot capture must occur within that pre-open window and no later than C1 admission.
+The output always retains
+the approval, review-packet, approved-attempt, and canonical-bundle digests used at admission, and
 `production_shadow_gate=NOT_PASSED`. A complete no-fill day is
 `INSUFFICIENT_EVIDENCE`; only an activated, full-coverage, zero-loss, replay-matched, recovered day is
 `FINALIZED`, and that is still only one input to the existing multi-day policy.
+
+## 13. Pending-review input preparation
+
+Input preparation is separate from a formal run. Candidate files must come from explicit external
+sources; the preparation command never invents an EntryDecision, Draft, policy, or RiskSnapshot and
+never writes under canonical `session_inputs/`.
+
+```bash
+.venv/bin/python scripts/prepare_trade_management_shadow_inputs.py \
+  --market-date YYYY-MM-DD \
+  --attempt-id reviewer-assigned-attempt-id \
+  --entry-decision-source /absolute/review-source/live_entry_decision.json \
+  --thesis-draft-source /absolute/review-source/trade_thesis_draft.json \
+  --shadow-policy-source /absolute/review-source/shadow_policy.json \
+  --risk-snapshot-source /absolute/review-source/risk_snapshot.json \
+  --output research/trade_management_shadow/session_input_drafts/YYYY-MM-DD/attempts/reviewer-assigned-attempt-id/review_packet.json
+```
+
+The immutable packet always reports `status=PENDING_REVIEW`, `reviewed=false`,
+`formal_c1_eligible=false`, and `production_shadow_gate=NOT_PASSED`. Missing or invalid sources return
+exit 2 while preserving typed blockers. A new attempt ID creates a new immutable attempt; an existing
+attempt is never overwritten. The workflow reads every candidate once and validates the exact bytes
+whose SHA-256 is recorded. RiskSnapshot candidates must include session, symbol, market date,
+timezone-aware capture time, and source identity provenance.
+The capture time must be within the reviewed 08:30–09:00 Asia/Taipei pre-open window and cannot be
+later than the preparation process clock. Review cannot precede the captured snapshot or be later than
+the review process clock. Promotion and C1 revalidate those temporal constraints before admission.
+
+Even a fully valid packet remains non-canonical and cannot be passed to C1. Human review creates a
+separate immutable approval without canonical mutation:
+
+```bash
+.venv/bin/python scripts/review_trade_management_shadow_inputs.py \
+  --review-packet research/trade_management_shadow/session_input_drafts/YYYY-MM-DD/attempts/ATTEMPT_ID/review_packet.json \
+  --reviewer-id HUMAN_REVIEWER_ID \
+  --reviewed-at YYYY-MM-DDTHH:MM:SS+08:00 \
+  --review-note "reviewed source provenance and policy bindings" \
+  --output research/trade_management_shadow/session_input_approvals/YYYY-MM-DD/attempts/ATTEMPT_ID/review_approval.json
+```
+
+Only a separately authorized promotion command may atomically publish the reviewed bundle:
+
+```bash
+.venv/bin/python scripts/promote_trade_management_shadow_inputs.py \
+  --review-approval research/trade_management_shadow/session_input_approvals/YYYY-MM-DD/attempts/ATTEMPT_ID/review_approval.json \
+  --output-dir research/trade_management_shadow/session_inputs/YYYY-MM-DD
+```
+
+Promotion revalidates the packet, current source bytes, reviewer approval, runtime identity, and all
+bindings. It exclusively reserves the canonical directory, writes the four input files,
+`review_approval.json`, `bundle_manifest.json`, and their sidecars, then removes the per-date promotion
+lock as the publication commit marker. A crash retains the lock and C1 rejects the directory. This
+procedure is documented and implemented but is not
+authorized or executed by input preparation, C0, C1, or the external supervisor.

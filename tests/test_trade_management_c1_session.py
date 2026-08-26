@@ -374,6 +374,8 @@ def test_cli_fails_before_provider_when_sealed_inputs_are_missing(
             str(tmp_path / "missing-policy.json"),
             "--risk-snapshot",
             str(tmp_path / "missing-risk.json"),
+            "--input-approval",
+            str(tmp_path / "missing-approval.json"),
             "--connection-session-id",
             "c1-test",
             "--output",

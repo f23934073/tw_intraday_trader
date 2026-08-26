@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import socket
@@ -30,7 +29,13 @@ from runtime.trade_management_premarket import (
     ShadowPremarketReadinessEvaluator,
     ShadowRehearsalEvidence,
 )
+from runtime.trade_management_artifact_io import write_json_digest_pair_exclusive
 from runtime.trade_management_shadow_validation import SHADOW_VALIDATION_VERSION
+from runtime.trade_management_runtime_identity import (
+    RUNTIME_IDENTITY_PATHS,
+    git_head,
+    runtime_code_identity,
+)
 from trading.migrations import migration_files
 
 
@@ -49,18 +54,6 @@ REHEARSAL_TARGETS = tuple(
         )
     )
 )
-RUNTIME_IDENTITY_PATHS = (
-    "config",
-    "market_data",
-    "runtime",
-    "trading",
-    "scripts/preflight_trade_management_shadow.py",
-    "scripts/run_trade_management_shadow_c1.py",
-    "pyproject.toml",
-    "uv.lock",
-)
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--market-date", type=date.fromisoformat, required=True)
@@ -185,13 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         "readiness_report_digest": report.digest,
         "production_shadow_gate": "NOT_PASSED",
     }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open("x", encoding="utf-8") as handle:
-        json.dump(artifact, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
-    digest_path = args.output.with_suffix(args.output.suffix + ".sha256")
-    with digest_path.open("x", encoding="utf-8") as handle:
-        handle.write(report.digest + "\n")
+    write_json_digest_pair_exclusive(args.output, artifact, report.digest)
     print(
         json.dumps(
             {
@@ -482,39 +469,15 @@ def _rehearsal(*, skip: bool) -> ShadowRehearsalEvidence:
 
 
 def _git_head() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=PROJECT_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip()
+    return git_head(PROJECT_ROOT)
 
 
 def _runtime_code_identity() -> str:
-    """Identify the exact runtime source tree, including uncommitted code."""
-
-    digest = hashlib.sha256()
-    files: list[Path] = []
-    for item in RUNTIME_IDENTITY_PATHS:
-        path = PROJECT_ROOT / item
-        if path.is_dir():
-            files.extend(
-                candidate
-                for candidate in path.rglob("*.py")
-                if "__pycache__" not in candidate.parts
-            )
-        elif path.is_file():
-            files.append(path)
-    for path in sorted(set(files), key=lambda item: item.relative_to(PROJECT_ROOT).as_posix()):
-        relative = path.relative_to(PROJECT_ROOT).as_posix().encode()
-        digest.update(len(relative).to_bytes(8, "big"))
-        digest.update(relative)
-        content = path.read_bytes()
-        digest.update(len(content).to_bytes(8, "big"))
-        digest.update(content)
-    return f"git:{_git_head()}:source-sha256:{digest.hexdigest()}"
+    return runtime_code_identity(
+        project_root=PROJECT_ROOT,
+        identity_paths=RUNTIME_IDENTITY_PATHS,
+        git_head_value=_git_head(),
+    )
 
 
 if __name__ == "__main__":

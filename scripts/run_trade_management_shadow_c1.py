@@ -8,8 +8,7 @@ import json
 import os
 import sys
 from dataclasses import replace
-from datetime import datetime, time, timedelta
-from decimal import Decimal
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Mapping
 from zoneinfo import ZoneInfo
@@ -32,17 +31,39 @@ from runtime.trade_management_c1_session import (
     C1SessionStatus,
     TradeManagementC1SessionCoordinator,
 )
+from runtime.trade_management_artifact_io import (
+    require_complete_artifact_pair,
+    write_json_digest_pair_exclusive,
+)
 from runtime.trade_management_live_capture import (
     LiveShadowCaptureConfig,
     LiveShadowProviderIdentity,
 )
-from runtime.trade_management_operational_composition import LiveShadowDecisionPolicy
-from scripts.preflight_trade_management_shadow import _runtime_code_identity
+from runtime.trade_management_premarket import (
+    AUTHORITATIVE_EVIDENCE_TABLES,
+    DataOnlyProviderPreflight,
+    PostgresReadOnlyPreflight,
+    ShadowRehearsalEvidence,
+)
+from runtime.trade_management_input_loading import (
+    parse_risk_snapshot_document,
+    parse_shadow_policy,
+    require_risk_snapshot_capture_window,
+)
+from runtime.trade_management_input_review import (
+    REVIEW_PACKET_VERSION,
+    SOURCE_FILENAMES,
+    canonical_promotion_lock_path,
+    load_digest_bound_json,
+    require_review_packet_path,
+    require_approval_fields,
+    sha256_bytes,
+)
+from runtime.trade_management_runtime_identity import runtime_code_identity
 from trading.live_entry_thesis_draft import (
     LiveThesisDraftPolicy,
     LiveTradeThesisDraftBuilder,
 )
-from trading.risk import CommandSide, RiskPolicy, RiskSnapshot
 from trading.postgres_journal import PostgresJournalRepository
 from trading.trade_management_serialization import (
     deserialize_live_entry_decision,
@@ -52,6 +73,9 @@ from trading.trade_management_serialization import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TAIPEI = ZoneInfo("Asia/Taipei")
+SESSION_INPUTS_ROOT = (
+    PROJECT_ROOT / "research" / "trade_management_shadow" / "session_inputs"
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--thesis-draft", type=Path, required=True)
     parser.add_argument("--shadow-policy", type=Path, required=True)
     parser.add_argument("--risk-snapshot", type=Path, required=True)
+    parser.add_argument("--input-approval", type=Path, required=True)
     parser.add_argument("--connection-session-id", required=True)
     parser.add_argument(
         "--records-root",
@@ -162,22 +187,34 @@ def main(argv: list[str] | None = None) -> int:
         artifact = {
             "artifact_type": "TradeManagementC1SessionEvidence",
             "preflight_artifact": str(args.preflight_artifact.resolve()),
-            "preflight_sha256": _file_sha256(args.preflight_artifact),
+            "preflight_sha256": inputs["preflight_sha256"],
             "entry_decision_artifact": str(args.entry_decision.resolve()),
-            "entry_decision_sha256": _file_sha256(args.entry_decision),
+            "entry_decision_sha256": inputs["source_digests"]["entry_decision"],
             "thesis_draft_artifact": str(args.thesis_draft.resolve()),
-            "thesis_draft_sha256": _file_sha256(args.thesis_draft),
+            "thesis_draft_sha256": inputs["source_digests"]["thesis_draft"],
             "shadow_policy_artifact": str(args.shadow_policy.resolve()),
-            "shadow_policy_sha256": _file_sha256(args.shadow_policy),
+            "shadow_policy_sha256": inputs["source_digests"]["shadow_policy"],
             "risk_snapshot_artifact": str(args.risk_snapshot.resolve()),
-            "risk_snapshot_sha256": _file_sha256(args.risk_snapshot),
+            "risk_snapshot_sha256": inputs["source_digests"]["risk_snapshot"],
+            "input_approval_artifact": str(args.input_approval.resolve()),
+            "input_approval_digest": inputs["input_approval"]["approval_digest"],
+            "review_packet_digest": inputs["input_approval"][
+                "review_packet_digest"
+            ],
+            "approved_attempt_id": inputs["input_approval"]["attempt_id"],
+            "canonical_bundle_artifact": str(
+                (args.input_approval.parent / "bundle_manifest.json").resolve()
+            ),
+            "canonical_bundle_digest": inputs["canonical_bundle"][
+                "bundle_digest"
+            ],
             "session_evidence": evidence.to_dict(),
             "session_evidence_digest": evidence.digest,
             "production_shadow_gate": "NOT_PASSED",
         }
-        _write_exclusive(args.output, artifact)
-        _write_digest_exclusive(
-            args.output.with_suffix(args.output.suffix + ".sha256"),
+        write_json_digest_pair_exclusive(
+            args.output,
+            artifact,
             evidence.digest,
         )
         _print_result(
@@ -204,7 +241,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _load_and_verify_inputs(args, *, now: datetime) -> dict[str, object]:
-    preflight = _read_json(args.preflight_artifact)
+    preflight, preflight_sha256, preflight_sidecar_digest = (
+        _read_preflight_artifact(args.preflight_artifact)
+    )
     manifest = _mapping(preflight.get("manifest"), "manifest")
     report = _mapping(preflight.get("readiness_report"), "readiness_report")
     provider = _mapping(preflight.get("provider_preflight"), "provider_preflight")
@@ -216,19 +255,15 @@ def _load_and_verify_inputs(args, *, now: datetime) -> dict[str, object]:
         raise RuntimeError("C0_MANIFEST_DIGEST_MISMATCH")
     if _canonical_digest(report) != preflight.get("readiness_report_digest"):
         raise RuntimeError("C0_READINESS_DIGEST_MISMATCH")
-    if (
-        report.get("manifest_digest") != preflight.get("manifest_digest")
-        or report.get("provider_preflight_digest") != provider.get("digest")
-        or report.get("postgres_preflight_digest") != postgres.get("digest")
-        or report.get("rehearsal_digest") != rehearsal.get("digest")
-    ):
-        raise RuntimeError("C0_COMPONENT_DIGEST_BINDING_MISMATCH")
-    sidecar = args.preflight_artifact.with_suffix(
-        args.preflight_artifact.suffix + ".sha256"
+    _require_c0_component_digests(
+        provider=provider,
+        postgres=postgres,
+        rehearsal=rehearsal,
+        report=report,
     )
-    if not sidecar.exists() or sidecar.read_text(encoding="utf-8").strip() != preflight.get(
-        "readiness_report_digest"
-    ):
+    if report.get("manifest_digest") != preflight.get("manifest_digest"):
+        raise RuntimeError("C0_COMPONENT_DIGEST_BINDING_MISMATCH")
+    if preflight_sidecar_digest != preflight.get("readiness_report_digest"):
         raise RuntimeError("C0_READINESS_SIDECAR_MISMATCH")
     if (
         manifest.get("execution_authority") is not False
@@ -241,7 +276,8 @@ def _load_and_verify_inputs(args, *, now: datetime) -> dict[str, object]:
         raise RuntimeError("C0_DATA_ONLY_AUTHORITY_MISMATCH")
     if postgres.get("evidence_scope_session_id") != manifest.get("session_id"):
         raise RuntimeError("C0_POSTGRES_SCOPE_MISMATCH")
-    if manifest.get("code_identity") != _runtime_code_identity():
+    current_code_identity = runtime_code_identity()
+    if manifest.get("code_identity") != current_code_identity:
         raise RuntimeError("C0_RUNTIME_CODE_IDENTITY_CHANGED")
 
     calendar = ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH)
@@ -256,6 +292,13 @@ def _load_and_verify_inputs(args, *, now: datetime) -> dict[str, object]:
         raise RuntimeError("C0_REVIEWED_CALENDAR_BINDING_MISMATCH")
     if market_date != now.date():
         raise RuntimeError("C0_MARKET_DATE_IS_NOT_TODAY")
+    _require_canonical_input_paths(args, market_date=market_date)
+    approval, source_contents, canonical_bundle = _load_and_verify_input_approval(
+        args,
+        market_date=market_date,
+        current_code_identity=current_code_identity,
+        observed_at=now,
+    )
     scheduled_open = datetime.fromisoformat(str(manifest["scheduled_open"]))
     earliest_connect = scheduled_open - timedelta(
         seconds=args.preopen_wait_timeout_seconds
@@ -264,10 +307,10 @@ def _load_and_verify_inputs(args, *, now: datetime) -> dict[str, object]:
         raise RuntimeError("C1_MUST_START_INSIDE_PREOPEN_CONNECTION_WINDOW")
 
     decision = deserialize_live_entry_decision(
-        args.entry_decision.read_text(encoding="utf-8")
+        source_contents["entry_decision"].decode("utf-8")
     )
     reviewed_draft = deserialize_trade_thesis_draft(
-        args.thesis_draft.read_text(encoding="utf-8")
+        source_contents["thesis_draft"].decode("utf-8")
     )
     draft_policy = LiveThesisDraftPolicy(
         policy_id=reviewed_draft.expected_behavior.policy_id,
@@ -290,8 +333,8 @@ def _load_and_verify_inputs(args, *, now: datetime) -> dict[str, object]:
         or args.connection_session_id != manifest.get("connection_session_id")
     ):
         raise RuntimeError("ENTRY_DECISION_C0_BINDING_MISMATCH")
-    shadow_policy = _load_shadow_policy(
-        args.shadow_policy,
+    shadow_policy = parse_shadow_policy(
+        source_contents["shadow_policy"],
         code_identity=str(manifest["code_identity"]),
     )
     if (
@@ -300,86 +343,360 @@ def _load_and_verify_inputs(args, *, now: datetime) -> dict[str, object]:
         or shadow_policy.fill_model_version != manifest.get("fill_model_version")
     ):
         raise RuntimeError("SHADOW_POLICY_C0_BINDING_MISMATCH")
+    risk_snapshot, risk_provenance = parse_risk_snapshot_document(
+        source_contents["risk_snapshot"]
+    )
+    require_risk_snapshot_capture_window(
+        risk_provenance,
+        window_start=earliest_connect,
+        window_end=scheduled_open,
+        admitted_at=now,
+    )
+    if (
+        risk_provenance.session_id != manifest.get("session_id")
+        or risk_provenance.symbol != manifest.get("symbol")
+        or risk_provenance.market_date != market_date
+    ):
+        raise RuntimeError("RISK_SNAPSHOT_C0_BINDING_MISMATCH")
+    approval_binding = approval.get("binding")
+    if not isinstance(approval_binding, dict) or (
+        approval_binding.get("session_id") != decision.session_id
+        or approval_binding.get("symbol") != decision.symbol
+        or approval_binding.get("strategy_id") != reviewed_draft.strategy_id
+        or approval_binding.get("strategy_version")
+        != reviewed_draft.strategy_version
+        or approval_binding.get("thesis_version") != reviewed_draft.thesis_version
+        or approval_binding.get("exit_policy_version")
+        != shadow_policy.exit_policy_version
+        or approval_binding.get("risk_policy_version")
+        != shadow_policy.risk_policy.version
+        or approval_binding.get("fill_model_version")
+        != shadow_policy.fill_model_version
+        or approval_binding.get("risk_snapshot_provenance")
+        != risk_provenance.to_dict()
+    ):
+        raise RuntimeError("INPUT_APPROVAL_DOMAIN_BINDING_MISMATCH")
     return {
         "calendar": calendar,
         "manifest": manifest,
         "decision": decision,
         "draft_policy": draft_policy,
         "shadow_policy": shadow_policy,
-        "risk_snapshot": _load_risk_snapshot(args.risk_snapshot),
+        "risk_snapshot": risk_snapshot,
+        "input_approval": approval,
+        "canonical_bundle": canonical_bundle,
+        "preflight_sha256": preflight_sha256,
+        "source_digests": {
+            name: sha256_bytes(content)
+            for name, content in source_contents.items()
+        },
     }
 
 
-def _load_shadow_policy(path: Path, *, code_identity: str) -> LiveShadowDecisionPolicy:
-    value = _read_json(path)
-    risk = _mapping(value.get("risk_policy"), "risk_policy")
-    sides = frozenset(
-        CommandSide(str(item)) for item in risk.get("fresh_book_sides", ())
+def _require_canonical_input_paths(
+    args,
+    *,
+    market_date: date,
+    session_inputs_root: Path = SESSION_INPUTS_ROOT,
+) -> None:
+    canonical_root = session_inputs_root.absolute()
+    promotion_lock = canonical_promotion_lock_path(canonical_root, market_date)
+    if promotion_lock.exists():
+        raise RuntimeError("C1_CANONICAL_PROMOTION_INCOMPLETE")
+    expected_dir = canonical_root / market_date.isoformat()
+    expected = {
+        "entry_decision": expected_dir / "live_entry_decision.json",
+        "thesis_draft": expected_dir / "trade_thesis_draft.json",
+        "shadow_policy": expected_dir / "shadow_policy.json",
+        "risk_snapshot": expected_dir / "risk_snapshot.json",
+        "input_approval": expected_dir / "review_approval.json",
+    }
+    if any(
+        getattr(args, name).absolute() != path
+        for name, path in expected.items()
+    ):
+        raise RuntimeError("C1_CANONICAL_INPUT_PATH_MISMATCH")
+    for path in expected.values():
+        _reject_symlink_components(path, root=canonical_root)
+    _reject_symlink_components(
+        expected_dir / "bundle_manifest.json",
+        root=canonical_root,
     )
-    return LiveShadowDecisionPolicy(
-        exit_policy_version=str(value["exit_policy_version"]),
-        risk_policy=RiskPolicy(
-            version=str(risk["version"]),
-            allow_strategy_origin=_bool(
-                risk["allow_strategy_origin"],
-                "risk_policy.allow_strategy_origin",
-            ),
-            max_order_notional=Decimal(str(risk["max_order_notional"])),
-            max_position_notional=Decimal(str(risk["max_position_notional"])),
-            max_daily_loss=Decimal(str(risk["max_daily_loss"])),
-            max_daily_buy_notional=(
-                None
-                if risk.get("max_daily_buy_notional") is None
-                else Decimal(str(risk["max_daily_buy_notional"]))
-            ),
-            commission_rate=Decimal(str(risk.get("commission_rate", "0"))),
-            minimum_commission=Decimal(str(risk.get("minimum_commission", "0"))),
-            require_fresh_book=_bool(
-                risk.get("require_fresh_book", False),
-                "risk_policy.require_fresh_book",
-            ),
-            max_book_age_seconds=int(risk.get("max_book_age_seconds", 15)),
-            fresh_book_sides=sides or frozenset(CommandSide),
-        ),
-        volume_baseline_shares=Decimal(str(value["volume_baseline_shares"])),
-        shares_per_lot=int(value["shares_per_lot"]),
-        remaining_quantity_shares=int(value["remaining_quantity_shares"]),
-        fill_model_version=str(value["fill_model_version"]),
+
+
+def _load_and_verify_input_approval(
+    args,
+    *,
+    market_date: date,
+    current_code_identity: str | None = None,
+    observed_at: datetime | None = None,
+) -> tuple[dict[str, object], dict[str, bytes], dict[str, object]]:
+    approval = load_digest_bound_json(
+        args.input_approval,
+        digest_field="approval_digest",
+    )
+    require_approval_fields(approval, observed_at=observed_at)
+    code_identity = current_code_identity or runtime_code_identity()
+    if (
+        approval.get("market_date") != market_date.isoformat()
+        or approval.get("runtime_code_identity") != code_identity
+    ):
+        raise RuntimeError("INPUT_APPROVAL_SESSION_BINDING_MISMATCH")
+    approved_sources = approval.get("approved_sources")
+    if not isinstance(approved_sources, dict) or set(approved_sources) != set(
+        SOURCE_FILENAMES
+    ):
+        raise RuntimeError("INPUT_APPROVAL_SOURCE_SET_INVALID")
+    _verify_review_packet_reference(
+        approval,
+        approved_sources=approved_sources,
+        market_date=market_date,
         code_identity=code_identity,
     )
+    source_contents = {
+        name: getattr(args, name).read_bytes() for name in SOURCE_FILENAMES
+    }
+    for name, filename in SOURCE_FILENAMES.items():
+        item = approved_sources[name]
+        if (
+            not isinstance(item, dict)
+            or item.get("filename") != filename
+            or item.get("sha256") != sha256_bytes(source_contents[name])
+        ):
+            raise RuntimeError("INPUT_APPROVAL_CANONICAL_DIGEST_MISMATCH")
+    bundle_path = args.input_approval.parent / "bundle_manifest.json"
+    bundle = load_digest_bound_json(bundle_path, digest_field="bundle_digest")
+    if (
+        bundle.get("artifact_type")
+        != "TradeManagementShadowCanonicalInputBundle"
+        or bundle.get("version")
+        != "trade-management-shadow-canonical-input-bundle-v1"
+        or bundle.get("market_date") != market_date.isoformat()
+        or bundle.get("attempt_id") != approval.get("attempt_id")
+        or bundle.get("approval_digest") != approval.get("approval_digest")
+        or bundle.get("review_packet_digest")
+        != approval.get("review_packet_digest")
+        or bundle.get("runtime_code_identity") != code_identity
+        or bundle.get("execution_authority") is not False
+        or bundle.get("execution_enabled") is not False
+        or bundle.get("evidence_only") is not True
+        or bundle.get("production_shadow_gate") != "NOT_PASSED"
+    ):
+        raise RuntimeError("CANONICAL_INPUT_BUNDLE_INVALID")
+    expected_digests = {
+        name: approved_sources[name]["sha256"] for name in SOURCE_FILENAMES
+    }
+    if bundle.get("file_digests") != expected_digests:
+        raise RuntimeError("CANONICAL_INPUT_BUNDLE_DIGEST_MISMATCH")
+    return approval, source_contents, bundle
 
 
-def _load_risk_snapshot(path: Path) -> RiskSnapshot:
-    value = _read_json(path)
-    return RiskSnapshot(
-        data_health_state=str(value["data_health_state"]),
-        market_open=_bool(value["market_open"], "market_open"),
-        instrument_tradable=_bool(
-            value["instrument_tradable"],
-            "instrument_tradable",
+def _require_c0_component_digests(
+    *,
+    provider: Mapping[str, object],
+    postgres: Mapping[str, object],
+    rehearsal: Mapping[str, object],
+    report: Mapping[str, object],
+) -> None:
+    provider_value = DataOnlyProviderPreflight(
+        credential_keys_present=_string_tuple(
+            provider.get("credential_keys_present"),
+            "provider_preflight.credential_keys_present",
         ),
-        available_cash=Decimal(str(value["available_cash"])),
-        current_position_shares=int(value["current_position_shares"]),
-        pending_buy_shares=int(value["pending_buy_shares"]),
-        pending_sell_shares=int(value["pending_sell_shares"]),
-        daily_realized_pnl=Decimal(str(value["daily_realized_pnl"])),
-        daily_filled_buy_notional=Decimal(
-            str(value.get("daily_filled_buy_notional", "0"))
+        login_succeeded=_json_bool(
+            provider.get("login_succeeded"),
+            "provider_preflight.login_succeeded",
         ),
-        pending_buy_notional=Decimal(str(value.get("pending_buy_notional", "0"))),
-        same_side_pending_order=_bool(
-            value.get("same_side_pending_order", False),
-            "same_side_pending_order",
+        logout_succeeded=_json_bool(
+            provider.get("logout_succeeded"),
+            "provider_preflight.logout_succeeded",
         ),
-        book_age_seconds=(
-            None
-            if value.get("book_age_seconds") is None
-            else int(value["book_age_seconds"])
+        subscribe_trade=_json_bool(
+            provider.get("subscribe_trade"),
+            "provider_preflight.subscribe_trade",
         ),
-        daily_loss=(
-            None if value.get("daily_loss") is None else Decimal(str(value["daily_loss"]))
+        environment_identity=_optional_string(
+            provider.get("environment_identity"),
+            "provider_preflight.environment_identity",
+        ),
+        error_code=_optional_string(
+            provider.get("error_code"),
+            "provider_preflight.error_code",
         ),
     )
+    row_counts = _mapping(
+        postgres.get("evidence_row_counts"),
+        "postgres_preflight.evidence_row_counts",
+    )
+    if set(row_counts) != set(AUTHORITATIVE_EVIDENCE_TABLES):
+        raise RuntimeError("C0_COMPONENT_DIGEST_MISMATCH")
+    postgres_value = PostgresReadOnlyPreflight(
+        dsn_configured=_json_bool(
+            postgres.get("dsn_configured"),
+            "postgres_preflight.dsn_configured",
+        ),
+        driver_version=_optional_string(
+            postgres.get("driver_version"),
+            "postgres_preflight.driver_version",
+        ),
+        connected=_json_bool(
+            postgres.get("connected"),
+            "postgres_preflight.connected",
+        ),
+        transaction_read_only=_json_bool(
+            postgres.get("transaction_read_only"),
+            "postgres_preflight.transaction_read_only",
+        ),
+        server_major=_optional_json_int(
+            postgres.get("server_major"),
+            "postgres_preflight.server_major",
+        ),
+        table_names=_string_tuple(
+            postgres.get("table_names"),
+            "postgres_preflight.table_names",
+        ),
+        migration_versions=_string_tuple(
+            postgres.get("migration_versions"),
+            "postgres_preflight.migration_versions",
+        ),
+        evidence_row_counts=tuple(
+            (
+                table,
+                _json_int(
+                    row_counts[table],
+                    f"postgres_preflight.evidence_row_counts.{table}",
+                ),
+            )
+            for table in AUTHORITATIVE_EVIDENCE_TABLES
+        ),
+        evidence_scope_session_id=_json_string(
+            postgres.get("evidence_scope_session_id"),
+            "postgres_preflight.evidence_scope_session_id",
+        ),
+        error_code=_optional_string(
+            postgres.get("error_code"),
+            "postgres_preflight.error_code",
+        ),
+    )
+    if rehearsal.get("source_class") != "TEST_FIXTURE_AND_HISTORICAL_REPLAY":
+        raise RuntimeError("C0_COMPONENT_DIGEST_MISMATCH")
+    rehearsal_value = ShadowRehearsalEvidence(
+        test_targets=_string_tuple(
+            rehearsal.get("test_targets"),
+            "rehearsal.test_targets",
+        ),
+        historical_replay_verified=_json_bool(
+            rehearsal.get("historical_replay_verified"),
+            "rehearsal.historical_replay_verified",
+        ),
+        operational_composition_verified=_json_bool(
+            rehearsal.get("operational_composition_verified"),
+            "rehearsal.operational_composition_verified",
+        ),
+        journal_recovery_verified=_json_bool(
+            rehearsal.get("journal_recovery_verified"),
+            "rehearsal.journal_recovery_verified",
+        ),
+        replay_parity_matched=_json_bool(
+            rehearsal.get("replay_parity_matched"),
+            "rehearsal.replay_parity_matched",
+        ),
+        readiness_report_deterministic=_json_bool(
+            rehearsal.get("readiness_report_deterministic"),
+            "rehearsal.readiness_report_deterministic",
+        ),
+        execution_enabled=_json_bool(
+            rehearsal.get("execution_enabled"),
+            "rehearsal.execution_enabled",
+        ),
+        qualifying_real_session=_json_bool(
+            rehearsal.get("qualifying_real_session"),
+            "rehearsal.qualifying_real_session",
+        ),
+    )
+    computed = (
+        provider_value.digest,
+        postgres_value.digest,
+        rehearsal_value.digest,
+    )
+    claimed = (
+        provider.get("digest"),
+        postgres.get("digest"),
+        rehearsal.get("digest"),
+    )
+    bound = (
+        report.get("provider_preflight_digest"),
+        report.get("postgres_preflight_digest"),
+        report.get("rehearsal_digest"),
+    )
+    if claimed != computed or bound != computed:
+        raise RuntimeError("C0_COMPONENT_DIGEST_MISMATCH")
+
+
+def _verify_review_packet_reference(
+    approval: dict[str, object],
+    *,
+    approved_sources: dict[str, object],
+    market_date: date,
+    code_identity: str,
+) -> None:
+    packet_path = Path(str(approval.get("review_packet_path", "")))
+    require_review_packet_path(
+        packet_path,
+        project_root=PROJECT_ROOT,
+        market_date=market_date,
+        attempt_id=str(approval.get("attempt_id", "")),
+    )
+    packet = load_digest_bound_json(packet_path, digest_field="packet_digest")
+    if (
+        packet.get("artifact_type")
+        != "TradeManagementShadowInputReviewPacket"
+        or packet.get("version") != REVIEW_PACKET_VERSION
+        or packet.get("status") != "PENDING_REVIEW"
+        or packet.get("candidate_valid") is not True
+        or packet.get("blockers") != []
+        or packet.get("reviewed") is not False
+        or packet.get("formal_c1_eligible") is not False
+        or packet.get("market_date") != market_date.isoformat()
+        or packet.get("attempt_id") != approval.get("attempt_id")
+        or packet.get("runtime_code_identity") != code_identity
+        or packet.get("packet_digest") != approval.get("review_packet_digest")
+        or packet.get("binding") != approval.get("binding")
+        or packet.get("execution_authority") is not False
+        or packet.get("execution_enabled") is not False
+        or packet.get("evidence_only") is not True
+        or packet.get("production_shadow_gate") != "NOT_PASSED"
+    ):
+        raise RuntimeError("INPUT_APPROVAL_REVIEW_PACKET_MISMATCH")
+    packet_sources = packet.get("candidate_sources")
+    if not isinstance(packet_sources, dict) or set(packet_sources) != set(
+        SOURCE_FILENAMES
+    ):
+        raise RuntimeError("INPUT_APPROVAL_REVIEW_PACKET_SOURCE_SET_INVALID")
+    for name, filename in SOURCE_FILENAMES.items():
+        packet_source = packet_sources[name]
+        approved_source = approved_sources[name]
+        if (
+            not isinstance(packet_source, dict)
+            or not isinstance(approved_source, dict)
+            or approved_source.get("filename") != filename
+            or approved_source.get("sha256") != packet_source.get("sha256")
+        ):
+            raise RuntimeError("INPUT_APPROVAL_REVIEW_PACKET_DIGEST_MISMATCH")
+
+
+def _reject_symlink_components(path: Path, *, root: Path) -> None:
+    try:
+        relative = path.relative_to(root)
+    except ValueError as error:
+        raise RuntimeError("C1_CANONICAL_INPUT_PATH_MISMATCH") from error
+    cursor = root
+    if cursor.is_symlink():
+        raise RuntimeError("C1_CANONICAL_INPUT_SYMLINK_REJECTED")
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise RuntimeError("C1_CANONICAL_INPUT_SYMLINK_REJECTED")
 
 
 def _journal_dsns() -> tuple[str, str]:
@@ -421,11 +738,19 @@ def _postgres_journal(
         raise
 
 
-def _read_json(path: Path) -> dict[str, object]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+def _read_preflight_artifact(
+    path: Path,
+) -> tuple[dict[str, object], str, str]:
+    sidecar = require_complete_artifact_pair(path)
+    content = path.read_bytes()
+    value = json.loads(content)
     if not isinstance(value, dict):
         raise ValueError(f"{path} must contain one JSON object")
-    return value
+    return (
+        value,
+        sha256_bytes(content),
+        sidecar.read_text(encoding="utf-8").strip(),
+    )
 
 
 def _mapping(value: object, field_name: str) -> Mapping[str, object]:
@@ -434,10 +759,42 @@ def _mapping(value: object, field_name: str) -> Mapping[str, object]:
     return value
 
 
-def _bool(value: object, field_name: str) -> bool:
+def _json_bool(value: object, field_name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{field_name} must be a JSON boolean")
     return value
+
+
+def _json_int(value: object, field_name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a JSON integer")
+    return value
+
+
+def _optional_json_int(value: object, field_name: str) -> int | None:
+    if value is None:
+        return None
+    return _json_int(value, field_name)
+
+
+def _json_string(value: object, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a JSON string")
+    return value
+
+
+def _optional_string(value: object, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _json_string(value, field_name)
+
+
+def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) for item in value
+    ):
+        raise ValueError(f"{field_name} must be an array of strings")
+    return tuple(value)
 
 
 def _canonical_digest(value: object) -> str:
@@ -449,22 +806,6 @@ def _canonical_digest(value: object) -> str:
             separators=(",", ":"),
         ).encode()
     ).hexdigest()
-
-
-def _file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _write_exclusive(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x", encoding="utf-8") as handle:
-        json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
-
-
-def _write_digest_exclusive(path: Path, digest: str) -> None:
-    with path.open("x", encoding="utf-8") as handle:
-        handle.write(digest + "\n")
 
 
 def _print_result(
