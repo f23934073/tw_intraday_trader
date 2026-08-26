@@ -1,0 +1,98 @@
+{
+  "activation": {
+    "acquisition_lock_required": true,
+    "activation_rule": "SEPARATE_EXPLICIT_SCAN_AUTHORIZATION_REQUIRED",
+    "exact_config_digest_required_before_provider_build": true,
+    "exact_target_order_required": true,
+    "historical_kbar_requests_allowed": false
+  },
+  "artifact_id": "price-coverage-scan-configuration-v2-2026-08-26-r3",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "execution_lock": {
+    "dataset_materialization_allowed": false,
+    "formal_coverage_audit_allowed": false,
+    "holdout_allowed": false,
+    "order_submission_allowed": false,
+    "outcome_generation_allowed": false,
+    "population_freeze_allowed": false,
+    "trade_subscription_allowed": false
+  },
+  "job": {
+    "checkpointed_partition_count": 0,
+    "job_id": "dataset-download-r3-e9981217a1d36c213e121db3ebaa26e7",
+    "job_kind": "DATASET_DOWNLOAD",
+    "request_canonical_sha256": "f04d7e78ba5c79390bf471c53741efbadf061aafd89abe5682654a9594047256",
+    "requested_end_date": "2026-08-18",
+    "requested_start_date": "2023-08-19",
+    "retry_symbol": null,
+    "start_target_index": 0,
+    "state_at_registration": "QUEUED",
+    "target_count": 2781,
+    "universe_selection": "ALL_CURRENT_CONTRACT_CATALOG_V1"
+  },
+  "lineage": {
+    "inherited_checkpoint_count": 0,
+    "inherited_observation_count": 0,
+    "mode": "FRESH_RESTART_NO_CHECKPOINT_INHERITANCE",
+    "predecessor_configuration": {
+      "artifact_id": "price-coverage-scan-configuration-v1-2026-08-21-r2",
+      "canonical_sha256": "d60502f51897bdf4492717ec49f07b52b09c5f7f60b8c5764d10b4295dc22797"
+    },
+    "predecessor_disposition": "ABANDONED_DURABLE_JOB_UNRECOVERABLE",
+    "summary_merge_with_old_lineage_allowed": false
+  },
+  "provider_environment": {
+    "adapter_class": "market_data.provider.ShioajiProvider",
+    "credential_values_stored": false,
+    "historical_query": "Shioaji.kbars",
+    "provider": "shioaji",
+    "sdk_package": "shioaji",
+    "sdk_version": "1.7.2",
+    "simulation": true,
+    "subscribe_trade": false
+  },
+  "registered_at": "2026-08-26T09:14:41.094249+08:00",
+  "schema_version": "price_coverage_scan_configuration_v2",
+  "scope": {
+    "outcome_fields_read": false,
+    "price_values_read": false,
+    "purpose": "FRESH_PRICE_COVERAGE_JOB_INITIALIZATION_ONLY",
+    "research_eligible": false
+  },
+  "source_snapshot": {
+    "files": [
+      {
+        "content_sha256": "33c8619a686f6dbda9568d653139f03acf44059eb598938e03198070a161d574",
+        "git_blob_oid": "9fb3e0bda7a4aefea688174187f0f576f0ad627b",
+        "path": "market_data/provider.py"
+      },
+      {
+        "content_sha256": "e194610613f9094e8d610a5ccd2f0843ef6ff59dffeaa803e7cfe3913fc7f036",
+        "git_blob_oid": "a796789133108670d36a34663308c5b062be34c7",
+        "path": "backtest/historical_download.py"
+      },
+      {
+        "content_sha256": "5950bd1d5117f85c2412a316ab46fe83a2f9579a729b82baff4642d885fce675",
+        "git_blob_oid": "2a5c4b03e9babf6733699c8875159a4346c934d2",
+        "path": "scripts/download_backtest_history.py"
+      }
+    ],
+    "git_object_format": "sha1",
+    "pinned_source_paths_clean": true,
+    "repository_commit": "3ff0182c2024fb5419b7ed4f5c5cce8df5ef4813",
+    "repository_tree_oid": "7d8d85b366d90ec77f4f4af32c0887d3f59a5d32",
+    "repository_worktree_clean": false
+  },
+  "status": "FROZEN_JOB_CREATED_SCAN_NOT_AUTHORIZED",
+  "target_order": {
+    "manifest_artifact_id": "price-coverage-target-order-v1-2026-08-26-r3",
+    "manifest_canonical_sha256": "61dc598c47e3168f67c36862606d12b3bad2fce709e58d1a7543e663c0453827",
+    "projection_fields": [
+      "target_index",
+      "symbol",
+      "name",
+      "market"
+    ],
+    "target_order_canonical_sha256": "470032790f69f25a98a61d13686598776dcc1d8819379427113ebcc44305331e"
+  }
+}

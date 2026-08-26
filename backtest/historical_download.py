@@ -98,8 +98,33 @@ class ResumableHistoricalDownloader:
 
     def run(self, job_id: str) -> dict[str, object]:
         job = self._repository.get_job(job_id)
-        if job["kind"] != self.JOB_KIND:
-            raise ValueError(f"{job_id} 不是可續傳的歷史下載工作")
+        assert_generic_history_resume_allowed(job)
+        return self._run_verified_job(job, activation_digest=None)
+
+    def run_price_coverage_scan(
+        self,
+        job_id: str,
+        *,
+        activation_digest: str,
+    ) -> dict[str, object]:
+        """Run the dedicated raw coverage scan without materializing a Dataset."""
+
+        if not self._coverage_scan_mode:
+            raise ValueError("dedicated price coverage scan mode is required")
+        job = self._repository.get_job(job_id)
+        assert_price_coverage_scan_resume_allowed(
+            job,
+            activation_digest=activation_digest,
+        )
+        return self._run_verified_job(job, activation_digest=activation_digest)
+
+    def _run_verified_job(
+        self,
+        job: Mapping[str, object],
+        *,
+        activation_digest: str | None,
+    ) -> dict[str, object]:
+        job_id = str(job["job_id"])
         request = job["request"]
         expected_provider = str(request["provider"])
         current_provider = type(self._provider).__name__
@@ -107,8 +132,19 @@ class ResumableHistoricalDownloader:
             raise ValueError(
                 f"下載工作使用 {expected_provider} 建立，不能改用 {current_provider} 接續"
             )
-        if job["status"] == "COMPLETED" and job.get("resource_id"):
+        if activation_digest is not None and job["status"] == "SCAN_COMPLETE":
+            return _price_coverage_scan_summary(
+                job=job,
+                partitions=self._repository.list_history_partitions(job_id),
+                activation_digest=activation_digest,
+            )
+        if activation_digest is None and job["status"] == "COMPLETED" and job.get("resource_id"):
             return self._catalog.get_manifest(str(job["resource_id"])).to_dict()
+
+        def progress_message(message: str) -> str:
+            if activation_digest is None:
+                return message
+            return f"[PRICE_COVERAGE_ACTIVATION={activation_digest}] {message}"
 
         instruments = tuple(
             HistoricalInstrument.from_dict(value)
@@ -117,9 +153,16 @@ class ResumableHistoricalDownloader:
         start = date.fromisoformat(str(request["start_date"]))
         end = date.fromisoformat(str(request["end_date"]))
         retry_symbol = _retry_symbol_from_job(job, instruments)
+        checkpoint_partitions = self._repository.list_history_partitions(job_id)
+        if activation_digest is not None:
+            _validate_price_coverage_partitions(
+                instruments=instruments,
+                partitions=checkpoint_partitions,
+                require_complete=False,
+            )
         completed, retry_from = _resume_state(
             instruments,
-            self._repository.list_history_partitions(job_id),
+            checkpoint_partitions,
             retry_symbol=retry_symbol,
         )
         resume_message = f"從資料庫接續；已完成 {len(completed)}/{len(instruments)} 檔"
@@ -129,7 +172,7 @@ class ResumableHistoricalDownloader:
             job_id,
             status="RUNNING",
             progress=len(completed) / len(instruments),
-            progress_message=resume_message,
+            progress_message=progress_message(resume_message),
             error_message=None,
         )
         self._report(resume_message)
@@ -143,7 +186,7 @@ class ResumableHistoricalDownloader:
                     job_id,
                     status="RUNNING",
                     progress=len(completed) / len(instruments),
-                    progress_message=(
+                    progress_message=progress_message(
                         f"{_CURRENT_SYMBOL_PREFIX}{current_symbol}] "
                         f"正在下載；已確認 {len(completed)}/{len(instruments)} 檔"
                     ),
@@ -190,13 +233,37 @@ class ResumableHistoricalDownloader:
                     job_id,
                     status="RUNNING",
                     progress=len(completed) / len(instruments),
-                    progress_message=message,
+                    progress_message=progress_message(message),
                     error_message=None,
                 )
                 self._report(message)
                 current_symbol = None
 
             partitions = self._repository.list_history_partitions(job_id)
+            if activation_digest is not None:
+                _validate_price_coverage_partitions(
+                    instruments=instruments,
+                    partitions=partitions,
+                    require_complete=True,
+                )
+                summary = _price_coverage_scan_summary(
+                    job=job,
+                    partitions=partitions,
+                    activation_digest=activation_digest,
+                )
+                completion_message = (
+                    "raw coverage scan complete; Dataset materialization remains disabled"
+                )
+                self._repository.update_job(
+                    job_id,
+                    status="SCAN_COMPLETE",
+                    resource_id=None,
+                    progress=1.0,
+                    progress_message=progress_message(completion_message),
+                    error_message=None,
+                )
+                self._report(completion_message)
+                return summary
             bar_count = sum(int(item["bar_count"]) for item in partitions)
             if bar_count == 0:
                 raise ValueError("資料來源未回傳任何歷史 Kbar")
@@ -222,7 +289,9 @@ class ResumableHistoricalDownloader:
                 status="COMPLETED",
                 resource_id=manifest.dataset_id,
                 progress=1.0,
-                progress_message=f"歷史資料集已封存：{manifest.dataset_id}",
+                progress_message=progress_message(
+                    f"歷史資料集已封存：{manifest.dataset_id}"
+                ),
                 error_message=None,
             )
             self._report(
@@ -236,7 +305,9 @@ class ResumableHistoricalDownloader:
                 job_id,
                 status="PAUSED",
                 progress=len(completed) / len(instruments),
-                progress_message=f"已暫停；資料庫已保存 {len(completed)}/{len(instruments)} 檔",
+                progress_message=progress_message(
+                    f"已暫停；資料庫已保存 {len(completed)}/{len(instruments)} 檔"
+                ),
                 error_message=_retry_error(pending_symbol, "使用者中斷"),
             )
             raise
@@ -247,7 +318,7 @@ class ResumableHistoricalDownloader:
                 job_id,
                 status="PAUSED",
                 progress=len(completed) / len(instruments),
-                progress_message=(
+                progress_message=progress_message(
                     "已暫停：Provider rate limit；"
                     f"已確認 {len(completed)}/{len(instruments)} 檔"
                 ),
@@ -261,7 +332,7 @@ class ResumableHistoricalDownloader:
                 job_id,
                 status="PAUSED",
                 progress=len(completed) / len(instruments),
-                progress_message=(
+                progress_message=progress_message(
                     "已暫停：Provider 暫時不可用／額度／空回應保護；"
                     f"已確認 {len(completed)}/{len(instruments)} 檔"
                 ),
@@ -276,7 +347,9 @@ class ResumableHistoricalDownloader:
                 job_id,
                 status="FAILED",
                 progress=len(completed) / len(instruments),
-                progress_message=f"下載失敗；可用同一 job id 接續（已保存 {len(completed)} 檔）",
+                progress_message=progress_message(
+                    f"下載失敗；可用同一 job id 接續（已保存 {len(completed)} 檔）"
+                ),
                 error_message=_retry_error(pending_symbol, str(error)),
             )
             raise
@@ -284,6 +357,119 @@ class ResumableHistoricalDownloader:
     def _decoded_partitions(self, job_id: str) -> Iterator[tuple[HistoricalBar, ...]]:
         for partition in self._repository.iter_history_partition_payloads(job_id):
             yield _decode_partition(partition)
+
+
+def assert_generic_history_resume_allowed(job: Mapping[str, object]) -> None:
+    """Keep prepared research lineages out of the generic Kbar runner."""
+
+    job_id = str(job.get("job_id") or "<unknown>")
+    request = job.get("request")
+    if isinstance(request, Mapping) and request.get("lineage_mode") == (
+        "FRESH_R3_NO_CHECKPOINT_REUSE"
+    ):
+        raise ValueError(
+            f"{job_id} 是鎖定的 price-coverage lineage；通用歷史下載不可啟動"
+        )
+    if job.get("kind") != ResumableHistoricalDownloader.JOB_KIND:
+        raise ValueError(f"{job_id} 不是可續傳的歷史下載工作")
+
+
+def assert_price_coverage_scan_resume_allowed(
+    job: Mapping[str, object],
+    *,
+    activation_digest: str,
+) -> None:
+    """Require one exact dedicated activation binding on every scan resume."""
+
+    if len(activation_digest) != 64 or any(
+        character not in "0123456789abcdef" for character in activation_digest
+    ):
+        raise ValueError("price coverage activation digest must be lowercase SHA-256")
+    job_id = str(job.get("job_id") or "<unknown>")
+    request = job.get("request")
+    if not isinstance(request, Mapping) or (
+        request.get("lineage_mode") != "FRESH_R3_NO_CHECKPOINT_REUSE"
+        or request.get("coverage_scan_mode") is not True
+    ):
+        raise ValueError(f"{job_id} 不是 fresh-r3 coverage scan request")
+    if job.get("kind") != "PRICE_COVERAGE_SCAN":
+        raise ValueError(f"{job_id} 尚未切換至專用 price coverage scan kind")
+    if job.get("status") not in {"QUEUED", "RUNNING", "PAUSED", "SCAN_COMPLETE"}:
+        raise ValueError(f"{job_id} 的 price coverage scan 狀態不可接續")
+    marker = f"[PRICE_COVERAGE_ACTIVATION={activation_digest}]"
+    if not str(job.get("progress_message") or "").startswith(marker):
+        raise ValueError(f"{job_id} 未綁定指定的 price coverage activation evidence")
+
+
+def _price_coverage_scan_summary(
+    *,
+    job: Mapping[str, object],
+    partitions: Iterable[Mapping[str, object]],
+    activation_digest: str,
+) -> dict[str, object]:
+    rows = tuple(partitions)
+    counts = {
+        "NON_EMPTY_SUCCESS": 0,
+        "PRICE_DATA_UNAVAILABLE": 0,
+        "TEMPORARY_FETCH_FAILURE": 0,
+        "SYMBOL_MAPPING_ERROR": 0,
+        "UNKNOWN": 0,
+    }
+    for row in rows:
+        error = str(row.get("error_message") or "")
+        if int(row.get("bar_count") or 0) > 0 and not error:
+            counts["NON_EMPTY_SUCCESS"] += 1
+        elif error.startswith(_PRICE_DATA_UNAVAILABLE):
+            counts["PRICE_DATA_UNAVAILABLE"] += 1
+        elif error.startswith(_TEMPORARY_FETCH_FAILURE):
+            counts["TEMPORARY_FETCH_FAILURE"] += 1
+        elif error.startswith(_SYMBOL_MAPPING_ERROR):
+            counts["SYMBOL_MAPPING_ERROR"] += 1
+        else:
+            counts["UNKNOWN"] += 1
+    request = job["request"]
+    return {
+        "schema_version": "price_coverage_raw_scan_completion_v1",
+        "job_id": job["job_id"],
+        "status": "SCAN_COMPLETE",
+        "activation_digest": activation_digest,
+        "target_count": len(request["instruments"]),
+        "partition_count": len(rows),
+        "observation_counts": counts,
+        "dataset_materialized": False,
+        "resource_id": None,
+        "formal_coverage_audit_allowed": False,
+        "outcome_generation_allowed": False,
+    }
+
+
+def _validate_price_coverage_partitions(
+    *,
+    instruments: tuple[HistoricalInstrument, ...],
+    partitions: Iterable[Mapping[str, object]],
+    require_complete: bool,
+) -> None:
+    expected = {instrument.symbol: instrument for instrument in instruments}
+    rows = tuple(partitions)
+    observed: set[str] = set()
+    for row in rows:
+        symbol = str(row.get("symbol") or "")
+        if symbol in observed or symbol not in expected:
+            raise ValueError("price coverage checkpoint symbol set drifted")
+        observed.add(symbol)
+        instrument = expected[symbol]
+        if row.get("name") != instrument.name or row.get("market") != instrument.market:
+            raise ValueError(f"price coverage checkpoint identity drifted: {symbol}")
+        bar_count = int(row.get("bar_count") or 0)
+        error = str(row.get("error_message") or "")
+        if bar_count < 0 or (bar_count > 0 and error):
+            raise ValueError(f"price coverage checkpoint semantics drifted: {symbol}")
+        if bar_count == 0 and not error.startswith(
+            (_PRICE_DATA_UNAVAILABLE, _TEMPORARY_FETCH_FAILURE, _SYMBOL_MAPPING_ERROR)
+        ):
+            raise ValueError(f"price coverage empty checkpoint is unclassified: {symbol}")
+    if require_complete and observed != set(expected):
+        raise ValueError("price coverage scan cannot complete with missing checkpoints")
 
 
 class IncrementalHistoricalSync:

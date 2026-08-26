@@ -1,0 +1,161 @@
+{
+  "activation": {
+    "activation_rule": "NEW_REVIEWED_REVISION_AND_OWNER_AUTHORIZATION_REQUIRED",
+    "dedicated_activation_runner_available": false,
+    "generic_resume_allowed": false,
+    "historical_kbar_requests_allowed": false,
+    "scan_authorized": false
+  },
+  "artifact_id": "price-coverage-scan-configuration-v2-2026-08-26-r3-rev2",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "execution_lock": {
+    "dataset_materialization_allowed": false,
+    "formal_coverage_audit_allowed": false,
+    "holdout_allowed": false,
+    "order_submission_allowed": false,
+    "outcome_generation_allowed": false,
+    "population_freeze_allowed": false,
+    "trade_subscription_allowed": false
+  },
+  "initial_registration_evidence_limits": {
+    "acquisition_lock_evidence": "NOT_RECORDED",
+    "initializer_git_reconstruction": "NOT_AVAILABLE",
+    "symlink_safe_publication_evidence": "NOT_ESTABLISHED_RETROACTIVELY"
+  },
+  "job_metadata_snapshot": {
+    "created_at": "2026-08-26T09:14:41.094249+08:00",
+    "database_authority": "POSTGRESQL_BACKTEST_SCHEMA_METADATA_ONLY",
+    "error_message": null,
+    "job_id": "dataset-download-r3-e9981217a1d36c213e121db3ebaa26e7",
+    "job_kind": "PRICE_COVERAGE_PREPARED",
+    "partition_count": 0,
+    "progress": 0.0,
+    "progress_message": "Fresh r3 prepared; generic Kbar resume prohibited; dedicated activation required",
+    "resource_id": null,
+    "retry_symbol": null,
+    "status": "PREPARED",
+    "target_count": 2781,
+    "target_dataset_count": 0,
+    "target_dataset_id": "dataset-r3-e9981217a1d36c213e121db3ebaa26e7",
+    "updated_at": "2026-08-26 01:30:53.833323+00"
+  },
+  "lineage": {
+    "inherited_checkpoint_count": 0,
+    "inherited_observation_count": 0,
+    "mode": "FRESH_RESTART_NO_CHECKPOINT_INHERITANCE",
+    "request_canonical_sha256": "f04d7e78ba5c79390bf471c53741efbadf061aafd89abe5682654a9594047256",
+    "summary_merge_with_old_lineage_allowed": false,
+    "target_manifest_artifact_id": "price-coverage-target-order-v1-2026-08-26-r3",
+    "target_manifest_canonical_sha256": "61dc598c47e3168f67c36862606d12b3bad2fce709e58d1a7543e663c0453827",
+    "target_order_canonical_sha256": "470032790f69f25a98a61d13686598776dcc1d8819379427113ebcc44305331e"
+  },
+  "registered_at": "2026-08-26 01:30:53.833323+00",
+  "release_blockers": [
+    "INITIALIZER_SOURCE_NOT_GIT_RECONSTRUCTABLE",
+    "SECURITY_REMEDIATION_SOURCE_NOT_COMMITTED",
+    "DEDICATED_R3_ACTIVATION_RUNNER_NOT_IMPLEMENTED",
+    "ACTIVATION_SOURCE_SNAPSHOT_NOT_FROZEN",
+    "OWNER_SCAN_AUTHORIZATION_NOT_GRANTED"
+  ],
+  "schema_version": "price_coverage_scan_configuration_v2",
+  "scope": {
+    "historical_payload_read": false,
+    "outcome_fields_read": false,
+    "price_values_read": false,
+    "provider_built": false,
+    "purpose": "R3_JOB_SECURITY_QUARANTINE_METADATA_ONLY",
+    "research_eligible": false
+  },
+  "security_remediation": {
+    "claims_initial_execution_used_remediated_code": false,
+    "generic_cli_metadata_preflight_before_provider_present_in_worktree": true,
+    "generic_downloader_kind_rejection": true,
+    "generic_lineage_guard_present_in_worktree": true,
+    "no_follow_locked_artifact_publisher_present_in_worktree": true,
+    "prepared_job_kind_enforced_in_database": true
+  },
+  "source_provenance": {
+    "initializer_at_initial_registration": {
+      "attribution_to_initial_executed_bytes": "NOT_PROVEN",
+      "classification": "POST_HOC_ONLY_NOT_GIT_RECONSTRUCTABLE"
+    },
+    "scan_runtime_at_initial_registration": {
+      "files": [
+        {
+          "content_sha256": "33c8619a686f6dbda9568d653139f03acf44059eb598938e03198070a161d574",
+          "git_blob_oid": "9fb3e0bda7a4aefea688174187f0f576f0ad627b",
+          "path": "market_data/provider.py"
+        },
+        {
+          "content_sha256": "e194610613f9094e8d610a5ccd2f0843ef6ff59dffeaa803e7cfe3913fc7f036",
+          "git_blob_oid": "a796789133108670d36a34663308c5b062be34c7",
+          "path": "backtest/historical_download.py"
+        },
+        {
+          "content_sha256": "5950bd1d5117f85c2412a316ab46fe83a2f9579a729b82baff4642d885fce675",
+          "git_blob_oid": "2a5c4b03e9babf6733699c8875159a4346c934d2",
+          "path": "scripts/download_backtest_history.py"
+        }
+      ],
+      "git_object_format": "sha1",
+      "pinned_source_paths_clean": true,
+      "repository_commit": "3ff0182c2024fb5419b7ed4f5c5cce8df5ef4813",
+      "repository_tree_oid": "7d8d85b366d90ec77f4f4af32c0887d3f59a5d32",
+      "repository_worktree_clean": false
+    },
+    "security_remediation_at_revision": {
+      "classification": "POST_HOC_ONLY_NOT_GIT_RECONSTRUCTABLE",
+      "files": [
+        {
+          "attribution_to_initial_executed_bytes": "NOT_PROVEN",
+          "git_status_at_revision": "?? backtest/price_coverage_initialization.py",
+          "git_tracked_at_revision": false,
+          "path": "backtest/price_coverage_initialization.py",
+          "post_hoc_content_sha256": "8887f9453b932f3b341e35cc801ec0c948beb97321951c52c3fa4a5021c83da8"
+        },
+        {
+          "attribution_to_initial_executed_bytes": "NOT_PROVEN",
+          "git_status_at_revision": "?? scripts/create_price_coverage_r3_job.py",
+          "git_tracked_at_revision": false,
+          "path": "scripts/create_price_coverage_r3_job.py",
+          "post_hoc_content_sha256": "e0e48f366d04915f26f86272a5d6f1507d6da756461a4c0ada67db578bfee4bf"
+        },
+        {
+          "attribution_to_initial_executed_bytes": "NOT_PROVEN",
+          "git_status_at_revision": "?? scripts/quarantine_price_coverage_r3_job.py",
+          "git_tracked_at_revision": false,
+          "path": "scripts/quarantine_price_coverage_r3_job.py",
+          "post_hoc_content_sha256": "daffa7b5dc080dbe9fdfdcfeda56abb3b2d5c91be2c2f3875c3f5e817a40752b"
+        },
+        {
+          "attribution_to_initial_executed_bytes": "NOT_PROVEN",
+          "git_status_at_revision": "?? scripts/register_price_coverage_r3_quarantine.py",
+          "git_tracked_at_revision": false,
+          "path": "scripts/register_price_coverage_r3_quarantine.py",
+          "post_hoc_content_sha256": "857d56ff41bce061ddcc3ed6cd523f99fa5a8bbf09ecd16360d5c07e19a9c78b"
+        },
+        {
+          "attribution_to_initial_executed_bytes": "NOT_PROVEN",
+          "git_status_at_revision": "M backtest/historical_download.py",
+          "git_tracked_at_revision": true,
+          "path": "backtest/historical_download.py",
+          "post_hoc_content_sha256": "aa5159d61cd3d000df68032f1562bcaa228144268c63d106289a082821064a94"
+        },
+        {
+          "attribution_to_initial_executed_bytes": "NOT_PROVEN",
+          "git_status_at_revision": "M scripts/download_backtest_history.py",
+          "git_tracked_at_revision": true,
+          "path": "scripts/download_backtest_history.py",
+          "post_hoc_content_sha256": "9f1a3fadf0ba195b62ea9d82ab045e7ec7464ea256b4bd3db8edc8f30bfb61f6"
+        }
+      ],
+      "reproducible_from_git": false
+    }
+  },
+  "status": "QUARANTINED_PREPARED_JOB_SCAN_NOT_AUTHORIZED",
+  "supersedes_for_activation": {
+    "artifact_id": "price-coverage-scan-configuration-v2-2026-08-26-r3",
+    "canonical_sha256": "a970a91d22501f4ec670d2c3e40e7ac71c9405ce9031c881bb639034f8c29c5b",
+    "disposition": "HISTORICAL_REGISTRATION_EVIDENCE_ONLY_NOT_ACTIVATION_AUTHORITY"
+  }
+}

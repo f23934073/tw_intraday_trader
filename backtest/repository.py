@@ -59,6 +59,15 @@ class BacktestRepository(Protocol):
     def update_job(self, job_id: str, **changes: Any) -> dict[str, Any]:
         ...
 
+    def activate_price_coverage_scan_job(
+        self,
+        job_id: str,
+        *,
+        expected_request_digest: str,
+        activation_digest: str,
+    ) -> tuple[dict[str, Any], bool]:
+        ...
+
     def upsert_dataset(self, manifest: Mapping[str, Any], status: str) -> None:
         ...
 
@@ -390,6 +399,119 @@ class _JsonBacktestRepository:
             self._execute(cursor, "SELECT * FROM backtest_jobs WHERE job_id = ?", (job_id,))
             return self._job_payload(self._row(cursor, cursor.fetchone()))
 
+    def activate_price_coverage_scan_job(
+        self,
+        job_id: str,
+        *,
+        expected_request_digest: str,
+        activation_digest: str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Atomically bind one untouched PREPARED job to reviewed scan evidence."""
+
+        for value, label in (
+            (expected_request_digest, "price coverage request digest"),
+            (activation_digest, "price coverage activation digest"),
+        ):
+            if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+                raise ValueError(f"{label} must be lowercase SHA-256")
+        activation_marker = f"[PRICE_COVERAGE_ACTIVATION={activation_digest}]"
+        with self._transaction() as cursor:
+            self._execute(cursor, "SELECT * FROM backtest_jobs WHERE job_id = ?", (job_id,))
+            raw = cursor.fetchone()
+            if raw is None:
+                raise KeyError(f"找不到背景工作：{job_id}")
+            job = self._job_payload(self._row(cursor, raw))
+            actual_request_digest = hashlib.sha256(
+                canonical_json(job["request"]).encode("utf-8")
+            ).hexdigest()
+            if actual_request_digest != expected_request_digest:
+                raise BacktestIdempotencyConflict(
+                    "price coverage activation request digest conflict"
+                )
+            if job["kind"] == "PRICE_COVERAGE_SCAN":
+                if not str(job.get("progress_message") or "").startswith(
+                    activation_marker
+                ):
+                    raise BacktestIdempotencyConflict(
+                        "price coverage job is bound to different activation evidence"
+                    )
+                return job, True
+            if (
+                job["kind"] != "PRICE_COVERAGE_PREPARED"
+                or job["status"] != "PREPARED"
+                or float(job["progress"]) != 0.0
+                or job.get("resource_id") is not None
+                or job.get("error_message") is not None
+                or job.get("progress_message")
+                != (
+                    "Fresh r3 prepared; generic Kbar resume prohibited; "
+                    "dedicated activation required"
+                )
+            ):
+                raise BacktestIdempotencyConflict(
+                    "price coverage job is not an untouched PREPARED job"
+                )
+            request = job["request"]
+            if (
+                request.get("lineage_mode") != "FRESH_R3_NO_CHECKPOINT_REUSE"
+                or request.get("coverage_scan_mode") is not True
+                or not str(request.get("target_dataset_id") or "")
+            ):
+                raise BacktestIdempotencyConflict(
+                    "price coverage job request is not the dedicated fresh-r3 contract"
+                )
+            self._execute(
+                cursor,
+                "SELECT COUNT(*) AS partition_count FROM backtest_history_partitions WHERE job_id = ?",
+                (job_id,),
+            )
+            partition_count = int(
+                self._row(cursor, cursor.fetchone())["partition_count"]
+            )
+            if partition_count != 0:
+                raise BacktestIdempotencyConflict(
+                    "prepared price coverage job already has history partitions"
+                )
+            self._execute(
+                cursor,
+                "SELECT COUNT(*) AS dataset_count FROM backtest_datasets WHERE dataset_id = ?",
+                (str(request["target_dataset_id"]),),
+            )
+            dataset_count = int(self._row(cursor, cursor.fetchone())["dataset_count"])
+            if dataset_count != 0:
+                raise BacktestIdempotencyConflict(
+                    "prepared price coverage job target Dataset already exists"
+                )
+            message = f"{activation_marker} dedicated raw coverage scan queued"
+            self._execute(
+                cursor,
+                """
+                UPDATE backtest_jobs
+                SET kind = ?, status = 'QUEUED', progress_message = ?, updated_at = ?
+                WHERE job_id = ? AND kind = 'PRICE_COVERAGE_PREPARED'
+                  AND status = 'PREPARED' AND progress = 0
+                  AND resource_id IS NULL AND error_message IS NULL
+                """,
+                ("PRICE_COVERAGE_SCAN", message, _now(), job_id),
+            )
+            if cursor.rowcount != 1:
+                self._execute(
+                    cursor,
+                    "SELECT * FROM backtest_jobs WHERE job_id = ?",
+                    (job_id,),
+                )
+                raced = self._job_payload(self._row(cursor, cursor.fetchone()))
+                if raced["kind"] == "PRICE_COVERAGE_SCAN" and str(
+                    raced.get("progress_message") or ""
+                ).startswith(activation_marker):
+                    return raced, True
+                raise BacktestIdempotencyConflict(
+                    "price coverage activation compare-and-set lost its precondition"
+                )
+            self._execute(cursor, "SELECT * FROM backtest_jobs WHERE job_id = ?", (job_id,))
+            activated = self._job_payload(self._row(cursor, cursor.fetchone()))
+            return activated, False
+
     def upsert_dataset(self, manifest: Mapping[str, Any], status: str) -> None:
         payload = _json(manifest)
         with self._transaction() as cursor:
@@ -452,6 +574,18 @@ class _JsonBacktestRepository:
         """Checkpoint one complete symbol atomically for safe CLI resume."""
 
         with self._transaction() as cursor:
+            self._execute(
+                cursor,
+                "SELECT kind FROM backtest_jobs WHERE job_id = ?",
+                (partition["job_id"],),
+            )
+            raw_job = cursor.fetchone()
+            if raw_job is None:
+                raise KeyError(f"找不到背景工作：{partition['job_id']}")
+            if self._row(cursor, raw_job)["kind"] == "PRICE_COVERAGE_PREPARED":
+                raise ValueError(
+                    "PREPARED price coverage job cannot accept history partitions"
+                )
             self._execute(
                 cursor,
                 """

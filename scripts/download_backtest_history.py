@@ -16,7 +16,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from app import build_provider
 from backtest.application import BacktestApplicationService
 from backtest.dataset import HistoricalDatasetCatalog
-from backtest.historical_download import HistoricalDownloadPaused, ResumableHistoricalDownloader
+from backtest.historical_download import (
+    HistoricalDownloadPaused,
+    ResumableHistoricalDownloader,
+    assert_generic_history_resume_allowed,
+)
 from config import backtest as backtest_settings
 
 
@@ -35,6 +39,16 @@ def _resume_command(job_id: str, *, coverage_scan_mode: bool) -> str:
     if coverage_scan_mode:
         command += " --continue-on-empty-for-coverage-audit"
     return command
+
+
+def _preflight_generic_resume_before_provider(job_id: str) -> None:
+    repository = BacktestApplicationService._build_repository()
+    try:
+        assert_generic_history_resume_allowed(repository.get_job(job_id))
+    finally:
+        close = getattr(repository, "close", None)
+        if callable(close):
+            close()
 
 
 def main() -> None:
@@ -66,6 +80,11 @@ def main() -> None:
         parser.error("--symbol-limit 必須大於 0")
     if args.provider:
         os.environ["PROVIDER"] = args.provider
+    if args.resume:
+        try:
+            _preflight_generic_resume_before_provider(args.resume)
+        except (KeyError, ValueError) as error:
+            parser.error(str(error))
 
     provider = build_provider()
     repository = None
