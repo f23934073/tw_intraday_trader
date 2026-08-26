@@ -265,6 +265,25 @@ Explain why the completed atomic `above_vwap_entry_v1` backtest failed, using it
   and submit a short G4 re-review without entering G5.
 - **Status:** complete / G4 independently approved and Formal Gate passed
 
+### R5.10: Process revision-2 G5 Research Disposition
+
+- [x] Read the accepted immutable G4 result manifest and bind the disposition
+  record to its baseline, Replay, result, and postflight identities.
+- [x] Apply the frozen decision matrix using normalized mean pre-slippage
+  episode return as primary evidence and one-lot economics as secondary
+  evidence.
+- [x] Record `RESEARCH REJECT / HOLD / NOT ELIGIBLE` because the primary metric
+  is non-positive.
+- [x] Prohibit further `above_vwap_entry` parameter tuning on the same Dataset.
+- [x] Confirm no Strategy lifecycle, Local Paper, provider, broker, real-money,
+  or R6 mutation occurred.
+- [x] Clarify that `HOLD / NOT ELIGIBLE` is a Research disposition, not a
+  Strategy lifecycle status.
+- [x] Replace the satisfied accepted-evidence R6 blocker with the current
+  separate-contract-and-authorization boundary.
+- [x] Submit the recorded disposition for independent G5 Review.
+- **Status:** complete / G5 independently approved and Formal Gate passed
+
 ## Gate
 
 This phase passes only when the failure attribution is reproducible from immutable evidence and the next experiment cannot reuse the same evidence as both hypothesis-generation and validation. Passing this phase authorizes research implementation only; it does not authorize Local Paper or broker execution.
@@ -282,8 +301,9 @@ Gate R5 revision 2 G1: APPROVED / FORMAL GATE PASSED
 Gate R5 revision 2 G2: APPROVED / FORMAL GATE PASSED / PROGRESS 50%
 Gate R5 revision 2 G3: APPROVED / FORMAL GATE PASSED / PROGRESS 66.7%
 Gate R5 revision 2 G4: APPROVED / FORMAL GATE PASSED / PROGRESS 83.3%
+Gate R5 revision 2 G5: APPROVED / FORMAL GATE PASSED / PROGRESS 100%
 Gate R6 v1: SUPERSEDED / NOT AUTHORIZED
-Gate R6 revision 2: BLOCKED ON ACCEPTED R5 V2 / NOT AUTHORIZED
+Gate R6 revision 2: BLOCKED ON SEPARATE CONTRACT AND AUTHORIZATION
 ```
 
 ## Errors Encountered

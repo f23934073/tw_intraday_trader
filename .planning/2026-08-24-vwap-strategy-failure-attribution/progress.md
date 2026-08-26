@@ -695,3 +695,41 @@
 - Recorded `G4 APPROVED / FORMAL GATE PASSED`; formal progress is 83.3%.
 - G5, R6, Local Paper, provider, broker, and real-money remain outside this
   G4 closure commit.
+
+## 2026-08-26 R5 revision 2 G5 Research Disposition
+
+- User explicitly authorized G5 Research Disposition after scoped G4 commit
+  `ddbe351`; push and all unrelated shared-worktree files remain excluded.
+- Read the accepted canonical result manifest in place. No Dataset scan,
+  strategy evaluation, Replay rebuild, PostgreSQL mutation, or external call
+  was performed.
+- Applied the frozen decision matrix to mean pre-slippage return
+  `-0.001356902463282666` and recorded
+  `RESEARCH REJECT / HOLD / NOT ELIGIBLE` for the exact
+  `above_vwap_entry` plus session-close exit protocol.
+- Recorded the full immutable identity and secondary metrics in
+  `r5_v2_research_disposition.md`; prohibited same-Dataset parameter tuning and
+  preserved all lifecycle and execution boundaries.
+- **Disposition:** `G5 RESEARCH DISPOSITION RECORDED / FORMAL REVIEW REQUIRED`;
+  formal progress remains 83.3%. R6, Local Paper, provider, broker, and
+  real-money remain unauthorized.
+
+## 2026-08-26 R5 revision 2 G5 Review remediation
+
+- Corrected the disposition record so `HOLD / NOT ELIGIBLE` cannot be mistaken
+  for a `StrategyLifecycleStatus`; no lifecycle mutation occurred.
+- Updated the remaining stale R6 blocker to the separate contract and explicit
+  authorization boundary.
+- **Disposition:** `G5 REMEDIATION COMPLETE / FORMAL RE-REVIEW REQUIRED`;
+  formal progress remains 83.3%. No product code, Replay evidence, lifecycle,
+  R6, Local Paper, provider, broker, or real-money operation changed.
+
+## 2026-08-26 R5 revision 2 G5 approval
+
+- Independent re-review closed both P2 wording findings with no new finding.
+- Recorded `G5 APPROVED / FORMAL GATE PASSED`; R5 revision 2 formal progress is
+  100%.
+- Research disposition remains `RESEARCH REJECT / HOLD / NOT ELIGIBLE`; no
+  Strategy lifecycle mutation or execution authorization was added.
+- R6, Local Paper, provider, broker, and real-money remain unauthorized. No
+  Replay, PostgreSQL operation, commit, or push was performed for this closure.

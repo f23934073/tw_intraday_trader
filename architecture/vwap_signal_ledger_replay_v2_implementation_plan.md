@@ -1144,6 +1144,37 @@ Cluster bootstrap、confidence interval 與 hypothesis test 不屬於 v2 contrac
 
 任何 outcome 都不會自動改 Strategy lifecycle、啟動 Local Paper 或授權 broker。
 
+### 13.1 2026-08-26 G5 disposition record
+
+G4 accepted immutable evidence：
+
+```text
+baseline_run_id = run-91ad87981676414da87b928398fa43c9
+replay_id = replay-e70d205528ef4e5f891f3d6f3c99997a
+result_manifest_digest = 420ef2dd3c3e814e0691eef0531c2c6f787789278675d092b86df3e1f9fa3347
+postflight_digest = ca041816dd69454ce53d321fa8a78cb0188a267d5ab2b7c864eb58051a557ad9
+episode_count = 128802
+mean_pre_slippage_return = -0.001356902463282666
+mean_net_return = -0.008198722720797699
+profit_factor = 0.379778394606756598
+sum_net_pnl = -482357421.040185625
+```
+
+Primary metric `mean_pre_slippage_return <= 0`，因此依 frozen matrix 唯一合法
+判定為：
+
+```text
+above_vwap_entry: RESEARCH REJECT / HOLD / NOT ELIGIBLE
+same-Dataset parameter tuning: PROHIBITED
+Strategy lifecycle mutation: NONE
+R6 auto-start: PROHIBITED
+Local Paper / Broker / Real-money: PROHIBITED
+```
+
+此判定只適用於 exact `above_vwap_entry`＋session-close exit＋frozen cost／Dataset
+protocol。它不等於把 Version 設成 `RETIRED`，也不會自動決定下一個研究 family；
+任何 R6 revision 2 研究仍需獨立 contract、Review 與明確授權。
+
 ## 14. R6 impact
 
 既有 R6 v1 contract 依賴「accepted R5 Backtest Run＋cash-admission allocation」作為
@@ -1152,7 +1183,7 @@ Run。因此：
 
 ```text
 R6 v1 execution: SUPERSEDED / NOT AUTHORIZED
-R6 revision 2 design: BLOCKED ON ACCEPTED R5 v2 EVIDENCE
+R6 revision 2 design: BLOCKED ON SEPARATE CONTRACT AND AUTHORIZATION / NOT AUTHORIZED
 ```
 
 R5 v2 接受後，只能另行決定 R6 要：
@@ -1172,7 +1203,7 @@ R5 v2 接受後，只能另行決定 R6 要：
 | G2 | PostgreSQL＋application | Idempotency, CAS, tamper, redaction, security tests pass | PASSED / FORMAL GATE APPROVED |
 | G3 | Full preflight | 28.3M bars produce 128,802 complete matches, zero external calls | PASSED / FORMAL GATE APPROVED |
 | G4 | Formal replay | 128,802 accepted episodes and formal SQL pass | PASSED / FORMAL GATE APPROVED |
-| G5 | Research disposition | Metrics reviewed; HOLD/reject/candidate recorded without lifecycle mutation | NOT AUTHORIZED |
+| G5 | Research disposition | Metrics reviewed; HOLD/reject/candidate recorded without lifecycle mutation | PASSED / FORMAL GATE APPROVED |
 
 每個 Gate 需要獨立明確授權。G0 通過不代表可以實作，G1-G3 通過也不代表可以
 執行正式 replay。
@@ -1213,8 +1244,8 @@ R5 revision 2 G1 implementation: APPROVED / FORMAL GATE PASSED
 R5 revision 2 G2: APPROVED / FORMAL GATE PASSED / PROGRESS 50%
 R5 revision 2 G3: APPROVED / FORMAL GATE PASSED / PROGRESS 66.7%
 R5 revision 2 G4: APPROVED / FORMAL GATE PASSED / PROGRESS 83.3%
-R5 revision 2 G5: NOT AUTHORIZED
-R5 revision 2 execution: NOT AUTHORIZED
+R5 revision 2 G5: APPROVED / FORMAL GATE PASSED / PROGRESS 100%
+R5 revision 2 execution: COMPLETE / RESEARCH NOT ELIGIBLE
 R6: BLOCKED / NOT AUTHORIZED
 Local Paper / Broker / Real-money: PROHIBITED
 ```

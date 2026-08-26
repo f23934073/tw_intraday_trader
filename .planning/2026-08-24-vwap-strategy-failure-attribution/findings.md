@@ -727,3 +727,51 @@
 - **Disposition:** `G4 APPROVED / FORMAL GATE PASSED`; formal progress advances
   to 83.3%. This approval establishes replay integrity only and does not make
   the strategy eligible for promotion, Local Paper, broker, or real-money use.
+
+## 2026-08-26 R5 revision 2 G5 Research Disposition
+
+- G5 reads the accepted immutable G4 result without rerunning strategy
+  evaluation or Replay. The disposition is bound to baseline
+  `run-91ad87981676414da87b928398fa43c9`, Replay
+  `replay-e70d205528ef4e5f891f3d6f3c99997a`, result digest
+  `420ef2dd3c3e814e0691eef0531c2c6f787789278675d092b86df3e1f9fa3347`,
+  and postflight digest
+  `ca041816dd69454ce53d321fa8a78cb0188a267d5ab2b7c864eb58051a557ad9`.
+- Primary normalized evidence is negative before slippage:
+  `mean_pre_slippage_return = -0.001356902463282666`. This satisfies the first
+  frozen decision-matrix row and leaves no candidate/promotion branch.
+- Secondary evidence agrees: mean net return is
+  `-0.008198722720797699`, profit factor is `0.379778394606756598`, and net P&L
+  is `-482357421.040185625` across 128,802 independent one-lot episodes.
+- The exact `above_vwap_entry` plus session-close exit protocol is therefore
+  `RESEARCH REJECT / HOLD / NOT ELIGIBLE`. Further parameter tuning on the same
+  Dataset is prohibited.
+- This is a research record, not a lifecycle mutation. No Version was retired,
+  promoted, or activated; no Local Paper, provider, broker, real-money, or R6
+  operation ran.
+- **Disposition:** `G5 RESEARCH DISPOSITION RECORDED / FORMAL REVIEW REQUIRED`;
+  formal progress remains 83.3% until independent Review.
+
+## 2026-08-26 R5 revision 2 G5 Review remediation
+
+- Independent Review confirmed the numerical decision and found two P2 status
+  wording inconsistencies; no evidence or decision-matrix defect was found.
+- `HOLD / NOT ELIGIBLE` is now explicitly a Research disposition. Strategy
+  Version lifecycle remains unchanged and promotion remains prohibited.
+- R6 revision 2 now consistently reads
+  `BLOCKED ON SEPARATE CONTRACT AND AUTHORIZATION / NOT AUTHORIZED`; accepted
+  R5 v2 evidence is no longer described as the pending blocker.
+- **Disposition:** `G5 REMEDIATION COMPLETE / FORMAL RE-REVIEW REQUIRED`;
+  formal progress remains 83.3%.
+
+## 2026-08-26 R5 revision 2 G5 independent approval
+
+- Independent re-review found no new finding and confirmed both P2 wording
+  findings are closed.
+- Result digest, 128,802 episode/entry/exit counts, normalized returns, P&L
+  arithmetic, and outcome multiplicity were independently reconciled.
+- The approved disposition remains
+  `RESEARCH REJECT / HOLD / NOT ELIGIBLE`; it is not a lifecycle status and
+  does not authorize promotion or execution.
+- **Disposition:** `G5 APPROVED / FORMAL GATE PASSED`; R5 revision 2 formal
+  progress is 100%. R6, Local Paper, broker, and real-money remain unauthorized.
