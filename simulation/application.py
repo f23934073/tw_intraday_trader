@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from threading import RLock
@@ -16,6 +16,7 @@ from simulation.service import (
     SimulationStateError,
     SimulationValidationError,
 )
+from simulation.settings import SETTINGS_SCHEMA_V2
 from trading.application import (
     ApplicationStatus,
     CommandOutcomeRecorder,
@@ -23,11 +24,13 @@ from trading.application import (
 )
 from trading.journal import JournalRecord, JournalRepository
 from trading.local_paper import (
+    LOCAL_PAPER_CANCEL_COMMAND_KIND,
     LocalPaperFillOutcomeRecorder,
     daily_baseline_record,
     write_local_paper_checkpoint,
 )
 from trading.risk import (
+    COMMISSION_ROUNDING_TWD_DOWN,
     CommandOrigin,
     CommandSide,
     OrderCommand,
@@ -97,6 +100,7 @@ class LocalPaperCommandService:
         self._settings_digest = settings_digest
         self._clock = clock
         self._lock = RLock()
+        self._recovery_required_error: str | None = None
         self._commands_by_key: dict[str, OrderCommand] = {}
         self._outcome_recorder = LocalPaperTerminalOutcomeRecorder(
             settings_digest=settings_digest
@@ -112,6 +116,11 @@ class LocalPaperCommandService:
             commission_rate=simulation.settings.commission_rate,
             minimum_commission=(
                 simulation.settings.minimum_commission_twd
+            ),
+            commission_rounding_policy=(
+                COMMISSION_ROUNDING_TWD_DOWN
+                if simulation.settings.schema_version == SETTINGS_SCHEMA_V2
+                else "ROUND_HALF_UP_0.01_TWD"
             ),
             require_fresh_book=simulation.requires_fresh_book,
             max_book_age_seconds=simulation.max_book_age_seconds,
@@ -129,6 +138,22 @@ class LocalPaperCommandService:
     def session_id(self) -> str:
         """Expose the local process Journal session for diagnostics only."""
         return self._session_id
+
+    def assert_mutation_allowed(self) -> None:
+        """Fail before Journal mutation when durable recovery is required."""
+
+        with self._lock:
+            self._assert_mutation_allowed_locked()
+
+    def admit_automated_intent(
+        self,
+        operation: Callable[[], dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Linearize recovery admission with the full automated Journal flow."""
+
+        with self._lock:
+            self._assert_mutation_allowed_locked()
+            return operation()
 
     def submit_order(
         self,
@@ -204,6 +229,9 @@ class LocalPaperCommandService:
             ),
             commission_rate=self._base_risk_policy.commission_rate,
             minimum_commission=self._base_risk_policy.minimum_commission,
+            commission_rounding_policy=(
+                self._base_risk_policy.commission_rounding_policy
+            ),
             require_fresh_book=self._base_risk_policy.require_fresh_book,
             max_book_age_seconds=self._base_risk_policy.max_book_age_seconds,
             fresh_book_sides=frozenset(CommandSide),
@@ -229,6 +257,7 @@ class LocalPaperCommandService:
 
         owner = self._normalize_key(owner_strategy_id)
         with self._lock:
+            self._assert_mutation_allowed_locked()
             self._strategy_applications[owner] = (
                 policy,
                 self._application_for_policy(policy),
@@ -309,9 +338,14 @@ class LocalPaperCommandService:
         normalized_key = self._normalize_key(idempotency_key)
 
         with self._lock:
+            self._assert_mutation_allowed_locked()
             existing = self._simulation.order_for_idempotency_key(normalized_key)
             if existing is not None:
                 return existing, True
+            self._simulation.validate_order_admission(
+                symbol=normalized_symbol,
+                limit_price=normalized_price,
+            )
 
             now = self._clock.now()
             command = OrderCommand(
@@ -339,36 +373,57 @@ class LocalPaperCommandService:
                     )
                 if admitted is not None:
                     application = admitted[1]
-            result = application.apply(
-                command,
-                self._risk_snapshot(
-                    normalized_symbol,
-                    normalized_side,
-                    reject_same_side_pending=(
-                        origin is CommandOrigin.STRATEGY_AUTOMATED
+            try:
+                result = application.apply(
+                    command,
+                    self._risk_snapshot(
+                        normalized_symbol,
+                        normalized_side,
+                        reject_same_side_pending=(
+                            origin is CommandOrigin.STRATEGY_AUTOMATED
+                        ),
                     ),
-                ),
-                evaluated_at=now,
-            )
+                    evaluated_at=now,
+                )
+            except Exception as error:
+                self._enter_recovery_required_locked(
+                    f"command application failure: {type(error).__name__}"
+                )
+                raise
             if result.status is ApplicationStatus.APPLIED:
                 assert result.handler_result is not None
                 self._write_checkpoint()
                 return dict(result.handler_result), False
             if result.status in {ApplicationStatus.BLOCKED, ApplicationStatus.REJECTED}:
-                reason = ", ".join(reason.value for reason in result.risk.reasons)
-                order = self._simulation.record_risk_rejection(
-                    symbol=normalized_symbol,
-                    side=normalized_side.value,
-                    quantity_shares=normalized_quantity_shares,
-                    limit_price=normalized_price,
-                    idempotency_key=normalized_key,
-                    reason=f"風控拒絕：{reason}",
-                    origin=origin.value,
-                )
-                self._append_rejection_outcome(command, order)
-                self._write_checkpoint()
+                try:
+                    reason = ", ".join(
+                        reason.value for reason in result.risk.reasons
+                    )
+                    order = self._simulation.record_risk_rejection(
+                        symbol=normalized_symbol,
+                        side=normalized_side.value,
+                        quantity_shares=normalized_quantity_shares,
+                        limit_price=normalized_price,
+                        idempotency_key=normalized_key,
+                        reason=f"風控拒絕：{reason}",
+                        origin=origin.value,
+                    )
+                    self._append_rejection_outcome(command, order)
+                    self._write_checkpoint()
+                except Exception as error:
+                    self._enter_recovery_required_locked(
+                        "rejection persistence failure: "
+                        f"{type(error).__name__}"
+                    )
+                    raise
                 return order, False
-            raise SimulationStateError("委託稽核未完成，請勿重送並檢查本機 Journal")
+            self._enter_recovery_required_locked(
+                f"command application ended in {result.status.value}"
+            )
+            raise SimulationStateError(
+                "LOCAL_PAPER_RECOVERY_REQUIRED：委託稽核未完成，"
+                "請勿重送並檢查本機 Journal"
+            )
 
     def retry_order(
         self,
@@ -422,29 +477,47 @@ class LocalPaperCommandService:
         """Append a fill/rejection produced by a later snapshot or BidAsk."""
         normalized_key = self._normalize_key(str(order.get("idempotency_key", "")))
         with self._lock:
-            command = self._commands_by_key.get(normalized_key)
-            if command is None:
-                raise SimulationStateError("找不到模擬終態對應的原始委託")
-            records = self._outcome_recorder.records_for(command, order)
-            if not records:
-                raise SimulationStateError("模擬終態沒有可寫入的成交或拒絕紀錄")
-            for record in records:
-                self._journal.append(record)
-            self._write_checkpoint()
+            self._assert_mutation_allowed_locked()
+            try:
+                command = self._commands_by_key.get(normalized_key)
+                if command is None:
+                    raise SimulationStateError("找不到模擬終態對應的原始委託")
+                records = self._outcome_recorder.records_for(command, order)
+                if not records:
+                    raise SimulationStateError("模擬終態沒有可寫入的成交或拒絕紀錄")
+                for record in records:
+                    self._journal.append(record)
+                self._write_checkpoint()
+            except Exception as error:
+                self._enter_recovery_required_locked(
+                    "terminal outcome persistence failure: "
+                    f"{type(error).__name__}"
+                )
+                raise
 
     def _record_daily_baseline(self, baseline: Mapping[str, Any]) -> None:
         """Persist a newly frozen trading-day equity baseline outside sim lock."""
         with self._lock:
-            self._journal.append(
-                daily_baseline_record(
-                    session_id=self._session_id,
-                    trading_date=str(baseline["trading_date"]),
-                    opening_equity=str(baseline["opening_equity"]),
-                    opening_realized_pnl=str(baseline["opening_realized_pnl"]),
-                    occurred_at=datetime.fromisoformat(str(baseline["created_at"])),
+            self._assert_mutation_allowed_locked()
+            try:
+                self._journal.append(
+                    daily_baseline_record(
+                        session_id=self._session_id,
+                        trading_date=str(baseline["trading_date"]),
+                        opening_equity=str(baseline["opening_equity"]),
+                        opening_realized_pnl=str(baseline["opening_realized_pnl"]),
+                        occurred_at=datetime.fromisoformat(
+                            str(baseline["created_at"])
+                        ),
+                    )
                 )
-            )
-            self._write_checkpoint()
+                self._write_checkpoint()
+            except Exception as error:
+                self._enter_recovery_required_locked(
+                    "daily baseline persistence failure: "
+                    f"{type(error).__name__}"
+                )
+                raise
 
     def _restore_commands_from_journal(self) -> None:
         for result in self._journal.records(self._session_id):
@@ -489,6 +562,7 @@ class LocalPaperCommandService:
         """Journal the cancellation intent before mutating the local projection."""
         normalized_key = self._normalize_key(idempotency_key)
         with self._lock:
+            self._assert_mutation_allowed_locked()
             existing = self._simulation.cancel_order_for_idempotency_key(normalized_key)
             if existing is not None:
                 return existing, True
@@ -501,46 +575,59 @@ class LocalPaperCommandService:
             if pending["status"] not in {"SUBMITTED", "PENDING", "PARTIALLY_FILLED"}:
                 raise SimulationStateError("只有已送出的委託可以取消")
 
-            now = self._clock.now()
-            intent = self._journal.append(
-                JournalRecord(
-                    record_id=f"local-paper-cancel-command:{order_id}:{normalized_key}",
-                    session_id=self._session_id,
-                    kind="local_paper_cancel_command.v1",
-                    occurred_at=now,
-                    payload={
-                        "order_id": order_id,
-                        "idempotency_key": normalized_key,
-                    },
-                    idempotency_scope=f"{self._session_id}:local-paper-cancel-command",
-                    idempotency_key=normalized_key,
+            try:
+                now = self._clock.now()
+                intent = self._journal.append(
+                    JournalRecord(
+                        record_id=(
+                            f"local-paper-cancel-command:{order_id}:"
+                            f"{normalized_key}"
+                        ),
+                        session_id=self._session_id,
+                        kind=LOCAL_PAPER_CANCEL_COMMAND_KIND,
+                        occurred_at=now,
+                        payload={
+                            "order_id": order_id,
+                            "idempotency_key": normalized_key,
+                        },
+                        idempotency_scope=(
+                            f"{self._session_id}:local-paper-cancel-command"
+                        ),
+                        idempotency_key=normalized_key,
+                    )
                 )
-            )
-            if intent.idempotent:
-                raise SimulationStateError("取消委託稽核需要復原，請勿重送")
-            order, _ = self._simulation.cancel_order(order_id, normalized_key)
-            command = self._commands_by_key.get(str(pending["idempotency_key"]))
-            if command is None:
-                raise SimulationStateError("找不到取消委託對應的原始命令")
-            for record in self._outcome_recorder.records_for(command, order):
-                self._journal.append(record)
-            self._journal.append(
-                JournalRecord(
-                    record_id=f"local-paper-cancellation:{order_id}",
-                    session_id=self._session_id,
-                    kind="local_paper_cancellation.v1",
-                    occurred_at=datetime.fromisoformat(str(order["updated_at"])),
-                    payload={
-                        "order_id": order_id,
-                        "symbol": str(order["symbol"]),
-                        "side": str(order["side"]),
-                    },
-                    idempotency_scope=f"{self._session_id}:local-paper-cancellation",
-                    idempotency_key=order_id,
+                if intent.idempotent:
+                    raise SimulationStateError("取消委託稽核需要復原，請勿重送")
+                order, _ = self._simulation.cancel_order(order_id, normalized_key)
+                command = self._commands_by_key.get(str(pending["idempotency_key"]))
+                if command is None:
+                    raise SimulationStateError("找不到取消委託對應的原始命令")
+                for record in self._outcome_recorder.records_for(command, order):
+                    self._journal.append(record)
+                self._journal.append(
+                    JournalRecord(
+                        record_id=f"local-paper-cancellation:{order_id}",
+                        session_id=self._session_id,
+                        kind="local_paper_cancellation.v1",
+                        occurred_at=datetime.fromisoformat(str(order["updated_at"])),
+                        payload={
+                            "order_id": order_id,
+                            "symbol": str(order["symbol"]),
+                            "side": str(order["side"]),
+                        },
+                        idempotency_scope=(
+                            f"{self._session_id}:local-paper-cancellation"
+                        ),
+                        idempotency_key=order_id,
+                    )
                 )
-            )
-            self._write_checkpoint()
-            return order, False
+                self._write_checkpoint()
+                return order, False
+            except Exception as error:
+                self._enter_recovery_required_locked(
+                    f"cancellation persistence failure: {type(error).__name__}"
+                )
+                raise
 
     def _write_checkpoint(self) -> None:
         """Persist a verified fill/accounting projection after a complete mutation."""
@@ -553,9 +640,26 @@ class LocalPaperCommandService:
                 settings_digest=self._settings_digest,
             )
         except Exception as error:
+            self._enter_recovery_required_locked(
+                f"checkpoint failure: {type(error).__name__}"
+            )
             raise SimulationStateError(
                 "模擬交易已寫入 Journal，但投影 checkpoint 未完成，請勿重送"
             ) from error
+
+    def _assert_mutation_allowed_locked(self) -> None:
+        if self._recovery_required_error is not None:
+            raise SimulationStateError(
+                "LOCAL_PAPER_RECOVERY_REQUIRED："
+                f"{self._recovery_required_error}"
+            )
+
+    def _enter_recovery_required_locked(self, reason: str) -> None:
+        if self._recovery_required_error is None:
+            self._recovery_required_error = reason
+        self._simulation.mark_persistence_recovery_required(
+            self._recovery_required_error
+        )
 
     def _risk_snapshot(
         self,

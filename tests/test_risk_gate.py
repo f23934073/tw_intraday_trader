@@ -5,6 +5,7 @@ from decimal import Decimal
 import pytest
 
 from trading.risk import (
+    COMMISSION_ROUNDING_TWD_DOWN,
     CommandOrigin,
     CommandSide,
     OrderCommand,
@@ -196,6 +197,25 @@ def test_buy_cash_gate_includes_configured_commission() -> None:
 
     assert decision.status is RiskDecisionStatus.REJECTED
     assert decision.reasons == (RiskReason.INSUFFICIENT_CASH,)
+
+
+def test_buy_cash_gate_uses_v2_whole_twd_round_down_commission() -> None:
+    policy = replace(
+        POLICY,
+        max_order_notional=Decimal("200000"),
+        commission_rate=Decimal("0.001425"),
+        minimum_commission=Decimal("20"),
+        commission_rounding_policy=COMMISSION_ROUNDING_TWD_DOWN,
+    )
+
+    decision = RiskGate(policy).evaluate(
+        command(quantity=1000, price="100"),
+        snapshot(available_cash=Decimal("100142")),
+        evaluated_at=AT,
+    )
+
+    assert decision.status is RiskDecisionStatus.APPROVED
+    assert policy.to_dict()["commission_rounding_policy"] == "twd_round_down_v1"
 
 
 def test_sell_cannot_exceed_position_after_pending_sells() -> None:

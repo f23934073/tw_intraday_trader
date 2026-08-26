@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from enum import StrEnum
 
 from trading.canonical_values import canonical_decimal_string
@@ -18,6 +18,8 @@ from trading.trade_management import (
 
 RISK_GATE_VERSION = "risk-gate-v1"
 EXIT_ELIGIBILITY_ID_VERSION = "exit-eligibility-id-v1"
+COMMISSION_ROUNDING_HALF_UP_CENTS = "ROUND_HALF_UP_0.01_TWD"
+COMMISSION_ROUNDING_TWD_DOWN = "twd_round_down_v1"
 
 
 class CommandOrigin(StrEnum):
@@ -112,6 +114,7 @@ class RiskPolicy:
     max_daily_buy_notional: Decimal | None = None
     commission_rate: Decimal = Decimal("0")
     minimum_commission: Decimal = Decimal("0")
+    commission_rounding_policy: str = COMMISSION_ROUNDING_HALF_UP_CENTS
     require_fresh_book: bool = False
     max_book_age_seconds: int = 15
     fresh_book_sides: frozenset[CommandSide] = frozenset(CommandSide)
@@ -135,6 +138,11 @@ class RiskPolicy:
             raise ValueError("commission_rate must be between 0 and 0.01")
         if self.minimum_commission < 0:
             raise ValueError("minimum_commission must not be negative")
+        if self.commission_rounding_policy not in {
+            COMMISSION_ROUNDING_HALF_UP_CENTS,
+            COMMISSION_ROUNDING_TWD_DOWN,
+        }:
+            raise ValueError("unsupported commission_rounding_policy")
         if self.max_book_age_seconds < 0:
             raise ValueError("max_book_age_seconds must not be negative")
         if not self.fresh_book_sides.issubset(frozenset(CommandSide)):
@@ -223,6 +231,13 @@ def _risk_policy_payload(policy: RiskPolicy) -> dict[str, object]:
         payload["minimum_commission"] = canonical_decimal_string(
             policy.minimum_commission
         )
+        if (
+            policy.commission_rounding_policy
+            != COMMISSION_ROUNDING_HALF_UP_CENTS
+        ):
+            payload["commission_rounding_policy"] = (
+                policy.commission_rounding_policy
+            )
     return payload
 
 
@@ -447,11 +462,19 @@ class RiskGate:
                 rejected.append(RiskReason.DAILY_BUY_NOTIONAL_LIMIT)
             if notional > self._policy.max_order_notional:
                 rejected.append(RiskReason.ORDER_NOTIONAL_LIMIT)
+            commission_quantum = Decimal("0.01")
+            commission_rounding = ROUND_HALF_UP
+            if (
+                self._policy.commission_rounding_policy
+                == COMMISSION_ROUNDING_TWD_DOWN
+            ):
+                commission_quantum = Decimal("1")
+                commission_rounding = ROUND_DOWN
             commission = max(
                 self._policy.minimum_commission,
                 (notional * self._policy.commission_rate).quantize(
-                    Decimal("0.01"),
-                    rounding=ROUND_HALF_UP,
+                    commission_quantum,
+                    rounding=commission_rounding,
                 ),
             )
             if notional + commission > snapshot.available_cash:

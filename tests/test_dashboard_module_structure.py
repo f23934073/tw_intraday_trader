@@ -10,10 +10,10 @@ WORKSPACES = STATIC / "js" / "workspaces"
 
 
 def test_dashboard_layout_loads_external_css_and_one_module_entrypoint() -> None:
-    assert '<link rel="stylesheet" href="/static/css/dashboard.css?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1">' in HTML
+    assert '<link rel="stylesheet" href="/static/css/dashboard.css?v=20260826-local-paper-tax-slippage-v2">' in HTML
     assert (
         '<script type="module" '
-        'src="/static/js/app.js?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1"></script>'
+        'src="/static/js/app.js?v=20260826-local-paper-tax-slippage-v2"></script>'
     ) in HTML
     assert "<style>" not in HTML
     assert "<script>" not in HTML
@@ -83,9 +83,28 @@ def test_simulation_workspace_exposes_explicit_automated_strategy_controls() -> 
     assert "operator review completed" in simulation
     assert "pollAutomatedStrategyStatus" in APP
     assert (
-        './workspaces/simulation.js?v=20260823-local-paper-settings-v1'
+        './workspaces/simulation.js?v=20260826-local-paper-tax-slippage-v2'
         in APP
     )
+
+
+def test_local_paper_v2_settings_freeze_cost_policy_and_expose_slippage() -> None:
+    simulation = (WORKSPACES / "simulation.js").read_text(encoding="utf-8")
+
+    assert 'id="simulation-slippage-bps"' in HTML
+    assert 'id="simulation-cost-policy"' in HTML
+    assert "simulation-commission-rate" not in HTML
+    assert "simulation-minimum-commission" not in HTML
+    assert "賣出證交稅 0.3%" in HTML
+    assert "5 bps（尚未用實盤校準）" in HTML
+    assert "market impact" in HTML
+    assert "slippage_bps: simulationSlippageBps.value" in simulation
+    assert "commission_rate:" not in simulation
+    assert "minimum_commission_twd:" not in simulation
+    assert "SLIPPAGE_ADJUSTED_LIMIT_NOT_REACHED" in simulation
+    assert "filled_tax" in simulation
+    assert "last_reference_price" in simulation
+    assert "不另行扣款" in simulation
 
 
 def test_simulation_order_ticket_uses_exact_share_quantity() -> None:

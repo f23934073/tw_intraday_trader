@@ -1,5 +1,5 @@
 import { createCandidateWorkspace } from "./workspaces/candidates.js";
-import { createSimulationWorkspace } from "./workspaces/simulation.js?v=20260823-local-paper-settings-v1";
+import { createSimulationWorkspace } from "./workspaces/simulation.js?v=20260826-local-paper-tax-slippage-v2";
 import { createMomentumWorkspace } from "./workspaces/momentum.js";
 import { createBacktestWorkspace } from "./workspaces/backtest.js?v=20260823-atomic-backtest-auto-dataset-v1";
 

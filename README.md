@@ -101,7 +101,9 @@ MOMENTUM_DASHBOARD_WS_MAX_CLIENTS=32
 
 左側的「模擬下單」可建立本機紙上限價委託；「委託」可查看已送出、成交、取消或拒絕的紀錄；「持倉」只顯示由已成交模擬委託建立的股票與其平均成交價、最新成交、買一／賣一、市值和損益。這些功能會開啟整頁工作區；瀏覽器在初次快照後連線 `/ws/simulation/projection`，後端每 250ms 檢查一次內存投影，價格、買一／賣一或損益改變時就透過 WebSocket 推送。WebSocket 斷線期間才每 2 秒讀取 HTTP 投影作為備援；這兩種畫面傳輸都不會輪詢 Shioaji snapshot 或帳務 API。
 
-這個功能是 **LOCAL_PAPER_SIMULATION**：預設虛擬現金為 1,000 萬元、每日買入總額上限為 200 萬元，只支援多頭現股限價單，委託量使用正整數股數；1～999 股可作為零股本機模擬，1,000 股以上也不會強制取整張。左側「模擬設定」可分別修改起始現金、每日買入額度、買賣手續費率與每筆最低手續費；預設手續費為 0，證交稅仍未納入。設定先保存為草稿，套用時建立新的本機模擬 session，舊 Journal 不會被改寫。使用 `PROVIDER=shioaji` 時，後端只對持倉與尚未成交委託動態訂閱既有的整股 Tick＋BidAsk；買進以賣一、賣出以買一作為本機參考撮合價，Tick 用來更新持倉市值與未實現損益。這不是證交所零股五檔撮合，也不代表 Shioaji Simulation 或券商成交。每檔使用兩個行情訂閱，程式最多允許同時監控 100 檔。若使用 MockProvider，則保留 snapshot 立即撮合，方便離線開發與測試。
+這個功能是 **LOCAL_PAPER_SIMULATION**：預設虛擬現金為 1,000 萬元、每日買入總額上限為 200 萬元，只支援多頭現股限價單，委託量使用正整數股數；1～999 股可作為零股本機模擬，1,000 股以上也不會強制取整張。Local Paper v2 僅接受 Provider descriptor 能明確證明為 `TWSE/TPEX + COMMON_STOCK` 的現股、非當沖標的；ETF、權證、未知或無法證明的商品會以 `UNSUPPORTED_COST_POLICY_SCOPE` fail closed，不會猜測套用普通股成本。左側「模擬設定」只可修改起始現金、每日買入額度與固定不利滑價；手續費率 `0.001425`、每筆委託累計最低手續費 `20 TWD`、SELL 證交稅 `0.003` 與整元 `ROUND_DOWN` 已凍結在 `tw_stock_standard_v1 / twd_round_down_v1`。舊 v1 設定首次開啟只顯示 5 bps v2 草稿預覽，不會自動改檔；明確儲存並套用後才建立 v2 session，舊 Journal 不補稅、不回算滑價。
+
+使用 `PROVIDER=shioaji` 時，後端只對持倉與尚未成交委託動態訂閱既有的整股 Tick＋BidAsk；BUY 以 best ask、SELL 以 best bid 為 reference，再依 session-pinned `fixed_adverse_bps_v1` 向不利方向調整並對齊 `tw_common_stock_tick_v1`。調整價超出 limit 時維持 pending 且不消耗 best-level volume；`bps=0` 保留原 BBO 行為。MockProvider 使用明示的 `SNAPSHOT_COMPATIBILITY` reference。證交稅只在 SELL fill 依實際成交價逐筆計算；滑價已反映在 fill price，`slippage_cost` 只作診斷，不會再從現金或 PnL 扣一次。每筆 v2 execution 以 `local_paper_fill.v3` 保存 gross、commission、tax、net cash、reference、slippage、policy 與 instrument descriptor evidence，重播直接使用 persisted monetary truth。Tick 仍只用來更新持倉市值與未實現損益。這個模型沒有真實 queue priority、多檔深度、market impact、成交機率或券商帳務，不是證交所零股五檔、Shioaji Simulation 或券商成交。每檔使用兩個行情訂閱，程式最多允許同時監控 100 檔。
 
 委託會經過 `PENDING`、`PARTIALLY_FILLED`、`FILLED`、`CANCELLED`、`EXPIRED` 或 `RECOVERY_REQUIRED` 等明確狀態。最優一檔量可限制每次本機成交量；未成交餘量會保留，逾時取消或到期後只能建立有次數上限的 successor order。timeout、expiry 與恢復異常會顯示在模擬工作區。Shioaji 登入明確使用 `subscribe_trade=False`，沒有啟用憑證、註冊委託 callback 或呼叫下單 API；因此它仍不是 Shioaji Simulation 帳戶，也不會送出任何真實券商委託。
 
@@ -112,7 +114,7 @@ TRADING_JOURNAL_BACKEND=postgresql
 DATABASE_URL=postgresql://user:password@127.0.0.1:5432/tw_intraday_trader
 ```
 
-現有環境在過渡期間也相容 `PostgreSQL_DSN`。啟動時會套用 forward-only migrations，資料表位於 `trading` logical schema，runtime 使用 bounded connection pool；資料庫無法連線、migration 或 health check 失敗時不會退回 memory 接單。runtime 會從目前啟用的 checkpointed LOCAL_PAPER session 驗證並恢復現金、持倉歸屬、手續費成本、當日買入使用量、委託狀態、未成交保留量、冪等識別、每日開盤權益基準及 lifecycle alerts；已核准但缺少 simulator acknowledgement 的命令會以 `RECOVERY_REQUIRED` fail closed，不會自動重送。quote cache 不會偽造恢復，重啟後仍須等待新的 Tick／BidAsk。若保留預設 `memory` adapter，交易資料只存在目前 process，不能宣稱跨 process 恢復。可編輯設定另以原子寫入保存在 `data/local_paper/settings_v1.json`；可用 `LOCAL_PAPER_SETTINGS_PATH` 改變位置。
+現有環境在過渡期間也相容 `PostgreSQL_DSN`。啟動時會套用 forward-only migrations，資料表位於 `trading` logical schema，runtime 使用 bounded connection pool；資料庫無法連線、migration 或 health check 失敗時不會退回 memory 接單。runtime 會從目前啟用的 checkpointed LOCAL_PAPER session 驗證 settings／cost／slippage／tick policy binding，並恢復現金、持倉歸屬、手續費與證交稅、診斷滑價、已實現損益、當日買入使用量、委託狀態、未成交保留量、冪等識別、每日開盤權益基準及 lifecycle alerts；已核准但缺少 simulator acknowledgement 的命令會以 `RECOVERY_REQUIRED` fail closed，不會自動重送。quote cache 不會偽造恢復，重啟後仍須等待新的 Tick／BidAsk。若保留預設 `memory` adapter，交易資料只存在目前 process，不能宣稱跨 process 恢復。可編輯設定另以原子寫入保存在 `data/local_paper/settings_v1.json`；檔名保持相容，reader 同時支援 settings v1/v2，可用 `LOCAL_PAPER_SETTINGS_PATH` 改變位置。
 
 Phase 5 的 operator UAT 不允許 memory fallback。請把一次性測試資料庫填入
 `TEST_POSTGRES_DSN`，再執行：
@@ -214,8 +216,7 @@ destructive UAT 見 `architecture/local_paper_kill_switch_runbook.md`。缺少�
 路徑；proposal、Risk snapshot、effective policy、decision 與 approved command 都保存
 穩定 digest，Simulation adapter 會拒絕未核准的 proposal。沒有
 CA、券商委託 callback、`place_order` 或 `subscribe_trade=True`。目前撮合支援最優一檔量
-限制下的部分成交，並可依本機設定計算買賣手續費；仍不計證交稅、滑價與真實排隊順位，所以適合策略流程與
-多日 paper evidence，不代表可直接升級為真實交易。
+限制下的部分成交。新建 v2 session 會套用凍結的普通股手續費、SELL 3‰ 證交稅與固定 adverse slippage；未知商品 fail closed，limit protection 不會把 adjusted price hard-cap 到限價。模型仍不具真實排隊順位、多檔深度、market impact、成交機率或券商 accounting，所以只適合策略流程與多日 Local Paper evidence，不代表可直接升級為真實交易；5 bps 仍是 `ASSUMPTION_NOT_LIVE_CALIBRATED`，真實滑價 calibration 是獨立後續任務。
 
 ---
 

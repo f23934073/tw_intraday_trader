@@ -212,7 +212,9 @@ class StrategyPaperFlowService:
                 "order": order,
             }
 
-        return self._kill_switch.admit_automated_intent(submit_admitted)
+        return self._kill_switch.admit_automated_intent(
+            lambda: self._commands.admit_automated_intent(submit_admitted)
+        )
 
     def activate_run(
         self,
@@ -227,6 +229,7 @@ class StrategyPaperFlowService:
     ) -> Mapping[str, Any]:
         """Journal one exact-set activation before installing its Risk Policy."""
 
+        self._commands.assert_mutation_allowed()
         policy, risk_evidence = self._commands.prepare_strategy_risk_policy(
             owner_strategy_id=owner_strategy_id,
             operator_max_daily_loss=operator_max_daily_loss,

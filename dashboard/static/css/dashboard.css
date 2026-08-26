@@ -552,10 +552,15 @@
         border-radius: 8px;
         color: var(--text);
         font: inherit;
+        min-height: 44px;
         min-width: 0;
         padding: 8px 9px;
       }
-      .order-field input:focus, .order-field select:focus { border-color: var(--blue); outline: 0; }
+      .order-field input:focus-visible, .order-field select:focus-visible {
+        border-color: var(--blue);
+        outline: 3px solid color-mix(in srgb, var(--blue) 45%, transparent);
+        outline-offset: 2px;
+      }
       .order-note { line-height: 1.5; margin: 0; }
       .order-message { color: var(--green); display: none; font-size: 13px; line-height: 1.5; margin: 0; }
       .order-message.visible { display: block; }
@@ -612,6 +617,7 @@
       .drawer-heading h2 { font-size: 18px; }
       .drawer-close { background: transparent; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); cursor: pointer; font-size: 18px; height: 32px; line-height: 1; width: 32px; }
       .drawer-close:hover { border-color: var(--blue); color: var(--blue); }
+      #simulation-settings-panel { overflow-y: auto; }
       .drawer-panel .position-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 
       .backtest-drawer { z-index: 20; }

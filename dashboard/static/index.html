@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="台股盤中掃描、候選評分與持倉風險監控儀表板">
     <title>台股盤中雷達</title>
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260826-local-paper-tax-slippage-v2">
   </head>
   <body>
     <main class="app-shell">
@@ -47,11 +47,11 @@
             <span class="nav-item-icon" aria-hidden="true">▣</span><span class="nav-item-copy"><strong>持倉</strong><small>成交部位與損益</small></span><span class="positions-count" id="position-count">—</span>
           </button>
           <button class="nav-item" id="simulation-settings-toggle" data-workspace="simulation-settings" type="button" aria-label="本機模擬設定" aria-controls="simulation-settings-drawer" aria-expanded="false">
-            <span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6"/></svg></span><span class="nav-item-copy"><strong>模擬設定</strong><small>現金、每日額度與手續費</small></span>
+            <span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6"/></svg></span><span class="nav-item-copy"><strong>模擬設定</strong><small>現金、每日額度與滑價</small></span>
           </button>
         </nav>
         <div class="sidebar-spacer"></div>
-        <p class="sidebar-note">本機模擬只使用本地記憶體，不會送出券商委託。重新整理不會建立新的行情來源。</p>
+        <p class="sidebar-note">本機模擬由 Local Paper Journal 與 checkpoint 復原，不會送出券商委託。重新整理不會建立新的行情來源。</p>
       </aside>
 
       <div class="app-main">
@@ -148,7 +148,7 @@
         <footer class="data-footer">
           <div>
             <div class="footer-heading">儀表板契約</div>
-            <p>市場資料、候選規則與評分由後端程式負責。持倉與掛單行情使用 Shioaji Tick／BidAsk；模擬委託只寫入本機記憶體，不會送出 Shioaji 或真實券商委託，重啟後會清空。</p>
+            <p>市場資料、候選規則與評分由後端程式負責。持倉與掛單行情可使用 Shioaji Tick／BidAsk；模擬委託只寫入 Local Paper Journal，不會送出 Shioaji 或真實券商委託，重啟時依 checkpoint fail closed 復原。</p>
           </div>
         </footer>
       </div>
@@ -205,13 +205,15 @@
           <div class="order-fields">
             <div class="order-field"><label for="simulation-starting-cash">模擬起始現金（元）</label><input id="simulation-starting-cash" min="1" step="1" type="number" required></div>
             <div class="order-field"><label for="simulation-daily-buy-limit">每日買入額度（元）</label><input id="simulation-daily-buy-limit" min="1" step="1" type="number" required></div>
-            <div class="order-field"><label for="simulation-commission-rate">買賣手續費率（%）</label><input id="simulation-commission-rate" min="0" max="1" step="0.0001" type="number" required></div>
-            <div class="order-field"><label for="simulation-minimum-commission">每筆最低手續費（元）</label><input id="simulation-minimum-commission" min="0" step="0.01" type="number" required></div>
+            <div class="order-field"><label for="simulation-slippage-bps">固定不利滑價（bps）</label><input aria-describedby="simulation-slippage-help" id="simulation-slippage-bps" min="0" max="100" step="0.01" type="number" required></div>
           </div>
+          <p class="order-note" id="simulation-cost-policy"><strong>固定成本政策：</strong>TWSE／TPEX 普通股、現股、非當沖；買賣手續費 0.1425%、每筆委託累計最低 20 元，賣出證交稅 0.3%，皆採整元無條件捨去。這些欄位不可調整。</p>
+          <p class="order-note" id="simulation-slippage-help"><strong>滑價是假設，不是保證：</strong>預設 5 bps（尚未用實盤校準），成交價會向不利方向對齊普通股升降單位；調整後超出限價會維持掛單。</p>
           <p class="order-note">每日額度只計成交與掛單的買入總額；手續費另計入可用現金。賣出不會補回今日買入額度。</p>
           <p class="order-note">儲存只更新草稿；套用會建立新的本機模擬帳戶。舊委託、持倉與 Journal 仍留在原 session，不會改寫歷史。</p>
+          <p class="order-note">本模型沒有真實排隊順位、多檔深度、market impact 或券商帳務，也不會送出真實委託。</p>
           <p class="order-message" id="simulation-settings-message" role="status"></p>
-          <p class="error" id="simulation-settings-error" role="alert"></p>
+          <p class="error" id="simulation-settings-error" role="alert" tabindex="-1"></p>
           <div class="automated-strategy-actions">
             <button class="order-submit" id="simulation-settings-save" type="submit">儲存設定草稿</button>
             <button class="automated-strategy-stop" id="simulation-settings-apply" type="button">套用並建立新帳戶</button>
@@ -489,6 +491,6 @@
       </aside>
     </div>
 
-    <script type="module" src="/static/js/app.js?v=20260823-atomic-backtest-auto-dataset-local-paper-settings-v1"></script>
+    <script type="module" src="/static/js/app.js?v=20260826-local-paper-tax-slippage-v2"></script>
   </body>
 </html>

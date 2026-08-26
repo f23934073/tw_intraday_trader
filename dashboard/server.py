@@ -85,6 +85,7 @@ from simulation.settings import (
     LocalPaperSettings,
     LocalPaperSettingsConflict,
     LocalPaperSettingsState,
+    SETTINGS_SCHEMA_V2,
 )
 from simulation.strategy_flow import StrategyPaperFlowService
 from atomic_strategies.registry import AtomicStrategyRegistry
@@ -296,8 +297,7 @@ class LocalPaperSettingsUpdateRequest(BaseModel):
     revision: int = Field(ge=0)
     starting_cash_twd: str
     max_daily_buy_notional_twd: str
-    commission_rate: str
-    minimum_commission_twd: str = "0"
+    slippage_bps: str
 
 
 class LocalPaperSettingsApplyRequest(BaseModel):
@@ -1097,11 +1097,15 @@ def _local_paper_settings_payload(
             _automated_strategy_controller is not None
             and _automated_strategy_controller.status().get("state") == "RUNNING"
         )
+        effective_draft = state.v2_draft()
+        serialized = state.to_dict()
+        serialized["draft"] = effective_draft.to_dict()
         return {
-            **state.to_dict(),
+            **serialized,
             "active_settings_digest": state.active.digest,
-            "draft_settings_digest": state.draft.digest,
-            "has_unapplied_changes": state.active != state.draft,
+            "draft_settings_digest": effective_draft.digest,
+            "has_unapplied_changes": state.active != effective_draft,
+            "draft_is_preview": state.draft.schema_version != SETTINGS_SCHEMA_V2,
             "apply_blockers": {
                 "automated_strategy_running": strategy_running,
                 "active_order_count": len(active_orders),
@@ -1130,8 +1134,20 @@ def update_local_paper_settings(
     _require_atomic_mutation(request, x_strategy_csrf)
     with runtime_composition_lease():
         try:
-            settings = LocalPaperSettings.from_mapping(payload.model_dump())
-            state = get_local_paper_settings_repository().save_draft(
+            repository = get_local_paper_settings_repository()
+            current = repository.load()
+            v2_payload = current.v2_draft().to_dict()
+            v2_payload.update(
+                {
+                    "starting_cash_twd": payload.starting_cash_twd,
+                    "max_daily_buy_notional_twd": (
+                        payload.max_daily_buy_notional_twd
+                    ),
+                    "slippage_bps": payload.slippage_bps,
+                }
+            )
+            settings = LocalPaperSettings.from_mapping(v2_payload)
+            state = repository.save_draft(
                 settings,
                 expected_revision=payload.revision,
                 updated_at=datetime.now().astimezone(),
@@ -1179,6 +1195,11 @@ def apply_local_paper_settings(
         state = repository.load()
         if state.revision != payload.revision:
             raise HTTPException(status_code=409, detail="本機模擬設定版本已更新")
+        if state.draft.schema_version != SETTINGS_SCHEMA_V2:
+            raise HTTPException(
+                status_code=409,
+                detail="請先儲存 Local Paper v2 設定草稿",
+            )
         current = get_runtime_composition()
         if (
             _automated_strategy_controller is not None

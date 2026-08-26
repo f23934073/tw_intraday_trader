@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -12,17 +13,34 @@ from typing import Any, Callable
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from market_data.models import RealtimeQuoteUpdate, StockData
+from market_data.models import (
+    LocalPaperInstrumentDescriptorV1,
+    LocalPaperProductClass,
+    RealtimeQuoteUpdate,
+    StockData,
+)
 from market_data.provider import MarketDataProvider
 from runtime.clock import Clock, SystemClock
 from simulation.execution_policy import EXECUTABLE_BOOK_MAX_AGE_SECONDS
+from simulation.execution_costs import (
+    COMMISSION_RATE,
+    MINIMUM_COMMISSION_TWD,
+    ExecutionSide,
+    FillAccountingDecision,
+    ReferenceSource,
+    SlippageDecision,
+    cumulative_commission_for,
+    decide_fill_accounting,
+    decide_fixed_adverse_slippage,
+    is_valid_common_stock_tick,
+)
 from simulation.models import (
     OrderSide,
     OrderStatus,
     SimulationOrder,
     SimulationPosition,
 )
-from simulation.settings import LocalPaperSettings
+from simulation.settings import LocalPaperSettings, SETTINGS_SCHEMA_V1, SETTINGS_SCHEMA_V2
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -57,6 +75,14 @@ class _QuoteState:
     ask_available_quantity: int | None = None
 
 
+@dataclass(frozen=True)
+class _ExecutionDecision:
+    reference_price: Decimal
+    reference_source: ReferenceSource
+    fill_price: Decimal
+    slippage: SlippageDecision | None = None
+
+
 class SimulationValidationError(ValueError):
     """不符合本機紙上模擬下單規則。"""
 
@@ -83,6 +109,8 @@ class SimulationService:
         max_daily_buy_notional: Decimal | float | int = _DEFAULT_DAILY_BUY_NOTIONAL,
         commission_rate: Decimal | float | int | str = Decimal("0"),
         minimum_commission: Decimal | float | int | str = Decimal("0"),
+        slippage_bps: Decimal | int | str = Decimal("0"),
+        cost_policy_enabled: bool = False,
         quote_queue_capacity: int = _DEFAULT_QUOTE_QUEUE_CAPACITY,
         max_book_age_seconds: int = EXECUTABLE_BOOK_MAX_AGE_SECONDS,
         pending_timeout_seconds: int = _DEFAULT_PENDING_TIMEOUT_SECONDS,
@@ -91,16 +119,31 @@ class SimulationService:
         clock: Clock | None = None,
         start_streaming: bool = True,
     ) -> None:
+        if not isinstance(cost_policy_enabled, bool):
+            raise ValueError("cost_policy_enabled 必須是布林值")
+        normalized_slippage_bps = self._money(slippage_bps, "slippage_bps")
+        if normalized_slippage_bps < 0 or normalized_slippage_bps > 100:
+            raise ValueError("slippage_bps 必須介於 0 與 100")
         settings = LocalPaperSettings(
             starting_cash_twd=self._money(starting_cash, "starting_cash"),
             max_daily_buy_notional_twd=self._money(
                 max_daily_buy_notional,
                 "max_daily_buy_notional",
             ),
-            commission_rate=self._money(commission_rate, "commission_rate"),
+            commission_rate=(
+                COMMISSION_RATE
+                if cost_policy_enabled
+                else self._money(commission_rate, "commission_rate")
+            ),
             minimum_commission_twd=self._money(
-                minimum_commission,
+                MINIMUM_COMMISSION_TWD if cost_policy_enabled else minimum_commission,
                 "minimum_commission",
+            ),
+            slippage_bps=(
+                normalized_slippage_bps if cost_policy_enabled else Decimal("0")
+            ),
+            schema_version=(
+                SETTINGS_SCHEMA_V2 if cost_policy_enabled else SETTINGS_SCHEMA_V1
             ),
         )
         normalized_starting_cash = settings.starting_cash_twd
@@ -138,6 +181,8 @@ class SimulationService:
             raise ValueError("provider identity must not be empty")
         self._starting_cash = normalized_starting_cash
         self._settings = settings
+        self._cost_policy_enabled = cost_policy_enabled
+        self._slippage_bps = normalized_slippage_bps
         self._max_daily_buy_notional = settings.max_daily_buy_notional_twd
         self._daily_filled_buy_notional = Decimal("0")
         self._cash = normalized_starting_cash
@@ -202,6 +247,28 @@ class SimulationService:
     def max_retry_attempts(self) -> int:
         return self._max_retry_attempts
 
+    def validate_order_admission(
+        self,
+        *,
+        symbol: str,
+        limit_price: Decimal | float | int | str,
+    ) -> None:
+        """Fail expected v2 scope/tick errors before command Journal mutation."""
+
+        if not self._cost_policy_enabled:
+            return
+        normalized_symbol = self._normalize_symbol(symbol)
+        normalized_price = self._normalize_price(limit_price)
+        if not is_valid_common_stock_tick(normalized_price):
+            raise SimulationValidationError(
+                "限價不符合 tw_common_stock_tick_v1 升降單位"
+            )
+        if self._stream_capable:
+            canonical_symbol, _ = self._get_stock_identity(normalized_symbol)
+        else:
+            canonical_symbol = self._get_stock(normalized_symbol).symbol
+        self._get_local_paper_instrument_descriptor(canonical_symbol)
+
     def set_terminal_order_handler(
         self,
         handler: Callable[[dict[str, Any]], None] | None,
@@ -209,6 +276,16 @@ class SimulationService:
         """Register the local Journal bridge for orders completed after submit."""
         with self._lock:
             self._terminal_order_handler = handler
+
+    def mark_persistence_recovery_required(self, reason: str) -> None:
+        """Stop new local-paper admission after durable state becomes uncertain."""
+
+        normalized = str(reason).strip()
+        if not normalized:
+            raise ValueError("recovery reason must not be empty")
+        with self._lock:
+            self._quote_ingress_blocked = True
+            self._stream_error = f"LOCAL_PAPER_RECOVERY_REQUIRED: {normalized}"
 
     def activate_streaming(self) -> None:
         """Start quote ownership and report Provider handoff failures."""
@@ -321,6 +398,22 @@ class SimulationService:
                 self._daily_filled_buy_notional + reserved_buy_notional
             )
             available_cash = self._cash - reserved_cash
+            commission_total = sum(
+                (order.filled_commission for order in self._orders.values()),
+                Decimal("0"),
+            )
+            tax_total = sum(
+                (order.filled_tax for order in self._orders.values()),
+                Decimal("0"),
+            )
+            slippage_cost_total = sum(
+                (order.filled_slippage_cost for order in self._orders.values()),
+                Decimal("0"),
+            )
+            realized_pnl = sum(
+                self._realized_pnl_by_symbol.values(),
+                Decimal("0"),
+            )
             received_times = [
                 quote.received_at
                 for quote in self._quotes.values()
@@ -348,6 +441,8 @@ class SimulationService:
                 "minimum_commission": float(
                     self._settings.minimum_commission_twd
                 ),
+                "cost_policy_enabled": self._cost_policy_enabled,
+                "slippage_bps": str(self._slippage_bps),
                 "trading_date": self._trading_date.isoformat(),
                 "opening_equity": float(self._opening_equity),
                 "daily_loss_includes_unrealized": True,
@@ -366,6 +461,10 @@ class SimulationService:
                 ),
                 "market_value": float(market_value),
                 "equity": float(self._cash + market_value),
+                "realized_pnl": str(realized_pnl),
+                "commission_total": str(commission_total),
+                "tax_total": str(tax_total),
+                "slippage_cost_total": str(slippage_cost_total),
                 "quote_mode": (
                     "SHIOAJI_TICK_BIDASK" if self._stream_capable else "SNAPSHOT"
                 ),
@@ -474,7 +573,10 @@ class SimulationService:
                     name=str(raw["name"]),
                     side=OrderSide(str(raw["side"])),
                     quantity_shares=self._restored_quantity_shares(raw),
-                    limit_price=self._money(raw["limit_price"], "restored.limit_price"),
+                    limit_price=self._money(
+                        raw.get("limit_price_decimal") or raw["limit_price"],
+                        "restored.limit_price",
+                    ),
                     status=OrderStatus(str(raw["status"])),
                     submitted_at=datetime.fromisoformat(str(raw["submitted_at"])),
                     updated_at=datetime.fromisoformat(str(raw["updated_at"])),
@@ -485,22 +587,112 @@ class SimulationService:
                     ),
                     filled_quantity=int(raw.get("filled_quantity") or 0),
                     filled_notional=self._money(
-                        raw.get("filled_amount") or 0,
+                        raw.get("filled_amount_decimal")
+                        or raw.get("filled_amount")
+                        or 0,
                         "restored.filled_amount",
                     ),
                     filled_commission=self._money(
-                        raw.get("filled_commission") or 0,
+                        raw.get("filled_commission_decimal")
+                        or raw.get("filled_commission")
+                        or 0,
                         "restored.filled_commission",
                     ),
+                    filled_tax=self._money(
+                        raw.get("filled_tax") or 0,
+                        "restored.filled_tax",
+                    ),
+                    filled_slippage_cost=self._money(
+                        raw.get("filled_slippage_cost") or 0,
+                        "restored.filled_slippage_cost",
+                    ),
                     last_fill_price=(
-                        self._money(raw["last_fill_price"], "restored.last_fill_price")
-                        if raw.get("last_fill_price") is not None
+                        self._money(
+                            raw.get("last_fill_price_decimal")
+                            or raw["last_fill_price"],
+                            "restored.last_fill_price",
+                        )
+                        if raw.get("last_fill_price_decimal") is not None
+                        or raw.get("last_fill_price") is not None
                         else None
                     ),
                     last_fill_quantity=int(raw.get("last_fill_quantity") or 0),
                     last_fill_commission=self._money(
-                        raw.get("last_fill_commission") or 0,
+                        raw.get("last_fill_commission_decimal")
+                        or raw.get("last_fill_commission")
+                        or 0,
                         "restored.last_fill_commission",
+                    ),
+                    last_fill_tax=self._money(
+                        raw.get("last_fill_tax") or 0,
+                        "restored.last_fill_tax",
+                    ),
+                    last_reference_price=(
+                        self._money(
+                            raw["last_reference_price"],
+                            "restored.last_reference_price",
+                        )
+                        if raw.get("last_reference_price") is not None
+                        else None
+                    ),
+                    last_reference_source=(
+                        str(raw["last_reference_source"])
+                        if raw.get("last_reference_source") is not None
+                        else None
+                    ),
+                    configured_slippage_bps=(
+                        self._money(
+                            raw["configured_slippage_bps"],
+                            "restored.configured_slippage_bps",
+                        )
+                        if raw.get("configured_slippage_bps") is not None
+                        else None
+                    ),
+                    last_realized_slippage_bps=(
+                        self._money(
+                            raw["last_realized_slippage_bps"],
+                            "restored.last_realized_slippage_bps",
+                        )
+                        if raw.get("last_realized_slippage_bps") is not None
+                        else None
+                    ),
+                    last_slippage_cost=self._money(
+                        raw.get("last_slippage_cost") or 0,
+                        "restored.last_slippage_cost",
+                    ),
+                    last_net_cash_effect=(
+                        self._money(
+                            raw["last_net_cash_effect"],
+                            "restored.last_net_cash_effect",
+                        )
+                        if raw.get("last_net_cash_effect") is not None
+                        else None
+                    ),
+                    fee_policy_version=(
+                        str(raw["fee_policy_version"])
+                        if raw.get("fee_policy_version") is not None
+                        else None
+                    ),
+                    rounding_policy_version=(
+                        str(raw["rounding_policy_version"])
+                        if raw.get("rounding_policy_version") is not None
+                        else None
+                    ),
+                    slippage_policy_version=(
+                        str(raw["slippage_policy_version"])
+                        if raw.get("slippage_policy_version") is not None
+                        else None
+                    ),
+                    price_tick_policy_version=(
+                        str(raw["price_tick_policy_version"])
+                        if raw.get("price_tick_policy_version") is not None
+                        else None
+                    ),
+                    instrument_descriptor=self._restored_instrument_descriptor(raw),
+                    waiting_reason=(
+                        str(raw["waiting_reason"])
+                        if raw.get("waiting_reason") is not None
+                        else None
                     ),
                     fill_sequence=int(raw.get("fill_sequence") or 0),
                     reason=(str(raw["reason"]) if raw.get("reason") is not None else None),
@@ -700,6 +892,12 @@ class SimulationService:
             lots=lots,
         )
         normalized_price = self._normalize_price(limit_price)
+        if self._cost_policy_enabled and not is_valid_common_stock_tick(
+            normalized_price
+        ):
+            raise SimulationValidationError(
+                "限價不符合 tw_common_stock_tick_v1 升降單位"
+            )
         normalized_key = self._normalize_idempotency_key(idempotency_key)
         normalized_origin = str(origin).strip().upper()
         normalized_strategy_id = self._optional_identity(strategy_id)
@@ -733,6 +931,11 @@ class SimulationService:
                     stock_symbol,
                     _QuoteState(snapshot=stock),
                 ).snapshot = stock
+            instrument_descriptor = (
+                self._get_local_paper_instrument_descriptor(stock_symbol)
+                if self._cost_policy_enabled
+                else None
+            )
             now = self._now()
             order = SimulationOrder(
                 order_id=uuid4().hex,
@@ -752,6 +955,10 @@ class SimulationService:
                 predecessor_order_id=normalized_predecessor,
                 timeout_at=now + timedelta(seconds=self._pending_timeout_seconds),
                 expires_at=now + timedelta(seconds=self._order_expiry_seconds),
+                configured_slippage_bps=(
+                    self._slippage_bps if self._cost_policy_enabled else None
+                ),
+                instrument_descriptor=instrument_descriptor,
             )
             self._orders[order.order_id] = order
             self._order_ids_by_key[normalized_key] = order.order_id
@@ -816,15 +1023,23 @@ class SimulationService:
                     self._reject(order, "可賣出持股不足")
 
             if order.status is OrderStatus.SUBMITTED:
-                execution_price = (
+                reference_price = (
                     self._stream_execution_price(order, self._quotes[stock_symbol])
                     if self._stream_capable
                     else self._stock_price(stock)
                 )
-                if (
-                    execution_price is not None
-                    and self._is_marketable_price(order, execution_price)
-                ):
+                execution = self._execution_decision(
+                    order,
+                    reference_price,
+                    (
+                        ReferenceSource.BEST_ASK
+                        if order.side is OrderSide.BUY
+                        else ReferenceSource.BEST_BID
+                    )
+                    if self._stream_capable
+                    else ReferenceSource.SNAPSHOT_COMPATIBILITY,
+                )
+                if execution is not None:
                     fill_quantity = (
                         self._book_fill_quantity(order, self._quotes[stock_symbol])
                         if self._stream_capable
@@ -833,7 +1048,7 @@ class SimulationService:
                     if fill_quantity > 0:
                         executed_quantity = self._fill(
                             order,
-                            execution_price,
+                            execution,
                             fill_quantity=fill_quantity,
                         )
                         if self._stream_capable and executed_quantity > 0:
@@ -909,15 +1124,17 @@ class SimulationService:
                 self._quotes.setdefault(symbol, _QuoteState(snapshot=quote)).snapshot = quote
             for order in self._orders.values():
                 quote = quotes.get(order.symbol)
-                if (
-                    quote is not None
-                    and order.status in _ACTIVE_ORDER_STATUSES
-                    and self._is_marketable_price(order, self._stock_price(quote))
-                ):
-                    self._fill(
+                execution = (
+                    self._execution_decision(
                         order,
                         self._stock_price(quote),
+                        ReferenceSource.SNAPSHOT_COMPATIBILITY,
                     )
+                    if quote is not None and order.status in _ACTIVE_ORDER_STATUSES
+                    else None
+                )
+                if execution is not None:
+                    self._fill(order, execution)
                     notifications.append(self._order_payload(order))
         for payload in notifications:
             self._notify_terminal_order(payload)
@@ -1072,6 +1289,24 @@ class SimulationService:
             raise SimulationValidationError(f"找不到股票：{symbol}")
         return normalized_symbol, normalized_name
 
+    def _get_local_paper_instrument_descriptor(
+        self,
+        symbol: str,
+    ) -> LocalPaperInstrumentDescriptorV1:
+        try:
+            descriptor = self._provider.get_local_paper_instrument_descriptor(symbol)
+        except KeyError as error:
+            raise SimulationValidationError(f"找不到股票：{symbol}") from error
+        if (
+            descriptor is None
+            or descriptor.symbol != symbol
+            or descriptor.normalized_product_class
+            is not LocalPaperProductClass.COMMON_STOCK
+            or descriptor.exchange_raw not in {"TWSE", "TPEX", "TSE", "OTC"}
+        ):
+            raise SimulationValidationError("UNSUPPORTED_COST_POLICY_SCOPE")
+        return descriptor
+
     @staticmethod
     def _is_marketable_price(order: SimulationOrder, execution_price: Decimal) -> bool:
         return (
@@ -1092,6 +1327,46 @@ class SimulationService:
             return None
         return quote.ask_price if order.side is OrderSide.BUY else quote.bid_price
 
+    def _execution_decision(
+        self,
+        order: SimulationOrder,
+        reference_price: Decimal | None,
+        reference_source: ReferenceSource,
+    ) -> _ExecutionDecision | None:
+        if reference_price is None:
+            return None
+        if not self._cost_policy_enabled:
+            if not self._is_marketable_price(order, reference_price):
+                order.waiting_reason = "LIMIT_NOT_REACHED"
+                return None
+            order.waiting_reason = None
+            return _ExecutionDecision(
+                reference_price=reference_price,
+                reference_source=reference_source,
+                fill_price=reference_price,
+            )
+        try:
+            slippage = decide_fixed_adverse_slippage(
+                side=ExecutionSide(order.side.value),
+                reference_price=reference_price,
+                reference_source=reference_source,
+                configured_slippage_bps=self._slippage_bps,
+                limit_price=order.limit_price,
+            )
+        except ValueError:
+            order.waiting_reason = "EXECUTION_POLICY_INTEGRITY_ERROR"
+            return None
+        if not slippage.limit_satisfied:
+            order.waiting_reason = "SLIPPAGE_ADJUSTED_LIMIT_NOT_REACHED"
+            return None
+        order.waiting_reason = None
+        return _ExecutionDecision(
+            reference_price=slippage.reference_price,
+            reference_source=slippage.reference_source,
+            fill_price=slippage.adjusted_price,
+            slippage=slippage,
+        )
+
     @staticmethod
     def _book_fill_quantity(order: SimulationOrder, quote: _QuoteState) -> int:
         available = (
@@ -1108,7 +1383,7 @@ class SimulationService:
         order: SimulationOrder,
         quote: _QuoteState,
         quantity: int,
-    ) -> int:
+    ) -> None:
         if order.side is OrderSide.BUY and quote.ask_available_quantity is not None:
             quote.ask_available_quantity = max(0, quote.ask_available_quantity - quantity)
         elif order.side is OrderSide.SELL and quote.bid_available_quantity is not None:
@@ -1136,7 +1411,7 @@ class SimulationService:
     def _fill(
         self,
         order: SimulationOrder,
-        fill_price: Decimal,
+        execution: _ExecutionDecision,
         *,
         fill_quantity: int | None = None,
     ) -> int:
@@ -1144,20 +1419,57 @@ class SimulationService:
         quantity = min(fill_quantity or order.remaining_quantity, order.remaining_quantity)
         if quantity <= 0:
             return 0
+        fill_price = execution.fill_price
+        position = self._positions.get(order.symbol)
         if order.side is OrderSide.BUY:
+            if position is not None and not self._same_owner(order, position):
+                self._reject(order, "成交時持倉歸屬衝突，禁止跨 owner 合併")
+                return 0
+        elif position is None or position.quantity < quantity:
+            self._reject(order, "可賣出持股不足")
+            return 0
+
+        accounting: FillAccountingDecision | None = None
+        if self._cost_policy_enabled:
+            if execution.slippage is None or order.instrument_descriptor is None:
+                order.waiting_reason = "EXECUTION_POLICY_INTEGRITY_ERROR"
+                return 0
+            try:
+                accounting = decide_fill_accounting(
+                    slippage=execution.slippage,
+                    quantity_shares=quantity,
+                    cumulative_order_gross_before=order.filled_notional,
+                    already_booked_commission=order.filled_commission,
+                    cumulative_order_tax_before=order.filled_tax,
+                    instrument_descriptor=order.instrument_descriptor,
+                )
+            except ValueError:
+                order.waiting_reason = "EXECUTION_POLICY_INTEGRITY_ERROR"
+                return 0
+            fill_amount = accounting.gross_amount
+            incremental_commission = accounting.commission
+            fill_tax = accounting.tax
+            net_cash_effect = accounting.net_cash_effect
+        else:
             fill_amount = quantity * fill_price
             cumulative_gross = order.filled_notional + fill_amount
             cumulative_commission = self._settings.commission_for(cumulative_gross)
             incremental_commission = cumulative_commission - order.filled_commission
-            cash_debit = fill_amount + incremental_commission
+            fill_tax = Decimal("0")
+            net_cash_effect = (
+                -(fill_amount + incremental_commission)
+                if order.side is OrderSide.BUY
+                else fill_amount - incremental_commission
+            )
+
+        if order.side is OrderSide.BUY:
+            cash_debit = -net_cash_effect
             if cash_debit > self._cash:
                 self._reject(
                     order,
                     "目前報價造成可用虛擬現金不足",
                 )
                 return 0
-
-            position = self._positions.get(order.symbol)
             if position is None:
                 self._positions[order.symbol] = SimulationPosition(
                     symbol=order.symbol,
@@ -1170,9 +1482,6 @@ class SimulationService:
                     owner_strategy_version=order.strategy_version,
                 )
             else:
-                if not self._same_owner(order, position):
-                    self._reject(order, "成交時持倉歸屬衝突，禁止跨 owner 合併")
-                    return 0
                 total_quantity = position.quantity + quantity
                 position.average_price = (
                     position.average_price * position.quantity
@@ -1180,21 +1489,10 @@ class SimulationService:
                 ) / total_quantity
                 position.commission_cost += incremental_commission
                 position.quantity = total_quantity
-            self._cash -= cash_debit
+            self._cash += net_cash_effect
             self._daily_filled_buy_notional += fill_amount
         else:
-            position = self._positions.get(order.symbol)
-            if position is None or position.quantity < quantity:
-                self._reject(
-                    order,
-                    "可賣出持股不足",
-                )
-                return 0
-
-            fill_amount = quantity * fill_price
-            cumulative_gross = order.filled_notional + fill_amount
-            cumulative_commission = self._settings.commission_for(cumulative_gross)
-            incremental_commission = cumulative_commission - order.filled_commission
+            assert position is not None
             allocated_buy_commission = (
                 position.commission_cost * quantity / position.quantity
             )
@@ -1202,6 +1500,7 @@ class SimulationService:
                 (fill_price - position.average_price) * quantity
                 - allocated_buy_commission
                 - incremental_commission
+                - fill_tax
             )
             self._realized_pnl_by_symbol[order.symbol] = (
                 self._realized_pnl_by_symbol.get(order.symbol, Decimal("0"))
@@ -1209,17 +1508,31 @@ class SimulationService:
             )
             position.quantity -= quantity
             position.commission_cost -= allocated_buy_commission
-            self._cash += fill_amount - incremental_commission
+            self._cash += net_cash_effect
             if position.quantity == 0:
                 del self._positions[order.symbol]
 
         order.filled_notional += fill_price * quantity
         order.filled_commission += incremental_commission
+        order.filled_tax += fill_tax
         order.filled_quantity += quantity
         order.filled_price = order.filled_notional / order.filled_quantity
         order.last_fill_price = fill_price
         order.last_fill_quantity = quantity
         order.last_fill_commission = incremental_commission
+        order.last_fill_tax = fill_tax
+        order.last_reference_price = execution.reference_price
+        order.last_reference_source = execution.reference_source.value
+        order.last_net_cash_effect = net_cash_effect
+        if accounting is not None:
+            order.filled_slippage_cost += accounting.slippage_cost
+            order.configured_slippage_bps = accounting.configured_slippage_bps
+            order.last_realized_slippage_bps = accounting.realized_slippage_bps
+            order.last_slippage_cost = accounting.slippage_cost
+            order.fee_policy_version = accounting.fee_policy_version
+            order.rounding_policy_version = accounting.rounding_policy_version
+            order.slippage_policy_version = accounting.slippage_policy_version
+            order.price_tick_policy_version = accounting.price_tick_policy_version
         order.fill_sequence += 1
         if order.remaining_quantity == 0:
             order.status = OrderStatus.FILLED
@@ -1330,7 +1643,10 @@ class SimulationService:
                 quote.last_price = self._optional_money(update.last_price)
                 quote.last_trade_at = update.exchange_timestamp
             elif update.kind == "BIDASK":
-                if quote.book_at and update.exchange_timestamp < quote.book_at:
+                # Without an exchange sequence number, an equal timestamp cannot
+                # prove a fresh best-level volume tranche. Replaying it would
+                # replenish already-consumed liquidity and overfill the order.
+                if quote.book_at and update.exchange_timestamp <= quote.book_at:
                     return False
                 quote.bid_price = self._optional_money(update.bid_price)
                 quote.ask_price = self._optional_money(update.ask_price)
@@ -1358,16 +1674,21 @@ class SimulationService:
                 for order in self._orders.values():
                     if order.symbol != update.symbol or order.status not in _ACTIVE_ORDER_STATUSES:
                         continue
-                    execution_price = self._stream_execution_price(order, quote)
-                    if (
-                        execution_price is not None
-                        and self._is_marketable_price(order, execution_price)
-                    ):
+                    execution = self._execution_decision(
+                        order,
+                        self._stream_execution_price(order, quote),
+                        (
+                            ReferenceSource.BEST_ASK
+                            if order.side is OrderSide.BUY
+                            else ReferenceSource.BEST_BID
+                        ),
+                    )
+                    if execution is not None:
                         fill_quantity = self._book_fill_quantity(order, quote)
                         if fill_quantity > 0:
                             executed_quantity = self._fill(
                                 order,
-                                execution_price,
+                                execution,
                                 fill_quantity=fill_quantity,
                             )
                             if executed_quantity > 0:
@@ -1467,6 +1788,33 @@ class SimulationService:
         else:
             quantity = int(raw["lots"]) * 1_000
         return cls._normalize_quantity_shares(quantity)
+
+    @staticmethod
+    def _restored_instrument_descriptor(
+        raw: dict[str, Any],
+    ) -> LocalPaperInstrumentDescriptorV1 | None:
+        snapshot = raw.get("instrument_descriptor_snapshot")
+        if snapshot is None:
+            return None
+        if not isinstance(snapshot, Mapping):
+            raise SimulationStateError("instrument descriptor snapshot 損壞")
+        try:
+            descriptor = LocalPaperInstrumentDescriptorV1(
+                symbol=str(snapshot["symbol"]),
+                exchange_raw=str(snapshot["exchange_raw"]),
+                security_type_raw=str(snapshot["security_type_raw"]),
+                product_category_raw=str(snapshot["product_category_raw"]),
+                normalized_product_class=LocalPaperProductClass(
+                    str(snapshot["normalized_product_class"])
+                ),
+                source_identity=str(snapshot["source_identity"]),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise SimulationStateError("instrument descriptor snapshot 損壞") from error
+        expected_digest = raw.get("instrument_descriptor_digest")
+        if expected_digest is not None and descriptor.digest != str(expected_digest):
+            raise SimulationStateError("instrument descriptor digest 不一致")
+        return descriptor
 
     @staticmethod
     def _normalize_price(limit_price: Decimal | float | int | str) -> Decimal:
@@ -1574,7 +1922,14 @@ class SimulationService:
             elif self._stream_execution_price(order, quote) is None:
                 waiting_reason = "WAITING_FOR_FRESH_BIDASK"
             else:
-                waiting_reason = "LIMIT_NOT_REACHED"
+                waiting_reason = order.waiting_reason or "LIMIT_NOT_REACHED"
+        elif order.status in _ACTIVE_ORDER_STATUSES:
+            waiting_reason = order.waiting_reason
+        descriptor_snapshot = (
+            order.instrument_descriptor.to_dict()
+            if order.instrument_descriptor is not None
+            else None
+        )
         return {
             "order_id": order.order_id,
             "idempotency_key": order.idempotency_key,
@@ -1589,6 +1944,7 @@ class SimulationService:
             "quantity": order.quantity,
             "remaining_quantity": order.remaining_quantity,
             "limit_price": float(order.limit_price),
+            "limit_price_decimal": str(order.limit_price),
             "estimated_amount": float(order.quantity * order.limit_price),
             "status": order.status.value,
             "submitted_at": order.submitted_at.isoformat(),
@@ -1596,16 +1952,63 @@ class SimulationService:
             "filled_price": float(order.filled_price) if order.filled_price is not None else None,
             "filled_quantity": order.filled_quantity,
             "filled_commission": float(order.filled_commission),
+            "filled_commission_decimal": str(order.filled_commission),
+            "filled_tax": str(order.filled_tax),
+            "filled_slippage_cost": str(order.filled_slippage_cost),
             "last_fill_price": (
                 float(order.last_fill_price)
                 if order.last_fill_price is not None
                 else None
             ),
+            "last_fill_price_decimal": (
+                str(order.last_fill_price)
+                if order.last_fill_price is not None
+                else None
+            ),
             "last_fill_quantity": order.last_fill_quantity,
             "last_fill_commission": float(order.last_fill_commission),
+            "last_fill_commission_decimal": str(order.last_fill_commission),
+            "last_fill_tax": str(order.last_fill_tax),
+            "last_reference_price": (
+                str(order.last_reference_price)
+                if order.last_reference_price is not None
+                else None
+            ),
+            "last_reference_source": order.last_reference_source,
+            "configured_slippage_bps": (
+                str(order.configured_slippage_bps)
+                if order.configured_slippage_bps is not None
+                else None
+            ),
+            "last_realized_slippage_bps": (
+                str(order.last_realized_slippage_bps)
+                if order.last_realized_slippage_bps is not None
+                else None
+            ),
+            "last_slippage_cost": str(order.last_slippage_cost),
+            "last_net_cash_effect": (
+                str(order.last_net_cash_effect)
+                if order.last_net_cash_effect is not None
+                else None
+            ),
+            "fee_policy_version": order.fee_policy_version,
+            "rounding_policy_version": order.rounding_policy_version,
+            "slippage_policy_version": order.slippage_policy_version,
+            "price_tick_policy_version": order.price_tick_policy_version,
+            "instrument_descriptor_snapshot": descriptor_snapshot,
+            "instrument_descriptor_digest": (
+                order.instrument_descriptor.digest
+                if order.instrument_descriptor is not None
+                else None
+            ),
             "fill_sequence": order.fill_sequence,
             "filled_amount": (
                 float(order.filled_notional)
+                if order.filled_quantity > 0
+                else None
+            ),
+            "filled_amount_decimal": (
+                str(order.filled_notional)
                 if order.filled_quantity > 0
                 else None
             ),
@@ -1770,8 +2173,11 @@ class SimulationService:
 
     def _order_cash_reservation(self, order: SimulationOrder) -> Decimal:
         remaining_gross = order.remaining_quantity * order.limit_price
-        projected_commission = self._settings.commission_for(
-            order.filled_notional + remaining_gross
+        cumulative_gross = order.filled_notional + remaining_gross
+        projected_commission = (
+            cumulative_commission_for(cumulative_gross)
+            if self._cost_policy_enabled
+            else self._settings.commission_for(cumulative_gross)
         )
         remaining_commission = max(
             Decimal("0"),

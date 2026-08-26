@@ -24,7 +24,11 @@ from simulation.kill_switch import (
     KillSwitchDurability,
 )
 from simulation.service import SimulationService
-from simulation.settings import LocalPaperSettings, SETTINGS_SCHEMA_VERSION
+from simulation.settings import (
+    LocalPaperSettings,
+    SETTINGS_SCHEMA_V1,
+    SETTINGS_SCHEMA_V2,
+)
 from simulation.strategy_flow import StrategyPaperFlowService
 from trading.journal import JournalSession
 from trading.postgres_journal import PostgresJournalRepository
@@ -47,6 +51,19 @@ _SETTINGS_BINDING_METADATA_KEYS = frozenset(
         "commission_rate",
         "minimum_commission",
         "fee_rounding_policy",
+        "sell_tax_rate",
+        "money_quantum",
+        "fee_policy_version",
+        "rounding_policy_version",
+        "slippage_policy_version",
+        "price_tick_policy_version",
+        "configured_slippage_bps",
+        "calibration_status",
+        "security_scope",
+        "order_condition",
+        "day_trade",
+        "instrument_descriptor_schema",
+        "instrument_admission_policy",
     }
 )
 
@@ -57,8 +74,8 @@ def _settings_metadata(
     revision: int,
 ) -> dict[str, object]:
     serialized = settings.to_dict()
-    return {
-        "settings_schema": SETTINGS_SCHEMA_VERSION,
+    metadata: dict[str, object] = {
+        "settings_schema": settings.schema_version,
         "settings_revision": revision,
         "settings_digest": settings.digest,
         "starting_cash": serialized["starting_cash_twd"],
@@ -68,6 +85,35 @@ def _settings_metadata(
         "fee_rounding_policy": _FEE_ROUNDING_POLICY,
         "execution_boundary": "LOCAL_ONLY",
     }
+    if settings.schema_version == SETTINGS_SCHEMA_V1:
+        return metadata
+    metadata.update(
+        {
+            "sell_tax_rate": serialized["sell_tax_rate"],
+            "money_quantum": serialized["money_quantum_twd"],
+            "fee_policy_version": serialized["fee_policy_version"],
+            "rounding_policy_version": serialized["rounding_policy_version"],
+            "slippage_policy_version": serialized[
+                "slippage_policy_version"
+            ],
+            "price_tick_policy_version": serialized[
+                "price_tick_policy_version"
+            ],
+            "configured_slippage_bps": serialized["slippage_bps"],
+            "calibration_status": serialized["calibration_status"],
+            "security_scope": serialized["security_scope"],
+            "order_condition": serialized["order_condition"],
+            "day_trade": serialized["day_trade"],
+            "instrument_descriptor_schema": (
+                "local-paper-instrument-descriptor-v1"
+            ),
+            "instrument_admission_policy": (
+                "twse-tpex-common-stock-admission-v1"
+            ),
+            "fee_rounding_policy": serialized["rounding_policy_version"],
+        }
+    )
+    return metadata
 
 
 def _validate_session_settings(
@@ -185,9 +231,22 @@ class RuntimeComposition:
             ),
             commission_rate=resolved_settings.commission_rate,
             minimum_commission=resolved_settings.minimum_commission_twd,
+            slippage_bps=resolved_settings.slippage_bps,
+            cost_policy_enabled=(
+                resolved_settings.schema_version == SETTINGS_SCHEMA_V2
+            ),
             clock=resolved_clock,
             start_streaming=start_simulation_streaming,
         )
+        if (
+            local_paper_settings is not None
+            and resolved_simulation.settings != resolved_settings
+        ):
+            if simulation_service is None:
+                resolved_simulation.close()
+            if journal is None:
+                resolved_journal.close()
+            raise ValueError("local-paper simulation settings mismatch")
         local_paper_session = resolved_journal.session(local_paper_session_id)
         settings_bound = True
         if local_paper_session is None:
@@ -256,6 +315,10 @@ class RuntimeComposition:
                         for state in latest_local_paper_order_states(
                             resolved_journal,
                             session_id=local_paper_session.session_id,
+                            require_integrity=(
+                                resolved_settings.schema_version
+                                == SETTINGS_SCHEMA_V2
+                            ),
                         )
                     ],
                     daily_baseline=(

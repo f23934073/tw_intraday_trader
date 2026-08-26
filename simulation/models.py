@@ -7,6 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
+from market_data.models import LocalPaperInstrumentDescriptorV1
 from trading.trade_management import OrderLifecycleState
 
 
@@ -39,9 +40,24 @@ class SimulationOrder:
     filled_quantity: int = 0
     filled_notional: Decimal = Decimal("0")
     filled_commission: Decimal = Decimal("0")
+    filled_tax: Decimal = Decimal("0")
+    filled_slippage_cost: Decimal = Decimal("0")
     last_fill_price: Decimal | None = None
     last_fill_quantity: int = 0
     last_fill_commission: Decimal = Decimal("0")
+    last_fill_tax: Decimal = Decimal("0")
+    last_reference_price: Decimal | None = None
+    last_reference_source: str | None = None
+    configured_slippage_bps: Decimal | None = None
+    last_realized_slippage_bps: Decimal | None = None
+    last_slippage_cost: Decimal = Decimal("0")
+    last_net_cash_effect: Decimal | None = None
+    fee_policy_version: str | None = None
+    rounding_policy_version: str | None = None
+    slippage_policy_version: str | None = None
+    price_tick_policy_version: str | None = None
+    instrument_descriptor: LocalPaperInstrumentDescriptorV1 | None = None
+    waiting_reason: str | None = None
     fill_sequence: int = 0
     reason: str | None = None
     strategy_id: str | None = None
