@@ -15,7 +15,11 @@ from market_data.provider import MockProvider
 from runtime.composition import RuntimeComposition
 from simulation.settings import LocalPaperSettings
 from trading.journal import JournalConflictError
-from trading.local_paper import LOCAL_PAPER_FILL_V4_KIND, LOCAL_PAPER_PROJECTION_NAME
+from trading.local_paper import (
+    LOCAL_PAPER_FILL_V4_KIND,
+    LOCAL_PAPER_PROJECTION_NAME,
+    LOCAL_PAPER_V2_PROJECTION_NAME,
+)
 from trading.migrations import apply_migrations
 from trading.postgres_journal import PostgresJournalRepository
 
@@ -168,6 +172,68 @@ def _wait_for_status(
     raise AssertionError(f"order {order_id} did not reach {status}")
 
 
+def _wait_for_durable_projection_tail(
+    composition: RuntimeComposition,
+    *,
+    expected_fill_v4_count: int,
+) -> None:
+    """Wait until both Local Paper projections cover the durable Journal tail."""
+
+    deadline = monotonic() + 2
+    observed: tuple[int, int | None, int | None, int | None] = (
+        0,
+        None,
+        None,
+        None,
+    )
+    while monotonic() < deadline:
+        journal_results = composition.journal.records(SESSION_ID)
+        fill_v4_count = sum(
+            result.record.kind == LOCAL_PAPER_FILL_V4_KIND
+            for result in journal_results
+        )
+        terminal_sequence = (
+            journal_results[-1].sequence if journal_results else None
+        )
+        v1_checkpoint = composition.journal.latest_checkpoint(
+            SESSION_ID,
+            LOCAL_PAPER_PROJECTION_NAME,
+        )
+        v2_checkpoint = composition.journal.latest_checkpoint(
+            SESSION_ID,
+            LOCAL_PAPER_V2_PROJECTION_NAME,
+        )
+        observed = (
+            fill_v4_count,
+            terminal_sequence,
+            (
+                v1_checkpoint.journal_sequence
+                if v1_checkpoint is not None
+                else None
+            ),
+            (
+                v2_checkpoint.journal_sequence
+                if v2_checkpoint is not None
+                else None
+            ),
+        )
+        if (
+            fill_v4_count == expected_fill_v4_count
+            and terminal_sequence is not None
+            and observed[1:] == (
+                terminal_sequence,
+                terminal_sequence,
+                terminal_sequence,
+            )
+        ):
+            return
+        sleep(0.01)
+    raise AssertionError(
+        "Local Paper projections did not cover the Journal tail: "
+        f"fill-v4/terminal/v1/v2={observed}"
+    )
+
+
 def _stable_state(composition: RuntimeComposition) -> dict[str, object]:
     session = composition.simulation_service.session()
     orders = sorted(
@@ -290,6 +356,10 @@ def test_v2_partial_fills_reconstruct_exactly_across_three_new_connections(
             first,
             order_id=str(sell["order_id"]),
             status="FILLED",
+        )
+        _wait_for_durable_projection_tail(
+            first,
+            expected_fill_v4_count=4,
         )
         expected = _stable_state(first)
     finally:
