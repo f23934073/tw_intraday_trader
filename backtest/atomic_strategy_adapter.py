@@ -91,6 +91,12 @@ class AtomicBacktestStrategyAdapter:
         self._features.begin_session(session_date.isoformat())
 
     def evaluate(self, context: StrategyContext) -> StrategyEvaluation:
+        evaluation, _ = self.evaluate_with_feature_evidence(context)
+        return evaluation
+
+    def evaluate_with_feature_evidence(
+        self, context: StrategyContext
+    ) -> tuple[StrategyEvaluation, dict[str, object]]:
         features = self._features.normalize(context)
         atomic = self._strategy.evaluate(
             AtomicStrategyContext(
@@ -106,7 +112,7 @@ class AtomicBacktestStrategyAdapter:
         input_evidence = self._features.evaluation_input_evidence(features)
         if input_evidence is not None:
             observed["feature_input_evidence"] = input_evidence
-        return StrategyEvaluation(
+        evaluation = StrategyEvaluation(
             strategy_id=atomic.strategy_id,
             strategy_name=self.definition.display_name_zh_tw,
             strategy_version=str(self._version.version_number),
@@ -119,6 +125,18 @@ class AtomicBacktestStrategyAdapter:
             threshold=atomic.threshold,
             strategy_version_id=atomic.strategy_version_id,
         )
+        feature_evidence: dict[str, object] = {
+            "schema_version": "r6-feature-input-evidence-v1",
+            "adapter_identity": features.adapter_identity,
+            "symbol": features.symbol,
+            "session": features.session,
+            "as_of": features.as_of.isoformat(),
+            "input_digest": features.input_digest,
+            "request_digests": dict(features.request_digests),
+            "state_keys": dict(features.state_keys),
+            "missing_reasons": dict(features.missing_reasons),
+        }
+        return evaluation, feature_evidence
 
 
 @dataclass(frozen=True)
