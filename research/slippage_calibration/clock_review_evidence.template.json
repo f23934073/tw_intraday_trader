@@ -1,0 +1,13 @@
+{
+  "approved_max_abs_source_receive_skew_ms": "replace-with-reviewed-bound",
+  "disposition": "REVIEWED_COMPARABLE",
+  "market_session_manifest_sha256": "replace-with-canonical-market-manifest-sha256",
+  "review_method": "SOURCE_RECEIVE_TIMESTAMP_COMPARABILITY_REVIEW",
+  "reviewed_at": "YYYY-MM-DDTHH:MM:SS+08:00",
+  "reviewer": {
+    "authority": "INDEPENDENT_REVIEWER",
+    "reviewer_id": "replace-with-stable-reviewer-id"
+  },
+  "schema_version": "local-paper-slippage-clock-review-evidence.v1",
+  "session_id": "session-id"
+}

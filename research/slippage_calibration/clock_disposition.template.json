@@ -1,0 +1,9 @@
+{
+  "max_abs_source_receive_skew_ms": "replace-with-reviewed-bound",
+  "review_authority": "INDEPENDENT_REVIEWER",
+  "review_basis": "replace-with-review-artifact identity and disposition",
+  "review_evidence_path": "replace-with-independent-review-artifact.json",
+  "schema_version": "local-paper-slippage-clock-disposition.v1",
+  "session_id": "session-id",
+  "status": "REVIEWED_COMPARABLE"
+}

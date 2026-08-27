@@ -1,0 +1,94 @@
+{
+  "analysis_scope": "LOCAL_PAPER_MODEL_STRESS_PROXY_ONLY",
+  "cohort": {
+    "cohort_id": "late-delivery-cohort-2026-08-21-twse-2026-08-20",
+    "path": "../../late_delivery_evidence/cohorts/cohort_2026-08-21_twse_2026-08-20.json",
+    "sha256": "dfcfec79bde868c3504f0694480368f29ee18e20091d457d7ca6031ac086bc0b"
+  },
+  "content_sha256": "06abc070ba9b7883026d9ce4c9126583ab7f3fbfcede3ced59623cd999c36454",
+  "fill_exports": [],
+  "manifest_id": "local-paper-slippage-current-artifacts-dry-run-2026-08-27",
+  "market_sessions": [
+    {
+      "artifact_sha256": {
+        "bootstrap_snapshot.json": "f92e2baa909121a672504237694957340aa27c31ace8b2d2d5263ff25534c4bb",
+        "instrument_reference.json": "0192a4d9aa07e70ebbb8d448a5d1f8e5138991654496f2271b858c36cbc5769b",
+        "manifest.json": "45dd7472ff0c5aac406ac96b23d9c174f65199acb2e477068cc6764c8ece07d0",
+        "projection_state.json": "ec359477c2cf5cb4914f5f81567942991c85d3aa3ae308845a1d60df15780a12",
+        "qualification_report.json": "70411a39875264f0958bbe60bb2b0cd1ab13e85045d41086ccd886d877da9cbb",
+        "records.jsonl": "99b427aaa16b07fe1aa2469dc66cd2abd4e1223b3f610ca4d7e274450647ff97"
+      },
+      "clock_disposition": null,
+      "path": "../../../records/market_events/2026-08-21/hqual-20260821T091111-057b96a7",
+      "session_id": "hqual-20260821T091111-057b96a7",
+      "session_phase": "OPENING"
+    },
+    {
+      "artifact_sha256": {
+        "bootstrap_snapshot.json": "a5a05c8c75076732d30d4d4e9f593c9f930ea94b7c7c08ea80ba3a00d9f6f224",
+        "instrument_reference.json": "3a06072afb64941a61b2141e81ea46995424a0b8e19ac30d9eb37f9e25225cb3",
+        "manifest.json": "c82bd099bc78c83d79f96e4f3bbad78865e08375c5149ad1ba2930caa6bed417",
+        "projection_state.json": "46471e534317d1cbc89b46aefe6cd143b158b544e1730bafa5b7e78ca3c4068c",
+        "qualification_report.json": "e773bc2df7570bb827b480dacf81007cfa929a59f1f339ef5d95357ec772f51f",
+        "records.jsonl": "6041862a8dd6090cb74e8b519e5821fd038de4e416e168feaf9d620475b5e29f"
+      },
+      "clock_disposition": null,
+      "path": "../../../records/market_events/2026-08-21/hqual-20260821T093358-841c8ca7",
+      "session_id": "hqual-20260821T093358-841c8ca7",
+      "session_phase": "CONTINUOUS"
+    },
+    {
+      "artifact_sha256": {
+        "bootstrap_snapshot.json": "8fc9abd7215ae4d2645cfe65b836333e8e4d96f821c658982911432285369f23",
+        "instrument_reference.json": "06b353573af563bf8567be212dbddd0a271d46376e5e9a2ac38dfa5f27c67aac",
+        "manifest.json": "9589e637e5808c00888827507f72e19b2e9ce48c376b5843d2a708096486c34b",
+        "projection_state.json": "cc3f7f75c10c610107fb7a2088c3dd72ac302fd8bbf4016b0bb93ac0d0f79789",
+        "qualification_report.json": "27d5d420e2ce2452671fb793cec4e24986f3f0f4ec4e861c7e99b57a0920df57",
+        "records.jsonl": "6569dd35947d021b65834ff465ad252225ffa973bc8aa88c70b4e3c606be9f0a"
+      },
+      "clock_disposition": null,
+      "path": "../../../records/market_events/2026-08-21/tm-postfix-20260821-2330",
+      "session_id": "tm-postfix-20260821-2330",
+      "session_phase": "CONTINUOUS"
+    }
+  ],
+  "policy": {
+    "adverse_horizon_ms": 1000,
+    "analyzer_version": "local-paper-slippage-proxy-analyzer.v1",
+    "horizon_observation_tolerance_ms": 1000,
+    "local_paper_slippage_policy_version": "fixed_adverse_bps_v1",
+    "maximum_book_age_ms": 3000,
+    "maximum_source_receive_skew_ms": 1000,
+    "metric_policy_version": "bbo-tick-adverse-movement-proxy.v1",
+    "minimum_distinct_trading_days": 5,
+    "minimum_samples_per_group": 30,
+    "minimum_unique_books_per_group": 30,
+    "percentile_method": "nearest-rank.v1",
+    "price_tick_policy_version": "tw_common_stock_tick_v1",
+    "required_liquidity_tiers": [
+      "high",
+      "mid",
+      "low"
+    ],
+    "required_phase_buckets": [
+      "EARLY",
+      "MIDDLE",
+      "LATE"
+    ],
+    "required_session_phases": [
+      "OPENING",
+      "CONTINUOUS",
+      "CLOSE"
+    ],
+    "required_sides": [
+      "BUY",
+      "SELL"
+    ],
+    "timestamp_policy_version": "reviewed-source-receive-comparability.v1"
+  },
+  "schema_version": "local-paper-slippage-calibration-input-manifest.v1",
+  "trading_calendar": {
+    "path": "../../../config/twse_calendar_2026.json",
+    "sha256": "1671338c8247f7f5344657912f469fce111b82b9be0dea1d61d21eb6d3a3593a"
+  }
+}
