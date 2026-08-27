@@ -101,6 +101,23 @@ def test_postgres_migration_append_idempotency_and_checkpoint(journal) -> None:
         journal.append(replace(record(), payload={"symbol": "2317"}))
 
 
+def test_postgres_restart_rejects_payload_tampered_without_fingerprint(journal) -> None:
+    journal.append(record())
+    with journal._transaction() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE trading.journal_records
+                SET payload_json = jsonb_set(payload_json, '{symbol}', '"2317"')
+                WHERE session_id = %s AND record_id = %s
+                """,
+                ("postgres-20260818", "command-1"),
+            )
+
+    with pytest.raises(JournalConflictError, match="stored fingerprint"):
+        journal.records("postgres-20260818")
+
+
 def test_migration_moves_legacy_public_journal_into_trading_schema() -> None:
     connection = psycopg.connect(TEST_POSTGRES_DSN)
     try:

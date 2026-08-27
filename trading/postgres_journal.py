@@ -163,7 +163,7 @@ class PostgresJournalRepository(JournalRepository):
                     """
                     SELECT journal_sequence, record_id, kind, occurred_at,
                            payload_json::text, idempotency_scope, idempotency_key,
-                           schema_version
+                           schema_version, fingerprint
                     FROM trading.journal_records
                     WHERE session_id = %s AND journal_sequence > %s
                     ORDER BY journal_sequence
@@ -171,23 +171,30 @@ class PostgresJournalRepository(JournalRepository):
                     (session_id, after_sequence),
                 )
                 rows = cursor.fetchall()
-        return tuple(
-            JournalAppendResult(
-                record=JournalRecord(
-                    record_id=row[1],
-                    session_id=session_id,
-                    kind=row[2],
-                    occurred_at=row[3],
-                    payload=json.loads(row[4]),
-                    idempotency_scope=row[5],
-                    idempotency_key=row[6],
-                    schema_version=row[7],
-                ),
-                sequence=int(row[0]),
-                idempotent=False,
+        results: list[JournalAppendResult] = []
+        for row in rows:
+            record = JournalRecord(
+                record_id=row[1],
+                session_id=session_id,
+                kind=row[2],
+                occurred_at=row[3],
+                payload=json.loads(row[4]),
+                idempotency_scope=row[5],
+                idempotency_key=row[6],
+                schema_version=row[7],
             )
-            for row in rows
-        )
+            if record.fingerprint != row[8]:
+                raise JournalConflictError(
+                    "stored fingerprint conflicts with reconstructed Journal record"
+                )
+            results.append(
+                JournalAppendResult(
+                    record=record,
+                    sequence=int(row[0]),
+                    idempotent=False,
+                )
+            )
+        return tuple(results)
 
     def save_checkpoint(self, checkpoint: ProjectionCheckpoint) -> None:
         with self._transaction() as connection:
