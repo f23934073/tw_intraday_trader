@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
 from trading.journal import JournalAppendResult, JournalConflictError, JournalRecord
-from trading.postgres_journal import PostgresJournalRepository
+from trading.postgres_journal import (
+    PostgresJournalRepository,
+    _postgres_storage_fingerprint,
+)
 
 
 AT = datetime.fromisoformat("2026-08-27T09:00:00+08:00")
@@ -57,17 +60,23 @@ def _record(*, payload: dict[str, object]) -> JournalRecord:
     )
 
 
-def _row(record: JournalRecord, *, payload_json: str | None = None):
+def _row(
+    record: JournalRecord,
+    *,
+    occurred_at: datetime | None = None,
+    payload_json: str | None = None,
+    stored_fingerprint: str | None = None,
+):
     return (
         1,
         record.record_id,
         record.kind,
-        record.occurred_at,
-        payload_json or record.payload_json,
+        record.occurred_at if occurred_at is None else occurred_at,
+        record.payload_json if payload_json is None else payload_json,
         record.idempotency_scope,
         record.idempotency_key,
         record.schema_version,
-        record.fingerprint,
+        record.fingerprint if stored_fingerprint is None else stored_fingerprint,
     )
 
 
@@ -89,3 +98,41 @@ def test_postgres_reader_checks_stored_fingerprint_before_replay() -> None:
     with pytest.raises(JournalConflictError, match="stored fingerprint"):
         tampered.records(original.session_id)
     assert tampered_connection.rollbacks == 0
+
+
+def test_postgres_reader_restores_original_offset_from_storage_envelope() -> None:
+    original = _record(payload={"symbol": "2330"})
+    connection = FakeConnection(
+        (
+            _row(
+                original,
+                occurred_at=original.occurred_at.astimezone(timezone.utc),
+                stored_fingerprint=_postgres_storage_fingerprint(original),
+            ),
+        )
+    )
+    repository = PostgresJournalRepository(connection)
+
+    replayed = repository.records(original.session_id)
+
+    assert replayed == (JournalAppendResult(original, 1, False),)
+    assert replayed[0].record.occurred_at.isoformat() == AT.isoformat()
+    assert replayed[0].record.fingerprint == original.fingerprint
+
+
+def test_postgres_reader_accepts_legacy_taipei_digest_rendered_in_utc() -> None:
+    original = _record(payload={"symbol": "2330"})
+    connection = FakeConnection(
+        (
+            _row(
+                original,
+                occurred_at=original.occurred_at.astimezone(timezone.utc),
+            ),
+        )
+    )
+    repository = PostgresJournalRepository(connection)
+
+    replayed = repository.records(original.session_id)
+
+    assert replayed == (JournalAppendResult(original, 1, False),)
+    assert replayed[0].record.occurred_at.isoformat() == AT.isoformat()
