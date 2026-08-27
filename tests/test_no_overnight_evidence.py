@@ -363,6 +363,40 @@ def test_disabled_baseline_is_complete_but_never_qualifies_rollout() -> None:
     assert report.postgres_destructive_uat == "WAIVED_NOT_RUN_NOT_PASSED"
 
 
+def test_close_accepts_idempotent_open_retry() -> None:
+    journal = InMemoryJournalRepository()
+    config = _config(NoOvernightMode.DISABLED)
+    provider = MockProvider()
+    provider_identity = (
+        f"{type(provider).__module__}.{type(provider).__qualname__}"
+    )
+    spec, opened = _open_window(
+        journal=journal,
+        config=config,
+        provider_identity=provider_identity,
+        stage=NoOvernightEvidenceStage.DISABLED_BASELINE,
+    )
+    retried = open_no_overnight_evidence_window(
+        journal=journal,
+        spec=spec,
+        opened_at=opened.record.occurred_at,
+    )
+    _session_open, session_close = _session_times(SESSION_DATE)
+
+    assert retried.idempotent is True
+    observation = close_no_overnight_evidence_window(
+        journal=journal,
+        spec=spec,
+        opened=retried,
+        closed_at=session_close,
+    )
+    assert observation.window_open_journal_sequence == opened.sequence
+    assert (
+        observation.window_open_record_fingerprint
+        == opened.record.fingerprint
+    )
+
+
 def test_observe_only_full_session_replays_to_zero_side_effect_evidence() -> None:
     journal, _config_value, _provider_identity, observation = _journal_for(
         NoOvernightMode.OBSERVE_ONLY

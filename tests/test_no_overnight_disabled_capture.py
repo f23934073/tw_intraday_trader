@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import os
 
 import pytest
@@ -72,6 +72,26 @@ class AtomicReturnMovesClockJournal(InMemoryJournalRepository):
         return result
 
 
+class UtcAtomicOpenJournal(InMemoryJournalRepository):
+    def start_session_and_append_before(
+        self,
+        session,
+        record,
+        *,
+        latest_allowed_at,
+        authoritative_now=None,
+    ):
+        del authoritative_now
+        return super().start_session_and_append_before(
+            session,
+            record,
+            latest_allowed_at=latest_allowed_at,
+            authoritative_now=lambda: record.occurred_at.astimezone(
+                timezone.utc
+            ),
+        )
+
+
 def test_capture_disabled_baseline_uses_real_append_order(tmp_path) -> None:
     journal = InMemoryJournalRepository()
     provider = MockProvider()
@@ -118,6 +138,47 @@ def test_capture_disabled_baseline_uses_real_append_order(tmp_path) -> None:
     )
     assert open_sequence < close_sequence
     assert journal.sessions(session_id_prefix="no-overnight-v1-") == ()
+
+
+def test_capture_disabled_baseline_normalizes_postgres_utc_open_time(
+    tmp_path,
+) -> None:
+    journal = UtcAtomicOpenJournal()
+    clock = MutableClock(datetime.fromisoformat("2026-08-27T08:45:00+08:00"))
+
+    def wait_until_close(_seconds: float) -> None:
+        clock.value = datetime.fromisoformat("2026-08-27T13:30:00+08:00")
+
+    report = capture_disabled_baseline(
+        campaign_id="postgres-utc-open-time",
+        session_date=date(2026, 8, 27),
+        code_identity="a" * 40,
+        artifact_root=tmp_path,
+        marker_journal_factory=lambda: journal,
+        provider=MockProvider(),
+        clock=clock,
+        runtime_factory=lambda **values: RuntimeComposition.create(
+            **values,
+            journal=journal,
+        ),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        wait=wait_until_close,
+    )
+
+    assert report.observation.observed_from.isoformat() == (
+        "2026-08-27T08:45:00+08:00"
+    )
+    opened = next(
+        item
+        for item in journal.records(
+            "no-overnight-evidence-v1:postgres-utc-open-time:"
+            "DISABLED_BASELINE:2026-08-27"
+        )
+        if item.record.kind == "no_overnight_evidence_window_opened.v1"
+    )
+    assert opened.record.occurred_at.isoformat() == (
+        "2026-08-27T00:45:00+00:00"
+    )
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,7 @@
 import os
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -21,6 +22,12 @@ from trading.journal import (  # noqa: E402
 from trading import migrations as trading_migrations  # noqa: E402
 from trading.migrations import apply_migrations  # noqa: E402
 from trading.postgres_journal import PostgresJournalRepository  # noqa: E402
+from trading.no_overnight_evidence import (  # noqa: E402
+    NoOvernightEvidenceStage,
+    NoOvernightEvidenceWindowSpec,
+    close_no_overnight_evidence_window,
+    open_no_overnight_evidence_window,
+)
 
 
 AT = datetime.fromisoformat("2026-08-18T09:00:00+08:00")
@@ -165,6 +172,80 @@ def test_atomic_open_retry_preserves_timestamp_identity_across_connection_timezo
     assert retried.idempotent is True
     assert retried.sequence == first.sequence
     assert retried.record.occurred_at.isoformat() == first.record.occurred_at.isoformat()
+
+
+def test_postgres_atomic_open_projects_campaign_timezone(journal) -> None:
+    fixed_server_time = datetime.fromisoformat(
+        "2026-08-27T00:45:00+00:00"
+    )
+
+    class FixedServerTimePostgresJournal(PostgresJournalRepository):
+        @staticmethod
+        def _server_time(_cursor):
+            return fixed_server_time
+
+    with journal._transaction() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SET TIME ZONE 'UTC'")
+    zone = ZoneInfo("Asia/Taipei")
+    now = fixed_server_time.astimezone(zone)
+    session_date = now.date()
+    reviewed_open = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    reviewed_close = now.replace(hour=13, minute=30, second=0, microsecond=0)
+    spec = NoOvernightEvidenceWindowSpec(
+        campaign_id="postgres-campaign-timezone",
+        stage=NoOvernightEvidenceStage.DISABLED_BASELINE,
+        session_date=session_date,
+        account_scope_id="local-paper-main-v1",
+        policy_family_id="no-overnight-equity-v1",
+        policy_version="disabled-v1",
+        policy_digest="a" * 64,
+        calendar_schema_version="postgres-timezone-regression-v1",
+        calendar_digest="b" * 64,
+        timezone="Asia/Taipei",
+        reviewed_open=reviewed_open,
+        reviewed_close=reviewed_close,
+        code_identity="c" * 40,
+        expected_provider_identity="market_data.provider.MockProvider",
+        local_paper_session_id="local-paper-no-overnight-evidence-v1",
+    )
+    first_journal = FixedServerTimePostgresJournal(journal._connection)
+    opened = open_no_overnight_evidence_window(
+        journal=first_journal,
+        spec=spec,
+        opened_at=now,
+        latest_allowed_at=reviewed_open,
+    )
+
+    reconnect = psycopg.connect(TEST_POSTGRES_DSN)
+    try:
+        with reconnect.cursor() as cursor:
+            cursor.execute("SET TIME ZONE 'Asia/Taipei'")
+        reconnect.commit()
+        retry_journal = FixedServerTimePostgresJournal(reconnect)
+        retried = open_no_overnight_evidence_window(
+            journal=retry_journal,
+            spec=spec,
+            opened_at=now,
+            latest_allowed_at=reviewed_open,
+        )
+        observation = close_no_overnight_evidence_window(
+            journal=retry_journal,
+            spec=spec,
+            opened=retried,
+            closed_at=reviewed_close,
+        )
+    finally:
+        reconnect.close()
+
+    assert opened.record.occurred_at.utcoffset() == timedelta(0)
+    assert retried.idempotent is True
+    assert retried.sequence == opened.sequence
+    assert retried.record.fingerprint == opened.record.fingerprint
+    assert observation.observed_from == opened.record.occurred_at
+    assert observation.observed_from.tzinfo == zone
+    assert observation.observed_through.tzinfo == zone
+    assert observation.finalized_at.tzinfo == zone
 
 
 def test_migration_moves_legacy_public_journal_into_trading_schema() -> None:

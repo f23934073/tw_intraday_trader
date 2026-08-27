@@ -1062,7 +1062,11 @@ def close_no_overnight_evidence_window(
         ),
         None,
     )
-    if stored_open != opened:
+    if (
+        stored_open is None
+        or stored_open.record != opened.record
+        or stored_open.record.fingerprint != opened.record.fingerprint
+    ):
         raise ValueError("evidence window open marker is not in the Journal")
     identity = f"{spec.campaign_id}:{spec.stage.value}:{spec.session_date.isoformat()}"
     close_payload = {
@@ -1086,6 +1090,8 @@ def close_no_overnight_evidence_window(
     )
     if closed.sequence <= opened.sequence:
         raise ValueError("evidence window close marker precedes open marker")
+    observed_from = opened.record.occurred_at.astimezone(zone)
+    observed_through = closed.record.occurred_at.astimezone(zone)
     return NoOvernightEvidenceObservation(
         **{
             "campaign_id": spec.campaign_id,
@@ -1100,9 +1106,9 @@ def close_no_overnight_evidence_window(
             "timezone": spec.timezone,
             "reviewed_open": spec.reviewed_open,
             "reviewed_close": spec.reviewed_close,
-            "observed_from": opened.record.occurred_at,
-            "observed_through": closed.record.occurred_at,
-            "finalized_at": closed.record.occurred_at,
+            "observed_from": observed_from,
+            "observed_through": observed_through,
+            "finalized_at": observed_through,
             "code_identity": spec.code_identity,
             "expected_provider_identity": spec.expected_provider_identity,
             "local_paper_session_id": spec.local_paper_session_id,
