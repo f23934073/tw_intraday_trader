@@ -1,0 +1,26 @@
+{
+  "amount_reconciliation_kind": "OFFICIAL_SINGLE_TRANSACTION_FLAT_BAR_DERIVATION",
+  "bar_count": 1,
+  "checks": {
+    "amount_exact_match": true,
+    "close_exact_match": true,
+    "high_exact_match": true,
+    "latest_average_within_tolerance": true,
+    "low_exact_match": true,
+    "open_exact_match": true,
+    "volume_exact_match": true
+  },
+  "first_event_at": "2026-03-20T10:56:00+08:00",
+  "fugle_label_conversion": "START_PLUS_ONE_MINUTE_EXCEPT_13_30_V1",
+  "last_event_at": "2026-03-20T10:56:00+08:00",
+  "latest_average": "22.9",
+  "official_vwap": "22.9",
+  "parent_capture_status": "REJECTED",
+  "raw_response_sha256": "a02cc385e76125beb54db2ad74f427ce9a17c7ce41661b29574345815f2b3a6f",
+  "reconciled_amount_twd": "22900.0",
+  "safe_to_propose": true,
+  "source_total_volume_lots": 1,
+  "source_total_volume_shares": 1000,
+  "source_turnover_twd": null,
+  "status": "ACCEPTED_FOR_PROPOSAL"
+}

@@ -1,0 +1,39 @@
+{
+  "assessment": {
+    "classification": "OFFICIAL_PRICE_FINMIND_EMPTY",
+    "minute_repair_eligible": false,
+    "reason": "TPEx daily evidence has no minute event timestamp and therefore cannot create a canonical one-minute bar"
+  },
+  "artifact_kind": "NORMALIZED_OFFICIAL_RECONCILIATION",
+  "finmind_partition": {
+    "bar_count": 0,
+    "canonical_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "http_status": 200,
+    "job_id": "finmind-sponsor-864f26b849120817",
+    "payload_status": 200,
+    "raw_sha256": "bd3deae97b9bbf5496db1c19da707df924ec244a8568f606429c0a6532ddca72",
+    "response_data": [],
+    "status": "EMPTY"
+  },
+  "official_reference": {
+    "amount_twd": 22900,
+    "close": "22.90",
+    "dataset": "TPEx afterTrading/otc regular-market daily close",
+    "grain": "DAILY",
+    "high": "22.90",
+    "low": "22.90",
+    "open": "22.90",
+    "raw_response_embedded": false,
+    "regular_market_excludes_fixed_price": true,
+    "source_name": "TPEx",
+    "source_uri": "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc?date=2026%2F03%2F20&id=&order=0&response=html&sort=asc&type=AL",
+    "transactions": 1,
+    "volume_shares": 1000
+  },
+  "reconciled_at": "2026-08-27T02:55:00+08:00",
+  "schema_version": "finmind-source-discrepancy-evidence-v1",
+  "target": {
+    "session_date": "2026-03-20",
+    "symbol": "9960"
+  }
+}
