@@ -1,0 +1,29 @@
+{
+  "export_id": "replace-with-immutable-export-id",
+  "records": [
+    {
+      "fingerprint": "replace-with-JournalRecord-fingerprint",
+      "record": {
+        "idempotency_key": "replace-with-original-key",
+        "idempotency_scope": "replace-with-original-scope",
+        "kind": "local_paper_fill.v3",
+        "occurred_at": "YYYY-MM-DDTHH:MM:SS+08:00",
+        "payload": {},
+        "record_id": "replace-with-original-record-id",
+        "schema_version": "journal-record-v1",
+        "session_id": "replace-with-session-id"
+      },
+      "sequence": 1
+    }
+  ],
+  "schema_version": "local-paper-fill-calibration-export.v1",
+  "session_date": "YYYY-MM-DD",
+  "session_id": "replace-with-session-id",
+  "settings_digest": "replace-with-local-paper-settings-sha256",
+  "source_journal": {
+    "repository_kind": "POSTGRESQL",
+    "sequence_end": 1,
+    "sequence_start": 1,
+    "snapshot_path": "replace-with-sealed-read-only-Journal-snapshot.json"
+  }
+}

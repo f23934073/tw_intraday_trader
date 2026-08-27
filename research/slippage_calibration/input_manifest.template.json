@@ -1,0 +1,57 @@
+{
+  "analysis_scope": "LOCAL_PAPER_MODEL_STRESS_PROXY_ONLY",
+  "cohort": {
+    "cohort_id": "replace-with-frozen-cohort-id",
+    "path": "../late_delivery_evidence/cohorts/cohort.json"
+  },
+  "trading_calendar": {
+    "path": "../../config/twse_calendar_2026.json"
+  },
+  "fill_exports": [],
+  "manifest_id": "replace-with-immutable-analysis-id",
+  "market_sessions": [
+    {
+      "clock_disposition": {
+        "path": "clock_disposition.json"
+      },
+      "path": "../../records/market_events/YYYY-MM-DD/session-id",
+      "session_id": "session-id",
+      "session_phase": "OPENING"
+    }
+  ],
+  "policy": {
+    "adverse_horizon_ms": 1000,
+    "horizon_observation_tolerance_ms": 1000,
+    "analyzer_version": "local-paper-slippage-proxy-analyzer.v1",
+    "local_paper_slippage_policy_version": "fixed_adverse_bps_v1",
+    "metric_policy_version": "bbo-tick-adverse-movement-proxy.v1",
+    "minimum_distinct_trading_days": 5,
+    "minimum_samples_per_group": 30,
+    "minimum_unique_books_per_group": 30,
+    "maximum_book_age_ms": 3000,
+    "maximum_source_receive_skew_ms": 1000,
+    "percentile_method": "nearest-rank.v1",
+    "price_tick_policy_version": "tw_common_stock_tick_v1",
+    "required_liquidity_tiers": [
+      "high",
+      "mid",
+      "low"
+    ],
+    "required_phase_buckets": [
+      "EARLY",
+      "MIDDLE",
+      "LATE"
+    ],
+    "required_session_phases": [
+      "OPENING",
+      "CONTINUOUS",
+      "CLOSE"
+    ],
+    "required_sides": [
+      "BUY",
+      "SELL"
+    ],
+    "timestamp_policy_version": "reviewed-source-receive-comparability.v1"
+  },
+  "schema_version": "local-paper-slippage-calibration-input-manifest.v1"
+}

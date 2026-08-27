@@ -1,0 +1,913 @@
+{
+  "content_sha256": "6b2fcb46ed098cd99226d289b7f93f7bfcc9ad49cdc0c20d4836b6c1e49429b6",
+  "coverage": {
+    "expected_group_count": 42,
+    "group_gaps": [
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "BUY",
+        "symbol": "1455"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "SELL",
+        "symbol": "1455"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "BUY",
+        "symbol": "1455"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "SELL",
+        "symbol": "1455"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "BUY",
+        "symbol": "1455"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "SELL",
+        "symbol": "1455"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "BUY",
+        "symbol": "2317"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "SELL",
+        "symbol": "2317"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "BUY",
+        "symbol": "2317"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "SELL",
+        "symbol": "2317"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "BUY",
+        "symbol": "2317"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "SELL",
+        "symbol": "2317"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "BUY",
+        "symbol": "2330"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "SELL",
+        "symbol": "2330"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "BUY",
+        "symbol": "2330"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "SELL",
+        "symbol": "2330"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "BUY",
+        "symbol": "2330"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "SELL",
+        "symbol": "2330"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "BUY",
+        "symbol": "2454"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "SELL",
+        "symbol": "2454"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "BUY",
+        "symbol": "2454"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "SELL",
+        "symbol": "2454"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "BUY",
+        "symbol": "2454"
+      },
+      {
+        "liquidity_tier": "high",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "SELL",
+        "symbol": "2454"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "BUY",
+        "symbol": "3380"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "SELL",
+        "symbol": "3380"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "BUY",
+        "symbol": "3380"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "SELL",
+        "symbol": "3380"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "BUY",
+        "symbol": "3380"
+      },
+      {
+        "liquidity_tier": "mid",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "SELL",
+        "symbol": "3380"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "BUY",
+        "symbol": "6918"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "SELL",
+        "symbol": "6918"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "BUY",
+        "symbol": "6918"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "SELL",
+        "symbol": "6918"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "BUY",
+        "symbol": "6918"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "SELL",
+        "symbol": "6918"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "BUY",
+        "symbol": "8367"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "OPENING",
+        "side": "SELL",
+        "symbol": "8367"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "BUY",
+        "symbol": "8367"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CONTINUOUS",
+        "side": "SELL",
+        "symbol": "8367"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "BUY",
+        "symbol": "8367"
+      },
+      {
+        "liquidity_tier": "low",
+        "missing": {
+          "adverse_samples": 30,
+          "phase_buckets": [
+            "EARLY",
+            "MIDDLE",
+            "LATE"
+          ],
+          "reference_samples": 30,
+          "trading_days": 5,
+          "unique_books": 30
+        },
+        "session_phase": "CLOSE",
+        "side": "SELL",
+        "symbol": "8367"
+      }
+    ],
+    "minimum_adverse_samples_per_group": 30,
+    "minimum_distinct_trading_days_per_group": 5,
+    "minimum_reference_samples_per_group": 30,
+    "minimum_unique_books_per_group": 30,
+    "observed_group_count": 0,
+    "qualified_group_count": 0,
+    "required_phase_buckets_per_group": [
+      "EARLY",
+      "MIDDLE",
+      "LATE"
+    ],
+    "structural_floor_only_not_statistical_sufficiency": true
+  },
+  "diagnostic_model_stress_metrics": [],
+  "input_manifest": {
+    "content_sha256": "06abc070ba9b7883026d9ce4c9126583ab7f3fbfcede3ced59623cd999c36454",
+    "manifest_id": "local-paper-slippage-current-artifacts-dry-run-2026-08-27"
+  },
+  "issues": [
+    {
+      "code": "BOOK_TICK_CAUSAL_ORDERING_FAILED",
+      "detail": "failure_count=11",
+      "scope": "hqual-20260821T091111-057b96a7"
+    },
+    {
+      "code": "BOOK_TICK_CAUSAL_ORDERING_FAILED",
+      "detail": "failure_count=1",
+      "scope": "hqual-20260821T093358-841c8ca7"
+    },
+    {
+      "code": "CAPTURE_QUALITY_NOT_PASSED",
+      "detail": "status/exact replay",
+      "scope": "hqual-20260821T091111-057b96a7"
+    },
+    {
+      "code": "CAPTURE_QUALITY_NOT_PASSED",
+      "detail": "status/exact replay",
+      "scope": "hqual-20260821T093358-841c8ca7"
+    },
+    {
+      "code": "CLOCK_DISPOSITION_MISSING",
+      "detail": "reviewed source/receive comparability is required",
+      "scope": "hqual-20260821T091111-057b96a7"
+    },
+    {
+      "code": "CLOCK_DISPOSITION_MISSING",
+      "detail": "reviewed source/receive comparability is required",
+      "scope": "hqual-20260821T093358-841c8ca7"
+    },
+    {
+      "code": "CLOCK_DISPOSITION_MISSING",
+      "detail": "reviewed source/receive comparability is required",
+      "scope": "tm-postfix-20260821-2330"
+    },
+    {
+      "code": "COVERAGE_FLOOR_NOT_MET",
+      "detail": "qualified=0/42",
+      "scope": "all-groups"
+    },
+    {
+      "code": "FILL_V3_EVIDENCE_UNAVAILABLE",
+      "detail": "no persisted local_paper_fill.v3 export is bound",
+      "scope": "fill-exports"
+    },
+    {
+      "code": "OUT_OF_ORDER_OR_REJECTED_EVENTS",
+      "detail": "rejected_count=10",
+      "scope": "hqual-20260821T091111-057b96a7"
+    },
+    {
+      "code": "OUT_OF_ORDER_OR_REJECTED_EVENTS",
+      "detail": "rejected_count=1",
+      "scope": "hqual-20260821T093358-841c8ca7"
+    }
+  ],
+  "limitations": [
+    "No broker order, fill, queue-priority, market-impact, or account authority is represented.",
+    "BBO, Tick, spread, tick-size, and short-horizon movement are model-stress proxies only.",
+    "local_paper_fill.v3 prices are deterministic model outputs, not observed broker executions.",
+    "The five-day and per-group sample floors are structural evidence gates, not statistical sufficiency claims."
+  ],
+  "local_paper_fill_v3_model_output_diagnostics": [],
+  "policy_lineage": {
+    "adverse_horizon_ms": 1000,
+    "analyzer_version": "local-paper-slippage-proxy-analyzer.v1",
+    "horizon_observation_tolerance_ms": 1000,
+    "local_paper_slippage_policy_version": "fixed_adverse_bps_v1",
+    "maximum_book_age_ms": 3000,
+    "maximum_source_receive_skew_ms": 1000,
+    "metric_policy_version": "bbo-tick-adverse-movement-proxy.v1",
+    "minimum_distinct_trading_days": 5,
+    "minimum_samples_per_group": 30,
+    "minimum_unique_books_per_group": 30,
+    "percentile_method": "nearest-rank.v1",
+    "price_tick_policy_version": "tw_common_stock_tick_v1",
+    "required_liquidity_tiers": [
+      "high",
+      "mid",
+      "low"
+    ],
+    "required_phase_buckets": [
+      "EARLY",
+      "MIDDLE",
+      "LATE"
+    ],
+    "required_session_phases": [
+      "OPENING",
+      "CONTINUOUS",
+      "CLOSE"
+    ],
+    "required_sides": [
+      "BUY",
+      "SELL"
+    ],
+    "timestamp_policy_version": "reviewed-source-receive-comparability.v1"
+  },
+  "qualification": {
+    "actual_execution_calibration": {
+      "reason_codes": [
+        "NO_BROKER_ORDER_FILL_AUTHORITY_IN_CONTRACT",
+        "LOCAL_PAPER_FILL_V3_EXECUTION_AUTHORITY_FALSE"
+      ],
+      "status": "ACTUAL_EXECUTION_CALIBRATION_NOT_QUALIFIED"
+    },
+    "model_stress_proxy": {
+      "metric_use": "DIAGNOSTIC_ONLY_NOT_BROKER_FILL_PROMISE",
+      "reason_codes": [
+        "BOOK_TICK_CAUSAL_ORDERING_FAILED",
+        "CAPTURE_QUALITY_NOT_PASSED",
+        "CLOCK_DISPOSITION_MISSING",
+        "COVERAGE_FLOOR_NOT_MET",
+        "FILL_V3_EVIDENCE_UNAVAILABLE",
+        "OUT_OF_ORDER_OR_REJECTED_EVENTS"
+      ],
+      "status": "MODEL_STRESS_PROXY_INPUT_NOT_QUALIFIED"
+    }
+  },
+  "report_id": "slippage-proxy-06abc070ba9b7883026d",
+  "schema_version": "local-paper-slippage-calibration-analysis-report.v1",
+  "session_quality": [
+    {
+      "causal_ordering_failure_count": 11,
+      "max_abs_source_receive_skew_ms": "272.501",
+      "missing_book_count": 0,
+      "paired_book_count": 122,
+      "reason_codes": [
+        "BOOK_TICK_CAUSAL_ORDERING_FAILED",
+        "CAPTURE_QUALITY_NOT_PASSED",
+        "CLOCK_DISPOSITION_MISSING",
+        "OUT_OF_ORDER_OR_REJECTED_EVENTS"
+      ],
+      "sample_count": 0,
+      "session_date": "2026-08-21",
+      "session_id": "hqual-20260821T091111-057b96a7",
+      "stale_book_count": 0,
+      "status": "NOT_QUALIFIED",
+      "tick_count": 133
+    },
+    {
+      "causal_ordering_failure_count": 1,
+      "max_abs_source_receive_skew_ms": "177.551",
+      "missing_book_count": 0,
+      "paired_book_count": 44,
+      "reason_codes": [
+        "BOOK_TICK_CAUSAL_ORDERING_FAILED",
+        "CAPTURE_QUALITY_NOT_PASSED",
+        "CLOCK_DISPOSITION_MISSING",
+        "OUT_OF_ORDER_OR_REJECTED_EVENTS"
+      ],
+      "sample_count": 0,
+      "session_date": "2026-08-21",
+      "session_id": "hqual-20260821T093358-841c8ca7",
+      "stale_book_count": 0,
+      "status": "NOT_QUALIFIED",
+      "tick_count": 45
+    },
+    {
+      "causal_ordering_failure_count": 0,
+      "max_abs_source_receive_skew_ms": "177.435",
+      "missing_book_count": 0,
+      "paired_book_count": 8,
+      "reason_codes": [
+        "CLOCK_DISPOSITION_MISSING"
+      ],
+      "sample_count": 0,
+      "session_date": "2026-08-21",
+      "session_id": "tm-postfix-20260821-2330",
+      "stale_book_count": 0,
+      "status": "NOT_QUALIFIED",
+      "tick_count": 8
+    }
+  ]
+}
