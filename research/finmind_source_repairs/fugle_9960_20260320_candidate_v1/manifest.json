@@ -1,0 +1,14 @@
+{
+  "artifact_id": "fugle-source-repair-candidate-9960-20260320-v1",
+  "bar_count": 1,
+  "canonical_bars_sha256": "ebd88a7487cab63d7ff08810798f48ae5d9c57fff558cd6111c7143d2eaa51f9",
+  "case_id": "finmind-repair-9f08aa0024440e4601ac",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "observed_at": "2026-08-27T09:43:58.959417+08:00",
+  "parent_capture_manifest_sha256": "e487b8ef13ef094024bb4f29b62b7cea56c0db106229b1c758c6d1b77fad841a",
+  "raw_response_sha256": "a02cc385e76125beb54db2ad74f427ce9a17c7ce41661b29574345815f2b3a6f",
+  "schema_version": "fugle-source-repair-derived-candidate-v1",
+  "source_uri": "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/9960?fields=open%2Chigh%2Clow%2Cclose%2Cvolume%2Caverage%2Cturnover&from=2026-03-20&sort=asc&timeframe=1&to=2026-03-20",
+  "status": "ACCEPTED_FOR_PROPOSAL",
+  "validation_sha256": "2649ac45d74ee2cc63529dd4a76b7f610c25bcf91b1b5a27622c7d95ce1a97aa"
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -237,6 +238,29 @@ def test_reserve_margin_can_prevent_all_data_requests(tmp_path: Path) -> None:
         assert client.calls == []
     finally:
         store.close()
+
+
+def test_continuous_cli_never_disables_official_usage_preflight() -> None:
+    script = (
+        Path(__file__).parents[1] / "scripts" / "download_finmind_sponsor_history.py"
+    )
+    tree = ast.parse(script.read_text())
+    run_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "run"
+    ]
+
+    assert len(run_calls) == 1
+    check_usage = next(
+        (keyword.value for keyword in run_calls[0].keywords if keyword.arg == "check_usage"),
+        None,
+    )
+    assert check_usage is None or (
+        isinstance(check_usage, ast.Constant) and check_usage.value is True
+    )
 
 
 def test_direct_quota_probe_skips_slow_usage_endpoint(tmp_path: Path) -> None:

@@ -1,0 +1,11 @@
+{
+  "artifact_id": "fugle-source-repair-9960-20260320-v1",
+  "canonical_bars_sha256": null,
+  "case_id": "finmind-repair-9f08aa0024440e4601ac",
+  "change_policy": "IMMUTABLE_NEW_ARTIFACT_REQUIRED",
+  "metadata_sha256": "145f86db65b65200ed04e36d62a9192518101e4b549f7451e352314db5c2b9f9",
+  "raw_response_sha256": "a02cc385e76125beb54db2ad74f427ce9a17c7ce41661b29574345815f2b3a6f",
+  "schema_version": "fugle-source-repair-capture-v1",
+  "status": "REJECTED",
+  "validation_sha256": "2ea40b524a253f37fbded665e53651835b53958aea8aa7ec53438d026cfb462d"
+}

@@ -32,6 +32,10 @@ from backtest.finmind_history import (
     normalize_kbar_response,
     trading_dates_from_response,
 )
+from backtest.finmind_source_repair import (
+    RepairResolution,
+    load_repair_resolution,
+)
 
 
 PLAN_SCHEMA_VERSION = "finmind-backtest-snapshot-plan-v1"
@@ -354,7 +358,13 @@ class FinMindSemanticSnapshotReader:
                 raise FinMindSnapshotError(
                     f"non-canonical partition lineage: {symbol}/{session_text}"
                 )
+            planned_repair_lineage = partition.get("repair_lineage", [])
+            if not isinstance(planned_repair_lineage, list):
+                raise FinMindSnapshotError(
+                    f"invalid repair lineage: {symbol}/{session_text}"
+                )
             selected_bars: tuple[HistoricalBar, ...] | None = None
+            observed_repair_lineage: list[Mapping[str, str]] = []
             for job_id in job_ids:
                 row = connection.execute(
                     """
@@ -370,17 +380,39 @@ class FinMindSemanticSnapshotReader:
                     raise FinMindSnapshotError(
                         f"planned partition is missing: {job_id}/{symbol}/{session_text}"
                     )
-                if _partition_projection(row) != _planned_partition_projection(partition):
+                resolution = load_repair_resolution(
+                    connection,
+                    job_id=job_id,
+                    symbol=symbol,
+                    session_date=session_date,
+                )
+                if resolution is not None and not resolution.is_active:
+                    raise FinMindSnapshotError(
+                        f"source repair is pending: {job_id}/{symbol}/{session_text}"
+                    )
+                if _effective_partition_metadata(
+                    row, resolution
+                ) != _planned_partition_projection(partition):
                     raise FinMindSnapshotError(
                         f"planned partition metadata drift: {job_id}/{symbol}/{session_text}"
                     )
-                bars = _verified_partition_bars(row, symbol, session_date)
+                bars = (
+                    resolution.bars
+                    if resolution is not None and resolution.is_active
+                    else _verified_partition_bars(row, symbol, session_date)
+                )
+                if resolution is not None and resolution.is_active:
+                    observed_repair_lineage.append(resolution.lineage(job_id))
                 if selected_bars is None:
                     selected_bars = bars
                 elif bars != selected_bars:
                     raise FinMindSnapshotConflict(
                         f"planned duplicate payload conflict: {symbol}/{session_text}"
                     )
+            if observed_repair_lineage != planned_repair_lineage:
+                raise FinMindSnapshotError(
+                    f"planned repair lineage drift: {symbol}/{session_text}"
+                )
             for bar in selected_bars or ():
                 if previous_timestamp is not None and bar.timestamp <= previous_timestamp:
                     raise FinMindSnapshotError(
@@ -448,13 +480,18 @@ class FinMindSemanticSnapshotReader:
                 row["status"] == "READY" for row in included_partitions
             ),
         }
+        issues = list(DATASET_ISSUES)
+        if any(
+            partition.get("repair_lineage") for partition in included_partitions
+        ):
+            issues.append("ALTERNATE_SOURCE_REPAIR")
         identity = {
             "amount_contract": amount_contract,
             "contributing_job_ids": contributing_job_ids,
             "counts": included_counts,
             "dataset_id": f"{DATASET_ID_PREFIX}{source_digest}",
             "included_partitions": included_partitions,
-            "issues": list(DATASET_ISSUES),
+            "issues": issues,
             "reference": reference,
             "research_eligible": False,
             "selection": {
@@ -752,6 +789,7 @@ def _inspect_partitions(
         observed_dates: set[date] = set()
         invalid_dates: list[str] = []
         extra_dates: list[str] = []
+        repair_pending_dates: list[str] = []
         symbol_partitions: list[Mapping[str, Any]] = []
         symbol_payload_bytes = 0
         for session_text, duplicate_rows_iter in groupby(
@@ -770,7 +808,27 @@ def _inspect_partitions(
                     raise FinMindSnapshotError(
                         f"partition symbol not declared by job: {job_id}/{symbol}"
                     )
-            projections = {_partition_metadata(row) for row in duplicate_rows}
+            resolved_rows = [
+                (
+                    row,
+                    load_repair_resolution(
+                        connection,
+                        job_id=str(row["job_id"]),
+                        symbol=symbol,
+                        session_date=session_date,
+                    ),
+                )
+                for row in duplicate_rows
+            ]
+            pending_repairs = [
+                resolution
+                for _row, resolution in resolved_rows
+                if resolution is not None and not resolution.is_active
+            ]
+            projections = {
+                _effective_partition_metadata(row, resolution)
+                for row, resolution in resolved_rows
+            }
             if len(projections) != 1:
                 raise FinMindSnapshotConflict(
                     f"conflicting duplicate partition: {symbol}/{session_text}"
@@ -783,27 +841,42 @@ def _inspect_partitions(
                 extra_dates.append(session_text)
             if status not in {"READY", "EMPTY"}:
                 invalid_dates.append(session_text)
-            else:
+            if pending_repairs:
+                repair_pending_dates.append(session_text)
+            elif status in {"READY", "EMPTY"}:
                 observed_size: int | None = None
-                for row in duplicate_rows:
-                    payload_size = _verify_partition(row, symbol, session_date)
+                for row, resolution in resolved_rows:
+                    payload_size = _verify_effective_partition(
+                        row,
+                        resolution,
+                        symbol,
+                        session_date,
+                    )
                     if observed_size is None:
                         observed_size = payload_size
                 symbol_payload_bytes += observed_size or 0
-            symbol_partitions.append(
-                {
-                    "bar_count": bar_count,
-                    "canonical_sha256": canonical_sha256,
-                    "contributing_job_ids": sorted(
-                        str(row["job_id"]) for row in duplicate_rows
-                    ),
-                    "first_event_at": first_event_at,
-                    "last_event_at": last_event_at,
-                    "session_date": session_text,
-                    "status": status,
-                    "symbol": symbol,
-                }
-            )
+            partition_projection: dict[str, Any] = {
+                "bar_count": bar_count,
+                "canonical_sha256": canonical_sha256,
+                "contributing_job_ids": sorted(
+                    str(row["job_id"]) for row in duplicate_rows
+                ),
+                "first_event_at": first_event_at,
+                "last_event_at": last_event_at,
+                "session_date": session_text,
+                "status": status,
+                "symbol": symbol,
+            }
+            repair_lineage = [
+                resolution.lineage(str(row["job_id"]))
+                for row, resolution in resolved_rows
+                if resolution is not None and resolution.is_active
+            ]
+            if repair_lineage:
+                partition_projection["repair_lineage"] = sorted(
+                    repair_lineage, key=lambda value: str(value["job_id"])
+                )
+            symbol_partitions.append(partition_projection)
         missing_dates = sorted(expected_dates - observed_dates)
         reason_codes: list[str] = []
         if missing_dates:
@@ -812,17 +885,22 @@ def _inspect_partitions(
             reason_codes.append("INVALID_PARTITION")
         if extra_dates:
             reason_codes.append("EXTRA_SESSION")
+        if repair_pending_dates:
+            reason_codes.append("SOURCE_REPAIR_PENDING")
         if reason_codes:
-            excluded_symbols.append(
-                {
-                    "extra_session_dates": sorted(extra_dates),
-                    "invalid_session_dates": sorted(invalid_dates),
-                    "missing_session_dates": [value.isoformat() for value in missing_dates],
-                    "observed_partitions": symbol_partitions,
-                    "reason_codes": sorted(reason_codes),
-                    "symbol": symbol,
-                }
-            )
+            exclusion: dict[str, Any] = {
+                "extra_session_dates": sorted(extra_dates),
+                "invalid_session_dates": sorted(invalid_dates),
+                "missing_session_dates": [value.isoformat() for value in missing_dates],
+                "observed_partitions": symbol_partitions,
+                "reason_codes": sorted(reason_codes),
+                "symbol": symbol,
+            }
+            if repair_pending_dates:
+                exclusion["repair_pending_session_dates"] = sorted(
+                    repair_pending_dates
+                )
+            excluded_symbols.append(exclusion)
             continue
         included_symbols.append(symbol)
         included_partitions.extend(symbol_partitions)
@@ -879,10 +957,19 @@ def _partition_metadata(row: sqlite3.Row) -> tuple[str, int, str, str | None, st
     )
 
 
-def _partition_projection(
+def _effective_partition_metadata(
     row: sqlite3.Row,
+    resolution: RepairResolution | None,
 ) -> tuple[str, int, str, str | None, str | None]:
-    return _partition_metadata(row)
+    if resolution is None or not resolution.is_active:
+        return _partition_metadata(row)
+    return (
+        "READY",
+        len(resolution.bars),
+        str(resolution.canonical_sha256),
+        resolution.first_event_at,
+        resolution.last_event_at,
+    )
 
 
 def _planned_partition_projection(
@@ -956,6 +1043,28 @@ def _verified_partition_bars(
 def _verify_partition(row: sqlite3.Row, symbol: str, session_date: date) -> int:
     bars = _verified_partition_bars(row, symbol, session_date)
     canonical_payload = canonical_json([bar.to_dict() for bar in bars]).encode()
+    return len(canonical_payload)
+
+
+def _verify_effective_partition(
+    row: sqlite3.Row,
+    resolution: RepairResolution | None,
+    symbol: str,
+    session_date: date,
+) -> int:
+    if resolution is None:
+        return _verify_partition(row, symbol, session_date)
+    if not resolution.is_active:
+        raise FinMindSnapshotError(
+            f"source repair is pending: {symbol}/{session_date.isoformat()}"
+        )
+    canonical_payload = canonical_json(
+        [bar.to_dict() for bar in resolution.bars]
+    ).encode()
+    if hashlib.sha256(canonical_payload).hexdigest() != resolution.canonical_sha256:
+        raise FinMindSnapshotError(
+            f"source repair canonical mismatch: {symbol}/{session_date.isoformat()}"
+        )
     return len(canonical_payload)
 
 

@@ -146,6 +146,11 @@ def select_three_way_buy_candidates(
     )
 
 
+def finmind_mvp_row_count(payload: bytes, dataset: str) -> int:
+    """Validate one FinMind envelope and return its observed row count."""
+    return len(_data_rows(payload, dataset))
+
+
 def _data_rows(payload: bytes, dataset: str) -> list[Mapping[str, Any]]:
     try:
         envelope = json.loads(payload)

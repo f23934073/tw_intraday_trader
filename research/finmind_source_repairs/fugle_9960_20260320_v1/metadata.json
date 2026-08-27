@@ -1,0 +1,52 @@
+{
+  "authentication": {
+    "credential_environment_name": "FUGLE_API_KEY",
+    "credential_present": true,
+    "credential_value_persisted": false
+  },
+  "case_id": "finmind-repair-9f08aa0024440e4601ac",
+  "credential_rotation_evidence": {
+    "canonical_sha256": "8a1c1f27120b3dcb0f00e9dbfb8079f0de253be741725b739695c747375fd795",
+    "schema_version": "finmind-source-repair-credential-rotation-v1",
+    "status": "ROTATED_AND_EXPLICITLY_RESUMED"
+  },
+  "http_status": 200,
+  "raw_response_bytes": 219,
+  "raw_response_sha256": "a02cc385e76125beb54db2ad74f427ce9a17c7ce41661b29574345815f2b3a6f",
+  "request": {
+    "endpoint": "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/9960",
+    "query": {
+      "fields": "open,high,low,close,volume,average,turnover",
+      "from": "2026-03-20",
+      "sort": "asc",
+      "timeframe": "1",
+      "to": "2026-03-20"
+    }
+  },
+  "response_headers_without_secrets": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "api_key,authorization,content-type",
+    "access-control-allow-methods": "GET,HEAD,OPTIONS,POST,DELETE",
+    "access-control-expose-headers": "content-length,fr-aa,Retry-After,X-RateLimit-Limit,X-RateLimit-Remaining,X-RateLimit-Reset",
+    "access-control-max-age": "1728000",
+    "alt-svc": "h3=\":443\"; ma=2592000",
+    "connection": "close",
+    "content-length": "219",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Thu, 27 Aug 2026 01:43:59 GMT",
+    "etag": "W/\"db-woGrguqt67XBoo4n2LYOQWUlbhA\"",
+    "retry-after": "60",
+    "server": "Unknown",
+    "vary": "Accept-Encoding",
+    "via": "1.1 google",
+    "x-cache": "MISS",
+    "x-ratelimit-limit": "60",
+    "x-ratelimit-remaining": "59",
+    "x-ratelimit-reset": "1787795099236"
+  },
+  "retrieved_at": "2026-08-27T09:43:58.959417+08:00",
+  "session_date": "2026-03-20",
+  "source_name": "FUGLE_HISTORICAL_CANDLES",
+  "source_uri": "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/9960?fields=open%2Chigh%2Clow%2Cclose%2Cvolume%2Caverage%2Cturnover&from=2026-03-20&sort=asc&timeframe=1&to=2026-03-20",
+  "symbol": "9960"
+}
