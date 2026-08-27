@@ -72,6 +72,7 @@ def test_submit_command_is_fixed_and_contains_no_dsn(
 def test_start_writes_durable_submission_before_launch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(supervisor.sys, "platform", "darwin")
     monkeypatch.setattr(supervisor, "STATE_ROOT", tmp_path.resolve())
     monkeypatch.setattr(supervisor, "PYTHON_EXECUTABLE", Path(sys.executable).resolve())
     monkeypatch.setattr(supervisor, "_launchd_job_exists", lambda: False)
@@ -98,9 +99,16 @@ def test_start_writes_durable_submission_before_launch(
 
 
 def test_start_refuses_second_loaded_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(supervisor.sys, "platform", "darwin")
     monkeypatch.setattr(supervisor, "PYTHON_EXECUTABLE", Path(sys.executable).resolve())
     monkeypatch.setattr(supervisor, "_launchd_job_exists", lambda: True)
     with pytest.raises(RuntimeError, match="already loaded"):
+        supervisor.start_supervised(execute=True)
+
+
+def test_start_rejects_non_macos_platform(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(supervisor.sys, "platform", "linux")
+    with pytest.raises(RuntimeError, match="requires macOS"):
         supervisor.start_supervised(execute=True)
 
 
