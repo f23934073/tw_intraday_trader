@@ -14,6 +14,7 @@ from market_data.models import RealtimeQuoteUpdate
 from market_data.provider import MockProvider
 from runtime.composition import RuntimeComposition
 from simulation.settings import LocalPaperSettings
+from trading.journal import JournalConflictError
 from trading.local_paper import LOCAL_PAPER_PROJECTION_NAME
 from trading.migrations import apply_migrations
 from trading.postgres_journal import PostgresJournalRepository
@@ -337,7 +338,7 @@ def test_v2_partial_fills_reconstruct_exactly_across_three_new_connections(
 
     bad_order_state_connection = psycopg.connect(dsn)
     try:
-        with pytest.raises(ValueError, match="order state integrity"):
+        with pytest.raises(JournalConflictError, match="stored fingerprint"):
             RuntimeComposition.create(
                 StreamingMockProvider(clock),
                 journal=PostgresJournalRepository(bad_order_state_connection),
@@ -393,7 +394,7 @@ def test_v2_partial_fills_reconstruct_exactly_across_three_new_connections(
 
     bad_connection = psycopg.connect(dsn)
     try:
-        with pytest.raises(ValueError, match="invalid local-paper fill"):
+        with pytest.raises(JournalConflictError, match="stored fingerprint"):
             RuntimeComposition.create(
                 StreamingMockProvider(clock),
                 journal=PostgresJournalRepository(bad_connection),

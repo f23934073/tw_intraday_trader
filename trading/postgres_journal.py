@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from trading.journal import (
@@ -135,7 +136,7 @@ class PostgresJournalRepository(JournalRepository):
                         record.idempotency_scope,
                         record.idempotency_key,
                         record.schema_version,
-                        record.fingerprint,
+                        _postgres_storage_fingerprint(record),
                     ),
                 )
                 created = cursor.fetchone()
@@ -143,7 +144,10 @@ class PostgresJournalRepository(JournalRepository):
                     return JournalAppendResult(record, int(created[0]), False)
 
                 existing = self._find_existing(cursor, record)
-                if existing is None or existing[1] != record.fingerprint:
+                if existing is None or not _stored_fingerprint_matches(
+                    record,
+                    existing[1],
+                ):
                     raise JournalConflictError(
                         "Journal identity conflicts with existing record"
                     )
@@ -173,20 +177,7 @@ class PostgresJournalRepository(JournalRepository):
                 rows = cursor.fetchall()
         results: list[JournalAppendResult] = []
         for row in rows:
-            record = JournalRecord(
-                record_id=row[1],
-                session_id=session_id,
-                kind=row[2],
-                occurred_at=row[3],
-                payload=json.loads(row[4]),
-                idempotency_scope=row[5],
-                idempotency_key=row[6],
-                schema_version=row[7],
-            )
-            if record.fingerprint != row[8]:
-                raise JournalConflictError(
-                    "stored fingerprint conflicts with reconstructed Journal record"
-                )
+            record = _record_from_postgres_row(session_id, row)
             results.append(
                 JournalAppendResult(
                     record=record,
@@ -309,3 +300,126 @@ def _json_text(value: object) -> str:
     if isinstance(value, str):
         return json.dumps(json.loads(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+_POSTGRES_FINGERPRINT_PREFIX = "postgres-journal-fingerprint-v2:"
+_UTC = timezone.utc
+_TAIPEI_FIXED_OFFSET = timezone(timedelta(hours=8))
+
+
+def _postgres_storage_fingerprint(record: JournalRecord) -> str:
+    """Bind the domain fingerprint to the original aware timestamp text.
+
+    PostgreSQL ``TIMESTAMPTZ`` preserves the instant but renders it in the
+    connection timezone.  The Journal fingerprint intentionally includes the
+    original ISO offset, so the adapter must retain that representation too.
+    """
+
+    envelope = json.dumps(
+        {
+            "occurred_at": record.occurred_at.isoformat(),
+            "record_fingerprint": record.fingerprint,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return f"{_POSTGRES_FINGERPRINT_PREFIX}{envelope}"
+
+
+def _stored_fingerprint_matches(record: JournalRecord, stored: object) -> bool:
+    if not isinstance(stored, str):
+        return False
+    if stored.startswith(_POSTGRES_FINGERPRINT_PREFIX):
+        return stored == _postgres_storage_fingerprint(record)
+    return stored == record.fingerprint
+
+
+def _record_from_postgres_row(
+    session_id: str,
+    row: tuple[object, ...],
+) -> JournalRecord:
+    stored = row[8]
+    if not isinstance(stored, str):
+        raise JournalConflictError(
+            "stored fingerprint conflicts with reconstructed Journal record"
+        )
+
+    occurred_at = row[3]
+    if not isinstance(occurred_at, datetime):
+        raise JournalConflictError(
+            "stored fingerprint conflicts with reconstructed Journal record"
+        )
+
+    if stored.startswith(_POSTGRES_FINGERPRINT_PREFIX):
+        try:
+            envelope = json.loads(stored.removeprefix(_POSTGRES_FINGERPRINT_PREFIX))
+            original_occurred_at = datetime.fromisoformat(envelope["occurred_at"])
+            expected_fingerprint = envelope["record_fingerprint"]
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise JournalConflictError(
+                "stored fingerprint conflicts with reconstructed Journal record"
+            ) from error
+        if (
+            original_occurred_at.tzinfo is None
+            or original_occurred_at.utcoffset() is None
+            or original_occurred_at != occurred_at
+            or not isinstance(expected_fingerprint, str)
+        ):
+            raise JournalConflictError(
+                "stored fingerprint conflicts with reconstructed Journal record"
+            )
+        record = _build_record_from_postgres_row(
+            session_id,
+            row,
+            occurred_at=original_occurred_at,
+        )
+        if record.fingerprint != expected_fingerprint:
+            raise JournalConflictError(
+                "stored fingerprint conflicts with reconstructed Journal record"
+            )
+        return record
+
+    # Legacy rows stored only the domain digest. PostgreSQL may return their
+    # TIMESTAMPTZ in UTC even when the original Taiwan record used +08:00.
+    # Try the persisted rendering plus the repository's two historical clock
+    # representations; never accept a row whose digest matches none of them.
+    candidates = (
+        occurred_at,
+        occurred_at.astimezone(_UTC),
+        occurred_at.astimezone(_TAIPEI_FIXED_OFFSET),
+    )
+    checked: set[str] = set()
+    for candidate in candidates:
+        identity = candidate.isoformat()
+        if identity in checked:
+            continue
+        checked.add(identity)
+        record = _build_record_from_postgres_row(
+            session_id,
+            row,
+            occurred_at=candidate,
+        )
+        if record.fingerprint == stored:
+            return record
+    raise JournalConflictError(
+        "stored fingerprint conflicts with reconstructed Journal record"
+    )
+
+
+def _build_record_from_postgres_row(
+    session_id: str,
+    row: tuple[object, ...],
+    *,
+    occurred_at: datetime,
+) -> JournalRecord:
+    return JournalRecord(
+        record_id=str(row[1]),
+        session_id=session_id,
+        kind=str(row[2]),
+        occurred_at=occurred_at,
+        payload=json.loads(str(row[4])),
+        idempotency_scope=None if row[5] is None else str(row[5]),
+        idempotency_key=None if row[6] is None else str(row[6]),
+        schema_version=str(row[7]),
+    )
