@@ -29,6 +29,7 @@ from simulation.execution_costs import (
     FillAccountingDecision,
     ReferenceSource,
     SlippageDecision,
+    adverse_tick_floor,
     cumulative_commission_for,
     decide_fill_accounting,
     decide_fixed_adverse_slippage,
@@ -41,6 +42,13 @@ from simulation.models import (
     SimulationPosition,
 )
 from simulation.settings import LocalPaperSettings, SETTINGS_SCHEMA_V1, SETTINGS_SCHEMA_V2
+from trading.exposure import (
+    ExecutionReasonCategory,
+    ExposureIdentity,
+    PositionAction,
+    build_legacy_exposure_identity,
+)
+from trading.risk import OrderCommand
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -50,6 +58,9 @@ _DEFAULT_QUOTE_QUEUE_CAPACITY = 1_024
 _DEFAULT_PENDING_TIMEOUT_SECONDS = 30
 _DEFAULT_ORDER_EXPIRY_SECONDS = 120
 _DEFAULT_MAX_RETRY_ATTEMPTS = 3
+_LEGACY_ACCOUNT_SCOPE_ID = "local-paper-compat-v1"
+_LEGACY_POLICY_FAMILY_ID = "no-overnight-legacy-family-v1"
+_LEGACY_SOURCE_SESSION_ID = "simulation-service-direct-v1"
 _ACTIVE_ORDER_STATUSES = frozenset(
     {
         OrderStatus.SUBMITTED,
@@ -57,6 +68,16 @@ _ACTIVE_ORDER_STATUSES = frozenset(
         OrderStatus.PARTIALLY_FILLED,
     }
 )
+
+
+def _exact_book_freshness(
+    *,
+    now: datetime,
+    received_at: datetime,
+    max_age_seconds: int,
+) -> tuple[float, bool]:
+    age_seconds = (now - received_at).total_seconds()
+    return age_seconds, 0 <= age_seconds <= max_age_seconds
 
 
 @dataclass
@@ -73,6 +94,7 @@ class _QuoteState:
     book_received_at: datetime | None = None
     bid_available_quantity: int | None = None
     ask_available_quantity: int | None = None
+    instrument_tradable: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -198,10 +220,13 @@ class SimulationService:
         self._cancel_order_ids_by_key: dict[str, str] = {}
         self._reserved_buy_notional_by_order: dict[str, Decimal] = {}
         self._positions: dict[str, SimulationPosition] = {}
+        self._exposure_identities: dict[str, ExposureIdentity] = {}
+        self._exposure_symbols: dict[str, str] = {}
         self._quotes: dict[str, _QuoteState] = {}
-        self._realized_pnl_by_symbol: dict[str, Decimal] = {}
+        self._realized_pnl_by_exposure: dict[str, Decimal] = {}
         self._alerts: list[dict[str, Any]] = []
         self._lock = RLock()
+        self._mutation_boundary_time: datetime | None = None
         self._subscription_lock = RLock()
         self._stream_capable = provider.supports_streaming_quotes()
         self._streaming_enabled = False
@@ -268,6 +293,26 @@ class SimulationService:
         else:
             canonical_symbol = self._get_stock(normalized_symbol).symbol
         self._get_local_paper_instrument_descriptor(canonical_symbol)
+
+    def no_overnight_sell_limit_price(
+        self,
+        reference_price: Decimal | float | int | str,
+    ) -> Decimal:
+        """Return the exact policy-compatible SELL limit for a forced local exit."""
+
+        reference = self._normalize_price(reference_price)
+        if not self._cost_policy_enabled:
+            return reference
+        if not is_valid_common_stock_tick(reference):
+            raise SimulationValidationError(
+                "即時最佳買價不符合 tw_common_stock_tick_v1 升降單位"
+            )
+        raw_adverse = reference * (
+            Decimal("1") - self._slippage_bps / Decimal("10000")
+        )
+        if raw_adverse <= 0:
+            raise SimulationValidationError("No-Overnight SELL 限價必須大於 0")
+        return adverse_tick_floor(raw_adverse)
 
     def set_terminal_order_handler(
         self,
@@ -411,7 +456,7 @@ class SimulationService:
                 Decimal("0"),
             )
             realized_pnl = sum(
-                self._realized_pnl_by_symbol.values(),
+                self._realized_pnl_by_exposure.values(),
                 Decimal("0"),
             )
             received_times = [
@@ -481,6 +526,22 @@ class SimulationService:
                 "notice": notice,
             }
 
+    def no_overnight_reconciliation_context(self) -> dict[str, object]:
+        """Return canonical Local Paper accounting facts without provider I/O."""
+
+        self._roll_trading_day()
+        with self._lock:
+            return {
+                "starting_cash": format(self._starting_cash, "f"),
+                "cash": format(self._cash, "f"),
+                "realized_pnl_by_exposure": {
+                    exposure_id: format(value, "f")
+                    for exposure_id, value in sorted(
+                        self._realized_pnl_by_exposure.items()
+                    )
+                },
+            }
+
     def projection(self) -> dict[str, Any]:
         """回傳瀏覽器可直接讀取的本機訂單、持倉與 session 投影。"""
         self.reconcile_orders()
@@ -512,6 +573,7 @@ class SimulationService:
         positions: list[dict[str, Any]],
         realized_pnl_by_symbol: dict[str, Decimal],
         order_states: list[dict[str, Any]],
+        realized_pnl_by_exposure: dict[str, Decimal] | None = None,
         daily_baseline: dict[str, Any] | None = None,
         daily_filled_buy_notional: Decimal = Decimal("0"),
     ) -> None:
@@ -525,12 +587,23 @@ class SimulationService:
                 daily_filled_buy_notional,
                 "restored.daily_filled_buy_notional",
             )
-            self._realized_pnl_by_symbol = {
-                self._normalize_symbol(symbol): self._money(value, "restored.realized_pnl")
-                for symbol, value in realized_pnl_by_symbol.items()
-            }
             for raw in positions:
                 symbol = self._normalize_symbol(str(raw["symbol"]))
+                raw_exposure = raw.get("exposure_identity")
+                exposure = (
+                    ExposureIdentity.from_payload(raw_exposure)
+                    if isinstance(raw_exposure, Mapping)
+                    else build_legacy_exposure_identity(
+                        account_scope_id=_LEGACY_ACCOUNT_SCOPE_ID,
+                        policy_family_id=_LEGACY_POLICY_FAMILY_ID,
+                        source_session_id=_LEGACY_SOURCE_SESSION_ID,
+                        symbol=symbol,
+                        owner_origin=str(raw.get("owner_origin") or "MANUAL_WEB"),
+                        owner_id=str(
+                            raw.get("owner_strategy_id") or "manual-web"
+                        ),
+                    )
+                )
                 position = SimulationPosition(
                     symbol=symbol,
                     name=str(raw["name"]),
@@ -551,10 +624,59 @@ class SimulationService:
                         if raw.get("owner_strategy_version") is not None
                         else None
                     ),
+                    exposure=exposure,
                 )
-                self._positions[symbol] = position
+                self._exposure_identities[exposure.exposure_id] = exposure
+                self._exposure_symbols[exposure.exposure_id] = symbol
+                if position.quantity < 0:
+                    raise SimulationStateError("restored exposure quantity cannot be negative")
+                if position.quantity > 0:
+                    self._positions[exposure.exposure_id] = position
                 self._quotes.setdefault(symbol, _QuoteState())
+            for raw_symbol, raw_value in realized_pnl_by_symbol.items():
+                symbol = self._normalize_symbol(raw_symbol)
+                candidates = [
+                    exposure_id
+                    for exposure_id, exposure_symbol in self._exposure_symbols.items()
+                    if exposure_symbol == symbol
+                ]
+                if len(candidates) > 1:
+                    raise SimulationStateError(
+                        "legacy realized PnL 無法分配到多個 exposure"
+                    )
+                if candidates:
+                    exposure_id = candidates[0]
+                else:
+                    legacy = build_legacy_exposure_identity(
+                        account_scope_id=_LEGACY_ACCOUNT_SCOPE_ID,
+                        policy_family_id=_LEGACY_POLICY_FAMILY_ID,
+                        source_session_id=_LEGACY_SOURCE_SESSION_ID,
+                        symbol=symbol,
+                        owner_origin="MANUAL_WEB",
+                        owner_id="manual-web",
+                    )
+                    exposure_id = legacy.exposure_id
+                    self._exposure_identities[exposure_id] = legacy
+                    self._exposure_symbols[exposure_id] = symbol
+                self._realized_pnl_by_exposure[exposure_id] = self._money(
+                    raw_value,
+                    "restored.realized_pnl",
+                )
             for raw in order_states:
+                order_symbol = self._normalize_symbol(str(raw["symbol"]))
+                raw_exposure = raw.get("exposure_identity")
+                order_exposure = (
+                    ExposureIdentity.from_payload(raw_exposure)
+                    if isinstance(raw_exposure, Mapping)
+                    else build_legacy_exposure_identity(
+                        account_scope_id=_LEGACY_ACCOUNT_SCOPE_ID,
+                        policy_family_id=_LEGACY_POLICY_FAMILY_ID,
+                        source_session_id=_LEGACY_SOURCE_SESSION_ID,
+                        symbol=order_symbol,
+                        owner_origin=str(raw.get("origin") or "MANUAL_WEB"),
+                        owner_id=str(raw.get("strategy_id") or "manual-web"),
+                    )
+                )
                 order = SimulationOrder(
                     order_id=str(raw["order_id"]),
                     idempotency_key=str(raw["idempotency_key"]),
@@ -569,7 +691,7 @@ class SimulationService:
                         if raw.get("strategy_version") is not None
                         else None
                     ),
-                    symbol=self._normalize_symbol(str(raw["symbol"])),
+                    symbol=order_symbol,
                     name=str(raw["name"]),
                     side=OrderSide(str(raw["side"])),
                     quantity_shares=self._restored_quantity_shares(raw),
@@ -712,6 +834,44 @@ class SimulationService:
                         if raw.get("expires_at") is not None
                         else None
                     ),
+                    exposure=order_exposure,
+                    position_action=PositionAction(
+                        str(
+                            raw.get("position_action")
+                            or (
+                                PositionAction.OPEN_LONG.value
+                                if str(raw["side"]) == OrderSide.BUY.value
+                                else PositionAction.CLOSE_LONG.value
+                            )
+                        )
+                    ),
+                    target_exposure_id=(
+                        str(raw["target_exposure_id"])
+                        if raw.get("target_exposure_id") is not None
+                        else (
+                            order_exposure.exposure_id
+                            if str(raw["side"]) == OrderSide.SELL.value
+                            else None
+                        )
+                    ),
+                    execution_reason_category=(
+                        ExecutionReasonCategory(
+                            str(raw["execution_reason_category"])
+                        )
+                        if raw.get("execution_reason_category") is not None
+                        else None
+                    ),
+                    execution_reason_code=(
+                        str(raw["execution_reason_code"])
+                        if raw.get("execution_reason_code") is not None
+                        else None
+                    ),
+                )
+                self._exposure_identities.setdefault(
+                    order_exposure.exposure_id, order_exposure
+                )
+                self._exposure_symbols.setdefault(
+                    order_exposure.exposure_id, order.symbol
                 )
                 self._orders[order.order_id] = order
                 self._order_ids_by_key[order.idempotency_key] = order.order_id
@@ -738,6 +898,20 @@ class SimulationService:
                             "acknowledged": False,
                         }
                     )
+            if realized_pnl_by_exposure is not None:
+                if realized_pnl_by_symbol:
+                    raise SimulationStateError(
+                        "cannot restore realized PnL by both symbol and exposure"
+                    )
+                for exposure_id, raw_value in realized_pnl_by_exposure.items():
+                    if exposure_id not in self._exposure_identities:
+                        raise SimulationStateError(
+                            "restored realized PnL references unknown exposure"
+                        )
+                    self._realized_pnl_by_exposure[exposure_id] = self._money(
+                        raw_value,
+                        "restored.realized_pnl",
+                    )
             latest = order_states[-1] if order_states else None
             if daily_baseline is not None:
                 restored_date = date.fromisoformat(
@@ -762,13 +936,13 @@ class SimulationService:
                     "restored.opening_equity",
                 )
                 self._opening_realized_pnl = sum(
-                    self._realized_pnl_by_symbol.values(),
+                    self._realized_pnl_by_exposure.values(),
                     Decimal("0"),
                 )
             else:
                 self._opening_equity = self._cash + self._market_value()
                 self._opening_realized_pnl = sum(
-                    self._realized_pnl_by_symbol.values(),
+                    self._realized_pnl_by_exposure.values(),
                     Decimal("0"),
                 )
         self._sync_quote_subscriptions()
@@ -809,65 +983,85 @@ class SimulationService:
             self._sync_quote_subscriptions()
 
     def positions(self) -> list[dict[str, Any]]:
-        """讀取由已成交委託建立的持倉投影，不會呼叫資料來源。"""
+        """Return the legacy symbol aggregate without collapsing mutation keys."""
         self._roll_trading_day()
         with self._lock:
             positions: list[dict[str, Any]] = []
-            for position in sorted(self._positions.values(), key=lambda item: item.symbol):
-                quote = self._quote_for(position)
-                current_price = self._current_price(position)
-                market_value = position.quantity * current_price
-                unrealized_pnl = position.quantity * (current_price - position.average_price)
-                unrealized_pnl -= position.commission_cost
-                quote_at = None
-                if quote is not None:
-                    quote_at = quote.received_at
-                    if quote_at is None and quote.snapshot is not None:
-                        quote_at = quote.snapshot.timestamp
-                positions.append(
-                    {
-                        "symbol": position.symbol,
-                        "name": position.name,
-                        "quantity": position.quantity,
-                        "average_price": float(position.average_price),
-                        "commission_cost": float(position.commission_cost),
-                        "current_price": float(current_price),
-                        "market_value": float(market_value),
-                        "unrealized_pnl": float(unrealized_pnl),
-                        "unrealized_pnl_pct": float(
-                            unrealized_pnl / (position.quantity * position.average_price) * 100
-                            if position.average_price > 0
-                            else Decimal("0")
-                        ),
-                        "realized_pnl": float(
-                            self._realized_pnl_by_symbol.get(
-                                position.symbol, Decimal("0")
-                            )
-                        ),
-                        "owner_origin": position.owner_origin,
-                        "owner_strategy_id": position.owner_strategy_id,
-                        "owner_strategy_version": position.owner_strategy_version,
-                        "bid_price": float(quote.bid_price) if quote and quote.bid_price else None,
-                        "ask_price": float(quote.ask_price) if quote and quote.ask_price else None,
-                        "last_quote_at": quote_at.isoformat() if quote_at else None,
-                        "quote_received_at": (
-                            quote.received_at.isoformat()
-                            if quote and quote.received_at
-                            else None
-                        ),
-                        "book_received_at": (
-                            quote.book_received_at.isoformat()
-                            if quote and quote.book_received_at
-                            else None
-                        ),
-                        "quote_source": (
-                            "SHIOAJI_TICK_BIDASK"
-                            if quote and quote.received_at
-                            else "SNAPSHOT"
-                        ),
-                    }
+            symbols = sorted({position.symbol for position in self._positions.values()})
+            for symbol in symbols:
+                members = [
+                    position
+                    for position in self._positions.values()
+                    if position.symbol == symbol
+                ]
+                quantity = sum(position.quantity for position in members)
+                cost = sum(
+                    position.average_price * position.quantity for position in members
                 )
+                commission_cost = sum(
+                    (position.commission_cost for position in members),
+                    Decimal("0"),
+                )
+                owner_origins = {position.owner_origin for position in members}
+                strategy_ids = {position.owner_strategy_id for position in members}
+                strategy_versions = {
+                    position.owner_strategy_version for position in members
+                }
+                aggregate = SimulationPosition(
+                    symbol=symbol,
+                    name=members[0].name,
+                    quantity=quantity,
+                    average_price=cost / quantity,
+                    commission_cost=commission_cost,
+                    owner_origin=(
+                        next(iter(owner_origins))
+                        if len(owner_origins) == 1
+                        else "MIXED"
+                    ),
+                    owner_strategy_id=(
+                        next(iter(strategy_ids)) if len(strategy_ids) == 1 else None
+                    ),
+                    owner_strategy_version=(
+                        next(iter(strategy_versions))
+                        if len(strategy_versions) == 1
+                        else None
+                    ),
+                )
+                realized = sum(
+                    (
+                        value
+                        for exposure_id, value in self._realized_pnl_by_exposure.items()
+                        if self._exposure_symbols.get(exposure_id) == symbol
+                    ),
+                    Decimal("0"),
+                )
+                payload = self._position_payload(aggregate, realized_pnl=realized)
+                payload["exposure_count"] = len(members)
+                payload["exposure_ids"] = sorted(
+                    position.exposure.exposure_id
+                    for position in members
+                    if position.exposure is not None
+                )
+                positions.append(payload)
             return positions
+
+    def exposures(self) -> list[dict[str, Any]]:
+        """Return one independently mutable row per exposure identity."""
+        self._roll_trading_day()
+        with self._lock:
+            return [
+                self._position_payload(
+                    position,
+                    realized_pnl=self._realized_pnl_by_exposure.get(
+                        exposure_id, Decimal("0")
+                    ),
+                    exposure=position.exposure,
+                )
+                for exposure_id, position in sorted(
+                    self._positions.items(),
+                    key=lambda item: (item[1].symbol, item[0]),
+                )
+            ]
 
     def submit_order(
         self,
@@ -883,6 +1077,11 @@ class SimulationService:
         strategy_version: str | None = None,
         attempt: int = 1,
         predecessor_order_id: str | None = None,
+        exposure: ExposureIdentity | None = None,
+        position_action: PositionAction | None = None,
+        target_exposure_id: str | None = None,
+        execution_reason_category: ExecutionReasonCategory | None = None,
+        execution_reason_code: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """接受限價委託；串流模式以賣一／買一，本機模式以 snapshot 撮合。"""
         normalized_symbol = self._normalize_symbol(symbol)
@@ -902,6 +1101,8 @@ class SimulationService:
         normalized_origin = str(origin).strip().upper()
         normalized_strategy_id = self._optional_identity(strategy_id)
         normalized_strategy_version = self._optional_identity(strategy_version)
+        normalized_target_exposure_id = self._optional_identity(target_exposure_id)
+        normalized_reason_code = self._optional_identity(execution_reason_code)
         if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
             raise SimulationValidationError("委託 attempt 必須是大於 0 的整數")
         if attempt > self._max_retry_attempts:
@@ -914,6 +1115,46 @@ class SimulationService:
                 raise SimulationValidationError("自動策略委託缺少策略歸屬")
         elif normalized_strategy_id is not None or normalized_strategy_version is not None:
             raise SimulationValidationError("手動委託不可帶入自動策略歸屬")
+        if exposure is not None:
+            if not isinstance(exposure, ExposureIdentity):
+                raise SimulationValidationError("exposure identity 格式錯誤")
+            if exposure.owner_origin != normalized_origin:
+                raise SimulationValidationError("委託 origin 與 exposure 歸屬不一致")
+            expected_owner_id = (
+                normalized_strategy_id
+                if normalized_origin == "STRATEGY_AUTOMATED"
+                else "manual-web"
+            )
+            if exposure.owner_id != expected_owner_id:
+                raise SimulationValidationError("委託 owner 與 exposure 歸屬不一致")
+            if not isinstance(position_action, PositionAction):
+                raise SimulationValidationError("v2 委託缺少 position_action")
+            if not isinstance(execution_reason_category, ExecutionReasonCategory):
+                raise SimulationValidationError("v2 委託缺少 execution_reason_category")
+            if normalized_reason_code is None:
+                raise SimulationValidationError("v2 委託缺少 execution_reason_code")
+            if normalized_side is OrderSide.BUY:
+                if position_action is not PositionAction.OPEN_LONG:
+                    raise SimulationValidationError("BUY 必須使用 OPEN_LONG")
+                if normalized_target_exposure_id is not None:
+                    raise SimulationValidationError("BUY 不可指定 target_exposure_id")
+            elif (
+                position_action is not PositionAction.CLOSE_LONG
+                or normalized_target_exposure_id != exposure.exposure_id
+            ):
+                raise SimulationValidationError(
+                    "SELL 必須以 CLOSE_LONG 指定相同的 target exposure"
+                )
+        elif any(
+            value is not None
+            for value in (
+                position_action,
+                normalized_target_exposure_id,
+                execution_reason_category,
+                normalized_reason_code,
+            )
+        ):
+            raise SimulationValidationError("v1 委託不可只帶入部分 exposure 欄位")
 
         self._roll_trading_day()
         with self._lock:
@@ -936,6 +1177,50 @@ class SimulationService:
                 if self._cost_policy_enabled
                 else None
             )
+            ambiguous_sell_target = False
+            owner_conflict_sell = False
+            resolved_exposure = exposure
+            resolved_action = position_action
+            resolved_target_exposure_id = normalized_target_exposure_id
+            if resolved_exposure is None and normalized_side is OrderSide.SELL:
+                candidates = [
+                    position.exposure
+                    for position in self._positions.values()
+                    if position.symbol == stock_symbol
+                    and position.exposure is not None
+                    and self._owner_matches(
+                        origin=normalized_origin,
+                        strategy_id=normalized_strategy_id,
+                        exposure=position.exposure,
+                    )
+                ]
+                if len(candidates) == 1:
+                    resolved_exposure = candidates[0]
+                    resolved_target_exposure_id = resolved_exposure.exposure_id
+                elif len(candidates) > 1:
+                    ambiguous_sell_target = True
+                elif any(
+                    position.symbol == stock_symbol
+                    for position in self._positions.values()
+                ):
+                    owner_conflict_sell = True
+            if resolved_exposure is None:
+                resolved_exposure = build_legacy_exposure_identity(
+                    account_scope_id=_LEGACY_ACCOUNT_SCOPE_ID,
+                    policy_family_id=_LEGACY_POLICY_FAMILY_ID,
+                    source_session_id=_LEGACY_SOURCE_SESSION_ID,
+                    symbol=stock_symbol,
+                    owner_origin=normalized_origin,
+                    owner_id=normalized_strategy_id or "manual-web",
+                )
+            if resolved_action is None:
+                resolved_action = (
+                    PositionAction.OPEN_LONG
+                    if normalized_side is OrderSide.BUY
+                    else PositionAction.CLOSE_LONG
+                )
+            if normalized_side is OrderSide.SELL and resolved_target_exposure_id is None:
+                resolved_target_exposure_id = resolved_exposure.exposure_id
             now = self._now()
             order = SimulationOrder(
                 order_id=uuid4().hex,
@@ -959,34 +1244,21 @@ class SimulationService:
                     self._slippage_bps if self._cost_policy_enabled else None
                 ),
                 instrument_descriptor=instrument_descriptor,
+                exposure=resolved_exposure,
+                position_action=resolved_action,
+                target_exposure_id=resolved_target_exposure_id,
+                execution_reason_category=execution_reason_category,
+                execution_reason_code=normalized_reason_code,
             )
             self._orders[order.order_id] = order
             self._order_ids_by_key[normalized_key] = order.order_id
 
             if normalized_side is OrderSide.BUY:
-                position = self._positions.get(order.symbol)
-                if position is not None and not self._same_owner(order, position):
-                    self._reject(order, "持倉歸屬衝突，禁止合併部位")
-                conflicting_pending = next(
-                    (
-                        existing
-                        for existing in self._orders.values()
-                        if existing.order_id != order.order_id
-                        and existing.symbol == order.symbol
-                        and existing.side is OrderSide.BUY
-                        and existing.status in _ACTIVE_ORDER_STATUSES
-                        and not self._same_order_owner(order, existing)
-                    ),
-                    None,
+                known_symbol = self._exposure_symbols.get(
+                    resolved_exposure.exposure_id
                 )
-                if (
-                    order.status is OrderStatus.SUBMITTED
-                    and conflicting_pending is not None
-                ):
-                    self._reject(
-                        order,
-                        "同股票已有不同歸屬的買進委託，禁止跨 owner 保留或合併",
-                    )
+                if known_symbol is not None and known_symbol != order.symbol:
+                    self._reject(order, "exposure identity 已綁定不同股票")
                 reserved_buy_notional = order.quantity * order.limit_price
                 reserved_cash = self._order_cash_reservation(order)
                 daily_used = (
@@ -1009,15 +1281,17 @@ class SimulationService:
                 elif order.status is OrderStatus.SUBMITTED:
                     self._reserved_buy_notional_by_order[order.order_id] = reserved_cash
             else:
-                position = self._positions.get(order.symbol)
-                if (
-                    normalized_origin == "STRATEGY_AUTOMATED"
-                    and position is not None
-                    and not self._same_owner(order, position)
-                ):
+                if ambiguous_sell_target:
+                    self._reject(
+                        order,
+                        "同股票有多個符合歸屬的 exposure，賣出必須指定 target_exposure_id",
+                    )
+                elif owner_conflict_sell:
                     self._reject(order, "自動策略不可賣出不屬於該策略的持倉")
+                elif self._sell_target_conflicts(order):
+                    self._reject(order, "target exposure 與委託股票或 identity 不一致")
                 elif order.quantity > self._available_to_sell(
-                    order.symbol,
+                    order,
                     exclude_order_id=order.order_id,
                 ):
                     self._reject(order, "可賣出持股不足")
@@ -1067,6 +1341,22 @@ class SimulationService:
         self._sync_quote_subscriptions()
         return payload, False
 
+    def execute_order_mutation_boundary(
+        self,
+        operation: Callable[[datetime], Any],
+    ) -> Any:
+        """Run final admission and order mutation under one lock and timestamp."""
+
+        with self._lock:
+            if self._mutation_boundary_time is not None:
+                raise SimulationStateError("order mutation boundary cannot be nested")
+            mutation_at = self._now()
+            self._mutation_boundary_time = mutation_at
+            try:
+                return operation(mutation_at)
+            finally:
+                self._mutation_boundary_time = None
+
     def cancel_order(
         self,
         order_id: str,
@@ -1104,7 +1394,7 @@ class SimulationService:
         notifications: list[dict[str, Any]] = []
         with self._lock:
             symbols = {
-                *self._positions,
+                *(position.symbol for position in self._positions.values()),
                 *(
                     order.symbol
                     for order in self._orders.values()
@@ -1322,8 +1612,12 @@ class SimulationService:
     ) -> Decimal | None:
         if quote.book_received_at is None or quote.book_at is None:
             return None
-        age = (self._now() - quote.book_received_at).total_seconds()
-        if age < 0 or age > self._max_book_age_seconds:
+        _, fresh = _exact_book_freshness(
+            now=self._now(),
+            received_at=quote.book_received_at,
+            max_age_seconds=self._max_book_age_seconds,
+        )
+        if not fresh:
             return None
         return quote.ask_price if order.side is OrderSide.BUY else quote.bid_price
 
@@ -1391,22 +1685,37 @@ class SimulationService:
 
     def _available_to_sell(
         self,
-        symbol: str,
+        order: SimulationOrder,
         exclude_order_id: str | None = None,
     ) -> int:
-        position = self._positions.get(symbol)
+        exposure_id = order.target_exposure_id
+        if exposure_id is None:
+            return 0
+        position = self._positions.get(exposure_id)
+        if position is not None and self._sell_target_conflicts(order):
+            return 0
         held_quantity = position.quantity if position else 0
         pending_quantity = sum(
             order.remaining_quantity
             for order in self._orders.values()
             if (
-                order.symbol == symbol
+                order.target_exposure_id == exposure_id
                 and order.side is OrderSide.SELL
                 and order.status in _ACTIVE_ORDER_STATUSES
                 and order.order_id != exclude_order_id
             )
         )
         return held_quantity - pending_quantity
+
+    def _sell_target_conflicts(self, order: SimulationOrder) -> bool:
+        exposure = order.exposure
+        exposure_id = order.target_exposure_id
+        if exposure is None or exposure_id != exposure.exposure_id:
+            return True
+        position = self._positions.get(exposure_id)
+        return position is not None and (
+            position.symbol != order.symbol or position.exposure != exposure
+        )
 
     def _fill(
         self,
@@ -1420,13 +1729,12 @@ class SimulationService:
         if quantity <= 0:
             return 0
         fill_price = execution.fill_price
-        position = self._positions.get(order.symbol)
-        if order.side is OrderSide.BUY:
-            if position is not None and not self._same_owner(order, position):
-                self._reject(order, "成交時持倉歸屬衝突，禁止跨 owner 合併")
-                return 0
-        elif position is None or position.quantity < quantity:
-            self._reject(order, "可賣出持股不足")
+        if order.exposure is not None and not self._owner_matches(
+            origin=order.origin,
+            strategy_id=order.strategy_id,
+            exposure=order.exposure,
+        ):
+            self._reject(order, "成交時 exposure owner 衝突")
             return 0
 
         accounting: FillAccountingDecision | None = None
@@ -1470,8 +1778,13 @@ class SimulationService:
                     "目前報價造成可用虛擬現金不足",
                 )
                 return 0
+            if order.exposure is None:
+                self._reject(order, "委託缺少 exposure identity")
+                return 0
+            exposure_id = order.exposure.exposure_id
+            position = self._positions.get(exposure_id)
             if position is None:
-                self._positions[order.symbol] = SimulationPosition(
+                self._positions[exposure_id] = SimulationPosition(
                     symbol=order.symbol,
                     name=order.name,
                     quantity=quantity,
@@ -1480,8 +1793,14 @@ class SimulationService:
                     commission_cost=incremental_commission,
                     owner_strategy_id=order.strategy_id,
                     owner_strategy_version=order.strategy_version,
+                    exposure=order.exposure,
                 )
+                self._exposure_identities[exposure_id] = order.exposure
+                self._exposure_symbols[exposure_id] = order.symbol
             else:
+                if position.symbol != order.symbol or position.exposure != order.exposure:
+                    self._reject(order, "成交時 exposure identity 衝突")
+                    return 0
                 total_quantity = position.quantity + quantity
                 position.average_price = (
                     position.average_price * position.quantity
@@ -1492,7 +1811,21 @@ class SimulationService:
             self._cash += net_cash_effect
             self._daily_filled_buy_notional += fill_amount
         else:
-            assert position is not None
+            exposure_id = order.target_exposure_id
+            position = self._positions.get(exposure_id or "")
+            if self._sell_target_conflicts(order):
+                self._reject(
+                    order,
+                    "成交時 target exposure 與委託股票或 identity 不一致",
+                )
+                return 0
+            if position is None or position.quantity < quantity:
+                self._reject(
+                    order,
+                    "可賣出持股不足",
+                )
+                return 0
+
             allocated_buy_commission = (
                 position.commission_cost * quantity / position.quantity
             )
@@ -1502,15 +1835,15 @@ class SimulationService:
                 - incremental_commission
                 - fill_tax
             )
-            self._realized_pnl_by_symbol[order.symbol] = (
-                self._realized_pnl_by_symbol.get(order.symbol, Decimal("0"))
+            self._realized_pnl_by_exposure[exposure_id] = (
+                self._realized_pnl_by_exposure.get(exposure_id, Decimal("0"))
                 + realized_pnl
             )
             position.quantity -= quantity
             position.commission_cost -= allocated_buy_commission
             self._cash += net_cash_effect
             if position.quantity == 0:
-                del self._positions[order.symbol]
+                del self._positions[exposure_id]
 
         order.filled_notional += fill_price * quantity
         order.filled_commission += incremental_commission
@@ -1652,6 +1985,9 @@ class SimulationService:
                 quote.ask_price = self._optional_money(update.ask_price)
                 quote.book_at = update.exchange_timestamp
                 quote.book_received_at = update.received_at
+                quote.instrument_tradable = (
+                    None if update.suspended is None else not update.suspended
+                )
                 quote.bid_available_quantity = (
                     update.bid_volume_lots * 1_000
                     if update.bid_volume_lots is not None
@@ -1705,7 +2041,7 @@ class SimulationService:
 
     def _desired_quote_symbols(self) -> set[str]:
         return {
-            *self._positions,
+            *(position.symbol for position in self._positions.values()),
             *self._quote_watch_by_owner.values(),
             *(
                 order.symbol
@@ -1845,22 +2181,21 @@ class SimulationService:
         return normalized
 
     @staticmethod
-    def _same_owner(order: SimulationOrder, position: SimulationPosition) -> bool:
-        if order.origin != position.owner_origin:
+    def _owner_matches(
+        *,
+        origin: str,
+        strategy_id: str | None,
+        exposure: ExposureIdentity,
+    ) -> bool:
+        if origin != exposure.owner_origin:
             return False
-        if order.origin != "STRATEGY_AUTOMATED":
+        if origin != "STRATEGY_AUTOMATED":
             return True
-        return order.strategy_id == position.owner_strategy_id
-
-    @staticmethod
-    def _same_order_owner(left: SimulationOrder, right: SimulationOrder) -> bool:
-        if left.origin != right.origin:
-            return False
-        if left.origin != "STRATEGY_AUTOMATED":
-            return True
-        return left.strategy_id == right.strategy_id
+        return strategy_id == exposure.owner_id
 
     def _now(self) -> datetime:
+        if self._mutation_boundary_time is not None:
+            return self._mutation_boundary_time
         return self._clock.now().astimezone(_TAIPEI)
 
     def _market_value(self) -> Decimal:
@@ -1878,7 +2213,7 @@ class SimulationService:
             return
         self._opening_equity = self._cash + self._market_value()
         self._opening_realized_pnl = sum(
-            self._realized_pnl_by_symbol.values(),
+            self._realized_pnl_by_exposure.values(),
             Decimal("0"),
         )
         self._daily_filled_buy_notional = Decimal("0")
@@ -1913,6 +2248,70 @@ class SimulationService:
             "created_at": self._now().isoformat(),
         }
 
+    def _position_payload(
+        self,
+        position: SimulationPosition,
+        *,
+        realized_pnl: Decimal,
+        exposure: ExposureIdentity | None = None,
+    ) -> dict[str, Any]:
+        quote = self._quote_for(position)
+        current_price = self._current_price(position)
+        market_value = position.quantity * current_price
+        unrealized_pnl = position.quantity * (
+            current_price - position.average_price
+        ) - position.commission_cost
+        quote_at = None
+        if quote is not None:
+            quote_at = quote.received_at
+            if quote_at is None and quote.snapshot is not None:
+                quote_at = quote.snapshot.timestamp
+        payload = {
+            "symbol": position.symbol,
+            "name": position.name,
+            "quantity": position.quantity,
+            "average_price": float(position.average_price),
+            "commission_cost": float(position.commission_cost),
+            "current_price": float(current_price),
+            "market_value": float(market_value),
+            "unrealized_pnl": float(unrealized_pnl),
+            "unrealized_pnl_pct": float(
+                unrealized_pnl
+                / (position.quantity * position.average_price)
+                * 100
+                if position.average_price > 0
+                else Decimal("0")
+            ),
+            "realized_pnl": float(realized_pnl),
+            "owner_origin": position.owner_origin,
+            "owner_strategy_id": position.owner_strategy_id,
+            "owner_strategy_version": position.owner_strategy_version,
+            "bid_price": float(quote.bid_price) if quote and quote.bid_price else None,
+            "ask_price": float(quote.ask_price) if quote and quote.ask_price else None,
+            "last_quote_at": quote_at.isoformat() if quote_at else None,
+            "quote_received_at": (
+                quote.received_at.isoformat() if quote and quote.received_at else None
+            ),
+            "book_received_at": (
+                quote.book_received_at.isoformat()
+                if quote and quote.book_received_at
+                else None
+            ),
+            "quote_source": (
+                "SHIOAJI_TICK_BIDASK" if quote and quote.received_at else "SNAPSHOT"
+            ),
+        }
+        if exposure is not None:
+            payload.update(
+                {
+                    "exposure_id": exposure.exposure_id,
+                    "exposure_identity": exposure.to_payload(),
+                    "holding_horizon": exposure.holding_horizon.value,
+                    "no_overnight_managed": exposure.no_overnight_managed,
+                }
+            )
+        return payload
+
     def _order_payload(self, order: SimulationOrder) -> dict[str, Any]:
         quote = self._quotes.get(order.symbol)
         waiting_reason = None
@@ -1930,7 +2329,7 @@ class SimulationService:
             if order.instrument_descriptor is not None
             else None
         )
-        return {
+        payload = {
             "order_id": order.order_id,
             "idempotency_key": order.idempotency_key,
             "origin": order.origin,
@@ -2044,17 +2443,58 @@ class SimulationService:
             "provider_identity": self._provider_identity,
             "execution_authority": False,
         }
+        if order.exposure is not None:
+            payload.update(
+                {
+                    "exposure_identity": order.exposure.to_payload(),
+                    "position_action": (
+                        order.position_action.value
+                        if order.position_action is not None
+                        else None
+                    ),
+                    "target_exposure_id": order.target_exposure_id,
+                    "execution_reason_category": (
+                        order.execution_reason_category.value
+                        if order.execution_reason_category is not None
+                        else None
+                    ),
+                    "execution_reason_code": order.execution_reason_code,
+                }
+            )
+        return payload
 
-    def risk_snapshot(self, symbol: str) -> dict[str, Any]:
+    def risk_snapshot(
+        self,
+        symbol: str,
+        *,
+        target_exposure_id: str | None = None,
+    ) -> dict[str, Any]:
         """Return local-only evidence for the command facade without provider I/O."""
         normalized_symbol = self._normalize_symbol(symbol)
+        normalized_exposure_id = self._optional_identity(target_exposure_id)
         self._roll_trading_day()
         with self._lock:
-            position = self._positions.get(normalized_symbol)
+            matching_positions = [
+                position
+                for exposure_id, position in self._positions.items()
+                if position.symbol == normalized_symbol
+                and (
+                    normalized_exposure_id is None
+                    or exposure_id == normalized_exposure_id
+                )
+            ]
             pending = [
                 order
                 for order in self._orders.values()
                 if order.symbol == normalized_symbol and order.status in _ACTIVE_ORDER_STATUSES
+                and (
+                    normalized_exposure_id is None
+                    or (
+                        order.exposure is not None
+                        and order.exposure.exposure_id == normalized_exposure_id
+                    )
+                    or order.target_exposure_id == normalized_exposure_id
+                )
             ]
             quote = self._quotes.get(normalized_symbol)
             book_age = None
@@ -2071,15 +2511,21 @@ class SimulationService:
                     else "HEALTHY"
                 ),
                 "available_cash": self._available_cash(),
-                "current_position_shares": position.quantity if position else 0,
+                "current_position_shares": sum(
+                    position.quantity for position in matching_positions
+                ),
                 "pending_buy_shares": sum(
-                    order.quantity for order in pending if order.side is OrderSide.BUY
+                    order.remaining_quantity
+                    for order in pending
+                    if order.side is OrderSide.BUY
                 ),
                 "pending_sell_shares": sum(
-                    order.quantity for order in pending if order.side is OrderSide.SELL
+                    order.remaining_quantity
+                    for order in pending
+                    if order.side is OrderSide.SELL
                 ),
                 "daily_realized_pnl": sum(
-                    self._realized_pnl_by_symbol.values(),
+                    self._realized_pnl_by_exposure.values(),
                     Decimal("0"),
                 )
                 - self._opening_realized_pnl,
@@ -2090,6 +2536,93 @@ class SimulationService:
                     self._opening_equity - (self._cash + self._market_value()),
                 ),
                 "book_age_seconds": book_age,
+            }
+
+    def execution_admission_context(
+        self,
+        symbol: str,
+        side: str,
+        *,
+        max_book_age_seconds: int,
+    ) -> dict[str, object]:
+        """Read tradability and executable-price evidence before order mutation."""
+
+        normalized_symbol = self._normalize_symbol(symbol)
+        normalized_side = self._normalize_side(side)
+        if (
+            isinstance(max_book_age_seconds, bool)
+            or not isinstance(max_book_age_seconds, int)
+            or max_book_age_seconds < 0
+        ):
+            raise SimulationValidationError("max_book_age_seconds 必須是非負整數")
+        if not self._stream_capable:
+            try:
+                stock = self._get_stock(normalized_symbol)
+            except SimulationValidationError:
+                return {
+                    "instrument_tradable": False,
+                    "executable_book_ready": False,
+                    "data_health_state": "BLOCKED",
+                    "book_age_seconds": None,
+                    "executable_price": None,
+                }
+            return {
+                "instrument_tradable": stock.symbol == normalized_symbol,
+                "executable_book_ready": False,
+                "data_health_state": "BLOCKED",
+                "book_age_seconds": None,
+                "executable_price": None,
+            }
+
+        try:
+            canonical_symbol, _ = self._get_stock_identity(normalized_symbol)
+        except SimulationValidationError:
+            return {
+                "instrument_tradable": False,
+                "executable_book_ready": False,
+                "data_health_state": "BLOCKED",
+                "book_age_seconds": None,
+                "executable_price": None,
+            }
+        with self._lock:
+            quote = self._quotes.get(canonical_symbol)
+            book_age = None
+            book_fresh = False
+            if quote is not None and quote.book_received_at is not None:
+                book_age, book_fresh = _exact_book_freshness(
+                    now=self._now(),
+                    received_at=quote.book_received_at,
+                    max_age_seconds=max_book_age_seconds,
+                )
+            price = (
+                quote.ask_price
+                if quote is not None and normalized_side is OrderSide.BUY
+                else quote.bid_price
+                if quote is not None
+                else None
+            )
+            healthy = (
+                not self._quote_ingress_blocked
+                and self._streaming_enabled
+                and self._stream_error is None
+            )
+            return {
+                "instrument_tradable": (
+                    canonical_symbol == normalized_symbol
+                    and quote is not None
+                    and quote.instrument_tradable is True
+                ),
+                "executable_book_ready": (
+                    healthy
+                    and price is not None
+                    and price > 0
+                    and book_fresh
+                ),
+                "data_health_state": "HEALTHY" if healthy else "BLOCKED",
+                "book_age_seconds": book_age,
+                "executable_price": (
+                    format(price, "f") if price is not None and price > 0 else None
+                ),
             }
 
     def order_for_idempotency_key(self, idempotency_key: str) -> dict[str, Any] | None:
@@ -2110,20 +2643,17 @@ class SimulationService:
     def record_risk_rejection(
         self,
         *,
-        symbol: str,
-        side: str,
-        quantity_shares: int,
-        limit_price: Decimal | float | int | str,
-        idempotency_key: str,
+        command: OrderCommand,
         reason: str,
-        origin: str = "MANUAL_WEB",
     ) -> dict[str, Any]:
         """Project a RiskGate rejection without calling a broker or quote stream."""
-        normalized_symbol = self._normalize_symbol(symbol)
-        normalized_side = self._normalize_side(side)
-        normalized_quantity_shares = self._normalize_quantity_shares(quantity_shares)
-        normalized_price = self._normalize_price(limit_price)
-        normalized_key = self._normalize_idempotency_key(idempotency_key)
+        normalized_symbol = self._normalize_symbol(command.symbol)
+        normalized_side = self._normalize_side(command.side.value)
+        normalized_quantity_shares = self._normalize_quantity_shares(
+            command.quantity_shares
+        )
+        normalized_price = self._normalize_price(command.limit_price)
+        normalized_key = self._normalize_idempotency_key(command.idempotency_key)
         with self._lock:
             existing_order_id = self._order_ids_by_key.get(normalized_key)
             if existing_order_id is not None:
@@ -2137,7 +2667,7 @@ class SimulationService:
             order = SimulationOrder(
                 order_id=uuid4().hex,
                 idempotency_key=normalized_key,
-                origin=origin,
+                origin=command.origin.value,
                 symbol=stock_symbol,
                 name=stock_name,
                 side=normalized_side,
@@ -2147,6 +2677,15 @@ class SimulationService:
                 submitted_at=now,
                 updated_at=now,
                 reason=reason,
+                strategy_id=command.strategy_id,
+                strategy_version=command.strategy_version,
+                attempt=command.attempt,
+                predecessor_order_id=command.predecessor_order_id,
+                exposure=command.exposure,
+                position_action=command.position_action,
+                target_exposure_id=command.target_exposure_id,
+                execution_reason_category=command.execution_reason_category,
+                execution_reason_code=command.execution_reason_code,
             )
             self._orders[order.order_id] = order
             self._order_ids_by_key[normalized_key] = order.order_id

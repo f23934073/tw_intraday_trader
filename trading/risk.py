@@ -10,6 +10,11 @@ from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from enum import StrEnum
 
 from trading.canonical_values import canonical_decimal_string
+from trading.exposure import (
+    ExecutionReasonCategory,
+    ExposureIdentity,
+    PositionAction,
+)
 from trading.trade_management import (
     ExitRecommendation,
     ExitRecommendationStatus,
@@ -77,6 +82,11 @@ class OrderCommand:
     strategy_version: str | None = None
     attempt: int = 1
     predecessor_order_id: str | None = None
+    exposure: ExposureIdentity | None = None
+    position_action: PositionAction | None = None
+    target_exposure_id: str | None = None
+    execution_reason_category: ExecutionReasonCategory | None = None
+    execution_reason_code: str | None = None
 
     def __post_init__(self) -> None:
         for value, field_name in (
@@ -102,6 +112,47 @@ class OrderCommand:
             raise ValueError("attempt must be positive")
         if (self.attempt == 1) != (self.predecessor_order_id is None):
             raise ValueError("predecessor_order_id must match retry attempt")
+        if self.exposure is None:
+            if any(
+                value is not None
+                for value in (
+                    self.position_action,
+                    self.target_exposure_id,
+                    self.execution_reason_category,
+                    self.execution_reason_code,
+                )
+            ):
+                raise ValueError("v1 command must not carry partial exposure identity")
+            return
+        if self.exposure.owner_origin != self.origin.value:
+            raise ValueError("exposure owner_origin must match command origin")
+        if (
+            self.origin is CommandOrigin.STRATEGY_AUTOMATED
+            and self.exposure.owner_id != self.strategy_id
+        ):
+            raise ValueError("strategy exposure owner_id must match strategy_id")
+        if not isinstance(self.position_action, PositionAction):
+            raise ValueError("v2 command requires position_action")
+        if not isinstance(self.execution_reason_category, ExecutionReasonCategory):
+            raise ValueError("v2 command requires execution_reason_category")
+        if not (self.execution_reason_code or "").strip():
+            raise ValueError("v2 command requires execution_reason_code")
+        if self.execution_reason_code != self.execution_reason_code.strip().upper():
+            raise ValueError("execution_reason_code must be normalized")
+        if self.side is CommandSide.BUY:
+            if self.position_action is not PositionAction.OPEN_LONG:
+                raise ValueError("BUY requires OPEN_LONG")
+            if self.target_exposure_id is not None:
+                raise ValueError("OPEN_LONG must not carry target_exposure_id")
+        else:
+            if self.position_action is not PositionAction.CLOSE_LONG:
+                raise ValueError("SELL requires CLOSE_LONG")
+            if self.target_exposure_id != self.exposure.exposure_id:
+                raise ValueError("target_exposure_id must match exposure identity")
+
+    @property
+    def schema_version(self) -> str:
+        return "order-command-v2" if self.exposure is not None else "order-command-v1"
 
 
 @dataclass(frozen=True)

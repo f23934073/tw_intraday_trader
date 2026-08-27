@@ -220,15 +220,27 @@
 
       .workspace-view { display: none; min-height: 0; }
       .workspace-view.active { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-      .overview-summary { display: grid; flex: none; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
+      .overview-summary { display: grid; flex: none; gap: 10px; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 14px; }
       .summary-card { background: var(--surface); border: 1px solid var(--line); border-radius: 11px; min-width: 0; padding: 11px 13px; }
       .summary-card-label { color: var(--muted); font-size: 11px; }
       .summary-card-value { font-size: 19px; font-variant-numeric: tabular-nums; font-weight: 600; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .summary-card-note { color: var(--muted); font-size: 10px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .no-overnight-card .summary-card-note { line-height: 1.4; overflow: visible; white-space: normal; }
+      .no-overnight-breach { border-top: 1px solid var(--line); margin-top: 9px; padding-top: 8px; }
+      .no-overnight-breach-meta { color: var(--muted); font-size: 10px; line-height: 1.45; margin: 0; overflow-wrap: anywhere; }
+      .no-overnight-breach-ack { background: color-mix(in srgb, var(--red) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--red) 45%, var(--line)); border-radius: 7px; color: var(--red); cursor: pointer; font-size: 11px; margin-top: 8px; padding: 6px 8px; }
+      .no-overnight-breach-ack:hover:not(:disabled) { border-color: var(--red); }
+      .no-overnight-breach-ack:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+      .no-overnight-breach-ack:disabled { cursor: not-allowed; opacity: .55; }
+      .no-overnight-breach-error { color: var(--red); font-size: 10px; line-height: 1.4; margin: 7px 0 0; }
       .summary-card-value.good { color: var(--green); }
       .summary-card-value.waiting { color: var(--amber); }
       .summary-card-value.alert { color: var(--red); }
       .data-status-card .refresh-button { font-size: 12px; margin-top: 10px; padding: 6px 9px; }
+
+      @media (max-width: 1200px) {
+        .overview-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      }
 
       .premarket-panel { flex: none; margin-bottom: 14px; padding: 13px 15px; }
       .premarket-heading { align-items: center; display: flex; gap: 12px; justify-content: space-between; }

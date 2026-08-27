@@ -16,6 +16,8 @@ from trading.local_paper import (
     LOCAL_PAPER_FILL_KIND,
     LOCAL_PAPER_FILL_V2_KIND,
     LOCAL_PAPER_FILL_V3_KIND,
+    LOCAL_PAPER_FILL_V4_KIND,
+    LocalPaperExposureFill,
     LocalPaperFill,
     LocalPaperSide,
 )
@@ -35,7 +37,11 @@ PAPER_FILL_THESIS_AGGREGATION_VERSION = "paper-fill-thesis-activation-v2"
 PAPER_FILL_AGGREGATION_VERSION = "paper-fill-aggregation-v1"
 PAPER_FILL_TERMINAL_EVIDENCE_VERSION = "paper-fill-terminal-evidence-v1"
 _AGGREGATE_FILL_KINDS = frozenset(
-    {LOCAL_PAPER_FILL_V2_KIND, LOCAL_PAPER_FILL_V3_KIND}
+    {
+        LOCAL_PAPER_FILL_V2_KIND,
+        LOCAL_PAPER_FILL_V3_KIND,
+        LOCAL_PAPER_FILL_V4_KIND,
+    }
 )
 _ACTIVATION_PREFIXES = {
     PAPER_FILL_THESIS_ACTIVATION_VERSION: "paper_fill_thesis_v1_",
@@ -123,7 +129,7 @@ class PaperFillRecordProvenance:
 
     def __post_init__(self) -> None:
         if self.fill_kind not in _AGGREGATE_FILL_KINDS:
-            raise ValueError("aggregate fill lineage requires v2 or v3 records")
+            raise ValueError("aggregate fill lineage requires v2, v3, or v4 records")
         if (
             isinstance(self.fill_sequence, bool)
             or not isinstance(self.fill_sequence, int)
@@ -542,13 +548,20 @@ class PaperFillThesisBuilder:
             if record.occurred_at < draft.created_at.value:
                 raise ValueError("paper fill cannot predate thesis draft")
             self._require_canonical_aggregate_payload(record)
+            if record.kind == LOCAL_PAPER_FILL_V4_KIND:
+                LocalPaperExposureFill.from_record(record)
             fill = LocalPaperFill.from_record(record)
             if fill.side is not LocalPaperSide.BUY:
                 raise ValueError("Thesis activation requires a BUY fill")
             if fill.symbol != draft.symbol:
                 raise ValueError("paper fill symbol does not match Thesis draft")
+            record_prefix = (
+                "local-paper-fill-v4"
+                if record.kind == LOCAL_PAPER_FILL_V4_KIND
+                else "local-paper-fill"
+            )
             expected_record_id = (
-                f"local-paper-fill:{fill.order_id}:{record.occurred_at.isoformat()}"
+                f"{record_prefix}:{fill.order_id}:{record.occurred_at.isoformat()}"
             )
             if record.record_id != expected_record_id:
                 raise ValueError("paper fill record identity is not canonical")
@@ -557,9 +570,12 @@ class PaperFillThesisBuilder:
                 if fill_sequence == 1
                 else f"{fill.order_id}:{fill_sequence}"
             )
-            if record.idempotency_scope != (
-                f"{draft.session_id}:legacy_simulation_fill"
-            ):
+            expected_scope = (
+                f"{draft.session_id}:simulation_fill_v4"
+                if record.kind == LOCAL_PAPER_FILL_V4_KIND
+                else f"{draft.session_id}:legacy_simulation_fill"
+            )
+            if record.idempotency_scope != expected_scope:
                 raise ValueError("paper fill idempotency scope is not canonical")
             if record.idempotency_key != expected_idempotency_key:
                 raise ValueError("paper fill idempotency does not match fill sequence")
@@ -596,7 +612,8 @@ class PaperFillThesisBuilder:
 
             descriptor = (
                 str(payload["instrument_descriptor_digest"])
-                if record.kind == LOCAL_PAPER_FILL_V3_KIND
+                if record.kind
+                in {LOCAL_PAPER_FILL_V3_KIND, LOCAL_PAPER_FILL_V4_KIND}
                 else None
             )
             record_common = {
@@ -635,7 +652,10 @@ class PaperFillThesisBuilder:
                 raise PaperFillAggregationConflictError(
                     "conflicting cumulative fill commission lineage"
                 )
-            if record.kind == LOCAL_PAPER_FILL_V3_KIND and (
+            if record.kind in {
+                LOCAL_PAPER_FILL_V3_KIND,
+                LOCAL_PAPER_FILL_V4_KIND,
+            } and (
                 Decimal(str(payload["cumulative_order_gross"])) != cumulative_gross
                 or Decimal(str(payload["cumulative_order_tax"])) != cumulative_tax
             ):
@@ -773,7 +793,8 @@ class PaperFillThesisBuilder:
         payload = record.payload
         string_fields = _AGGREGATE_COMMON_STRING_FIELDS | (
             _AGGREGATE_V3_STRING_FIELDS
-            if record.kind == LOCAL_PAPER_FILL_V3_KIND
+            if record.kind
+            in {LOCAL_PAPER_FILL_V3_KIND, LOCAL_PAPER_FILL_V4_KIND}
             else _AGGREGATE_V2_STRING_FIELDS
         )
         if any(

@@ -49,7 +49,7 @@ def _reset_trading_schema(connection) -> None:
 
 def _runtime(dsn: str, clock: MutableClock):
     connection = psycopg.connect(dsn)
-    repository = PostgresJournalRepository(connection)
+    repository = PostgresJournalRepository(connection, database_url=dsn)
     composition = RuntimeComposition.create(
         MockProvider(),
         clock=clock,

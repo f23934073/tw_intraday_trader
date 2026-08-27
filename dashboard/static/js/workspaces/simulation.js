@@ -41,10 +41,16 @@ export function createSimulationWorkspace(context) {
   const automatedStrategyStatus = document.getElementById("automated-strategy-status");
   const automatedStrategyBadge = document.getElementById("automated-strategy-badge");
   const automatedStrategyError = document.getElementById("automated-strategy-error");
-  let automatedStrategyCsrf = "";
+  const noOvernightBreach = document.getElementById("overview-no-overnight-breach");
+  const noOvernightBreachMeta = document.getElementById("overview-no-overnight-breach-meta");
+  const noOvernightBreachAck = document.getElementById("overview-no-overnight-ack");
+  const noOvernightBreachError = document.getElementById("overview-no-overnight-breach-error");
+  let localMutationCsrf = "";
   let pendingAutomatedStartKey = "";
   let pendingKillOperation = null;
   let pendingResetOperation = null;
+  let pendingBreachAckKey = "";
+  let pendingBreachAckTarget = "";
   let automatedStrategySnapshot = null;
   let localPaperSettings = null;
 
@@ -54,7 +60,7 @@ export function createSimulationWorkspace(context) {
         if (!response.ok || !payload.csrf_token) {
           throw new Error(payload.detail || "無法取得本機策略安全權杖");
         }
-        automatedStrategyCsrf = payload.csrf_token;
+        localMutationCsrf = payload.csrf_token;
       }
 
       function renderAutomatedStrategy(payload) {
@@ -126,7 +132,7 @@ export function createSimulationWorkspace(context) {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-Strategy-CSRF": automatedStrategyCsrf
+              "X-Strategy-CSRF": localMutationCsrf
             },
             body: JSON.stringify({
               entry_strategy_set_version_id: automatedStrategySet.value,
@@ -156,7 +162,7 @@ export function createSimulationWorkspace(context) {
         try {
           const response = await fetch("/api/simulation/automated-strategy/stop", {
             method: "POST",
-            headers: { "X-Strategy-CSRF": automatedStrategyCsrf }
+            headers: { "X-Strategy-CSRF": localMutationCsrf }
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
@@ -205,7 +211,7 @@ export function createSimulationWorkspace(context) {
         try {
           const response = await fetch(path, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-Strategy-CSRF": automatedStrategyCsrf },
+            headers: { "Content-Type": "application/json", "X-Strategy-CSRF": localMutationCsrf },
             body: JSON.stringify(operation)
           });
           const payload = await response.json().catch(() => ({}));
@@ -231,6 +237,7 @@ export function createSimulationWorkspace(context) {
       automatedStrategyStop.addEventListener("click", stopAutomatedStrategy);
       automatedStrategyKill.addEventListener("click", () => setAutomatedStrategyKillSwitch(true));
       automatedStrategyKillReset.addEventListener("click", () => setAutomatedStrategyKillSwitch(false));
+      noOvernightBreachAck.addEventListener("click", acknowledgeNoOvernightBreach);
       loadAutomatedStrategySecurity().then(loadAutomatedStrategySets).catch((error) => {
         automatedStrategySet.innerHTML = '<option value="">策略組合讀取失敗</option>';
         automatedStrategyError.textContent = `無法讀取策略組合：${error.message}`;
@@ -288,6 +295,113 @@ export function createSimulationWorkspace(context) {
           : session.available_cash === null || session.available_cash === undefined
             ? "買進以賣一、賣出以買一判斷模擬成交；未達限價則保留在委託清單。"
             : `可用虛擬現金：${formatNumber(session.available_cash, 0)} 元；今日剩餘買入額度：${formatNumber(session.daily_remaining_buy_notional, 0)} 元${reservationLabels ? `；${reservationLabels}` : ""}${explicitCostLabels ? `；${explicitCostLabels}` : ""}。買進以賣一、賣出以買一判斷，v2 再套固定不利滑價。`;
+      }
+
+      function renderNoOvernight(projection) {
+        const stateElement = document.getElementById("overview-no-overnight-state");
+        const noteElement = document.getElementById("overview-no-overnight-note");
+        const mode = projection?.mode || "DISABLED";
+        const observing = mode === "OBSERVE_ONLY";
+        const enforcing = mode === "ENFORCING";
+        const breach = projection?.breach || null;
+        const recovery = projection?.state === "OVERNIGHT_BREACH" || breach?.open;
+        stateElement.textContent = enforcing ? "執行中" : observing ? "僅觀察" : "未啟用";
+        stateElement.classList.toggle("good", enforcing && !recovery);
+        stateElement.classList.toggle("alert", enforcing && recovery);
+        stateElement.classList.toggle("waiting", !enforcing);
+        noteElement.textContent = enforcing
+          ? breach?.open
+            ? `${projection?.state || "NORMAL"} · OPEN BREACH 會阻擋所有新增 BUY；禁止新當沖、取消未成交當沖買單`
+            : `${projection?.state || "NORMAL"} · 禁止新當沖、取消未成交當沖買單`
+          : observing
+            ? `${projection?.state || "NORMAL"} · 不阻擋、不取消、不送單`
+            : "不阻擋、不取消、不送單";
+        noOvernightBreach.hidden = !breach;
+        noOvernightBreachError.hidden = true;
+        if (!breach) return;
+        const reasonLabels = {
+          MANAGED_EXPOSURE_OPEN: "仍有受管控持倉",
+          PENDING_ORDER: "仍有未完成委託",
+          UNRESOLVED_EXECUTION: "仍有未確認 execution fact",
+          RECONCILIATION_REQUIRED: "對帳尚未恢復",
+          STRICT_FLAT_PROOF_MISSING: "缺少嚴格空倉證明"
+        };
+        const digest = String(breach.reconciliation_digest || "");
+        const lifecycle = breach.released
+          ? "已於後續 reviewed session 解除；歷史紀錄仍會保留"
+          : breach.acknowledged
+            ? "已確認；下一個已覆核交易日開始後才解除新倉封鎖，歷史紀錄仍會保留"
+            : breach.resolved
+              ? "已取得空倉與對帳證明，等待操作人員確認 latest revision"
+              : "尚未取得最新 revision 的完整空倉證明，不能確認";
+        noOvernightBreachMeta.textContent = `${reasonLabels[breach.breach_reason] || breach.breach_reason || "收盤風控違規"} · revision ${breach.breach_revision} · managed ${formatNumber(breach.managed_open_quantity || 0, 0)} 股 · digest ${digest ? digest.slice(0, 12) : "—"}… · ${lifecycle}`;
+        noOvernightBreachMeta.title = digest;
+        const canAcknowledge = Boolean(breach?.open && breach?.resolved && !breach?.acknowledged);
+        noOvernightBreachAck.hidden = !canAcknowledge;
+        noOvernightBreachAck.disabled = !canAcknowledge;
+      }
+
+      async function refreshNoOvernightStatus() {
+        const response = await fetch("/api/simulation/no-overnight", { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(typeof payload.detail === "string" ? payload.detail : `HTTP ${response.status}`);
+        if (state.snapshot) state.snapshot = { ...state.snapshot, no_overnight: payload };
+        renderNoOvernight(payload);
+        return payload;
+      }
+
+      async function acknowledgeNoOvernightBreach() {
+        const breach = state.snapshot?.no_overnight?.breach;
+        if (!breach?.resolved || breach.acknowledged || !breach.open) return;
+        noOvernightBreachAck.disabled = true;
+        noOvernightBreachError.hidden = true;
+        const target = `${breach.breach_id}:${breach.breach_revision}:${breach.reconciliation_digest}`;
+        if (pendingBreachAckTarget !== target) {
+          pendingBreachAckKey = newIdempotencyKey("breach-ack");
+          pendingBreachAckTarget = target;
+        }
+        try {
+          if (!localMutationCsrf) await loadAutomatedStrategySecurity();
+          const response = await fetch(`/api/simulation/no-overnight/breaches/${encodeURIComponent(breach.breach_id)}/acknowledge`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": pendingBreachAckKey,
+              "X-Strategy-CSRF": localMutationCsrf
+            },
+            body: JSON.stringify({
+              breach_revision: breach.breach_revision,
+              reconciliation_digest: breach.reconciliation_digest,
+              actor_id: "local-operator"
+            })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            const detail = payload.detail;
+            throw new Error(typeof detail === "string" ? detail : detail?.message || detail?.code || `HTTP ${response.status}`);
+          }
+          pendingBreachAckKey = "";
+          pendingBreachAckTarget = "";
+          await refreshNoOvernightStatus();
+        } catch (error) {
+          await refreshNoOvernightStatus().catch(() => {});
+          noOvernightBreachError.textContent = `無法確認 breach：${error.message}`;
+          noOvernightBreachError.hidden = false;
+          const refreshed = state.snapshot?.no_overnight?.breach;
+          if (
+            !refreshed
+            || refreshed.acknowledged
+            || !refreshed.resolved
+            || refreshed.breach_revision !== breach.breach_revision
+            || refreshed.reconciliation_digest !== breach.reconciliation_digest
+          ) {
+            pendingBreachAckKey = "";
+            pendingBreachAckTarget = "";
+          }
+        } finally {
+          const latest = state.snapshot?.no_overnight?.breach;
+          noOvernightBreachAck.disabled = !(latest?.open && latest?.resolved && !latest?.acknowledged);
+        }
       }
 
       function renderLocalPaperSettings(payload) {
@@ -681,7 +795,8 @@ export function createSimulationWorkspace(context) {
               side: orderSide.value,
               quantity_shares: quantityShares,
               limit_price: limitPrice,
-              idempotency_key: newIdempotencyKey("manual")
+              idempotency_key: newIdempotencyKey("manual"),
+              holding_horizon: orderSide.value === "BUY" ? "INTRADAY" : undefined
             })
           });
           const payload = await response.json().catch(() => ({}));
@@ -782,5 +897,5 @@ export function createSimulationWorkspace(context) {
       }
 
 
-  return { renderSimulation, renderPositions, renderOrders, renderDataHealth, renderAutomatedStrategy, openOrderTicket, setOrdersDrawer, setPositionsDrawer, setSimulationSettingsDrawer, loadSimulationProjection, loadLocalPaperSettings, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, submitAutomatedStrategy, stopAutomatedStrategy, cancelSimulationOrder, retrySimulationOrder };
+  return { renderSimulation, renderNoOvernight, renderPositions, renderOrders, renderDataHealth, renderAutomatedStrategy, openOrderTicket, setOrdersDrawer, setPositionsDrawer, setSimulationSettingsDrawer, loadSimulationProjection, loadLocalPaperSettings, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, submitAutomatedStrategy, stopAutomatedStrategy, cancelSimulationOrder, retrySimulationOrder };
 }

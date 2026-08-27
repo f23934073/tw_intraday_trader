@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from threading import RLock
 from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
@@ -20,6 +21,14 @@ JOURNAL_SCHEMA_VERSION = "journal-v1"
 
 class JournalConflictError(ValueError):
     """A record or idempotency key was reused with different content."""
+
+
+class JournalCutoffExceededError(RuntimeError):
+    """An atomic Journal mutation did not finish before its durable cutoff."""
+
+
+class JournalClockRegressionError(RuntimeError):
+    """Authoritative time moved backwards during an atomic Journal mutation."""
 
 
 def _require_non_empty(value: str, field_name: str) -> None:
@@ -180,8 +189,25 @@ class JournalRepository(Protocol):
     def session(self, session_id: str) -> JournalSession | None:
         """Return immutable session metadata for retry-stable recovery."""
 
+    def sessions(
+        self,
+        *,
+        session_id_prefix: str,
+    ) -> tuple[JournalSession, ...]:
+        """Return immutable sessions under one deterministic identity prefix."""
+
     def append(self, record: JournalRecord) -> JournalAppendResult:
         """Append a record or return the result of the matching retry."""
+
+    def start_session_and_append_before(
+        self,
+        session: JournalSession,
+        record: JournalRecord,
+        *,
+        latest_allowed_at: datetime,
+        authoritative_now: Callable[[], datetime] | None = None,
+    ) -> JournalAppendResult:
+        """Atomically create a session/record only before a storage cutoff."""
 
     def records(
         self,
@@ -206,6 +232,7 @@ class InMemoryJournalRepository:
     """Ephemeral adapter with the same idempotency/checkpoint semantics."""
 
     def __init__(self) -> None:
+        self._lock = RLock()
         self._sessions: dict[str, JournalSession] = {}
         self._records: list[JournalAppendResult] = []
         self._records_by_id: dict[tuple[str, str], JournalAppendResult] = {}
@@ -215,42 +242,135 @@ class InMemoryJournalRepository:
         self._checkpoints: dict[tuple[str, str], ProjectionCheckpoint] = {}
 
     def start_session(self, session: JournalSession) -> None:
-        existing = self._sessions.get(session.session_id)
-        if existing is None:
-            self._sessions[session.session_id] = session
-            return
-        if existing != session:
-            raise JournalConflictError("session metadata conflicts with existing session")
+        with self._lock:
+            existing = self._sessions.get(session.session_id)
+            if existing is None:
+                self._sessions[session.session_id] = session
+                return
+            if existing != session:
+                raise JournalConflictError(
+                    "session metadata conflicts with existing session"
+                )
 
     def session(self, session_id: str) -> JournalSession | None:
         return self._sessions.get(session_id)
 
+    def sessions(
+        self,
+        *,
+        session_id_prefix: str,
+    ) -> tuple[JournalSession, ...]:
+        if type(session_id_prefix) is not str or not session_id_prefix.strip():
+            raise ValueError("session_id_prefix must not be empty")
+        return tuple(
+            self._sessions[session_id]
+            for session_id in sorted(self._sessions)
+            if session_id.startswith(session_id_prefix)
+        )
+
     def append(self, record: JournalRecord) -> JournalAppendResult:
-        if record.session_id not in self._sessions:
-            raise JournalConflictError("Journal session must be started before append")
+        with self._lock:
+            if record.session_id not in self._sessions:
+                raise JournalConflictError(
+                    "Journal session must be started before append"
+                )
 
-        existing = self._records_by_id.get((record.session_id, record.record_id))
-        if existing is not None:
-            return self._matching_retry(existing, record)
-
-        if record.idempotency_scope is not None:
-            idempotency = (record.idempotency_scope, record.idempotency_key or "")
-            existing = self._records_by_idempotency.get(idempotency)
+            existing = self._records_by_id.get(
+                (record.session_id, record.record_id)
+            )
             if existing is not None:
                 return self._matching_retry(existing, record)
 
-        result = JournalAppendResult(
-            record=record,
-            sequence=len(self._records) + 1,
-            idempotent=False,
-        )
-        self._records.append(result)
-        self._records_by_id[(record.session_id, record.record_id)] = result
-        if record.idempotency_scope is not None:
-            self._records_by_idempotency[
-                (record.idempotency_scope, record.idempotency_key or "")
-            ] = result
-        return result
+            if record.idempotency_scope is not None:
+                idempotency = (
+                    record.idempotency_scope,
+                    record.idempotency_key or "",
+                )
+                existing = self._records_by_idempotency.get(idempotency)
+                if existing is not None:
+                    return self._matching_retry(existing, record)
+
+            result = JournalAppendResult(
+                record=record,
+                sequence=len(self._records) + 1,
+                idempotent=False,
+            )
+            self._records.append(result)
+            self._records_by_id[(record.session_id, record.record_id)] = result
+            if record.idempotency_scope is not None:
+                self._records_by_idempotency[
+                    (record.idempotency_scope, record.idempotency_key or "")
+                ] = result
+            return result
+
+    def start_session_and_append_before(
+        self,
+        session: JournalSession,
+        record: JournalRecord,
+        *,
+        latest_allowed_at: datetime,
+        authoritative_now: Callable[[], datetime] | None = None,
+    ) -> JournalAppendResult:
+        if session.session_id != record.session_id:
+            raise ValueError("atomic Journal session and record identity differ")
+        _require_aware(latest_allowed_at, "latest_allowed_at")
+        now = authoritative_now or (lambda: record.occurred_at)
+        with self._lock:
+            sessions = dict(self._sessions)
+            records = list(self._records)
+            records_by_id = dict(self._records_by_id)
+            records_by_idempotency = dict(self._records_by_idempotency)
+            try:
+                accepted_at = now()
+                self._require_monotonic_before_cutoff(
+                    accepted_at,
+                    latest_allowed_at,
+                )
+                existing_session = self._sessions.get(session.session_id)
+                existing_record = self._records_by_id.get(
+                    (record.session_id, record.record_id)
+                )
+                if (
+                    existing_record is None
+                    and record.idempotency_scope is not None
+                ):
+                    existing_record = self._records_by_idempotency.get(
+                        (
+                            record.idempotency_scope,
+                            record.idempotency_key or "",
+                        )
+                    )
+                if existing_session is not None and existing_record is None:
+                    raise JournalConflictError(
+                        "atomic Journal session exists without its open record"
+                    )
+                stored_at = (
+                    existing_session.started_at
+                    if existing_session is not None
+                    else accepted_at
+                )
+                stored_session = replace(session, started_at=stored_at)
+                stored_record = replace(record, occurred_at=stored_at)
+                self.start_session(stored_session)
+                after_session = now()
+                self._require_monotonic_before_cutoff(
+                    after_session,
+                    latest_allowed_at,
+                    previous=accepted_at,
+                )
+                appended = self.append(stored_record)
+                self._require_monotonic_before_cutoff(
+                    now(),
+                    latest_allowed_at,
+                    previous=after_session,
+                )
+                return appended
+            except Exception:
+                self._sessions = sessions
+                self._records = records
+                self._records_by_id = records_by_id
+                self._records_by_idempotency = records_by_idempotency
+                raise
 
     def records(
         self,
@@ -295,3 +415,20 @@ class InMemoryJournalRepository:
             sequence=existing.sequence,
             idempotent=True,
         )
+
+    @staticmethod
+    def _require_monotonic_before_cutoff(
+        value: datetime,
+        cutoff: datetime,
+        *,
+        previous: datetime | None = None,
+    ) -> None:
+        _require_aware(value, "authoritative Journal time")
+        if previous is not None and value < previous:
+            raise JournalClockRegressionError(
+                "authoritative Journal time moved backwards"
+            )
+        if value > cutoff:
+            raise JournalCutoffExceededError(
+                "atomic Journal mutation exceeded its durable cutoff"
+            )

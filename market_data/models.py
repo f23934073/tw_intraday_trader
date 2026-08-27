@@ -85,6 +85,11 @@ class RealtimeQuoteUpdate:
     ask_price: float | None = None
     bid_volume_lots: int | None = None
     ask_volume_lots: int | None = None
+    suspended: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.suspended is not None and type(self.suspended) is not bool:
+            raise ValueError("suspended must be a boolean or null")
 
 
 class LocalPaperProductClass(StrEnum):

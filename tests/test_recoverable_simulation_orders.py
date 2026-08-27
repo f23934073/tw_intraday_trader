@@ -18,6 +18,7 @@ from simulation.service import SimulationService
 from simulation.settings import LocalPaperSettings
 from trading.journal import InMemoryJournalRepository, JournalRecord, JournalSession
 from trading.local_paper import (
+    LOCAL_PAPER_V2_PROJECTION_NAME,
     latest_local_paper_daily_baseline,
     write_local_paper_checkpoint,
 )
@@ -485,6 +486,95 @@ def test_same_trading_day_runtime_restart_restores_pending_order_idempotently() 
     assert restored_order["status"] == "PENDING"
     assert repeated["order_id"] == pending["order_id"]
     assert idempotent is True
+
+
+def test_v2_partial_fill_retry_restart_preserves_exposure_and_checkpoint() -> None:
+    clock = MutableClock()
+    provider = StreamingProvider()
+    journal = InMemoryJournalRepository()
+    settings = LocalPaperSettings.v2_from_v1(LocalPaperSettings.defaults())
+    session_id = "v2-partial-retry-restart"
+    first = RuntimeComposition.create(
+        provider,
+        clock=clock,
+        journal=journal,
+        local_paper_settings=settings,
+        local_paper_session_id=session_id,
+    )
+    source, _ = first.local_paper_commands.submit_order(
+        symbol="3231",
+        side="BUY",
+        quantity_shares=1_500,
+        limit_price="106",
+        idempotency_key="v2-partial-retry-buy",
+        holding_horizon="INTRADAY",
+    )
+    provider.emit_book(
+        at=clock.now(),
+        bid=105.4,
+        ask=105.5,
+        bid_volume_lots=1,
+        ask_volume_lots=1,
+    )
+    wait_until(
+        lambda: first.simulation_service.orders()[0]["status"]
+        == "PARTIALLY_FILLED"
+    )
+    partial = first.simulation_service.orders()[0]
+    first.local_paper_commands.cancel_order(
+        source["order_id"],
+        "v2-cancel-partial-remainder",
+    )
+    successor, _ = first.local_paper_commands.retry_order(
+        source["order_id"],
+        "v2-retry-partial-remainder",
+    )
+    clock.value += timedelta(seconds=1)
+    provider.emit_book(
+        at=clock.now(),
+        bid=105.4,
+        ask=105.5,
+        bid_volume_lots=1,
+        ask_volume_lots=1,
+    )
+    wait_until(
+        lambda: next(
+            order
+            for order in first.simulation_service.orders()
+            if order["order_id"] == successor["order_id"]
+        )["status"]
+        == "FILLED"
+    )
+    exposure_id = partial["exposure_identity"]["exposure_id"]
+    expected_cash = first.simulation_service.session()["available_cash"]
+    assert successor["exposure_identity"]["exposure_id"] == exposure_id
+    assert first.simulation_service.exposures()[0]["quantity"] == 1_500
+    checkpoint = journal.latest_checkpoint(
+        session_id,
+        LOCAL_PAPER_V2_PROJECTION_NAME,
+    )
+    assert checkpoint is not None
+    digest = checkpoint.digest
+    first.close()
+
+    restored = RuntimeComposition.create(
+        MockProvider(),
+        clock=clock,
+        journal=journal,
+        local_paper_settings=settings,
+        local_paper_session_id=session_id,
+    )
+    restored_checkpoint = journal.latest_checkpoint(
+        session_id,
+        LOCAL_PAPER_V2_PROJECTION_NAME,
+    )
+
+    assert restored.simulation_service.exposures()[0]["exposure_id"] == exposure_id
+    assert restored.simulation_service.exposures()[0]["quantity"] == 1_500
+    assert restored.simulation_service.session()["available_cash"] == expected_cash
+    assert restored_checkpoint is not None
+    assert restored_checkpoint.digest == digest
+    restored.close()
 
 
 def test_same_day_restart_preserves_realized_pnl_against_opening_baseline() -> None:

@@ -6,7 +6,9 @@ import pytest
 
 from trading.journal import (
     InMemoryJournalRepository,
+    JournalClockRegressionError,
     JournalConflictError,
+    JournalCutoffExceededError,
     JournalRecord,
     JournalSession,
     ProjectionCheckpoint,
@@ -49,6 +51,108 @@ def test_append_is_ordered_and_matching_retries_return_original_sequence() -> No
     assert journal.records(SESSION.session_id) == (first,)
 
 
+def test_atomic_session_and_record_use_accepted_time_and_retry_exactly() -> None:
+    journal = InMemoryJournalRepository()
+    requested_at = datetime.fromisoformat("2026-08-18T08:59:00+08:00")
+    session = replace(SESSION, started_at=requested_at)
+    open_record = replace(record(), occurred_at=requested_at)
+
+    first = journal.start_session_and_append_before(
+        session,
+        open_record,
+        latest_allowed_at=AT,
+        authoritative_now=lambda: AT,
+    )
+    retried = journal.start_session_and_append_before(
+        session,
+        open_record,
+        latest_allowed_at=AT,
+        authoritative_now=lambda: AT,
+    )
+
+    assert journal.session(SESSION.session_id) == replace(session, started_at=AT)
+    assert first.record.occurred_at == AT
+    assert first.idempotent is False
+    assert retried.sequence == first.sequence
+    assert retried.idempotent is True
+
+
+@pytest.mark.parametrize(
+    "times",
+    (
+        (AT, datetime.fromisoformat("2026-08-18T09:00:00.000001+08:00")),
+        (
+            AT,
+            AT,
+            datetime.fromisoformat("2026-08-18T09:00:00.000001+08:00"),
+        ),
+    ),
+)
+def test_atomic_session_and_record_roll_back_if_operation_crosses_cutoff(
+    times: tuple[datetime, ...],
+) -> None:
+    journal = InMemoryJournalRepository()
+    observed_times = iter(times)
+
+    with pytest.raises(JournalCutoffExceededError):
+        journal.start_session_and_append_before(
+            SESSION,
+            record(),
+            latest_allowed_at=AT,
+            authoritative_now=lambda: next(observed_times),
+        )
+
+    assert journal.session(SESSION.session_id) is None
+    assert journal.records(SESSION.session_id) == ()
+
+
+@pytest.mark.parametrize(
+    "times",
+    (
+        (
+            AT,
+            datetime.fromisoformat("2026-08-18T08:59:59.999999+08:00"),
+        ),
+        (
+            AT,
+            AT,
+            datetime.fromisoformat("2026-08-18T08:59:59.999999+08:00"),
+        ),
+    ),
+)
+def test_atomic_session_and_record_roll_back_if_clock_moves_backwards(
+    times: tuple[datetime, ...],
+) -> None:
+    journal = InMemoryJournalRepository()
+    observed_times = iter(times)
+
+    with pytest.raises(JournalClockRegressionError, match="moved backwards"):
+        journal.start_session_and_append_before(
+            SESSION,
+            record(),
+            latest_allowed_at=AT,
+            authoritative_now=lambda: next(observed_times),
+        )
+
+    assert journal.session(SESSION.session_id) is None
+    assert journal.records(SESSION.session_id) == ()
+
+
+def test_atomic_session_without_atomic_record_fails_closed() -> None:
+    journal = InMemoryJournalRepository()
+    journal.start_session(SESSION)
+
+    with pytest.raises(JournalConflictError, match="without its open record"):
+        journal.start_session_and_append_before(
+            SESSION,
+            record(),
+            latest_allowed_at=AT,
+            authoritative_now=lambda: AT,
+        )
+
+    assert journal.records(SESSION.session_id) == ()
+
+
 def test_session_lookup_returns_registered_metadata_or_none() -> None:
     journal = InMemoryJournalRepository()
 
@@ -57,6 +161,22 @@ def test_session_lookup_returns_registered_metadata_or_none() -> None:
     journal.start_session(SESSION)
 
     assert journal.session(SESSION.session_id) == SESSION
+
+
+def test_session_prefix_lookup_is_exact_and_ordered() -> None:
+    journal = InMemoryJournalRepository()
+    second = replace(SESSION, session_id="no-overnight-v1-2026-08-25")
+    first = replace(SESSION, session_id="no-overnight-v1-2026-08-24")
+    unrelated = replace(SESSION, session_id="local-paper-runtime-v2")
+    for session in (second, unrelated, first):
+        journal.start_session(session)
+
+    assert journal.sessions(session_id_prefix="no-overnight-v1-") == (
+        first,
+        second,
+    )
+    with pytest.raises(ValueError, match="must not be empty"):
+        journal.sessions(session_id_prefix="")
 
 
 def test_conflicting_record_or_idempotency_key_fails_closed() -> None:

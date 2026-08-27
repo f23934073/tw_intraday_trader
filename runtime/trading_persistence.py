@@ -55,7 +55,17 @@ def build_journal_repository(
             "PostgreSQL Journal initialization failed"
         ) from error
 
-    repository = PostgresJournalRepository(pool=pool, owns_pool=True)
+    try:
+        repository = PostgresJournalRepository(
+            pool=pool,
+            owns_pool=True,
+            database_url=config.database_url,
+        )
+    except Exception as error:
+        pool.close()
+        raise TradingPersistenceUnavailable(
+            "PostgreSQL Journal identity binding failed"
+        ) from error
     try:
         repository.check_health()
     except Exception as error:
