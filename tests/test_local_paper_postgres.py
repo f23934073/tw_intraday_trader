@@ -137,7 +137,7 @@ def _runtime(
     settings: LocalPaperSettings,
 ) -> tuple[RuntimeComposition, object]:
     connection = psycopg.connect(dsn)
-    repository = PostgresJournalRepository(connection)
+    repository = PostgresJournalRepository(connection, database_url=dsn)
     composition = RuntimeComposition.create(
         StreamingMockProvider(clock),
         journal=repository,
@@ -341,7 +341,10 @@ def test_v2_partial_fills_reconstruct_exactly_across_three_new_connections(
         with pytest.raises(JournalConflictError, match="stored fingerprint"):
             RuntimeComposition.create(
                 StreamingMockProvider(clock),
-                journal=PostgresJournalRepository(bad_order_state_connection),
+                journal=PostgresJournalRepository(
+                    bad_order_state_connection,
+                    database_url=dsn,
+                ),
                 clock=clock,
                 local_paper_settings=settings,
                 local_paper_settings_revision=1,
@@ -397,7 +400,10 @@ def test_v2_partial_fills_reconstruct_exactly_across_three_new_connections(
         with pytest.raises(JournalConflictError, match="stored fingerprint"):
             RuntimeComposition.create(
                 StreamingMockProvider(clock),
-                journal=PostgresJournalRepository(bad_connection),
+                journal=PostgresJournalRepository(
+                    bad_connection,
+                    database_url=dsn,
+                ),
                 clock=clock,
                 local_paper_settings=settings,
                 local_paper_settings_revision=1,

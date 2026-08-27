@@ -4,10 +4,21 @@ from datetime import date, datetime
 
 import pytest
 
+from config.local_paper_identity import (
+    LOCAL_PAPER_ACCOUNT_SCOPE,
+    LOCAL_PAPER_POLICY_FAMILY,
+)
+from config.trading_persistence import (
+    TradingJournalBackend,
+    TradingPersistenceConfig,
+)
 from market_data.provider import MockProvider
 from runtime.composition import RuntimeComposition
 from runtime.no_overnight import no_overnight_session_id
-from runtime.no_overnight_guard import NoOvernightGuardUnavailable
+from runtime.no_overnight_guard import (
+    NoOvernightGuardUnavailable,
+    PostgresNoOvernightControllerGuard,
+)
 from simulation.service import SimulationStateError
 from simulation.settings import LocalPaperSettings
 from tests.test_no_overnight_breach_runtime import (
@@ -25,6 +36,11 @@ from trading.postgres_journal import PostgresJournalRepository
 
 
 psycopg = pytest.importorskip("psycopg")
+from psycopg import sql  # noqa: E402
+from psycopg.conninfo import conninfo_to_dict, make_conninfo  # noqa: E402
+
+
+MISMATCH_DATABASE = "tw_intraday_trader_guard_mismatch_test"
 
 
 class _FixedClock:
@@ -70,13 +86,32 @@ def no_overnight_postgres_dsn(postgres_test_dsn: str) -> str:
             cleanup.close()
 
 
+def _journal_counts(connection) -> tuple[int, int]:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM trading.journal_sessions")
+        sessions = int(cursor.fetchone()[0])
+        cursor.execute("SELECT COUNT(*) FROM trading.journal_records")
+        records = int(cursor.fetchone()[0])
+    connection.commit()
+    return sessions, records
+
+
+def _dsn_for_database(dsn: str, database_name: str) -> str:
+    parameters = conninfo_to_dict(dsn)
+    parameters["dbname"] = database_name
+    return make_conninfo(**parameters)
+
+
 def test_breach_resolution_ack_and_latch_survive_new_connection(
     no_overnight_postgres_dsn: str,
 ) -> None:
     reader = MutableBreachEvidenceReader()
     guard = HealthyGuard()
     first_connection = psycopg.connect(no_overnight_postgres_dsn)
-    first_journal = PostgresJournalRepository(first_connection)
+    first_journal = PostgresJournalRepository(
+        first_connection,
+        database_url=no_overnight_postgres_dsn,
+    )
     try:
         controller = _controller(first_journal, reader, guard)
         breached = controller.run_once(
@@ -105,7 +140,10 @@ def test_breach_resolution_ack_and_latch_survive_new_connection(
         first_connection.close()
 
     second_connection = psycopg.connect(no_overnight_postgres_dsn)
-    second_journal = PostgresJournalRepository(second_connection)
+    second_journal = PostgresJournalRepository(
+        second_connection,
+        database_url=no_overnight_postgres_dsn,
+    )
     try:
         recovered = rebuild_no_overnight_projection(
             second_journal,
@@ -148,7 +186,10 @@ def test_disabled_runtime_holds_cross_process_advisory_guard(
     second_connection = psycopg.connect(no_overnight_postgres_dsn)
     first_provider = MockProvider()
     second_provider = MockProvider()
-    first_journal = PostgresJournalRepository(first_connection)
+    first_journal = PostgresJournalRepository(
+        first_connection,
+        database_url=no_overnight_postgres_dsn,
+    )
     first = RuntimeComposition.create(
         first_provider,
         clock=clock,
@@ -164,7 +205,10 @@ def test_disabled_runtime_holds_cross_process_advisory_guard(
             RuntimeComposition.create(
                 second_provider,
                 clock=clock,
-                journal=PostgresJournalRepository(second_connection),
+                journal=PostgresJournalRepository(
+                    second_connection,
+                    database_url=no_overnight_postgres_dsn,
+                ),
                 local_paper_settings=settings,
                 start_simulation_streaming=False,
             )
@@ -217,7 +261,10 @@ def test_disabled_runtime_holds_cross_process_advisory_guard(
     restarted = RuntimeComposition.create(
         MockProvider(),
         clock=clock,
-        journal=PostgresJournalRepository(restarted_connection),
+        journal=PostgresJournalRepository(
+            restarted_connection,
+            database_url=no_overnight_postgres_dsn,
+        ),
         local_paper_settings=settings,
         start_simulation_streaming=False,
     )
@@ -229,13 +276,196 @@ def test_disabled_runtime_holds_cross_process_advisory_guard(
         restarted_connection.close()
 
 
+def test_postgres_runtime_without_explicit_guard_dsn_fails_closed(
+    no_overnight_postgres_dsn: str,
+) -> None:
+    connection = psycopg.connect(no_overnight_postgres_dsn)
+    journal = PostgresJournalRepository(connection)
+    counts_before = _journal_counts(connection)
+
+    try:
+        with pytest.raises(ValueError, match="requires an explicit database_url"):
+            RuntimeComposition.create(
+                MockProvider(),
+                clock=_FixedClock(
+                    datetime.fromisoformat("2026-08-24T09:05:00+08:00")
+                ),
+                journal=journal,
+                start_simulation_streaming=False,
+            )
+        assert _journal_counts(connection) == counts_before
+    finally:
+        connection.close()
+
+
+def test_missing_journal_dsn_cannot_borrow_persistence_config_before_mutation(
+    no_overnight_postgres_dsn: str,
+) -> None:
+    connection = psycopg.connect(no_overnight_postgres_dsn)
+    journal = PostgresJournalRepository(connection)
+    counts_before = _journal_counts(connection)
+
+    try:
+        with pytest.raises(ValueError, match="requires an explicit database_url"):
+            RuntimeComposition.create(
+                MockProvider(),
+                clock=_FixedClock(
+                    datetime.fromisoformat("2026-08-24T09:05:00+08:00")
+                ),
+                journal=journal,
+                persistence_config=TradingPersistenceConfig(
+                    backend=TradingJournalBackend.POSTGRESQL,
+                    database_url=no_overnight_postgres_dsn,
+                ),
+                start_simulation_streaming=False,
+            )
+        assert _journal_counts(connection) == counts_before
+    finally:
+        connection.close()
+
+
+def test_missing_journal_dsn_cannot_borrow_injected_guard_before_mutation(
+    no_overnight_postgres_dsn: str,
+) -> None:
+    connection = psycopg.connect(no_overnight_postgres_dsn)
+    journal = PostgresJournalRepository(connection)
+    guard = PostgresNoOvernightControllerGuard.connect(
+        database_url=no_overnight_postgres_dsn,
+        connect_timeout_seconds=5,
+        account_scope_id=LOCAL_PAPER_ACCOUNT_SCOPE.account_scope_id,
+        policy_family_id=LOCAL_PAPER_POLICY_FAMILY.policy_family_id,
+    )
+    counts_before = _journal_counts(connection)
+
+    try:
+        with pytest.raises(ValueError, match="requires an explicit database_url"):
+            RuntimeComposition.create(
+                MockProvider(),
+                clock=_FixedClock(
+                    datetime.fromisoformat("2026-08-24T09:05:00+08:00")
+                ),
+                journal=journal,
+                no_overnight_guard=guard,
+                start_simulation_streaming=False,
+            )
+        assert _journal_counts(connection) == counts_before
+    finally:
+        guard.close()
+        connection.close()
+
+
+def test_injected_guard_database_mismatch_fails_before_journal_mutation(
+    no_overnight_postgres_dsn: str,
+) -> None:
+    connection = psycopg.connect(no_overnight_postgres_dsn)
+    journal = PostgresJournalRepository(
+        connection,
+        database_url=no_overnight_postgres_dsn,
+    )
+    admin = psycopg.connect(no_overnight_postgres_dsn, autocommit=True)
+    guard = None
+
+    try:
+        with admin.cursor() as cursor:
+            cursor.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                    sql.Identifier(MISMATCH_DATABASE)
+                )
+            )
+            cursor.execute(
+                sql.SQL("CREATE DATABASE {}").format(
+                    sql.Identifier(MISMATCH_DATABASE)
+                )
+            )
+        mismatch_dsn = _dsn_for_database(
+            no_overnight_postgres_dsn,
+            MISMATCH_DATABASE,
+        )
+        guard = PostgresNoOvernightControllerGuard.connect(
+            database_url=mismatch_dsn,
+            connect_timeout_seconds=5,
+            account_scope_id=LOCAL_PAPER_ACCOUNT_SCOPE.account_scope_id,
+            policy_family_id=LOCAL_PAPER_POLICY_FAMILY.policy_family_id,
+        )
+        counts_before = _journal_counts(connection)
+        with pytest.raises(
+            ValueError,
+            match="guard database identity conflicts with Journal",
+        ) as caught:
+            RuntimeComposition.create(
+                MockProvider(),
+                clock=_FixedClock(
+                    datetime.fromisoformat("2026-08-24T09:05:00+08:00")
+                ),
+                journal=journal,
+                no_overnight_guard=guard,
+                start_simulation_streaming=False,
+            )
+        assert no_overnight_postgres_dsn not in str(caught.value)
+        assert mismatch_dsn not in str(caught.value)
+        assert _journal_counts(connection) == counts_before
+    finally:
+        if guard is not None:
+            guard.close()
+        connection.close()
+        with admin.cursor() as cursor:
+            cursor.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                    sql.Identifier(MISMATCH_DATABASE)
+                )
+            )
+        admin.close()
+
+
+def test_injected_postgres_runtime_rejects_conflicting_guard_dsn_before_mutation(
+    no_overnight_postgres_dsn: str,
+) -> None:
+    connection = psycopg.connect(no_overnight_postgres_dsn)
+    journal = PostgresJournalRepository(
+        connection,
+        database_url=no_overnight_postgres_dsn,
+    )
+    conflicting_dsn = _dsn_for_database(
+        no_overnight_postgres_dsn,
+        "tw_intraday_trader_config_conflict_test",
+    )
+    counts_before = _journal_counts(connection)
+
+    try:
+        with pytest.raises(
+            ValueError,
+            match="conflicts with injected Journal",
+        ) as caught:
+            RuntimeComposition.create(
+                MockProvider(),
+                clock=_FixedClock(
+                    datetime.fromisoformat("2026-08-24T09:05:00+08:00")
+                ),
+                journal=journal,
+                persistence_config=TradingPersistenceConfig(
+                    backend=TradingJournalBackend.POSTGRESQL,
+                    database_url=conflicting_dsn,
+                ),
+                start_simulation_streaming=False,
+            )
+
+        assert no_overnight_postgres_dsn not in str(caught.value)
+        assert conflicting_dsn not in str(caught.value)
+        assert _journal_counts(connection) == counts_before
+    finally:
+        connection.close()
+
+
 def test_unhealthy_guard_aborts_handoff_before_archive(
     no_overnight_postgres_dsn: str,
 ) -> None:
     clock = _FixedClock(datetime.fromisoformat("2026-08-24T09:05:00+08:00"))
     settings = LocalPaperSettings.v2_from_v1(LocalPaperSettings.defaults())
     connection = psycopg.connect(no_overnight_postgres_dsn)
-    journal = PostgresJournalRepository(connection)
+    journal = PostgresJournalRepository(
+        connection,
+        database_url=no_overnight_postgres_dsn,
+    )
     first = RuntimeComposition.create(
         MockProvider(),
         clock=clock,

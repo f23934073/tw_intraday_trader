@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from trading.journal import (
     JournalAppendResult,
@@ -21,6 +22,132 @@ from trading.journal import (
 )
 
 
+PostgresDatabaseLocator = tuple[tuple[str, str], ...]
+PostgresDatabaseIdentity = tuple[tuple[str, str], ...]
+_DATABASE_IDENTITY_FIELDS = ("dbname", "user", "host", "hostaddr", "port")
+_DATABASE_IDENTITY_QUERY = """
+    SELECT current_database(),
+           (SELECT oid::text FROM pg_database WHERE datname = current_database()),
+           pg_postmaster_start_time(),
+           COALESCE(inet_server_addr()::text, ''),
+           COALESCE(inet_server_port()::text, '')
+"""
+
+
+def postgres_database_locator(database_url: str) -> PostgresDatabaseLocator:
+    """Parse the credential-free endpoint declaration from one PostgreSQL DSN."""
+
+    if not isinstance(database_url, str) or not database_url.strip():
+        raise ValueError("database_url must not be empty")
+    value = database_url.strip()
+    try:
+        from psycopg.conninfo import conninfo_to_dict
+    except ImportError:
+        parameters = _postgres_uri_parameters(value)
+    else:
+        try:
+            parameters = conninfo_to_dict(value)
+        except Exception:
+            raise ValueError("database_url identity could not be inspected") from None
+    identity = tuple(
+        (field, str(parameters[field]))
+        for field in _DATABASE_IDENTITY_FIELDS
+        if parameters.get(field) not in (None, "")
+    )
+    if not any(field == "dbname" for field, _value in identity):
+        raise ValueError("database_url must identify one PostgreSQL database")
+    return identity
+
+
+def _postgres_uri_parameters(database_url: str) -> dict[str, str]:
+    try:
+        parsed = urlsplit(database_url)
+        if parsed.scheme not in {"postgres", "postgresql"}:
+            raise ValueError
+        parameters = dict(parse_qsl(parsed.query, keep_blank_values=False))
+        if parsed.path and parsed.path != "/":
+            parameters["dbname"] = unquote(parsed.path.removeprefix("/"))
+        if parsed.username is not None:
+            parameters["user"] = unquote(parsed.username)
+        if parsed.hostname is not None:
+            parameters["host"] = parsed.hostname
+        if parsed.port is not None:
+            parameters["port"] = str(parsed.port)
+    except (TypeError, ValueError):
+        raise ValueError("database_url identity could not be inspected") from None
+    return parameters
+
+
+def postgres_resource_identity(connection: Any) -> PostgresDatabaseIdentity:
+    """Read the actual database and postmaster that scope advisory locks."""
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(_DATABASE_IDENTITY_QUERY)
+            row = cursor.fetchone()
+    except Exception:
+        if not getattr(connection, "autocommit", False):
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise ValueError("PostgreSQL resource identity could not be inspected") from None
+    if not getattr(connection, "autocommit", False):
+        try:
+            connection.rollback()
+        except Exception:
+            raise ValueError(
+                "PostgreSQL resource identity transaction could not be closed"
+            ) from None
+    if row is None or len(row) != 5 or not isinstance(row[2], datetime):
+        raise ValueError("PostgreSQL resource identity returned an invalid row")
+    started_at = row[2]
+    if started_at.tzinfo is None or started_at.utcoffset() is None:
+        raise ValueError("PostgreSQL postmaster start time must be timezone-aware")
+    return (
+        ("dbname", str(row[0])),
+        ("database_oid", str(row[1])),
+        (
+            "postmaster_started_at",
+            started_at.astimezone(timezone.utc).isoformat(),
+        ),
+        ("server_address", str(row[3])),
+        ("server_port", str(row[4])),
+    )
+
+
+def _resource_database_identity(
+    *,
+    connection: Any | None,
+    pool: Any | None,
+) -> PostgresDatabaseIdentity:
+    if connection is not None:
+        return postgres_resource_identity(connection)
+    connection_context = getattr(pool, "connection", None)
+    if not callable(connection_context):
+        raise ValueError("PostgreSQL pool cannot provide an identity connection")
+    try:
+        with connection_context() as pooled_connection:
+            return postgres_resource_identity(pooled_connection)
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError("PostgreSQL pool identity could not be inspected") from None
+
+
+def _validate_database_locator(
+    *,
+    database_locator: PostgresDatabaseLocator,
+    database_identity: PostgresDatabaseIdentity,
+) -> None:
+    locator_database = dict(database_locator).get("dbname")
+    actual_database = dict(database_identity).get("dbname")
+    if locator_database != actual_database:
+        raise ValueError(
+            "database_url connection identity conflicts with PostgreSQL resource"
+        )
+
+
 class PostgresJournalRepository(JournalRepository):
     """Sync PostgreSQL adapter using one test connection or a runtime pool."""
 
@@ -30,35 +157,63 @@ class PostgresJournalRepository(JournalRepository):
         *,
         pool: Any | None = None,
         owns_pool: bool = False,
+        database_url: str | None = None,
     ) -> None:
         if (connection is None) == (pool is None):
             raise ValueError("provide exactly one PostgreSQL connection or pool")
         if owns_pool and pool is None:
             raise ValueError("owns_pool requires a pool")
+        database_locator = (
+            postgres_database_locator(database_url)
+            if database_url is not None
+            else None
+        )
+        database_identity = None
+        if database_locator is not None:
+            database_identity = _resource_database_identity(
+                connection=connection,
+                pool=pool,
+            )
+            _validate_database_locator(
+                database_locator=database_locator,
+                database_identity=database_identity,
+            )
         self._connection = connection
         self._pool = pool
         self._owns_pool = owns_pool
+        self._database_url = database_url.strip() if database_url is not None else None
+        self._database_locator = database_locator
+        self._database_identity = database_identity
 
     @property
     def database_url(self) -> str | None:
-        """Return connection metadata only for a sibling advisory-lock connection."""
+        """Return only the original DSN explicitly retained for a sibling guard."""
 
-        if self._connection is not None:
-            info = getattr(self._connection, "info", None)
-            dsn = getattr(info, "dsn", None)
-            return dsn if isinstance(dsn, str) and dsn.strip() else None
-        conninfo = getattr(self._pool, "conninfo", None)
-        return (
-            str(conninfo)
-            if conninfo is not None and str(conninfo).strip()
-            else None
-        )
+        return self._database_url
+
+    @property
+    def database_identity(self) -> PostgresDatabaseIdentity | None:
+        """Return the actual database/postmaster identity read from the resource."""
+
+        return self._database_identity
+
+    @property
+    def database_locator(self) -> PostgresDatabaseLocator | None:
+        """Return the credential-free endpoint declaration retained for checks."""
+
+        return self._database_locator
 
     @contextmanager
     def _transaction(self) -> Iterator[Any]:
         if self._pool is not None:
             with self._pool.connection() as connection:
                 try:
+                    if self._database_identity is not None:
+                        current_identity = postgres_resource_identity(connection)
+                        if current_identity != self._database_identity:
+                            raise ValueError(
+                                "PostgreSQL pool resource identity changed"
+                            )
                     yield connection
                     connection.commit()
                 except Exception:

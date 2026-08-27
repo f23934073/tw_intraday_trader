@@ -64,7 +64,10 @@ from simulation.settings import (
 )
 from simulation.strategy_flow import StrategyPaperFlowService
 from trading.journal import JournalSession
-from trading.postgres_journal import PostgresJournalRepository
+from trading.postgres_journal import (
+    PostgresJournalRepository,
+    postgres_database_locator,
+)
 from trading.local_paper import (
     LOCAL_PAPER_V1_IMPORTED_KIND,
     build_local_paper_v1_import_record,
@@ -353,29 +356,51 @@ class RuntimeComposition:
                     },
                 )
             raise
+        postgres_mutation_guard_required = isinstance(
+            resolved_journal,
+            PostgresJournalRepository,
+        )
+        guard_database_url = resolved_persistence.database_url
+        if postgres_mutation_guard_required:
+            journal_database_url = resolved_journal.database_url
+            journal_database_identity = resolved_journal.database_identity
+            try:
+                if (
+                    journal_database_url is None
+                    or journal_database_identity is None
+                ):
+                    raise ValueError(
+                        "injected PostgreSQL Journal requires an explicit database_url"
+                    )
+                if (
+                    journal is not None
+                    and resolved_persistence.database_url is not None
+                    and postgres_database_locator(
+                        resolved_persistence.database_url
+                    )
+                    != resolved_journal.database_locator
+                ):
+                    raise ValueError(
+                        "persistence database identity conflicts with injected Journal"
+                    )
+                if (
+                    no_overnight_guard is not None
+                    and getattr(no_overnight_guard, "database_identity", None)
+                    != journal_database_identity
+                ):
+                    raise ValueError(
+                        "PostgreSQL guard database identity conflicts with Journal"
+                    )
+                guard_database_url = journal_database_url
+            except Exception:
+                if journal is None:
+                    resolved_journal.close()
+                raise
         kill_switch_durability = (
             KillSwitchDurability.POSTGRESQL
             if isinstance(resolved_journal, PostgresJournalRepository)
             else KillSwitchDurability.EPHEMERAL_MEMORY
         )
-        if local_paper_kill_switch is not None:
-            if not local_paper_kill_switch.is_bound_to(
-                journal=resolved_journal,
-                clock=resolved_clock,
-                durability=kill_switch_durability,
-            ):
-                if journal is None:
-                    resolved_journal.close()
-                raise ValueError(
-                    "injected Local Paper kill switch has incompatible runtime binding"
-                )
-            kill_switch = local_paper_kill_switch
-        else:
-            kill_switch = DurableLocalPaperKillSwitch.recover(
-                journal=resolved_journal,
-                clock=resolved_clock,
-                durability=kill_switch_durability,
-            )
         resolved_settings = local_paper_settings or LocalPaperSettings.defaults()
         if (
             resolved_no_overnight_config.mode is not NoOvernightMode.DISABLED
@@ -395,42 +420,8 @@ class RuntimeComposition:
             if resolved_guard is not None and not guard_was_injected:
                 resolved_guard.close()
 
-        postgres_mutation_guard_required = isinstance(
-            resolved_journal,
-            PostgresJournalRepository,
-        )
         cross_process_guard_required = enforcing or postgres_mutation_guard_required
-        resolved_worker: NoOvernightControllerWorker | None = None
-        resolved_simulation = simulation_service or SimulationService(
-            provider,
-            starting_cash=resolved_settings.starting_cash_twd,
-            max_daily_buy_notional=(
-                resolved_settings.max_daily_buy_notional_twd
-            ),
-            commission_rate=resolved_settings.commission_rate,
-            minimum_commission=resolved_settings.minimum_commission_twd,
-            slippage_bps=resolved_settings.slippage_bps,
-            cost_policy_enabled=(
-                resolved_settings.schema_version == SETTINGS_SCHEMA_V2
-            ),
-            clock=resolved_clock,
-            start_streaming=start_simulation_streaming,
-        )
-        if (
-            local_paper_settings is not None
-            and resolved_simulation.settings != resolved_settings
-        ):
-            if simulation_service is None:
-                resolved_simulation.close()
-            if journal is None:
-                resolved_journal.close()
-            raise ValueError("local-paper simulation settings mismatch")
         if cross_process_guard_required:
-            guard_database_url = resolved_persistence.database_url
-            if guard_database_url is None and isinstance(
-                resolved_journal, PostgresJournalRepository
-            ):
-                guard_database_url = resolved_journal.database_url
             try:
                 if resolved_guard is None:
                     if guard_database_url is None:
@@ -449,6 +440,14 @@ class RuntimeComposition:
                             resolved_no_overnight_config.policy_family_id
                         ),
                     )
+                if (
+                    postgres_mutation_guard_required
+                    and getattr(resolved_guard, "database_identity", None)
+                    != resolved_journal.database_identity
+                ):
+                    raise ValueError(
+                        "PostgreSQL guard database identity conflicts with Journal"
+                    )
                 expected_guard_identity = no_overnight_guard_identity(
                     account_scope_id=resolved_no_overnight_config.account_scope_id,
                     policy_family_id=resolved_no_overnight_config.policy_family_id,
@@ -464,11 +463,64 @@ class RuntimeComposition:
                     )
             except Exception:
                 close_guard_created_here()
-                if simulation_service is None:
-                    resolved_simulation.close()
                 if journal is None:
                     resolved_journal.close()
                 raise
+        try:
+            if local_paper_kill_switch is not None:
+                if not local_paper_kill_switch.is_bound_to(
+                    journal=resolved_journal,
+                    clock=resolved_clock,
+                    durability=kill_switch_durability,
+                ):
+                    raise ValueError(
+                        "injected Local Paper kill switch has incompatible runtime "
+                        "binding"
+                    )
+                kill_switch = local_paper_kill_switch
+            else:
+                kill_switch = DurableLocalPaperKillSwitch.recover(
+                    journal=resolved_journal,
+                    clock=resolved_clock,
+                    durability=kill_switch_durability,
+                )
+        except Exception:
+            close_guard_created_here()
+            if journal is None:
+                resolved_journal.close()
+            raise
+        resolved_worker: NoOvernightControllerWorker | None = None
+        try:
+            resolved_simulation = simulation_service or SimulationService(
+                provider,
+                starting_cash=resolved_settings.starting_cash_twd,
+                max_daily_buy_notional=(
+                    resolved_settings.max_daily_buy_notional_twd
+                ),
+                commission_rate=resolved_settings.commission_rate,
+                minimum_commission=resolved_settings.minimum_commission_twd,
+                slippage_bps=resolved_settings.slippage_bps,
+                cost_policy_enabled=(
+                    resolved_settings.schema_version == SETTINGS_SCHEMA_V2
+                ),
+                clock=resolved_clock,
+                start_streaming=start_simulation_streaming,
+            )
+        except Exception:
+            close_guard_created_here()
+            if journal is None:
+                resolved_journal.close()
+            raise
+        if (
+            local_paper_settings is not None
+            and resolved_simulation.settings != resolved_settings
+        ):
+            if simulation_service is None:
+                resolved_simulation.close()
+            close_guard_created_here()
+            if journal is None:
+                resolved_journal.close()
+            raise ValueError("local-paper simulation settings mismatch")
         try:
             local_paper_session = resolved_journal.session(local_paper_session_id)
         except Exception:

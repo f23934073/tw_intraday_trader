@@ -15,6 +15,11 @@ pytestmark = pytest.mark.skipif(
     reason="requires explicit TEST_POSTGRES_DSN",
 )
 
+from config.trading_persistence import (  # noqa: E402
+    TradingJournalBackend,
+    TradingPersistenceConfig,
+)
+from runtime.trading_persistence import build_journal_repository  # noqa: E402
 from trading.journal import (  # noqa: E402
     JournalConflictError,
     JournalCutoffExceededError,
@@ -131,6 +136,26 @@ def test_postgres_migration_append_idempotency_and_checkpoint(journal) -> None:
 
     with pytest.raises(JournalConflictError, match="conflicts"):
         journal.append(replace(record(), payload={"symbol": "2317"}))
+
+
+def test_runtime_builder_retains_exact_password_authenticated_guard_dsn(
+    journal,
+) -> None:
+    assert TEST_POSTGRES_DSN is not None
+    config = TradingPersistenceConfig(
+        backend=TradingJournalBackend.POSTGRESQL,
+        database_url=TEST_POSTGRES_DSN,
+        pool_min_size=1,
+        pool_max_size=1,
+    )
+
+    repository = build_journal_repository(config)
+    try:
+        assert isinstance(repository, PostgresJournalRepository)
+        assert repository.database_url == TEST_POSTGRES_DSN
+        assert TEST_POSTGRES_DSN not in repr(repository)
+    finally:
+        repository.close()
 
 
 def test_postgres_restart_rejects_payload_tampered_without_fingerprint(journal) -> None:

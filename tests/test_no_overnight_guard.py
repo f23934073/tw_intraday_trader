@@ -33,6 +33,7 @@ from simulation.settings import LocalPaperSettings
 class _Cursor:
     def __init__(self, connection) -> None:
         self._connection = connection
+        self._identity_pending = False
 
     def __enter__(self):
         return self
@@ -41,9 +42,21 @@ class _Cursor:
         return None
 
     def execute(self, query, parameters=None) -> None:
+        if "pg_postmaster_start_time()" in query:
+            self._identity_pending = True
+            return
         self._connection.queries.append((query, parameters))
 
     def fetchone(self):
+        if self._identity_pending:
+            self._identity_pending = False
+            return (
+                "tw_intraday_trader_test",
+                "16384",
+                datetime.fromisoformat("2026-08-27T00:00:00+00:00"),
+                "127.0.0.1",
+                "5432",
+            )
         return self._connection.rows.pop(0)
 
 
@@ -58,6 +71,9 @@ class _Connection:
 
     def close(self) -> None:
         self.closed = True
+
+    def rollback(self) -> None:
+        return None
 
 
 class _Clock:

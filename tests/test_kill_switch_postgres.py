@@ -96,7 +96,7 @@ def kill_switch_postgres_dsn(postgres_test_dsn: str) -> str:
 
 def _runtime(dsn: str, *, session_id: str):
     connection = psycopg.connect(dsn)
-    repository = PostgresJournalRepository(connection)
+    repository = PostgresJournalRepository(connection, database_url=dsn)
     composition = RuntimeComposition.create(
         MockProvider(),
         journal=repository,

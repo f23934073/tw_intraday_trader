@@ -9,6 +9,12 @@ from threading import RLock
 from typing import Any
 from typing import TypeVar
 
+from trading.postgres_journal import (
+    PostgresDatabaseIdentity,
+    postgres_database_locator,
+    postgres_resource_identity,
+)
+
 
 _T = TypeVar("_T")
 
@@ -61,6 +67,7 @@ class PostgresNoOvernightControllerGuard:
         connection: Any,
         account_scope_id: str,
         policy_family_id: str,
+        database_url: str | None = None,
     ) -> None:
         self._connection = connection
         self._lifecycle_lock = RLock()
@@ -69,6 +76,18 @@ class PostgresNoOvernightControllerGuard:
             policy_family_id=policy_family_id,
         )
         self._owned = False
+        self.database_identity: PostgresDatabaseIdentity = (
+            postgres_resource_identity(connection)
+        )
+        if database_url is not None:
+            declared_database = dict(
+                postgres_database_locator(database_url)
+            ).get("dbname")
+            actual_database = dict(self.database_identity).get("dbname")
+            if declared_database != actual_database:
+                raise ValueError(
+                    "guard database_url conflicts with connected PostgreSQL resource"
+                )
         self.guard_identity = no_overnight_guard_identity(
             account_scope_id=account_scope_id,
             policy_family_id=policy_family_id,
@@ -90,6 +109,12 @@ class PostgresNoOvernightControllerGuard:
                 "PostgreSQL guard requires the project postgres extra"
             ) from error
         try:
+            postgres_database_locator(database_url)
+        except Exception as error:
+            raise NoOvernightGuardUnavailable(
+                "PostgreSQL guard database identity is invalid"
+            ) from error
+        try:
             connection = psycopg.connect(
                 database_url,
                 connect_timeout=connect_timeout_seconds,
@@ -99,11 +124,21 @@ class PostgresNoOvernightControllerGuard:
             raise NoOvernightGuardUnavailable(
                 "PostgreSQL guard connection failed"
             ) from error
-        return cls(
-            connection=connection,
-            account_scope_id=account_scope_id,
-            policy_family_id=policy_family_id,
-        )
+        try:
+            return cls(
+                connection=connection,
+                account_scope_id=account_scope_id,
+                policy_family_id=policy_family_id,
+                database_url=database_url,
+            )
+        except Exception as error:
+            try:
+                connection.close()
+            except Exception:
+                pass
+            raise NoOvernightGuardUnavailable(
+                "PostgreSQL guard resource identity inspection failed"
+            ) from error
 
     def acquire(self) -> None:
         with self._lifecycle_lock:

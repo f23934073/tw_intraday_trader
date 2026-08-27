@@ -13,6 +13,9 @@ from trading.postgres_journal import PostgresJournalRepository
 from trading.postgres_journal import _postgres_storage_fingerprint
 
 
+POSTGRES_IDENTITY_AT = datetime.fromisoformat("2026-08-27T00:00:00+00:00")
+
+
 class FakeCursor:
     def __init__(
         self,
@@ -375,6 +378,146 @@ def test_pool_backed_health_check_commits_and_owned_pool_closes() -> None:
     assert connection.commits == 1
     assert connection.rollbacks == 0
     assert pool.closed is True
+
+
+def test_guard_database_url_retains_explicit_password_authenticated_dsn() -> None:
+    connection = FakeConnection(
+        health_row=(
+            "tw_intraday_trader_test",
+            "16384",
+            POSTGRES_IDENTITY_AT,
+            "127.0.0.1",
+            "5432",
+        )
+    )
+    connection.info = type(
+        "ConnectionInfo",
+        (),
+        {
+            "dsn": (
+                "user=postgres dbname=tw_intraday_trader_test "
+                "host=localhost hostaddr=::1"
+            ),
+            "dbname": "tw_intraday_trader_test",
+            "user": "postgres",
+            "host": "localhost",
+            "port": 5432,
+        },
+    )()
+    authenticated_dsn = (
+        "postgresql://postgres:postgres@localhost:5432/"
+        "tw_intraday_trader_test"
+    )
+
+    repository = PostgresJournalRepository(
+        connection,
+        database_url=authenticated_dsn,
+    )
+
+    assert repository.database_url == authenticated_dsn
+    assert authenticated_dsn not in repr(repository)
+
+
+def test_guard_database_url_never_reconstructs_sanitized_connection_metadata() -> None:
+    connection = FakeConnection()
+    connection.info = type(
+        "ConnectionInfo",
+        (),
+        {
+            "dsn": (
+                "user=postgres dbname=tw_intraday_trader_test "
+                "host=localhost hostaddr=::1"
+            ),
+            "dbname": "tw_intraday_trader_test",
+            "user": "postgres",
+            "host": "localhost",
+            "port": 5432,
+        },
+    )()
+
+    repository = PostgresJournalRepository(connection)
+
+    assert repository.database_url is None
+
+    pool = FakePool(FakeConnection())
+    pool.conninfo = connection.info.dsn
+
+    pooled_repository = PostgresJournalRepository(pool=pool)
+
+    assert pooled_repository.database_url is None
+
+
+def test_guard_database_url_rejects_connection_identity_mismatch_without_leak() -> None:
+    connection = FakeConnection(
+        health_row=(
+            "journal_a_test",
+            "16384",
+            POSTGRES_IDENTITY_AT,
+            "127.0.0.1",
+            "5432",
+        )
+    )
+    connection.info = type(
+        "ConnectionInfo",
+        (),
+        {
+            "dbname": "journal_a_test",
+            "user": "postgres",
+            "host": "localhost",
+            "port": 5432,
+        },
+    )()
+    conflicting_dsn = (
+        "postgresql://postgres:do-not-leak@localhost:5432/journal_b_test"
+    )
+
+    with pytest.raises(ValueError, match="connection identity") as caught:
+        PostgresJournalRepository(
+            connection,
+            database_url=conflicting_dsn,
+        )
+
+    assert conflicting_dsn not in str(caught.value)
+    assert "do-not-leak" not in str(caught.value)
+
+
+def test_pool_transaction_rejects_backend_identity_change_before_operation() -> None:
+    initial = FakeConnection(
+        health_row=(
+            "tw_intraday_trader_test",
+            "16384",
+            POSTGRES_IDENTITY_AT,
+            "127.0.0.1",
+            "5432",
+        )
+    )
+    pool = FakePool(initial)
+    pool.conninfo = (
+        "postgresql://postgres:do-not-leak@127.0.0.1:5432/"
+        "tw_intraday_trader_test"
+    )
+    repository = PostgresJournalRepository(
+        pool=pool,
+        database_url=pool.conninfo,
+    )
+    pool.connection_instance = FakeConnection(
+        health_row=(
+            "tw_intraday_trader_test",
+            "16384",
+            datetime.fromisoformat("2026-08-27T00:01:00+00:00"),
+            "127.0.0.2",
+            "5432",
+        )
+    )
+
+    with pytest.raises(ValueError, match="pool resource identity changed") as caught:
+        repository.check_health()
+
+    assert "do-not-leak" not in str(caught.value)
+    assert not any(
+        "SELECT 1" in query
+        for query in pool.connection_instance.cursor_instance.executed
+    )
 
 
 def test_failed_health_check_rolls_back_and_does_not_commit() -> None:
