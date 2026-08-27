@@ -1,0 +1,60 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 以 logical ERD 視角顯示 institutional artifacts、PIT research inputs、Candidate Prior persistence 的主要關係。
+%% How to read: raw/normalized artifacts 先形成 research input，再產生 exploratory factor/prior artifacts；repository 只保存 non-live-admission prior entries。
+%% Source anchors: institutional_data/domain.py; institutional_data/artifacts.py; institutional_research/domain.py; institutional_research/inputs.py; institutional_prior/domain.py; institutional_prior/migrations/001_candidate_prior.sql; institutional_prior/sql_repository.py.
+%% Runtime/authority notes: institutional prior artifacts 明確 production_ready=false 且 live_admission_ready=false；不得當成策略 ready 或 broker execution evidence。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    raw[("InstitutionalRawArtifact<br/>raw bytes + source request")]
+    partition[("InstitutionalPartitionManifest<br/>normalized_sha256 + status")]
+    rows[("InstitutionalFlowDaily rows")]
+    price[("DailyAdjustedClose / PriceResearchInput")]
+    universe[("PIT EquityUniverse snapshot")]
+    research_input["InstitutionalResearchInput<br/>lineage validation"]
+    factor_report[("InstitutionalFactorReportArtifact<br/>EXPLORATORY")]
+    factor_prior[("InstitutionalFactorPriorArtifact")]
+    price_prior[("PriceMomentumPriorArtifact")]
+    run_manifest[("CandidatePriorRunManifestV0")]
+    prior_artifact[("CandidatePriorArtifact<br/>projections + entries")]
+    prior_table[("institutional_candidate_prior_artifacts<br/>production_ready=0 live_admission_ready=0")]
+    entry_table[("institutional_candidate_prior_entries<br/>rank + entry_digest")]
+    repo["SqlCandidatePriorRepository<br/>SQLite/PostgreSQL adapters"]
+    shadow["CandidatePool / Shadow admission<br/>capacity-only consumer"]
+
+    raw --> partition --> rows --> research_input
+    price --> research_input
+    universe --> research_input
+    research_input --> factor_report --> factor_prior
+    price_prior --> run_manifest
+    factor_prior --> run_manifest
+    universe --> run_manifest
+    run_manifest --> prior_artifact
+    prior_artifact --> prior_table --> entry_table
+    repo --> prior_table
+    repo --> entry_table
+    prior_artifact --> shadow
+
+    class raw,partition,rows,price,universe,research_input,factor_report,factor_prior,price_prior,run_manifest,prior_artifact,prior_table,entry_table,repo implemented
+    class shadow research
+    class raw,partition,rows,price,universe,factor_report,factor_prior,price_prior,run_manifest,prior_artifact,prior_table,entry_table store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

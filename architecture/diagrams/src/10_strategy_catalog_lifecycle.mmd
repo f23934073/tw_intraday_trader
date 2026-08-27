@@ -1,0 +1,64 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 Strategy Template、Draft、Version、Lifecycle、Strategy Set 與 audit 的 current-state lifecycle。
+%% How to read: Code-owned AtomicStrategyRegistry bootstraps templates；mutable authoring happens through PostgreSQL-only catalog service and append-only lifecycle events.
+%% Source anchors: atomic_strategies/registry.py::AtomicStrategyRegistry; strategy_catalog/application.py::AtomicStrategyCatalogService/build_atomic_strategy_service; strategy_catalog/lifecycle.py::StrategyLifecycleStatus; strategy_catalog/postgres_repository.py; dashboard/server.py strategy routes.
+%% Runtime/authority notes: Catalog metadata does not itself execute orders; Local Paper activation only admits exact ENTRY Strategy Set versions whose lifecycle projection is PAPER_APPROVED.
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    registry["AtomicStrategyRegistry<br/>allowlisted ENTRY implementations"]
+    templates["StrategyTemplate<br/>parameter schema + implementation digest"]
+    service["AtomicStrategyCatalogService<br/>PostgreSQL-only"]
+    drafts[("strategy_version_drafts")]
+    versions[("strategy_versions")]
+    events[("strategy_version_events<br/>append-only lifecycle")]
+    state[("strategy_version_state<br/>projection")]
+    outbox[("strategy_lifecycle_outbox")]
+    mutation[("strategy_mutation_operations")]
+    audit[("strategy_audit_events")]
+    sets[("strategy_set_versions")]
+    members[("strategy_set_members")]
+    archives[("strategy_set_archives")]
+    paper["PaperActivationCatalogSnapshot<br/>PAPER_APPROVED gate"]
+    backtest["Atomic Backtest<br/>historical data-only"]
+    localpaper["Atomic Local Paper<br/>manual-start controller"]
+    browser["Browser strategy management UI"]
+
+    browser --> service
+    registry --> templates --> service
+    service --> drafts --> versions --> events --> state
+    events --> outbox
+    service --> mutation
+    service --> audit
+    service --> sets --> members
+    sets --> archives
+    state --> paper
+    members --> paper
+    paper --> localpaper
+    sets --> backtest
+    versions --> backtest
+
+    class registry,templates,service,drafts,versions,events,state,outbox,mutation,audit,sets,members,archives,paper implemented
+    class backtest,localpaper research
+    class browser external
+    class drafts,versions,events,state,outbox,mutation,audit,sets,members,archives store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

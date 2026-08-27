@@ -1,0 +1,86 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 installable packages / bounded contexts 的責任與主要依賴。
+%% How to read: 由 infrastructure/entrypoint 往 domain/runtime 讀；箭頭表示 current source import 或 service call 方向。
+%% Source anchors: pyproject.toml package include list; app.py imports; dashboard/server.py imports; runtime/composition.py imports; backtest/application.py imports.
+%% Runtime/authority notes: 這是 modular monolith module map，不是嚴格 Clean Architecture layer diagram；部分 domain 與 application service 仍同 package。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    config["config<br/>typed settings / calendars / flags"]
+    market["market_data<br/>provider, normalized events, ingestion, replay"]
+    candidate["candidate<br/>rules, pool, shadow admission"]
+    watchlist["watchlist<br/>PIT/reference universe ports"]
+    scoring["scoring<br/>BuyScore rules"]
+    position["position<br/>local position and exit rules"]
+    features["features<br/>FeatureEngine + requested features"]
+    signals["signals<br/>Momentum signal/state/projection"]
+    dashboard["dashboard<br/>FastAPI + static workspaces + stream hubs"]
+    runtime["runtime<br/>composition roots, ports, live shadow ops"]
+    simulation["simulation<br/>Local Paper simulation and controller"]
+    trading["trading<br/>Journal, RiskGate, trade-management shadow"]
+    backtest["backtest<br/>datasets, engine, workers, qualification"]
+    catalog["strategy_catalog<br/>templates, drafts, versions, sets"]
+    atomic["atomic_strategies<br/>allowlisted ENTRY implementations"]
+    premarket["premarket<br/>TAIFEX context and artifacts"]
+    instdata["institutional_data<br/>raw-first official ingestion"]
+    instresearch["institutional_research<br/>PIT diagnostics/evaluation"]
+    instprior["institutional_prior<br/>Candidate Prior artifacts/repos"]
+
+    dashboard --> runtime
+    dashboard --> backtest
+    dashboard --> catalog
+    dashboard --> simulation
+    dashboard --> premarket
+    runtime --> market
+    runtime --> trading
+    runtime --> simulation
+    runtime --> premarket
+    runtime --> dashboard
+    app["app.py scanner"] --> market
+    app --> candidate
+    app --> scoring
+    app --> position
+    app --> config
+    market --> premarket
+    candidate --> watchlist
+    candidate --> config
+    features --> market
+    signals --> features
+    signals --> market
+    simulation --> market
+    simulation --> trading
+    simulation --> features
+    simulation --> catalog
+    simulation --> atomic
+    trading --> market
+    backtest --> market
+    backtest --> catalog
+    backtest --> atomic
+    backtest --> features
+    catalog --> atomic
+    instprior --> instresearch
+    instprior --> watchlist
+    instresearch --> institutional_data
+    instdata --> market
+
+    class app,config,market,candidate,watchlist,scoring,position,features,signals,dashboard,runtime,simulation,trading,backtest,catalog,atomic,premarket,instdata,instresearch,instprior implemented
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

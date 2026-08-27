@@ -6,6 +6,15 @@
 
 ---
 
+## Current-State 架構圖集
+
+可版本控制的全專案 current-state 架構圖集位於
+[architecture/diagrams/](architecture/diagrams/README.md)，包含系統邊界、
+runtime topology、bounded contexts、行情/策略/Local Paper/Backtest/研究資料流、
+persistence、recovery、evidence 與 authority 邊界。
+
+---
+
 ## 快速開始
 
 ### 1. 安裝依賴

@@ -1,0 +1,99 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 區分 synchronous scanner、Dashboard Web runtime、realtime market-data runtime、historical Backtest workers 與一次性 CLI。
+%% How to read: 每個 process 或 worker 都以自己的 entrypoint/owner 表示；同一 process 內的 worker 用同一群組。
+%% Source anchors: app.py::main/run_scan; dashboard/__main__.py; dashboard/server.py::lifespan/get_runtime_composition/get_backtest_service; dashboard/momentum.py::create_realtime_momentum_dashboard_service; backtest/application.py::ThreadPoolExecutor; backtest/scheduler.py::AfterCloseIncrementalScheduler.
+%% Runtime/authority notes: Backtest service 明確不使用 RuntimeComposition，避免啟動 Local Paper order path；Momentum worker 是 market-data-only Shadow。
+
+flowchart TB
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    user["CLI / Browser 操作者"]
+
+    subgraph scan_proc["Process A：python app.py"]
+        appmain["app.py main()"]
+        runscan["run_scan()<br/>單次 snapshot scanner"]
+    end
+
+    subgraph web_proc["Process B：python -m dashboard / Uvicorn"]
+        uvicorn["dashboard.__main__<br/>uvicorn dashboard.server:app"]
+        fastapi["FastAPI app + loopback middleware"]
+        lifecycle["lifespan()<br/>啟停 scheduler/services/workers"]
+        composition["RuntimeComposition.create()<br/>Local Paper + Dashboard"]
+        momentum["RealtimeMomentumDashboardService<br/>candidate refresh worker"]
+        simworker["SimulationService<br/>quote worker"]
+        autoworker["ContinuousPaperStrategyController<br/>manual-start worker"]
+        scheduler["AfterCloseIncrementalScheduler<br/>after-close worker"]
+        backtestsvc["BacktestApplicationService<br/>historical composition"]
+        bworkers["ThreadPoolExecutor<br/>historical-backtest workers"]
+    end
+
+    subgraph cli_proc["Process C：一次性 CLI scripts"]
+        acquisition["acquisition<br/>download/capture/materialize"]
+        qualification["qualification<br/>freshness / TAIFEX / G0 / shadow preflight"]
+        replay["replay<br/>market-data / momentum / trade-management"]
+        migration["migration<br/>SQLite -> PostgreSQL / schema migrations"]
+    end
+
+    shioaji["Shioaji Tick/BidAsk/Kbar"]
+    finmind["FinMind API"]
+    official["TWSE/TPEX/TAIFEX official sources"]
+    pg[("PostgreSQL")]
+    sqlite[("SQLite")]
+    fs[("Filesystem artifacts")]
+    memory[("Process-local memory")]
+
+    user --> appmain --> runscan
+    user --> uvicorn --> fastapi --> lifecycle
+    fastapi --> composition
+    composition --> momentum
+    composition --> simworker
+    fastapi --> autoworker
+    lifecycle --> scheduler --> backtestsvc --> bworkers
+    fastapi --> backtestsvc
+    user --> acquisition
+    user --> qualification
+    user --> replay
+    user --> migration
+
+    runscan --> shioaji
+    momentum --> shioaji
+    simworker --> shioaji
+    backtestsvc --> shioaji
+    acquisition --> finmind
+    acquisition --> official
+    qualification --> official
+    migration --> pg
+    backtestsvc --> pg
+    composition --> pg
+    acquisition --> sqlite
+    backtestsvc --> sqlite
+    acquisition --> fs
+    qualification --> fs
+    replay --> fs
+    momentum --> memory
+    simworker --> memory
+    autoworker --> memory
+
+    class appmain,runscan,uvicorn,fastapi,lifecycle,composition,simworker,scheduler,backtestsvc,bworkers,acquisition,qualification,replay,migration implemented
+    class momentum,autoworker research
+    class shioaji,finmind,official,user external
+    class pg,sqlite,fs,memory store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

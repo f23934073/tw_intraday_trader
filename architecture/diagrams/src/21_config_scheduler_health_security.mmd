@@ -1,0 +1,74 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 顯示 configuration、scheduler、health check、security/trust boundary 與 operational evidence 的 current-state。
+%% How to read: config/env 只開啟對應 runtime；security boundary 在 FastAPI middleware 和 mutation guard；scheduler/launchd 類流程只產生資料或 evidence。
+%% Source anchors: config/backtest.py; config/trading_persistence.py; config/momentum_stream.py; config/premarket.py; dashboard/server.py::enforce_loopback_http_boundary/_require_atomic_mutation/healthz/readyz; backtest/scheduler.py; market_data/freshness_calibration_schedule.py; market_data/broker_account_freshness_schedule.py.
+%% Runtime/authority notes: secrets/DSN/API keys 不寫入文件；health/readiness 不等於 evidence gate passed；broker-account freshness collector 不授權 Local Paper 或 Portfolio readiness。
+
+flowchart TB
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    env["Environment variables<br/>PROVIDER, DATABASE_URL, BACKTEST_*, MOMENTUM_*, TAIFEX_*"]
+    foundation["config.foundation<br/>planned defaults disabled"]
+    tradingcfg["TradingPersistenceConfig<br/>TRADING_JOURNAL_BACKEND"]
+    backcfg["config.backtest<br/>data-only defaults"]
+    streamcfg["MomentumStreamConfig<br/>WS replay/heartbeat limits"]
+    precfg["PremarketContextConfig<br/>observe-only fail-closed flags"]
+    settings[("LocalPaper settings JSON<br/>atomic write")]
+
+    http["FastAPI loopback middleware<br/>reject proxy/non-loopback"]
+    csrf["Strategy mutation guard<br/>Origin + X-Strategy-CSRF"]
+    health["/healthz<br/>process status"]
+    ready["/readyz<br/>quote ingress overflow fail-closed"]
+
+    scheduler["AfterCloseIncrementalScheduler<br/>14:30 Asia/Taipei polling"]
+    backtest["BacktestApplicationService<br/>incremental sync job"]
+    launchd["launchd scheduled scripts<br/>freshness / broker-account capture"]
+    freshness["Freshness calibration artifacts<br/>evidence, not policy pass"]
+    brokerfresh["Broker-account freshness artifacts<br/>read-only evidence"]
+    stores[("PostgreSQL / SQLite / filesystem / memory<br/>separate durability")]
+    shioaji["Shioaji<br/>market-data login subscribe_trade=false"]
+    broker["Broker mutation authority<br/>CA/place_order/trade callback not wired"]
+
+    env --> tradingcfg
+    env --> backcfg
+    env --> streamcfg
+    env --> precfg
+    foundation -.->|disabled flags| env
+    tradingcfg --> stores
+    backcfg --> scheduler --> backtest --> stores
+    streamcfg --> http
+    precfg --> stores
+    settings --> stores
+    http --> health
+    http --> ready
+    http --> csrf
+    launchd --> freshness --> stores
+    launchd --> brokerfresh --> stores
+    shioaji --> freshness
+    shioaji --> brokerfresh
+    shioaji -.->|no trade subscription| broker
+    csrf -.->|protects local mutation only| broker
+
+    class env,tradingcfg,backcfg,streamcfg,precfg,settings,http,csrf,health,ready,scheduler,backtest,launchd,freshness,brokerfresh implemented
+    class foundation,broker planned
+    class shioaji external
+    class stores,settings store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

@@ -1,0 +1,62 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 將 execution modes、authority 與 current-state 安全邊界放在同一張圖。
+%% How to read: 每個 mode 只連到它實際擁有的 authority；虛線區塊是 current source 不具備的 broker execution。
+%% Source anchors: simulation/service.py::SimulationService.mode; simulation/application.py::LocalPaperCommandService; market_data/shioaji_momentum_stream.py::connect_from_env; config/backtest.py; config/foundation.py; candidate/shadow_admission.py::InstitutionalShadowAdmissionDecision.
+%% Runtime/authority notes: LOCAL_PAPER_SIMULATION 不等於 Shioaji Simulation；Tick/BidAsk 不具 cash、order、deal、inventory 或 buying-power authority。
+
+flowchart TB
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    snapshot["Snapshot Scanner<br/>app.py / Dashboard refresh"]
+    realtime["Realtime Momentum Shadow<br/>Tick/BidAsk evidence"]
+    localpaper["LOCAL_PAPER_SIMULATION<br/>journaled local command + fill"]
+    automated["Automated Local Paper<br/>manual-start exact set controller"]
+    backtest["Historical Backtest<br/>data-only research run"]
+    premarket["TAIFEX Premarket Context<br/>observe-only"]
+    institutional["Institutional Prior Shadow<br/>research/admission planning"]
+    planned_broker["Broker order execution<br/>CA / place_order / trade callback"]
+
+    quote_auth["行情 authority<br/>snapshot / Kbar / Tick / BidAsk"]
+    local_cash["本機虛擬現金/持倉/委託<br/>SimulationService + Journal"]
+    research_evidence["研究/evidence authority<br/>Dataset / artifacts / reports"]
+    account_auth["券商帳務 authority<br/>cash/order/deal/inventory/buying power"]
+
+    snapshot --> quote_auth
+    realtime --> quote_auth
+    premarket --> quote_auth
+    localpaper --> quote_auth
+    localpaper --> local_cash
+    automated --> local_cash
+    automated --> research_evidence
+    backtest --> research_evidence
+    institutional --> research_evidence
+    institutional --> quote_auth
+    planned_broker -.-> account_auth
+
+    quote_auth -.->|不可推論| account_auth
+    local_cash -.->|不可推論| account_auth
+    research_evidence -.->|不可推論 live promotion| account_auth
+
+    class snapshot,localpaper,quote_auth,local_cash implemented
+    class realtime,automated,backtest,institutional,research_evidence research
+    class premarket observe
+    class planned_broker,account_auth planned
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

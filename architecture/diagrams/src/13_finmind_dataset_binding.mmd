@@ -1,0 +1,55 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 描述 FinMind/Provider acquisition 到 immutable Dataset、PostgreSQL registration 與 ATOMIC_BACKTEST_DEFAULT binding。
+%% How to read: acquisition SQLite 是可續跑來源，immutable Dataset 是回測 authority；binding 只鎖定 Dataset，不代表策略合格或 live promotion。
+%% Source anchors: scripts/download_finmind_sponsor_history.py; backtest/finmind_history.py::FinMindApiClient/FinMindSponsorDownloader/FinMindHistoryStore; scripts/materialize_finmind_backtest_dataset.py; backtest/dataset.py::HistoricalDatasetCatalog/DatasetManifest; backtest/postgres_repository.py::register_immutable_dataset/get_dataset_binding.
+%% Runtime/authority notes: FinMind history.sqlite3 是 mutable acquisition storage；ATOMIC_BACKTEST_DEFAULT 必須用 digest/revision 核對；不得從 Dataset existence 推論策略可上線。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    finmind["FinMind Sponsor API<br/>TaiwanStock Kbar / reference data"]
+    provider["MarketDataProvider.get_kbars()<br/>Shioaji/Mock path"]
+    download["download_finmind_sponsor_history.py<br/>paced resumable downloader"]
+    histstore[("history.sqlite3<br/>symbol-day acquisition checkpoint")]
+    materialize["materialize_finmind_backtest_dataset.py<br/>plan / snapshot / register / bind"]
+    catalog[("HistoricalDatasetCatalog<br/>immutable JSONL bars + manifest")]
+    manifest["DatasetManifest<br/>bars_sha256 + manifest_digest"]
+    register["PostgresBacktestRepository<br/>register_immutable_dataset()"]
+    datasets[("backtest.backtest_datasets<br/>READY registration")]
+    binding[("backtest.backtest_dataset_bindings<br/>ATOMIC_BACKTEST_DEFAULT revision")]
+    revisions[("backtest_dataset_binding_revisions<br/>actor/change evidence")]
+    web["BacktestApplicationService<br/>atomic_backtest_dataset_status()"]
+    run["Atomic Backtest Run<br/>requires expected revision + digest"]
+    promotion["Live promotion / strategy qualification<br/>not implied"]
+
+    finmind --> download --> histstore --> materialize
+    provider --> web
+    materialize --> catalog --> manifest --> register --> datasets
+    register --> binding --> revisions
+    binding --> web --> run
+    datasets --> web
+    run -.->|不可推論| promotion
+
+    class download,materialize,catalog,manifest,register,datasets,binding,revisions,web,run implemented
+    class promotion planned
+    class finmind,provider external
+    class histstore,catalog,datasets,binding,revisions store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

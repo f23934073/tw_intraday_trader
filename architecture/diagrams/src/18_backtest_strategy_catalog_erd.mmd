@@ -1,0 +1,87 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 以 logical ERD 視角顯示 Backtest、Strategy Catalog、Dataset Binding、Qualification 的主要資料關係。
+%% How to read: Dataset 是 runs 的 source authority；Strategy Catalog 分為 template/draft/version/lifecycle/set；qualification 與 cash controls 只連 completed runs。
+%% Source anchors: backtest/migrations/001_backtest_core.sql through 014_cash_admission_controls.sql; strategy_catalog/postgres_repository.py; backtest/postgres_repository.py; backtest/repository.py.
+%% Runtime/authority notes: SQLite 是 local-dev durable adapter；PostgreSQL schema 是 platform authority；Backtest result/qualification 不等於 live strategy promotion。
+
+flowchart TB
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    datasets[("backtest_datasets<br/>manifest_json + status READY")]
+    bindings[("backtest_dataset_bindings<br/>binding_name + revision")]
+    binding_revs[("backtest_dataset_binding_revisions")]
+    jobs[("backtest_jobs<br/>DATASET_SYNC / incremental")]
+    runs[("backtest_runs<br/>config_digest + dataset_digest")]
+    results[("backtest_results<br/>summary/result_digest")]
+    chunks[("backtest_result_chunks<br/>field chunk payloads")]
+    decisions[("backtest_decisions")]
+    trades[("backtest_trades")]
+    equity[("backtest_daily_equity")]
+    comparisons[("backtest_comparisons")]
+    qualifications[("backtest_qualifications")]
+    families[("backtest_experiment_families")]
+    attempts[("backtest_experiment_attempts")]
+    cash_heads[("backtest_cash_admission_control_heads")]
+    cash_regs[("backtest_cash_admission_control_registrations")]
+    cash_ops[("backtest_cash_admission_control_operations")]
+
+    templates[("strategy_templates")]
+    drafts[("strategy_version_drafts")]
+    versions[("strategy_versions")]
+    version_events[("strategy_version_events")]
+    version_state[("strategy_version_state")]
+    outbox[("strategy_lifecycle_outbox")]
+    publish_ops[("strategy_publish_operations")]
+    sets[("strategy_set_versions")]
+    members[("strategy_set_members")]
+    set_archives[("strategy_set_archives")]
+    mutations[("strategy_mutation_operations")]
+    audit[("strategy_audit_events")]
+
+    datasets --> bindings --> binding_revs
+    datasets --> jobs
+    datasets --> runs --> results --> chunks
+    runs --> decisions
+    runs --> trades
+    runs --> equity
+    runs --> comparisons
+    runs --> qualifications
+    families --> attempts --> runs
+    families --> qualifications
+    runs --> cash_heads --> cash_regs
+    cash_heads --> cash_ops
+
+    templates --> drafts --> versions --> version_events --> version_state
+    version_events --> outbox
+    drafts --> publish_ops
+    versions --> publish_ops
+    versions --> members
+    sets --> members
+    sets --> set_archives
+    templates --> mutations
+    versions --> audit
+    sets --> audit
+    sets --> runs
+
+    class datasets,bindings,binding_revs,jobs,runs,results,chunks,decisions,trades,equity,comparisons,qualifications,families,attempts,cash_heads,cash_regs,cash_ops,templates,drafts,versions,version_events,version_state,outbox,publish_ops,sets,members,set_archives,mutations,audit implemented
+    class qualifications,families,attempts,cash_heads,cash_regs,cash_ops research
+    class datasets,bindings,binding_revs,jobs,runs,results,chunks,decisions,trades,equity,comparisons,qualifications,families,attempts,cash_heads,cash_regs,cash_ops,templates,drafts,versions,version_events,version_state,outbox,publish_ops,sets,members,set_archives,mutations,audit store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;

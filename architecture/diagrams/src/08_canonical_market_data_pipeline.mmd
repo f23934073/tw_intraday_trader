@@ -1,0 +1,61 @@
+%% STE-5 source snapshot: main@657c3bbc117af1c2909175dfc799bce7e8be07ca, captured 2026-08-25T11:25:47+0800
+%% Purpose: 描述 canonical market data 如何由 Tick/BidAsk callback 進入 queue、journal、projection 與 replay。
+%% How to read: callback 只 enqueue immutable EventEnvelope；domain processing 由 single consumer/worker 序列化。
+%% Source anchors: market_data/events.py::EventEnvelope/TickEvent/BidAskEvent; market_data/ingestion.py::BoundedMarketEventQueue/MarketDataIngestor; market_data/journal.py::JsonlMarketEventRecorder/verify_market_event_journal; market_data/replay.py::ReplayDatasetLoader/ReplayRunner; runtime/momentum_shadow.py::MomentumShadowRuntime.
+%% Runtime/authority notes: Tick/BidAsk 是行情 evidence 與本機撮合參考；不具 broker cash/order/deal/inventory/buying-power authority；Replay 使用 immutable dataset。
+
+flowchart LR
+    subgraph legend["統一圖例"]
+        li["Implemented"]
+        lr["Experimental/Research"]
+        lo["Observe-only"]
+        lp["Planned/Not wired"]
+        le["External system"]
+        ls[("Persistent store")]
+    end
+
+    shioaji["Shioaji Tick/BidAsk callbacks"]
+    adapter["ShioajiMomentumStream<br/>normalize callbacks + lifecycle"]
+    envelope["EventEnvelope<br/>market-event-v1"]
+    queue["BoundedMarketEventQueue<br/>overflow is explicit"]
+    worker["MomentumShadowRuntime worker<br/>serialized process_pending()"]
+    ingestor["MarketDataIngestor<br/>session + watermark validation"]
+    refs[("InstrumentReferenceStore")]
+    bars[("IntradayBarStore<br/>Tick -> 1m bars")]
+    books[("OrderBookStore<br/>BidAsk -> best levels")]
+    health[("DataHealth<br/>stream state and invalid reasons")]
+    recorder[("JsonlMarketEventRecorder<br/>records.jsonl + manifest")]
+    verify["verify_market_event_journal()"]
+    replaydata[("Immutable ReplayDataset<br/>manifest + content_sha256")]
+    replay["ReplayDatasetLoader / ReplayRunner"]
+    projections[("Projection stores<br/>bars/books/health/momentum")]
+
+    shioaji --> adapter --> envelope --> queue --> worker --> ingestor
+    ingestor --> refs
+    ingestor --> bars
+    ingestor --> books
+    ingestor --> health
+    envelope --> recorder
+    ingestor --> recorder
+    recorder --> verify
+    verify --> replaydata
+    replaydata --> replay --> ingestor
+    bars --> projections
+    books --> projections
+    health --> projections
+
+    class adapter,envelope,queue,worker,ingestor,verify,replay implemented
+    class shioaji external
+    class refs,bars,books,health,recorder,replaydata,projections store
+    class li implemented
+    class lr research
+    class lo observe
+    class lp planned
+    class le external
+    class ls store
+    classDef implemented fill:#E8F5E9,stroke:#2E7D32,color:#111;
+    classDef research fill:#FFF7D6,stroke:#B7791F,color:#111;
+    classDef observe fill:#E3F2FD,stroke:#1565C0,color:#111;
+    classDef planned fill:#F5F5F5,stroke:#777,stroke-dasharray:5 5,color:#111;
+    classDef external fill:#FCE4D6,stroke:#C2410C,color:#111;
+    classDef store fill:#F3E8FF,stroke:#7E22CE,color:#111;
