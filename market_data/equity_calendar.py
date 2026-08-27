@@ -71,6 +71,17 @@ class ReviewedEquityCalendar:
             cursor -= timedelta(days=1)
         raise ValueError("equity calendar has no previous reviewed trading day")
 
+    def next_trading_day(self, value: date) -> date:
+        """Resolve T+1 only when T itself is a reviewed equity session."""
+        if not self.is_trading_day(value):
+            raise ValueError("source session is not a reviewed equity trading day")
+        cursor = value + timedelta(days=1)
+        while cursor <= self.coverage_end:
+            if self.is_trading_day(cursor):
+                return cursor
+            cursor += timedelta(days=1)
+        raise ValueError("equity calendar has no next reviewed trading day")
+
     def _require_coverage(self, value: date) -> None:
         if value < self.coverage_start or value > self.coverage_end:
             raise ValueError(
