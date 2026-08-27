@@ -12,6 +12,8 @@ __all__ = [
     "JournalRepository",
     "MarketEventSource",
     "OrderCommandHandler",
+    "NoOvernightCommandPort",
+    "NoOvernightEvidenceReader",
     "ProjectionRepository",
 ]
 
@@ -57,3 +59,19 @@ class OrderCommandHandler(Protocol):
         idempotency_key: str,
     ) -> tuple[dict[str, Any], bool]:
         """Cancel a local-paper order."""
+
+
+@runtime_checkable
+class NoOvernightEvidenceReader(Protocol):
+    """Read one immutable managed-exposure evidence snapshot."""
+
+    def read(self, *, now: object, session_date: object) -> object:
+        """Return managed position/order/execution evidence without mutation."""
+
+
+@runtime_checkable
+class NoOvernightCommandPort(Protocol):
+    """Deferred execution seam; OBSERVE_ONLY must never call it."""
+
+    def execute(self, action: object) -> None:
+        """Execute one approved operational action in a later PR slice."""

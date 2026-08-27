@@ -8,6 +8,7 @@ import pytest
 
 from market_data.provider import MockProvider
 from runtime.in_memory import InMemoryJournalRepository
+from runtime.composition import RuntimeComposition
 from runtime.trade_management_operational_composition import (
     ExistingPaperFillObserver,
     PaperFillNotObservedError,
@@ -19,6 +20,7 @@ from simulation.execution_costs import (
     is_valid_common_stock_tick,
 )
 from simulation.service import SimulationService
+from simulation.settings import LocalPaperSettings
 from tests.test_live_entry_thesis_draft import decision, policy
 from tests.test_trade_management_operational_composition import shadow_policy
 from trading.canonical_values import canonical_decimal_string
@@ -27,6 +29,7 @@ from trading.live_entry_thesis_draft import LiveTradeThesisDraftBuilder
 from trading.local_paper import (
     LOCAL_PAPER_FILL_V2_KIND,
     LOCAL_PAPER_FILL_V3_KIND,
+    LOCAL_PAPER_FILL_V4_KIND,
     LocalPaperFill,
     ProjectionRecoveryError,
     order_state_record_from_simulation_order,
@@ -133,6 +136,40 @@ def _settings_bound_entry(*, v3: bool):
         if result.record.kind == expected_kind
     )
     simulation.close()
+    return draft, journal, order, fill
+
+
+def _identity_bound_entry():
+    entry = decision()
+    draft = LiveTradeThesisDraftBuilder().build(entry, policy())
+    journal = InMemoryJournalRepository()
+    clock = FixedClock(draft.created_at.value + timedelta(seconds=1))
+    composition = RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        clock=clock,
+        local_paper_settings=LocalPaperSettings.v2_from_v1(
+            LocalPaperSettings.defaults()
+        ),
+        local_paper_session_id=draft.session_id,
+    )
+    try:
+        order, _idempotent = composition.local_paper_commands.submit_order(
+            symbol=draft.symbol,
+            side="BUY",
+            lots=1,
+            limit_price="1000",
+            idempotency_key=paper_thesis_entry_idempotency_key(draft),
+            holding_horizon="INTRADAY",
+        )
+        assert order["status"] == "FILLED"
+        fill = next(
+            result.record
+            for result in journal.records(draft.session_id)
+            if result.record.kind == LOCAL_PAPER_FILL_V4_KIND
+        )
+    finally:
+        composition.close()
     return draft, journal, order, fill
 
 
@@ -347,6 +384,41 @@ def test_fill_v2_remains_an_explicit_settings_bound_compatibility_reader() -> No
     assert activation == observed.activation
     assert activation.provenance.quantity_shares == 1_000
     assert activation.provenance.fill_records[0].fill_kind == LOCAL_PAPER_FILL_V2_KIND
+
+
+def test_fill_v4_preserves_v3_money_and_identity_for_read_only_shadow() -> None:
+    draft, journal, _order, fill = _identity_bound_entry()
+    before = journal.records(draft.session_id)
+
+    observed = ExistingPaperFillObserver().observe(draft, journal)
+
+    provenance = observed.activation.provenance
+    assert fill.kind == LOCAL_PAPER_FILL_V4_KIND
+    assert provenance.execution_authority is False
+    assert provenance.fill_records[0].fill_kind == LOCAL_PAPER_FILL_V4_KIND
+    assert provenance.quantity_shares == 1_000
+    assert fill.payload["fee_policy_version"] == "tw_stock_standard_v1"
+    assert fill.payload["tax"] == "0"
+    assert fill.payload["instrument_descriptor_digest"]
+    assert fill.payload["exposure_identity"]["holding_horizon"] == "INTRADAY"
+    assert journal.records(draft.session_id) == before
+
+
+def test_fill_v4_identity_tampering_fails_closed_in_shadow_reader() -> None:
+    draft, journal, _order, fill = _identity_bound_entry()
+    terminal = ExistingPaperFillObserver().observe(
+        draft,
+        journal,
+    ).activation.provenance.terminal_evidence
+    assert terminal is not None
+    tampered = _replace_payload(fill, target_exposure_id="wrong-exposure")
+
+    with pytest.raises(ProjectionRecoveryError, match="BUY fill cannot target exposure"):
+        PaperFillThesisBuilder().activate(
+            draft,
+            tampered,
+            terminal_evidence=terminal,
+        )
 
 
 def test_fill_v3_partial_fills_aggregate_vwap_quantity_and_identity() -> None:

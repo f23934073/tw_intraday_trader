@@ -224,12 +224,21 @@ def test_postgresql_restart_rotation_concurrency_and_failure_injection(
             local_paper_session_id="kill-switch-uat-session-rotated",
             local_paper_settings_revision=1,
             start_simulation_streaming=False,
+            no_overnight_config=process_c.no_overnight_controller.config,
+            equity_calendar=process_c.no_overnight_controller.calendar,
+            no_overnight_guard=process_c.no_overnight_guard,
+            local_paper_kill_switch=process_c.kill_switch,
+        )
+        process_c.prepare_local_paper_handoff_to(rotated)
+        process_c.execute_prepared_local_paper_handoff(
+            process_c.commit_local_paper_handoff
         )
         assert rotated.local_paper_commands.session_id == (
             "kill-switch-uat-session-rotated"
         )
         assert rotated.kill_switch.status()["control_state"] == "DISENGAGED"
         assert rotated.kill_switch.status()["revision"] == 4
+        assert rotated.kill_switch is process_c.kill_switch
 
         connection_c.close()
         with pytest.raises(
@@ -244,8 +253,8 @@ def test_postgresql_restart_rotation_concurrency_and_failure_injection(
         assert rotated.kill_switch.status()["control_state"] == "RECOVERY_REQUIRED"
     finally:
         if rotated is not None:
-            rotated.simulation_service.close()
-        process_c.simulation_service.close()
+            rotated.close()
+        process_c.close()
         if not connection_c.closed:
             connection_c.close()
 

@@ -186,7 +186,7 @@ def test_v2_session_pins_cost_policies_and_replays_fill_v3_exactly() -> None:
     )
     assert order["last_fill_commission_decimal"] == "151"
     assert any(
-        result.record.kind == "local_paper_fill.v3"
+        result.record.kind == "local_paper_fill.v4"
         for result in journal.records(session_id)
     )
 

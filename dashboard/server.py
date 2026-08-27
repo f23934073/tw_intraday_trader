@@ -14,6 +14,7 @@ from threading import RLock
 from typing import Annotated, Any, Iterator, Literal
 from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid4, uuid5
+from zoneinfo import ZoneInfo
 
 from fastapi import (
     FastAPI,
@@ -49,6 +50,7 @@ from config import backtest as backtest_settings
 from config import twse_calendar_2026
 from config.local_paper import LOCAL_PAPER_SETTINGS_PATH
 from config.momentum_stream import MOMENTUM_STREAM_CONFIG
+from config.no_overnight import NoOvernightMode
 from dashboard.momentum import (
     RealtimeMomentumDashboardService,
     UnavailableMomentumDashboardService,
@@ -63,6 +65,7 @@ from dashboard.service import DashboardService
 from market_data.equity_calendar import ReviewedEquityCalendar
 from market_data.provider import MarketDataProvider
 from runtime.composition import RuntimeComposition
+from runtime.no_overnight import NoOvernightBreachConflict
 from simulation.application import LocalPaperCommandService
 from simulation.atomic_runtime import resolve_atomic_paper_entry_set
 from simulation.continuous_strategy import (
@@ -280,6 +283,8 @@ class SimulationOrderRequest(BaseModel):
     lots: StrictPositiveInt | None = None
     limit_price: float
     idempotency_key: str
+    holding_horizon: str | None = None
+    target_exposure_id: str | None = None
 
 
 class SimulationCancelRequest(BaseModel):
@@ -375,6 +380,12 @@ class BacktestRunRequest(BaseModel):
 
 class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class NoOvernightBreachAcknowledgeRequest(StrictRequest):
+    breach_revision: Annotated[int, Field(strict=True, gt=0)]
+    reconciliation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    actor_id: str = Field(min_length=1, max_length=200, pattern=r".*\S.*")
 
 
 class BacktestRetryRequest(StrictRequest):
@@ -645,6 +656,10 @@ def get_automated_strategy_controller() -> ContinuousPaperStrategyController:
                     )
                 ),
                 kill_switch=composition.kill_switch,
+                central_no_overnight_exit_owned=(
+                    composition.no_overnight_controller.config.mode
+                    is NoOvernightMode.ENFORCING
+                ),
             )
         return _automated_strategy_controller
 
@@ -891,8 +906,14 @@ def _record_catalog_mutation_failure(
 def _dashboard_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
     """避免改寫 DashboardService 快取，附加本機模擬投影。"""
     with runtime_composition_lease():
-        projection = get_simulation_service().projection()
-    return {**snapshot, "simulation": projection}
+        composition = get_runtime_composition()
+        projection = composition.simulation_service.projection()
+        no_overnight = composition.no_overnight_controller.status()
+    return {
+        **snapshot,
+        "simulation": projection,
+        "no_overnight": no_overnight,
+    }
 
 
 @app.get("/", include_in_schema=False)
@@ -916,8 +937,7 @@ def refresh_dashboard_snapshot() -> dict[str, Any]:
     with runtime_composition_lease():
         simulation = get_simulation_service()
         simulation.refresh_quotes()
-        projection = simulation.projection()
-    return {**snapshot, "simulation": projection}
+    return _dashboard_payload(snapshot)
 
 
 @app.get("/api/dashboard/candidates/{symbol}/history")
@@ -1125,6 +1145,14 @@ def local_paper_settings() -> dict[str, Any]:
         )
 
 
+@app.get("/api/simulation/no-overnight")
+def no_overnight_status() -> dict[str, object]:
+    """Read the durable close-risk projection without running controller actions."""
+
+    with runtime_composition_lease():
+        return get_runtime_composition().no_overnight_controller.status()
+
+
 @app.put("/api/simulation/settings")
 def update_local_paper_settings(
     payload: LocalPaperSettingsUpdateRequest,
@@ -1178,6 +1206,10 @@ def _replacement_composition(
         local_paper_settings_revision=settings_revision,
         local_paper_session_id=session_id,
         start_simulation_streaming=False,
+        no_overnight_config=current.no_overnight_controller.config,
+        equity_calendar=current.no_overnight_controller.calendar,
+        no_overnight_guard=current.no_overnight_guard,
+        local_paper_kill_switch=current.kill_switch,
     )
 
 
@@ -1201,6 +1233,17 @@ def apply_local_paper_settings(
                 detail="請先儲存 Local Paper v2 設定草稿",
             )
         current = get_runtime_composition()
+        if (
+            current.no_overnight_controller.config.mode
+            is not NoOvernightMode.DISABLED
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "No-Overnight 啟用期間禁止切換 Local Paper 設定；"
+                    "必須先完成另行覆核的安全 handoff"
+                ),
+            )
         if (
             _automated_strategy_controller is not None
             and _automated_strategy_controller.status().get("state") == "RUNNING"
@@ -1226,6 +1269,8 @@ def apply_local_paper_settings(
         )
         old_stream_suspended = False
         replacement_stream_activated = False
+        handoff_prepared = False
+        handoff_committed = False
         try:
             replacement = _replacement_composition(
                 current,
@@ -1236,25 +1281,39 @@ def apply_local_paper_settings(
             if old_stream_was_active:
                 old_stream_suspended = True
                 current.simulation_service.suspend_streaming()
+            current.prepare_local_paper_handoff_to(replacement)
+            handoff_prepared = True
             replacement.simulation_service.activate_streaming()
             replacement_stream_activated = True
-            activated = repository.activate_draft(
-                expected_revision=state.revision,
-                updated_at=current.clock.now(),
-                session_id=next_session_id,
-            )
-            current.journal.append(
-                session_archive_record(
-                    session_id=state.active_session_id,
-                    replacement_session_id=next_session_id,
-                    replacement_settings_digest=state.draft.digest,
-                    active_order_count=len(active_orders),
-                    position_count=len(positions),
-                    occurred_at=current.clock.now(),
+
+            def activate_and_archive() -> None:
+                nonlocal activated
+                activated = repository.activate_draft(
+                    expected_revision=state.revision,
+                    updated_at=current.clock.now(),
+                    session_id=next_session_id,
                 )
-            )
+                current.journal.append(
+                    session_archive_record(
+                        session_id=state.active_session_id,
+                        replacement_session_id=next_session_id,
+                        replacement_settings_digest=state.draft.digest,
+                        active_order_count=len(active_orders),
+                        position_count=len(positions),
+                        occurred_at=current.clock.now(),
+                    )
+                )
+                current.commit_local_paper_handoff()
+
+            current.execute_prepared_local_paper_handoff(activate_and_archive)
+            handoff_committed = True
         except Exception as error:
             rollback_error: Exception | None = None
+            if handoff_prepared and not handoff_committed:
+                try:
+                    current.rollback_local_paper_handoff()
+                except Exception as handoff_error:
+                    rollback_error = handoff_error
             if replacement is not None and replacement_stream_activated:
                 try:
                     replacement.simulation_service.suspend_streaming()
@@ -1300,6 +1359,44 @@ def apply_local_paper_settings(
         if callable(close_simulation):
             close_simulation()
         return _local_paper_settings_payload(activated)
+
+
+@app.post("/api/simulation/no-overnight/breaches/{breach_id}/acknowledge")
+def acknowledge_no_overnight_breach(
+    breach_id: str,
+    payload: NoOvernightBreachAcknowledgeRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_strategy_csrf: str | None = Header(default=None, alias="X-Strategy-CSRF"),
+) -> dict[str, object]:
+    """Acknowledge only the latest resolved durable breach revision."""
+
+    _require_atomic_mutation(request, x_strategy_csrf)
+    key = _atomic_idempotency_key(idempotency_key)
+    with runtime_composition_lease():
+        composition = get_runtime_composition()
+        controller = composition.no_overnight_controller
+        try:
+            breach = controller.acknowledge_breach(
+                breach_id=breach_id,
+                breach_revision=payload.breach_revision,
+                reconciliation_digest=payload.reconciliation_digest,
+                actor_id=payload.actor_id,
+                idempotency_key=key,
+                acknowledged_at=composition.clock.now().astimezone(
+                    ZoneInfo(controller.config.timezone)
+                ),
+            )
+        except NoOvernightBreachConflict as error:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": error.code, "message": str(error)},
+            ) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"breach": breach}
 
 
 @app.get("/healthz")
@@ -1419,6 +1516,14 @@ def simulation_positions() -> dict[str, Any]:
         return {"positions": get_simulation_service().positions()}
 
 
+@app.get("/api/simulation/exposures")
+def simulation_exposures() -> dict[str, Any]:
+    """Read exact identities used by targeted Local Paper SELL commands."""
+
+    with runtime_composition_lease():
+        return {"exposures": get_simulation_service().exposures()}
+
+
 @app.post("/api/simulation/orders", status_code=status.HTTP_201_CREATED)
 def submit_simulation_order(
     request: SimulationOrderRequest,
@@ -1427,13 +1532,26 @@ def submit_simulation_order(
     """送出本機紙上模擬委託；絕不呼叫 Shioaji 下單 API。"""
     try:
         with runtime_composition_lease():
-            order, idempotent = get_local_paper_command_service().submit_order(
+            composition = get_runtime_composition()
+            if (
+                composition.no_overnight_controller.config.mode
+                is NoOvernightMode.ENFORCING
+                and request.side.strip().upper() == "BUY"
+                and request.holding_horizon is None
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="ENFORCING BUY 必須明確指定 holding_horizon",
+                )
+            order, idempotent = composition.local_paper_commands.submit_order(
                 symbol=request.symbol,
                 side=request.side,
                 quantity_shares=request.quantity_shares,
                 lots=request.lots,
                 limit_price=request.limit_price,
                 idempotency_key=request.idempotency_key,
+                holding_horizon=request.holding_horizon,
+                target_exposure_id=request.target_exposure_id,
             )
     except SimulationValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

@@ -31,7 +31,9 @@ from trading.local_paper import (
     LOCAL_PAPER_FILL_KIND,
     LOCAL_PAPER_FILL_V2_KIND,
     LOCAL_PAPER_FILL_V3_KIND,
+    LOCAL_PAPER_FILL_V4_KIND,
     LOCAL_PAPER_ORDER_STATE_KIND,
+    LOCAL_PAPER_ORDER_STATE_V2_KIND,
     LocalPaperSide,
     latest_local_paper_order_states,
 )
@@ -158,6 +160,7 @@ class ExistingPaperFillObserver:
                 LOCAL_PAPER_FILL_KIND,
                 LOCAL_PAPER_FILL_V2_KIND,
                 LOCAL_PAPER_FILL_V3_KIND,
+                LOCAL_PAPER_FILL_V4_KIND,
             }
             and result.record.payload.get("command_idempotency_key")
             == correlation_key
@@ -287,7 +290,11 @@ class ExistingPaperFillObserver:
             (
                 result
                 for result in reversed(snapshot)
-                if result.record.kind == LOCAL_PAPER_ORDER_STATE_KIND
+                if result.record.kind
+                in {
+                    LOCAL_PAPER_ORDER_STATE_KIND,
+                    LOCAL_PAPER_ORDER_STATE_V2_KIND,
+                }
                 and result.record.payload.get("order_id") == order_id
             ),
             None,

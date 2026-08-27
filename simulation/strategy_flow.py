@@ -229,75 +229,78 @@ class StrategyPaperFlowService:
     ) -> Mapping[str, Any]:
         """Journal one exact-set activation before installing its Risk Policy."""
 
-        self._commands.assert_mutation_allowed()
-        policy, risk_evidence = self._commands.prepare_strategy_risk_policy(
-            owner_strategy_id=owner_strategy_id,
-            operator_max_daily_loss=operator_max_daily_loss,
-        )
-        if (
-            expected_policy_digest is not None
-            and risk_evidence["effective_policy_digest"] != expected_policy_digest
-        ):
-            raise SimulationStateError(
-                "Effective Hard Risk preview 與 activation commit 不一致"
-            )
-        payload = {
-            "contract_version": "strategy-runtime-activation-v1",
-            "owner_strategy_id": owner_strategy_id,
-            "actor_id": actor_id,
-            "idempotency_key": idempotency_key,
-            "activation_config": dict(activation_config),
-            "effective_risk": dict(risk_evidence),
-        }
-        record = JournalRecord(
-            record_id=(
-                f"strategy-runtime-activation:{owner_strategy_id}:"
-                f"{idempotency_key}"
-            ),
-            session_id=self._session_id,
-            kind="strategy_runtime_activation.v1",
-            occurred_at=occurred_at,
-            payload=payload,
-            idempotency_scope=(
-                f"{self._session_id}:strategy-runtime-activation:"
-                f"{owner_strategy_id}"
-            ),
-            idempotency_key=idempotency_key,
-        )
-        try:
-            existing = self._activation_record(
+        def activate_admitted() -> Mapping[str, Any]:
+            policy, risk_evidence = self._commands.prepare_strategy_risk_policy(
                 owner_strategy_id=owner_strategy_id,
-                idempotency_key=idempotency_key,
+                operator_max_daily_loss=operator_max_daily_loss,
             )
-            appended = (
-                self._activation_replay(existing, record)
-                if existing is not None
-                else self._journal.append(record)
-            )
-        except JournalConflictError as error:
-            existing = self._activation_record(
-                owner_strategy_id=owner_strategy_id,
+            if (
+                expected_policy_digest is not None
+                and risk_evidence["effective_policy_digest"]
+                != expected_policy_digest
+            ):
+                raise SimulationStateError(
+                    "Effective Hard Risk preview 與 activation commit 不一致"
+                )
+            payload = {
+                "contract_version": "strategy-runtime-activation-v1",
+                "owner_strategy_id": owner_strategy_id,
+                "actor_id": actor_id,
+                "idempotency_key": idempotency_key,
+                "activation_config": dict(activation_config),
+                "effective_risk": dict(risk_evidence),
+            }
+            record = JournalRecord(
+                record_id=(
+                    f"strategy-runtime-activation:{owner_strategy_id}:"
+                    f"{idempotency_key}"
+                ),
+                session_id=self._session_id,
+                kind="strategy_runtime_activation.v1",
+                occurred_at=occurred_at,
+                payload=payload,
+                idempotency_scope=(
+                    f"{self._session_id}:strategy-runtime-activation:"
+                    f"{owner_strategy_id}"
+                ),
                 idempotency_key=idempotency_key,
             )
             try:
-                if existing is None:
-                    raise error
-                appended = self._activation_replay(existing, record)
-            except JournalConflictError as replay_error:
-                raise SimulationStateError(
-                    "Local Paper activation 內容與既有紀錄衝突"
-                ) from replay_error
-        self._commands.activate_strategy_risk_policy(
-            owner_strategy_id=owner_strategy_id,
-            policy=policy,
-        )
-        return {
-            **risk_evidence,
-            "actor_id": actor_id,
-            "activation_idempotency_key": idempotency_key,
-            "activation_sequence": appended.sequence,
-            "activation_idempotent": appended.idempotent,
-        }
+                existing = self._activation_record(
+                    owner_strategy_id=owner_strategy_id,
+                    idempotency_key=idempotency_key,
+                )
+                appended = (
+                    self._activation_replay(existing, record)
+                    if existing is not None
+                    else self._journal.append(record)
+                )
+            except JournalConflictError as error:
+                existing = self._activation_record(
+                    owner_strategy_id=owner_strategy_id,
+                    idempotency_key=idempotency_key,
+                )
+                try:
+                    if existing is None:
+                        raise error
+                    appended = self._activation_replay(existing, record)
+                except JournalConflictError as replay_error:
+                    raise SimulationStateError(
+                        "Local Paper activation 內容與既有紀錄衝突"
+                    ) from replay_error
+            self._commands.activate_strategy_risk_policy(
+                owner_strategy_id=owner_strategy_id,
+                policy=policy,
+            )
+            return {
+                **risk_evidence,
+                "actor_id": actor_id,
+                "activation_idempotency_key": idempotency_key,
+                "activation_sequence": appended.sequence,
+                "activation_idempotent": appended.idempotent,
+            }
+
+        return self._commands.admit_automated_intent(activate_admitted)
 
     def preview_run_activation(
         self,
@@ -395,19 +398,24 @@ class StrategyPaperFlowService:
     def checkpoint(self, payload: Mapping[str, Any], *, occurred_at: datetime) -> None:
         """Persist a content-addressed controller checkpoint in the same Journal."""
 
-        canonical = dict(payload)
-        digest = canonical_digest(canonical)
-        self._journal.append(
-            JournalRecord(
-                record_id=f"strategy-runtime-checkpoint:{digest}",
-                session_id=self._session_id,
-                kind=STRATEGY_RUNTIME_CHECKPOINT_KIND,
-                occurred_at=occurred_at,
-                payload={**canonical, "checkpoint_digest": digest},
-                idempotency_scope=f"{self._session_id}:strategy-runtime-checkpoint",
-                idempotency_key=digest,
+        def checkpoint_admitted() -> None:
+            canonical = dict(payload)
+            digest = canonical_digest(canonical)
+            self._journal.append(
+                JournalRecord(
+                    record_id=f"strategy-runtime-checkpoint:{digest}",
+                    session_id=self._session_id,
+                    kind=STRATEGY_RUNTIME_CHECKPOINT_KIND,
+                    occurred_at=occurred_at,
+                    payload={**canonical, "checkpoint_digest": digest},
+                    idempotency_scope=(
+                        f"{self._session_id}:strategy-runtime-checkpoint"
+                    ),
+                    idempotency_key=digest,
+                )
             )
-        )
+
+        self._commands.admit_automated_intent(checkpoint_admitted)
 
     def latest_checkpoint(
         self,

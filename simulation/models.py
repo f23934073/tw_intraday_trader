@@ -8,6 +8,11 @@ from decimal import Decimal
 from enum import StrEnum
 
 from market_data.models import LocalPaperInstrumentDescriptorV1
+from trading.exposure import (
+    ExecutionReasonCategory,
+    ExposureIdentity,
+    PositionAction,
+)
 from trading.trade_management import OrderLifecycleState
 
 
@@ -66,6 +71,11 @@ class SimulationOrder:
     predecessor_order_id: str | None = None
     timeout_at: datetime | None = None
     expires_at: datetime | None = None
+    exposure: ExposureIdentity | None = None
+    position_action: PositionAction | None = None
+    target_exposure_id: str | None = None
+    execution_reason_category: ExecutionReasonCategory | None = None
+    execution_reason_code: str | None = None
 
     @property
     def quantity(self) -> int:
@@ -96,3 +106,4 @@ class SimulationPosition:
     commission_cost: Decimal = Decimal("0")
     owner_strategy_id: str | None = None
     owner_strategy_version: str | None = None
+    exposure: ExposureIdentity | None = None

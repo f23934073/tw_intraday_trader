@@ -297,7 +297,7 @@ const momentum = createMomentumWorkspace({ state, services, escapeHtml, formatNu
 const backtest = createBacktestWorkspace({ state, escapeHtml, formatNumber, newIdempotencyKey, setWorkspace });
 Object.assign(services, candidates, simulation, momentum, backtest);
 const { getVisibleCandidates, renderCandidates, selectCandidate, renderCandidateDetail, loadSelectedHistory } = candidates;
-const { renderSimulation, renderPositions, renderOrders, renderDataHealth, openOrderTicket, setOrdersDrawer, setPositionsDrawer, setSimulationSettingsDrawer, loadSimulationProjection, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, cancelSimulationOrder } = simulation;
+const { renderSimulation, renderNoOvernight, renderPositions, renderOrders, renderDataHealth, openOrderTicket, setOrdersDrawer, setPositionsDrawer, setSimulationSettingsDrawer, loadSimulationProjection, loadAutomatedStrategyStatus, pollSimulationProjection, pollAutomatedStrategyStatus, bootstrapSimulationStream, submitSimulationOrder, cancelSimulationOrder } = simulation;
 const { renderMomentum, syncMomentumDialog, openMomentumDialog, closeMomentumDialog, openOrderTicketFromMomentum, bootstrapMomentumStream, checkMomentumHeartbeat, pollMomentumProjection } = momentum;
 const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, refreshBacktestWorkspace, cloneBacktestRun, compareBacktestRuns, pollBacktestWorkspace } = backtest;
 
@@ -362,6 +362,7 @@ const { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, ref
         renderStatus(snapshot);
         renderPremarketContext(snapshot.premarket_context);
         renderSimulation(simulation);
+        renderNoOvernight(snapshot.no_overnight);
         renderCandidates(candidates);
         renderCandidateDetail(candidates.find((candidate) => candidate.symbol === state.selectedSymbol));
         renderPositions(simulation.positions);

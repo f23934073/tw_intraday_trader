@@ -121,6 +121,22 @@ class DurableLocalPaperKillSwitch:
                 return KillSwitchControlState.RECOVERY_REQUIRED
             return self._projection.control_state
 
+    def is_bound_to(
+        self,
+        *,
+        journal: JournalRepository,
+        clock: Clock,
+        durability: KillSwitchDurability,
+    ) -> bool:
+        """Validate an in-process handoff without exposing mutable internals."""
+
+        with self._lock:
+            return (
+                self._journal is journal
+                and self._clock is clock
+                and self._durability is durability
+            )
+
     def engage(
         self,
         *,

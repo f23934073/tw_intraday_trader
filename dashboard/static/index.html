@@ -83,6 +83,16 @@
             <article class="summary-card"><div class="summary-card-label">可觀察候選</div><div class="summary-card-value" id="overview-candidate-count">—</div><div class="summary-card-note">分數大於 0 的標的</div></article>
             <article class="summary-card"><div class="summary-card-label">待處理委託</div><div class="summary-card-value" id="overview-order-count">—</div><div class="summary-card-note">待撮合或部分成交</div></article>
             <article class="summary-card"><div class="summary-card-label">已成交持倉</div><div class="summary-card-value" id="overview-position-count">—</div><div class="summary-card-note">由本機成交推導</div></article>
+            <article class="summary-card no-overnight-card" role="status" aria-live="polite" aria-atomic="true">
+              <div class="summary-card-label">收盤風控</div>
+              <div class="summary-card-value waiting" id="overview-no-overnight-state">讀取中</div>
+              <div class="summary-card-note" id="overview-no-overnight-note">尚未確認是否執行</div>
+              <div class="no-overnight-breach" id="overview-no-overnight-breach" hidden>
+                <p class="no-overnight-breach-meta" id="overview-no-overnight-breach-meta"></p>
+                <button class="no-overnight-breach-ack" id="overview-no-overnight-ack" type="button" aria-describedby="overview-no-overnight-breach-meta">確認最新已解決 breach</button>
+                <p class="no-overnight-breach-error" id="overview-no-overnight-breach-error" role="alert" hidden></p>
+              </div>
+            </article>
             <article class="summary-card data-status-card"><div class="summary-card-label">資料狀態</div><div class="summary-card-value waiting" id="overview-data-status">讀取中</div><div class="summary-card-note" id="overview-data-note">等待最新掃描</div><button class="refresh-button" id="refresh-button" type="button">重新掃描</button></article>
           </section>
 

@@ -1,6 +1,6 @@
 import os
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -116,6 +116,55 @@ def test_postgres_restart_rejects_payload_tampered_without_fingerprint(journal) 
 
     with pytest.raises(JournalConflictError, match="stored fingerprint"):
         journal.records("postgres-20260818")
+
+
+def test_atomic_open_retry_preserves_timestamp_identity_across_connection_timezone(
+    journal,
+) -> None:
+    with journal._transaction() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SET TIME ZONE 'Asia/Taipei'")
+    requested_at = datetime.fromisoformat("2026-08-27T08:45:00+08:00")
+    session = JournalSession(
+        session_id="postgres-atomic-offset-retry",
+        started_at=requested_at,
+        mode="NO_OVERNIGHT_EVIDENCE_WINDOW",
+        metadata={"activation_authority": "NONE_EVIDENCE_ONLY"},
+    )
+    atomic_record = JournalRecord(
+        record_id="postgres-atomic-offset-open",
+        session_id=session.session_id,
+        kind="no_overnight_evidence_window_opened.v1",
+        occurred_at=requested_at,
+        payload={"stage": "DISABLED_BASELINE"},
+        idempotency_scope="postgres-atomic-offset-open",
+        idempotency_key="2026-08-27",
+    )
+    cutoff = datetime.now(timezone.utc) + timedelta(minutes=1)
+    first = journal.start_session_and_append_before(
+        session,
+        atomic_record,
+        latest_allowed_at=cutoff,
+    )
+
+    reconnect = psycopg.connect(TEST_POSTGRES_DSN)
+    try:
+        with reconnect.cursor() as cursor:
+            cursor.execute("SET TIME ZONE 'UTC'")
+        reconnect.commit()
+        retried = PostgresJournalRepository(
+            reconnect
+        ).start_session_and_append_before(
+            session,
+            atomic_record,
+            latest_allowed_at=cutoff,
+        )
+    finally:
+        reconnect.close()
+
+    assert retried.idempotent is True
+    assert retried.sequence == first.sequence
+    assert retried.record.occurred_at.isoformat() == first.record.occurred_at.isoformat()
 
 
 def test_migration_moves_legacy_public_journal_into_trading_schema() -> None:

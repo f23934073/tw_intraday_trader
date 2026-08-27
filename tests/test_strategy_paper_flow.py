@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from threading import Event, Thread
 from time import monotonic, sleep
+from typing import Mapping
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -570,7 +571,7 @@ def test_later_fill_append_failure_blocks_next_intent_before_journal() -> None:
     simulation.close()
 
 
-def test_cross_owner_pending_buy_is_rejected_before_reservation() -> None:
+def test_cross_owner_pending_buys_reserve_independent_exposures() -> None:
     provider = StreamingMockProvider()
     flow, simulation, _ = paper_flow(
         starting_cash=Decimal("500000"),
@@ -588,14 +589,14 @@ def test_cross_owner_pending_buy_is_rejected_before_reservation() -> None:
     )
 
     assert automated["status"] == "PENDING"
-    assert manual["status"] == "REJECTED"
-    assert "不同歸屬" in manual["reason"]
-    assert simulation.risk_snapshot("3231")["pending_buy_shares"] == 1_000
+    assert manual["status"] == "PENDING"
+    assert simulation.risk_snapshot("3231")["pending_buy_shares"] == 2_000
 
     provider.emit_bidask(bid=105.4, ask=105.6)
     wait_until(lambda: simulation.positions())
-    assert simulation.positions()[0]["quantity"] == 1_000
-    assert simulation.positions()[0]["owner_origin"] == "STRATEGY_AUTOMATED"
+    assert simulation.positions()[0]["quantity"] == 2_000
+    assert simulation.positions()[0]["owner_origin"] == "MIXED"
+    assert len(simulation.exposures()) == 2
     simulation.close()
 
 
@@ -646,7 +647,7 @@ def test_fill_time_rejects_legacy_cross_owner_pending_collision() -> None:
     rejected = next(
         item for item in simulation.orders() if item["status"] == "REJECTED"
     )
-    assert "成交時持倉歸屬衝突" in rejected["reason"]
+    assert "exposure owner 衝突" in rejected["reason"]
     simulation.close()
 
 
@@ -740,6 +741,91 @@ def test_activation_preview_digest_conflict_has_no_policy_or_journal_side_effect
         item.record.kind != "strategy_runtime_activation.v1"
         for item in journal.records(_SESSION_ID)
     )
+    simulation.close()
+
+
+def test_runtime_handoff_waits_for_complete_strategy_activation() -> None:
+    journal = BlockingJournal("strategy_runtime_activation.v1")
+    flow, simulation, _ = _controlled_flow(journal=journal)
+    activated: list[Mapping[str, object]] = []
+    activation_errors: list[Exception] = []
+    handoff_prepared = Event()
+
+    def activate() -> None:
+        try:
+            activated.append(
+                flow.activate_run(
+                    owner_strategy_id="atomic-set:paper-v1",
+                    operator_max_daily_loss=Decimal("1000"),
+                    activation_config={"pipeline_digest": "p" * 64},
+                    actor_id="local-operator",
+                    idempotency_key="activation-before-runtime-handoff",
+                    occurred_at=_NOW,
+                )
+            )
+        except Exception as error:
+            activation_errors.append(error)
+
+    def prepare_handoff() -> None:
+        flow._commands.prepare_runtime_handoff()
+        handoff_prepared.set()
+
+    activation_thread = Thread(target=activate)
+    activation_thread.start()
+    assert journal.entered.wait(timeout=1)
+    handoff_thread = Thread(target=prepare_handoff)
+    handoff_thread.start()
+    sleep(0.02)
+
+    assert handoff_thread.is_alive()
+    assert handoff_prepared.is_set() is False
+    assert journal.records(_SESSION_ID) == ()
+
+    journal.release.set()
+    activation_thread.join(timeout=2)
+    handoff_thread.join(timeout=2)
+
+    assert not activation_thread.is_alive()
+    assert not handoff_thread.is_alive()
+    assert activation_errors == []
+    assert activated[0]["activation_idempotent"] is False
+    assert handoff_prepared.is_set() is True
+    records = journal.records(_SESSION_ID)
+    assert [item.record.kind for item in records] == [
+        "strategy_runtime_activation.v1"
+    ]
+    assert flow._commands.strategy_risk_policy(
+        owner_strategy_id="atomic-set:paper-v1"
+    ) is not None
+    with pytest.raises(SimulationStateError, match="RUNTIME_HANDOFF"):
+        flow.activate_run(
+            owner_strategy_id="atomic-set:paper-v1",
+            operator_max_daily_loss=Decimal("1000"),
+            activation_config={"pipeline_digest": "p" * 64},
+            actor_id="local-operator",
+            idempotency_key="activation-during-runtime-handoff",
+            occurred_at=_NOW,
+        )
+    assert journal.records(_SESSION_ID) == records
+    flow._commands.rollback_runtime_handoff()
+    simulation.close()
+
+
+def test_revoked_runtime_blocks_stale_strategy_checkpoint_before_journal() -> None:
+    flow, simulation, journal = paper_flow()
+    before = journal.records(_SESSION_ID)
+    flow._commands.finalize_runtime_handoff()
+
+    with pytest.raises(SimulationStateError, match="RUNTIME_REPLACED"):
+        flow.checkpoint(
+            {
+                "owner_strategy_id": "atomic-set:paper-v1",
+                "pipeline_digest": "p" * 64,
+            },
+            occurred_at=_NOW,
+        )
+
+    assert journal.records(_SESSION_ID) == before
     simulation.close()
 
 

@@ -84,4 +84,7 @@ jobs:
           tests/test_postgres_journal.py
           tests/test_kill_switch_postgres.py
           tests/test_local_paper_postgres.py
+          tests/test_no_overnight_postgres_guard_uat.py
+          tests/test_no_overnight_postgres_runtime_uat.py
+          tests/test_phase5_paper_sell_postgres_uat.py
           -q

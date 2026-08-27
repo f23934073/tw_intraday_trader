@@ -637,6 +637,45 @@ def test_open_position_exits_at_fresh_best_bid(
     assert intent.limit_price == Decimal("174.5")
 
 
+def test_end_of_session_exit_is_delegated_to_central_controller() -> None:
+    clock = MutableClock(datetime.fromisoformat("2026-08-21T13:25:00+08:00"))
+    projection = ProjectionReader(
+        {
+            **empty_projection(),
+            "positions": [
+                {
+                    "symbol": "3231",
+                    "quantity": 1_000,
+                    "average_price": 177.5,
+                    "current_price": 177.5,
+                    "unrealized_pnl_pct": 0,
+                    "bid_price": 177.4,
+                    "owner_origin": "STRATEGY_AUTOMATED",
+                    "owner_strategy_id": "momentum_acceleration_local_paper",
+                    "book_received_at": clock.now().isoformat(),
+                }
+            ],
+        }
+    )
+    flow = FakeFlow(order_status="PENDING")
+    instance = ContinuousPaperStrategyController(
+        flow=flow,
+        projection_reader=projection,
+        signal_reader=lambda: live_signal(at=clock.now()),
+        calendar=ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH),
+        clock=clock,
+        kill_switch=durable_kill_switch(clock),
+        central_no_overnight_exit_owned=True,
+    )
+    instance.start(config(), background=False)
+
+    status = instance.run_once()
+
+    assert status["decision"] == "CENTRAL_FLATTEN_DELEGATED"
+    assert flow.intents == []
+    assert flow.retries == []
+
+
 def test_manual_position_is_not_owned_by_automated_strategy() -> None:
     projection = ProjectionReader(
         {

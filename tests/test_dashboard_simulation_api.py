@@ -13,13 +13,19 @@ from fastapi import Request, Response
 from fastapi.testclient import TestClient
 
 import dashboard.server as server
+from config.no_overnight import NoOvernightMode
 from dashboard.service import DashboardService
 from market_data.models import RealtimeQuoteUpdate
 from market_data.provider import MarketDataUsage, MockProvider
 from runtime.composition import RuntimeComposition
 from runtime.in_memory import InMemoryJournalRepository
 from simulation.continuous_strategy import AutomatedStrategyConfig
-from simulation.settings import JsonLocalPaperSettingsRepository
+from simulation.kill_switch import (
+    KillSwitchAdmissionBlocked,
+    KillSwitchStateConflict,
+)
+from simulation.service import SimulationStateError
+from simulation.settings import JsonLocalPaperSettingsRepository, LocalPaperSettings
 
 
 class FixedClock:
@@ -197,6 +203,22 @@ def test_dashboard_snapshot_contains_session_local_simulation_projection(monkeyp
     assert snapshot["simulation"]["session"]["mode"] == "LOCAL_PAPER_SIMULATION"
     assert snapshot["simulation"]["orders"] == []
     assert snapshot["simulation"]["positions"] == []
+    assert snapshot["no_overnight"]["mode"] == "DISABLED"
+    assert snapshot["no_overnight"]["enforcing"] is False
+
+
+def test_no_overnight_status_route_is_explicitly_non_enforcing(monkeypatch) -> None:
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", MockProvider())
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+
+    payload = server.no_overnight_status()
+
+    assert payload["mode"] == "DISABLED"
+    assert payload["state"] == "DISABLED"
+    assert payload["enforcing"] is False
+    assert "不會阻擋或送出委託" in str(payload["message"])
 
 
 def test_provider_usage_route_exposes_exhausted_allowance(monkeypatch) -> None:
@@ -231,6 +253,75 @@ def test_submit_simulation_order_route_returns_local_filled_order(monkeypatch):
     assert payload["idempotent"] is False
     assert payload["order"]["status"] == "FILLED"
     assert server.simulation_positions()["positions"][0]["symbol"] == "3231"
+
+
+def test_enforcing_route_requires_explicit_buy_horizon(monkeypatch) -> None:
+    controller = SimpleNamespace(config=SimpleNamespace(mode=NoOvernightMode.ENFORCING))
+    monkeypatch.setattr(
+        server,
+        "get_runtime_composition",
+        lambda: SimpleNamespace(no_overnight_controller=controller),
+    )
+
+    with pytest.raises(server.HTTPException, match="holding_horizon") as error:
+        server.submit_simulation_order(
+            server.SimulationOrderRequest(
+                symbol="3231",
+                side="BUY",
+                lots=1,
+                limit_price=106.0,
+                idempotency_key="enforcing-missing-horizon",
+            ),
+            Response(),
+        )
+
+    assert error.value.status_code == 422
+
+
+def test_manual_route_accepts_horizon_and_exact_sell_target(monkeypatch) -> None:
+    composition = RuntimeComposition.create(
+        MockProvider(),
+        local_paper_settings=LocalPaperSettings.v2_from_v1(
+            LocalPaperSettings.defaults()
+        ),
+        local_paper_session_id="dashboard-v2-exposure-route",
+    )
+    monkeypatch.setattr(server, "get_runtime_composition", lambda: composition)
+
+    try:
+        bought = server.submit_simulation_order(
+            server.SimulationOrderRequest(
+                symbol="3231",
+                side="BUY",
+                lots=1,
+                limit_price=106.0,
+                idempotency_key="route-long-buy",
+                holding_horizon="LONG_TERM",
+            ),
+            Response(),
+        )["order"]
+        exposure_id = bought["exposure_identity"]["exposure_id"]
+
+        assert bought["exposure_identity"]["holding_horizon"] == "LONG_TERM"
+        assert server.simulation_exposures()["exposures"][0]["exposure_id"] == exposure_id
+
+        sold = server.submit_simulation_order(
+            server.SimulationOrderRequest(
+                symbol="3231",
+                side="SELL",
+                lots=1,
+                limit_price=100.0,
+                idempotency_key="route-long-sell",
+                target_exposure_id=exposure_id,
+            ),
+            Response(),
+        )["order"]
+
+        assert sold["status"] == "FILLED"
+        assert sold["target_exposure_id"] == exposure_id
+        assert server.simulation_exposures()["exposures"] == []
+    finally:
+        composition.close()
 
 
 def test_settings_page_api_persists_draft_and_applies_new_local_session(
@@ -303,6 +394,71 @@ def test_settings_page_api_persists_draft_and_applies_new_local_session(
     assert "local_paper_session_archive.v1" in old_record_kinds
     assert provider.start_calls == 2
     assert after_apply["streaming"] is True
+
+
+def test_settings_apply_rejects_active_no_overnight_without_replacement(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    repository = JsonLocalPaperSettingsRepository(tmp_path / "settings.json")
+    monkeypatch.setattr(server, "_composition", None)
+    monkeypatch.setattr(server, "_provider", MockProvider())
+    monkeypatch.setattr(server, "_service", None)
+    monkeypatch.setattr(server, "_simulation_service", None)
+    monkeypatch.setattr(server, "_automated_strategy_controller", None)
+    monkeypatch.setattr(server, "_local_paper_settings_repository", repository)
+    monkeypatch.setattr(
+        server.backtest_settings,
+        "BACKTEST_INCREMENTAL_SYNC_ENABLED",
+        False,
+    )
+    replacement_calls = 0
+
+    def replacement_probe(*_args, **_kwargs):
+        nonlocal replacement_calls
+        replacement_calls += 1
+        raise AssertionError("active No-Overnight must block replacement")
+
+    monkeypatch.setattr(server, "_replacement_composition", replacement_probe)
+
+    with TestClient(server.app) as client:
+        initial = client.get("/api/simulation/settings").json()
+        drafted = client.put(
+            "/api/simulation/settings",
+            headers={"X-Strategy-CSRF": initial["csrf_token"]},
+            json={
+                "revision": initial["revision"],
+                "starting_cash_twd": "12000000",
+                "max_daily_buy_notional_twd": "2500000",
+                "slippage_bps": "5",
+            },
+        ).json()
+        current = server.get_runtime_composition()
+        current.no_overnight_controller._config = SimpleNamespace(
+            mode=NoOvernightMode.ENFORCING
+        )
+        current.no_overnight_controller._status = {
+            **current.no_overnight_controller.status(),
+            "mode": "ENFORCING",
+            "enforcing": True,
+            "state": "OVERNIGHT_BREACH",
+            "breach": {"open": True, "breach_id": "settings-apply-breach"},
+        }
+        before_state = repository.load()
+        before_records = current.journal.records(before_state.active_session_id)
+
+        response = client.post(
+            "/api/simulation/settings/apply",
+            headers={"X-Strategy-CSRF": initial["csrf_token"]},
+            json={"revision": drafted["revision"], "confirm_reset": True},
+        )
+
+        assert response.status_code == 409
+        assert "No-Overnight" in response.json()["detail"]
+        assert replacement_calls == 0
+        assert server.get_runtime_composition() is current
+        assert repository.load() == before_state
+        assert current.journal.records(before_state.active_session_id) == before_records
 
 
 def test_settings_v2_preview_is_read_only_and_updates_are_revisioned(
@@ -484,6 +640,60 @@ def test_settings_apply_waits_for_old_runtime_command_and_rechecks_blockers(
             result.record.kind
             for result in old_composition.journal.records(old_session_id)
         ]
+        old_records_after_archive = old_composition.journal.records(old_session_id)
+        active_composition = server.get_runtime_composition()
+        assert active_composition.kill_switch is old_composition.kill_switch
+        with pytest.raises(SimulationStateError, match="RUNTIME_REPLACED"):
+            original_submit(
+                symbol="3231",
+                side="BUY",
+                lots=1,
+                limit_price="106",
+                idempotency_key="stale-runtime-after-settings-handoff",
+            )
+        with pytest.raises(SimulationStateError, match="RUNTIME_REPLACED"):
+            old_composition.strategy_paper_flow.checkpoint(
+                {
+                    "owner_strategy_id": "atomic-set:paper-v1",
+                    "pipeline_digest": "p" * 64,
+                },
+                occurred_at=old_composition.clock.now(),
+            )
+        engaged = old_composition.kill_switch.engage(
+            actor_id="local-operator",
+            operation_id="stale-runtime-kill-switch-engage",
+            reason="prove shared handoff authority",
+        )
+        engaged_revision = engaged["kill_switch"]["revision"]
+        assert active_composition.kill_switch.status()["control_state"] == "ENGAGED"
+        with pytest.raises(KillSwitchAdmissionBlocked, match="engaged"):
+            active_composition.kill_switch.admit_automated_intent(
+                lambda: "must-not-run"
+            )
+        reset = old_composition.kill_switch.reset(
+            actor_id="local-operator",
+            operation_id="stale-runtime-kill-switch-reset",
+            reason="exact reviewed reset",
+            expected_revision=engaged_revision,
+        )
+        assert reset["kill_switch"]["revision"] == engaged_revision + 1
+        assert active_composition.kill_switch.status()["control_state"] == (
+            "DISENGAGED"
+        )
+        assert active_composition.kill_switch.admit_automated_intent(
+            lambda: "admitted-after-exact-reset"
+        ) == "admitted-after-exact-reset"
+        with pytest.raises(KillSwitchStateConflict):
+            old_composition.kill_switch.reset(
+                actor_id="local-operator",
+                operation_id="stale-runtime-kill-switch-reset-again",
+                reason="stale revision must fail",
+                expected_revision=engaged_revision,
+            )
+        assert (
+            old_composition.journal.records(old_session_id)
+            == old_records_after_archive
+        )
 
     assert confirmed_response.status_code == 200
     assert old_record_kinds[-1] == "local_paper_session_archive.v1"
@@ -614,6 +824,7 @@ def test_settings_apply_failure_keeps_exact_old_runtime_live(
         )
         assert provider._handler.__self__ is old_simulation
         assert repository.load().active_session_id == initial["active_session_id"]
+        current.local_paper_commands.assert_mutation_allowed()
 
 
 def test_settings_apply_stream_handoff_failure_reactivates_old_runtime(
@@ -862,6 +1073,9 @@ def test_automated_controller_is_constructed_once_under_concurrent_first_access(
         strategy_paper_flow=object(),
         clock=object(),
         kill_switch=object(),
+        no_overnight_controller=SimpleNamespace(
+            config=SimpleNamespace(mode=NoOvernightMode.DISABLED)
+        ),
     )
     simulation = SimpleNamespace(projection=lambda: {})
     momentum = SimpleNamespace(snapshot=lambda: {})

@@ -936,6 +936,11 @@ class ShioajiProvider(MarketDataProvider):
         event = callback_args[-1] if callback_args else None
         if event is None or bool(getattr(event, "intraday_odd", False)):
             return
+        raw_suspended = getattr(
+            event,
+            "suspend",
+            getattr(event, "suspended", None),
+        )
         bid_price = self._first_positive(getattr(event, "bid_price", None))
         ask_price = self._first_positive(getattr(event, "ask_price", None))
         bid_volume_lots = self._first_non_negative_int(
@@ -956,6 +961,9 @@ class ShioajiProvider(MarketDataProvider):
                 ask_price=ask_price,
                 bid_volume_lots=bid_volume_lots,
                 ask_volume_lots=ask_volume_lots,
+                suspended=(
+                    bool(raw_suspended) if raw_suspended is not None else None
+                ),
             )
         )
 

@@ -198,7 +198,10 @@ class ContinuousPaperStrategyController:
         ]
         | None = None,
         kill_switch: DurableLocalPaperKillSwitch,
+        central_no_overnight_exit_owned: bool = False,
     ) -> None:
+        if type(central_no_overnight_exit_owned) is not bool:
+            raise ValueError("central_no_overnight_exit_owned 必須是布林值")
         self._flow = flow
         self._projection_reader = projection_reader
         self._signal_reader = signal_reader
@@ -207,6 +210,7 @@ class ContinuousPaperStrategyController:
         self._atomic_resolver = atomic_resolver
         self._atomic_signal_reader = atomic_signal_reader
         self._kill_switch = kill_switch
+        self._central_no_overnight_exit_owned = central_no_overnight_exit_owned
         self._lock = RLock()
         self._stop = Event()
         self._thread: Thread | None = None
@@ -820,6 +824,16 @@ class ContinuousPaperStrategyController:
             return
 
         bid_price = _positive_decimal(position.get("bid_price"), "position.bid_price")
+        local_time = now.time().replace(tzinfo=None)
+        if (
+            self._central_no_overnight_exit_owned
+            and local_time >= config.flatten_at
+        ):
+            self._set_decision(
+                "CENTRAL_FLATTEN_DELEGATED",
+                f"{symbol} 收盤平倉已交由中央 no-overnight controller",
+            )
+            return
         retry_candidates = [
             order
             for order in orders
@@ -866,7 +880,6 @@ class ContinuousPaperStrategyController:
             return
 
         pnl_pct = _decimal(position.get("unrealized_pnl_pct"), "unrealized_pnl_pct")
-        local_time = now.time().replace(tzinfo=None)
         reason = None
         if pnl_pct <= -config.stop_loss_pct:
             reason = "STOP_LOSS"

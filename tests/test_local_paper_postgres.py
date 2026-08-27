@@ -15,7 +15,7 @@ from market_data.provider import MockProvider
 from runtime.composition import RuntimeComposition
 from simulation.settings import LocalPaperSettings
 from trading.journal import JournalConflictError
-from trading.local_paper import LOCAL_PAPER_PROJECTION_NAME
+from trading.local_paper import LOCAL_PAPER_FILL_V4_KIND, LOCAL_PAPER_PROJECTION_NAME
 from trading.migrations import apply_migrations
 from trading.postgres_journal import PostgresJournalRepository
 
@@ -191,8 +191,8 @@ def _stable_state(composition: RuntimeComposition) -> dict[str, object]:
         "checkpoint_sequence": checkpoint.journal_sequence,
         "checkpoint_digest": checkpoint.digest,
         "journal_kinds": tuple(result.record.kind for result in journal_results),
-        "fill_v3_count": sum(
-            result.record.kind == "local_paper_fill.v3"
+        "fill_v4_count": sum(
+            result.record.kind == LOCAL_PAPER_FILL_V4_KIND
             for result in journal_results
         ),
         "available_cash": session["available_cash"],
@@ -296,7 +296,7 @@ def test_v2_partial_fills_reconstruct_exactly_across_three_new_connections(
         first.close()
         first_connection.close()
 
-    assert expected["fill_v3_count"] == 4
+    assert expected["fill_v4_count"] == 4
     assert expected["available_cash"] == 10_012_560.0
     assert expected["daily_filled_buy_notional"] == 150_750.0
     assert Decimal(str(expected["realized_pnl"])) == Decimal("12560")
@@ -325,7 +325,7 @@ def test_v2_partial_fills_reconstruct_exactly_across_three_new_connections(
                     to_jsonb('999'::text)
                 )
                 WHERE session_id = %s
-                  AND kind = 'local_paper_order_state.v1'
+                  AND kind = 'local_paper_order_state.v2'
                   AND payload_json->>'idempotency_key' = 'uat-v2-sell'
                   AND payload_json->>'status' = 'FILLED'
                 """,
@@ -362,7 +362,7 @@ def test_v2_partial_fills_reconstruct_exactly_across_three_new_connections(
                     to_jsonb('492'::text)
                 )
                 WHERE session_id = %s
-                  AND kind = 'local_paper_order_state.v1'
+                  AND kind = 'local_paper_order_state.v2'
                   AND payload_json->>'idempotency_key' = 'uat-v2-sell'
                   AND payload_json->>'status' = 'FILLED'
                 """,
@@ -381,7 +381,7 @@ def test_v2_partial_fills_reconstruct_exactly_across_three_new_connections(
                 UPDATE trading.journal_records
                 SET payload_json = jsonb_set(payload_json, '{tax}', '491'::jsonb)
                 WHERE session_id = %s
-                  AND kind = 'local_paper_fill.v3'
+                  AND kind = 'local_paper_fill.v4'
                   AND payload_json->>'side' = 'SELL'
                   AND payload_json->>'fill_sequence' = '2'
                 """,
