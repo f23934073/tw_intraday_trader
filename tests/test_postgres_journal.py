@@ -1,6 +1,8 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from threading import Barrier
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -15,6 +17,7 @@ pytestmark = pytest.mark.skipif(
 
 from trading.journal import (  # noqa: E402
     JournalConflictError,
+    JournalCutoffExceededError,
     JournalRecord,
     JournalSession,
     ProjectionCheckpoint,
@@ -28,9 +31,31 @@ from trading.no_overnight_evidence import (  # noqa: E402
     close_no_overnight_evidence_window,
     open_no_overnight_evidence_window,
 )
+from tests.conftest import postgres_test_database_is_safe  # noqa: E402
 
 
 AT = datetime.fromisoformat("2026-08-18T09:00:00+08:00")
+
+
+@pytest.fixture(autouse=True)
+def postgres_destructive_test_isolation() -> None:
+    assert TEST_POSTGRES_DSN is not None
+    connection = psycopg.connect(TEST_POSTGRES_DSN)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_database()")
+            database_name = str(cursor.fetchone()[0])
+    finally:
+        connection.close()
+    explicit_reset = (
+        os.getenv("ALLOW_POSTGRES_TEST_SCHEMA_RESET", "").strip() == "1"
+    )
+    if not postgres_test_database_is_safe(database_name, explicit_reset):
+        pytest.fail(
+            "refusing destructive PostgreSQL Journal tests: database name "
+            "must contain a standalone 'test' token or "
+            "ALLOW_POSTGRES_TEST_SCHEMA_RESET=1 must be explicit"
+        )
 
 
 @pytest.fixture()
@@ -248,7 +273,119 @@ def test_postgres_atomic_open_projects_campaign_timezone(journal) -> None:
     assert observation.finalized_at.tzinfo == zone
 
 
-def test_migration_moves_legacy_public_journal_into_trading_schema() -> None:
+def test_atomic_open_rolls_back_when_server_operation_crosses_cutoff(
+    journal,
+) -> None:
+    with journal._transaction() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE OR REPLACE FUNCTION trading.delay_evidence_session_insert()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                    IF NEW.session_id = 'postgres-delayed-cutoff' THEN
+                        PERFORM pg_sleep(1);
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$;
+
+                CREATE TRIGGER delay_evidence_session_insert
+                BEFORE INSERT ON trading.journal_sessions
+                FOR EACH ROW
+                EXECUTE FUNCTION trading.delay_evidence_session_insert()
+                """
+            )
+            cursor.execute("SELECT clock_timestamp()")
+            requested_at = cursor.fetchone()[0]
+    session = JournalSession(
+        session_id="postgres-delayed-cutoff",
+        started_at=requested_at,
+        mode="NO_OVERNIGHT_EVIDENCE_WINDOW",
+        metadata={"activation_authority": "NONE_EVIDENCE_ONLY"},
+    )
+    atomic_record = JournalRecord(
+        record_id="postgres-delayed-cutoff-open",
+        session_id=session.session_id,
+        kind="no_overnight_evidence_window_opened.v1",
+        occurred_at=requested_at,
+        payload={"stage": "OBSERVE_ONLY"},
+        idempotency_scope="postgres-delayed-cutoff-open",
+        idempotency_key="server-cross-cutoff",
+    )
+
+    with pytest.raises(JournalCutoffExceededError):
+        journal.start_session_and_append_before(
+            session,
+            atomic_record,
+            latest_allowed_at=requested_at + timedelta(milliseconds=500),
+        )
+
+    assert journal.session(session.session_id) is None
+    assert journal.records(session.session_id) == ()
+
+
+def test_atomic_open_allows_one_independent_process_connection(journal) -> None:
+    with journal._transaction() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT clock_timestamp()")
+            requested_at = cursor.fetchone()[0]
+    session = JournalSession(
+        session_id="postgres-concurrent-observe-open",
+        started_at=requested_at,
+        mode="NO_OVERNIGHT_EVIDENCE_WINDOW",
+        metadata={"activation_authority": "NONE_EVIDENCE_ONLY"},
+    )
+    atomic_record = JournalRecord(
+        record_id="postgres-concurrent-observe-open-record",
+        session_id=session.session_id,
+        kind="no_overnight_evidence_window_opened.v1",
+        occurred_at=requested_at,
+        payload={"stage": "OBSERVE_ONLY"},
+        idempotency_scope="postgres-concurrent-observe-open",
+        idempotency_key="same-campaign-date",
+    )
+    start = Barrier(2)
+
+    def open_from_independent_connection():
+        connection = psycopg.connect(TEST_POSTGRES_DSN)
+        try:
+            repository = PostgresJournalRepository(connection)
+            start.wait(timeout=5)
+            try:
+                return repository.start_session_and_append_before(
+                    session,
+                    atomic_record,
+                    latest_allowed_at=requested_at + timedelta(minutes=1),
+                )
+            except JournalConflictError as error:
+                return error
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = tuple(
+            executor.map(lambda _index: open_from_independent_connection(), range(2))
+        )
+
+    opened = tuple(
+        result for result in results if not isinstance(result, JournalConflictError)
+    )
+    conflicts = tuple(
+        result for result in results if isinstance(result, JournalConflictError)
+    )
+    assert len(opened) + len(conflicts) == 2
+    assert sum(not result.idempotent for result in opened) == 1
+    records = journal.records(session.session_id)
+    assert len(records) == 1
+    assert records[0].record.kind == "no_overnight_evidence_window_opened.v1"
+
+
+def test_migration_moves_legacy_public_journal_into_trading_schema(
+    postgres_destructive_test_isolation,
+) -> None:
     connection = psycopg.connect(TEST_POSTGRES_DSN)
     try:
         with connection.cursor() as cursor:

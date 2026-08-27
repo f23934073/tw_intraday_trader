@@ -71,7 +71,8 @@ PYTHONPATH=. .venv/bin/python \
   --campaign-id <reviewed-campaign-id> \
   --session-date <reviewed-date> \
   --artifact-root <new-campaign-directory> \
-  --env-file <project-env-file>
+  --env-file <project-env-file> \
+  --settings-file <active-local-paper-settings-file>
 ```
 
 Start it on the reviewed session date no later than 09:00 Asia/Taipei. It opens the marker before
@@ -96,6 +97,45 @@ descriptors remain open and bind device, inode, type, link count, size, mtime, a
 and around the report write, so replacing the root while moving the original `sessions` inode still
 fails closed. A dirty worktree is rejected before PostgreSQL initialization. The runner reads the
 exact clean `git rev-parse HEAD`; a supplied or historical code identity cannot override it.
+
+The current DISABLED command also strictly reads the explicitly named settings file without following
+symlinks. It requires the named active Local Paper v2 session, settings revision, and settings digest to
+already match the PostgreSQL Journal. This is required so a later OBSERVE_ONLY session can bind to the
+same active identity; the command does not create or rotate that identity.
+
+After one same-campaign DISABLED report has been sealed `COMPLETE` under the exact same clean code,
+calendar, provider, scope/family, and active Local Paper session identity, a separately reviewed
+OBSERVE_ONLY session uses:
+
+```bash
+PYTHONPATH=. .venv/bin/python \
+  scripts/capture_no_overnight_observe_only.py \
+  --campaign-id <same-reviewed-campaign-id> \
+  --session-date <later-reviewed-date> \
+  --artifact-root <same-campaign-directory> \
+  --env-file <project-env-file> \
+  --settings-file <same-active-local-paper-settings-file>
+```
+
+The OBSERVE_ONLY command is hard-bound to exact `MockProvider`, the PostgreSQL Journal, and the
+repository-owned `OBSERVE_ONLY` cutoffs. Before the atomic open it strictly re-reads the sole canonical
+DISABLED v2 report and replays that predecessor's unique complete marker pair from the same Journal.
+Missing, duplicated, incomplete, old-schema, policy/window-drifted, copied-from-another-Journal, or
+identity-mismatched predecessors fail before open. An existing OBSERVE_ONLY open marker is never
+retried, even when its first append is an exact idempotent match.
+
+Because OBSERVE_ONLY has no command port or worker, the runner itself calls the canonical controller at
+bounded intervals to persist observations and would-actions, then runs the final controller and
+reconciliation pass at or after 13:30 before the close marker. Any order command, cancel fact, or fill
+on the active Local Paper session is a hard failure; cash, position, and order state are not mutation
+authority for this command. The canonical output is
+`sessions/<date>-observe-only.json` using `no_overnight_session_evidence_v2`, and it must strictly
+re-read as `COMPLETE`, `QUALIFIED`, `CONFIRMED_FLAT`, `CURRENT`, reconciliation `MATCH`, current
+checkpoints, and zero handler/order/cancel/fill side effects. A durable open marker remains incomplete
+after any later failure and is never deleted or automatically retried.
+
+Neither command schedules itself. A calendar-eligible date is not authorization to start a capture;
+each full-session run remains a separate reviewed trading-session Gate.
 
 If any later startup or capture step fails after the open append, retain that open record as incomplete
 evidence; never reuse it with a different timestamp.

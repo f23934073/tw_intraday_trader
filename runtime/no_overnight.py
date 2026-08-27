@@ -1629,6 +1629,31 @@ class NoOvernightController:
             session_id=session_id,
             require_checkpoint=True,
         )
+        if (
+            self._config.mode is NoOvernightMode.OBSERVE_ONLY
+            and local_now < window.opens_at
+        ):
+            self._status = {
+                **self._status,
+                "state": projection.state.value,
+                "revision": projection.revision,
+                "session_date": session_date.isoformat(),
+                "would_actions": [],
+                "flat_proof_mode": projection.flat_proof_mode,
+                "result_status": projection.result_status,
+                "reconciliation_status": (
+                    projection.last_reconciliation_status
+                ),
+                "reconciliation_digest": (
+                    projection.last_reconciliation_digest
+                ),
+                "last_execution_fact_journal_sequence": (
+                    projection.last_execution_fact_journal_sequence
+                ),
+                "snapshot_covers_through_journal_sequence": 0,
+                "breach": self._global_breach_summary(session_date),
+            }
+            return self.status()
         self._bootstrap_legacy_breaches(
             before_session_date=session_date,
         )

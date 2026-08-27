@@ -19,6 +19,17 @@ credentials, certificates, real-money execution, HA handoff, or direct database 
 - Kill Switch final admission, exact-revision reset, and `RECOVERY_REQUIRED` remain independent and
   fail closed.
 
+### Evidence-only capture boundary
+
+The repository-owned DISABLED and OBSERVE_ONLY full-session commands are documented in
+`architecture/no_overnight_evidence_campaign_runbook.md`. Both require exact clean code, explicit
+no-follow environment and active-settings files, exact `MockProvider`, and the PostgreSQL Journal.
+OBSERVE_ONLY additionally requires the sole same-campaign `COMPLETE` DISABLED v2 predecessor to replay
+from that Journal before its pre-09:00 atomic open. It runs canonical controller observation passes
+through 13:30 but has no command port or worker. Would-actions are evidence only; any order, cancel, or
+fill fact makes the session fail. The commands do not self-schedule and a documented calendar date does
+not authorize execution.
+
 ## 2. Normal close procedure
 
 1. Confirm the Dashboard card says `ENFORCING` and does not show recovery failure.

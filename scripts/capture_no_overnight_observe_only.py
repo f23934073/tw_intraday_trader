@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture one real-time, evidence-only no-overnight DISABLED baseline."""
+"""Capture one full-session, evidence-only no-overnight OBSERVE_ONLY report."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from config.trading_persistence import (
 from market_data.provider import MockProvider
 from runtime.clock import SystemClock
 from runtime.composition import RuntimeComposition
-from runtime.no_overnight_evidence_capture import capture_disabled_baseline
+from runtime.no_overnight_evidence_capture import capture_observe_only
 from runtime.trading_persistence import build_journal_repository
 
 
@@ -55,13 +55,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         _environment_from_file(args.env_file)
     )
     if persistence.backend is not TradingJournalBackend.POSTGRESQL:
-        raise ValueError("operational baseline requires the PostgreSQL Journal")
+        raise ValueError("operational OBSERVE_ONLY requires the PostgreSQL Journal")
 
     code_identity = _code_identity()
     settings_file = args.settings_file
     _active_settings_from_file(settings_file)
     provider = MockProvider()
-    report = capture_disabled_baseline(
+    report = capture_observe_only(
         campaign_id=args.campaign_id,
         session_date=args.session_date,
         code_identity=code_identity,

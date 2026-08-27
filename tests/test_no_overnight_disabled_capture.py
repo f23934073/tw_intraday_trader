@@ -571,6 +571,8 @@ def test_cli_checks_code_identity_before_constructing_postgres(
         "TRADING_JOURNAL_BACKEND=postgresql\n"
         "PostgreSQL_DSN=postgresql://reviewed.example/reviewed\n"
     )
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text("{}")
     journal_created = False
 
     def fail_code_identity() -> str:
@@ -595,6 +597,8 @@ def test_cli_checks_code_identity_before_constructing_postgres(
                 str(tmp_path / "campaign"),
                 "--env-file",
                 str(env_file),
+                "--settings-file",
+                str(settings_file),
             )
         )
 
