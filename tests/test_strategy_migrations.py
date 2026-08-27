@@ -23,6 +23,18 @@ ATOMIC_TABLES = (
     "backtest_cash_admission_control_heads",
     "backtest_cash_admission_control_registrations",
     "backtest_cash_admission_control_operations",
+    "atomic_entry_benchmark_families",
+    "atomic_entry_benchmark_matrices",
+    "atomic_entry_benchmark_slots",
+    "atomic_entry_benchmark_attempts",
+    "atomic_entry_benchmark_operations",
+    "atomic_entry_benchmark_transition_evidence",
+    "atomic_entry_benchmark_outbox",
+    "atomic_entry_benchmark_result_chunks",
+    "atomic_entry_benchmark_releases",
+    "atomic_entry_benchmark_matrix_protocols",
+    "atomic_entry_benchmark_preflights",
+    "atomic_entry_benchmark_eligibility_audits",
 )
 
 EXPECTED_CONSTRAINT_COUNTS = {
@@ -44,6 +56,18 @@ EXPECTED_CONSTRAINT_COUNTS = {
     "backtest_cash_admission_control_heads": 4,
     "backtest_cash_admission_control_registrations": 13,
     "backtest_cash_admission_control_operations": 5,
+    "atomic_entry_benchmark_families": 10,
+    "atomic_entry_benchmark_matrices": 13,
+    "atomic_entry_benchmark_slots": 13,
+    "atomic_entry_benchmark_attempts": 20,
+    "atomic_entry_benchmark_operations": 14,
+    "atomic_entry_benchmark_transition_evidence": 14,
+    "atomic_entry_benchmark_outbox": 12,
+    "atomic_entry_benchmark_result_chunks": 6,
+    "atomic_entry_benchmark_releases": 9,
+    "atomic_entry_benchmark_matrix_protocols": 6,
+    "atomic_entry_benchmark_preflights": 13,
+    "atomic_entry_benchmark_eligibility_audits": 12,
 }
 
 ATOMIC_INDEXES = (
@@ -64,13 +88,18 @@ ATOMIC_INDEXES = (
     "backtest_qualifications_family_sequence_index",
     "backtest_cash_control_registration_status_index",
     "backtest_cash_control_operation_created_index",
+    "atomic_benchmark_attempt_status_index",
+    "atomic_benchmark_outbox_pending_index",
+    "atomic_benchmark_operation_created_index",
+    "atomic_benchmark_preflight_created_index",
+    "atomic_benchmark_eligibility_audit_created_index",
 )
 
 
 def test_atomic_strategy_migration_is_numbered_and_owned_by_runner() -> None:
     files = migration_files()
-    assert files[-1].name == "014_cash_admission_controls.sql"
-    sql = "\n".join(file.read_text(encoding="utf-8") for file in files[-10:])
+    assert files[-1].name == "018_r6_dynamic_entry_reserve.sql"
+    sql = "\n".join(file.read_text(encoding="utf-8") for file in files[-13:])
     for table in ATOMIC_TABLES:
         assert f"backtest.{table}" in sql
 
@@ -98,6 +127,9 @@ def test_atomic_strategy_migration_applies_once_to_postgresql(
     assert "012_backtest_dataset_bindings.sql" in first
     assert "013_backtest_result_chunks.sql" in first
     assert "014_cash_admission_controls.sql" in first
+    assert "016_atomic_entry_benchmark.sql" in first
+    assert "017_r6_matrix_revision_and_preflight.sql" in first
+    assert "018_r6_dynamic_entry_reserve.sql" in first
     assert second == ()
     with postgres_test_connection.cursor() as cursor:
         cursor.execute(
@@ -138,3 +170,28 @@ def test_atomic_strategy_migration_applies_once_to_postgresql(
             (list(ATOMIC_INDEXES),),
         )
         assert tuple(row[0] for row in cursor.fetchall()) == tuple(sorted(ATOMIC_INDEXES))
+
+        cursor.execute(
+            """
+            SELECT constraint_name, check_clause
+            FROM information_schema.check_constraints
+            WHERE constraint_schema = 'backtest'
+              AND constraint_name = ANY(%s)
+            ORDER BY constraint_name
+            """,
+            (
+                [
+                    "atomic_benchmark_family_active_revision",
+                    "atomic_benchmark_matrix_protocol_revision",
+                    "atomic_benchmark_matrix_revision",
+                    "atomic_benchmark_preflight_revision",
+                    "atomic_benchmark_release_revision",
+                ],
+            ),
+        )
+        definitions = dict(cursor.fetchall())
+        assert "3" in definitions["atomic_benchmark_family_active_revision"]
+        assert "3" in definitions["atomic_benchmark_matrix_protocol_revision"]
+        assert "3" in definitions["atomic_benchmark_matrix_revision"]
+        assert "3" in definitions["atomic_benchmark_preflight_revision"]
+        assert "3" in definitions["atomic_benchmark_release_revision"]
