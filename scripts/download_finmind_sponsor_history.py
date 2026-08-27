@@ -96,10 +96,9 @@ def main() -> None:
                 report=lambda message: print(message, flush=True),
             )
             remaining_budget = args.max_requests
-            direct_quota_probe = False
-            wait_before_direct_probe = False
+            wait_before_usage_poll = False
             while True:
-                if wait_before_direct_probe:
+                if wait_before_usage_poll:
                     release_delay = store.seconds_until_next_recorded_release()
                     wait_seconds = max(args.quota_poll_seconds, release_delay)
                     print(
@@ -107,13 +106,12 @@ def main() -> None:
                         flush=True,
                     )
                     sleep(wait_seconds)
-                    wait_before_direct_probe = False
+                    wait_before_usage_poll = False
                 result = downloader.run(
                     job_id,
                     max_requests=remaining_budget,
                     reserve_requests=args.reserve_requests,
                     pace_seconds=args.pace_seconds,
-                    check_usage=not direct_quota_probe,
                 )
                 spent = int(result.get("batch_requests_spent", 0))
                 remaining_budget -= spent
@@ -125,8 +123,6 @@ def main() -> None:
                     break
                 if result.get("stop_kind") == "PROVIDER":
                     break
-                if args.reserve_requests == 0:
-                    direct_quota_probe = True
                 if spent:
                     print(
                         "滾動額度批次完成："
@@ -135,7 +131,7 @@ def main() -> None:
                         flush=True,
                     )
                 if result.get("stop_kind") == "QUOTA" or not spent:
-                    wait_before_direct_probe = True
+                    wait_before_usage_poll = True
                     continue
         print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
     finally:
