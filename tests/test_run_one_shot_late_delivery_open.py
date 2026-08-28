@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 import subprocess
 
@@ -42,6 +43,61 @@ def test_runs_exact_command_once_and_preserves_terminal_output(tmp_path: Path) -
     assert result["exit_code"] == 2
     assert result["stdout"] == "exact_replay: FAILED\n"
     assert result["stderr"] == "provider error\n"
+
+
+@pytest.mark.parametrize("ambient_home", [None, "/intentionally/wrong/home"])
+def test_child_home_comes_from_os_user_without_mutating_parent_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ambient_home: str | None,
+) -> None:
+    if ambient_home is None:
+        monkeypatch.delenv("HOME", raising=False)
+    else:
+        monkeypatch.setenv("HOME", ambient_home)
+    monkeypatch.setenv("D_HEALTH_ENV_SENTINEL", "preserved")
+    monkeypatch.setenv("FAKE_CREDENTIAL_LIKE_KEY", "preserved-for-env-copy-test")
+    parent_env = os.environ.copy()
+    expected_child_env = {
+        **parent_env,
+        "HOME": runner.pwd.getpwuid(runner.os.getuid()).pw_dir,
+    }
+
+    def fake_run(
+        argv: tuple[str, ...],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        assert kwargs["env"] == expected_child_env
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    assert runner.run_one_shot(now=at(8, 55), state_root=tmp_path, run=fake_run) == 0
+    assert os.environ.copy() == parent_env
+    assert os.environ.get("HOME") == ambient_home
+    assert os.environ["D_HEALTH_ENV_SENTINEL"] == "preserved"
+    assert os.environ["FAKE_CREDENTIAL_LIKE_KEY"] == "preserved-for-env-copy-test"
+
+
+def test_passwd_lookup_failure_does_not_run_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fail_lookup(_uid: int) -> object:
+        raise KeyError("passwd entry unavailable")
+
+    def unexpected_run(
+        argv: tuple[str, ...],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        raise AssertionError("provider command must not run")
+
+    monkeypatch.setattr(runner.pwd, "getpwuid", fail_lookup)
+
+    with pytest.raises(KeyError, match="passwd entry unavailable"):
+        runner.run_one_shot(now=at(8, 55), state_root=tmp_path, run=unexpected_run)
+    assert calls == []
 
 
 @pytest.mark.parametrize("observed_at", [at(8, 49), at(9, 0), at(9, 15)])

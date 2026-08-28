@@ -8,6 +8,7 @@ from datetime import date, datetime, time
 import json
 import os
 from pathlib import Path
+import pwd
 import subprocess
 import sys
 from zoneinfo import ZoneInfo
@@ -141,10 +142,12 @@ def run_one_shot(
     elif not EARLIEST_START <= local_time < LATEST_FULL_WINDOW_START:
         reason = "OUTSIDE_FULL_OPEN_COLLECTION_START_WINDOW"
     else:
+        child_env = os.environ.copy()
+        child_env["HOME"] = pwd.getpwuid(os.getuid()).pw_dir
         completed = run(
             CAPTURE_COMMAND,
             cwd=PROJECT_ROOT,
-            env=os.environ.copy(),
+            env=child_env,
             check=False,
             capture_output=True,
             text=True,
