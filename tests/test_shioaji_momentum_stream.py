@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+import market_data.shioaji_momentum_stream as shioaji_stream_module
 from market_data.events import (
     AggressorSide,
     BidAskEvent,
@@ -16,7 +17,10 @@ from market_data.events import (
     TickEvent,
 )
 from market_data.momentum_stream import StreamLifecycleEventType
-from market_data.shioaji_momentum_stream import ShioajiMomentumStream
+from market_data.shioaji_momentum_stream import (
+    ShioajiLoopbackBindError,
+    ShioajiMomentumStream,
+)
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -281,6 +285,29 @@ def test_received_at_preserves_a_regressed_observation_clock():
     assert [item.received_at for item in events] == [later, earlier]
 
 
+def test_invalid_tick_is_retained_in_structured_callback_quarantine():
+    stream, api, clock = make_stream()
+    events = []
+    stream.start(events.append, lambda event: None)
+    invalid = raw_tick()
+    invalid.close = "300"
+
+    api.tick_callback("TSE", invalid)
+    clock.value += timedelta(milliseconds=1)
+    api.tick_callback("TSE", raw_tick())
+
+    assert len(stream.callback_errors) == 1
+    assert "price must be within intraday low/high" in stream.callback_errors[0]
+    assert len(stream.callback_quarantine) == 1
+    quarantined = stream.callback_quarantine[0]
+    assert quarantined["stream_kind"] == "TICK"
+    assert quarantined["ingress_sequence"] == 1
+    assert quarantined["error"] == stream.callback_errors[0]
+    assert quarantined["raw"]["code"] == "8039"
+    assert quarantined["raw"]["close"] == "300"
+    assert events[0].ingress_sequence == 2
+
+
 def test_qualification_bootstrap_uses_current_contract_and_real_snapshot():
     stream, _, _ = make_stream()
 
@@ -304,6 +331,11 @@ def test_connect_from_env_forces_subscribe_trade_false(monkeypatch):
     monkeypatch.setenv("SHIOAJI_API_KEY", "data-key")
     monkeypatch.setenv("SHIOAJI_SECRET", "data-secret")
     monkeypatch.setenv("SJ_SIMULATION", "false")
+    monkeypatch.setattr(
+        shioaji_stream_module,
+        "_require_shioaji_loopback_bind",
+        lambda: None,
+    )
 
     stream = ShioajiMomentumStream.connect_from_env(session_id="data-only")
 
@@ -314,6 +346,43 @@ def test_connect_from_env_forces_subscribe_trade_false(monkeypatch):
     }
     assert stream.environment_identity == "shioaji:unknown:simulation=false"
     stream.close()
+
+
+def test_connect_from_env_rejects_denied_loopback_before_shioaji_init(monkeypatch):
+    class DeniedSocket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+        def bind(self, address) -> None:
+            assert address == ("127.0.0.1", 0)
+            raise PermissionError(1, "Operation not permitted")
+
+    constructor_calls = []
+    fake_shioaji = SimpleNamespace(
+        Shioaji=lambda simulation: constructor_calls.append(simulation)
+    )
+    monkeypatch.setitem(sys.modules, "shioaji", fake_shioaji)
+    monkeypatch.setenv("SHIOAJI_API_KEY", "data-key")
+    monkeypatch.setenv("SHIOAJI_SECRET", "data-secret")
+    monkeypatch.setattr(
+        shioaji_stream_module.socket,
+        "socket",
+        lambda *args: DeniedSocket(),
+    )
+
+    with pytest.raises(
+        ShioajiLoopbackBindError,
+        match=(
+            "SHIOAJI_LOOPBACK_BIND_UNAVAILABLE:"
+            "tcp://127.0.0.1:0:errno=1:Operation not permitted"
+        ),
+    ):
+        ShioajiMomentumStream.connect_from_env(session_id="data-only")
+
+    assert constructor_calls == []
 
 
 def test_event_callback_maps_disconnect_reconnect_and_paired_unsubscribe_ack():

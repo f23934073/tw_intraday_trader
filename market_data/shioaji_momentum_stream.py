@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import socket
 from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation
 from threading import Lock, RLock
@@ -34,6 +35,46 @@ from runtime.clock import Clock, SystemClock
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 SOURCE_MODE = "TICK_BIDASK"
+
+_QUARANTINE_MARKET_FIELDS = (
+    "code",
+    "datetime",
+    "close",
+    "volume",
+    "total_volume",
+    "vol_sum",
+    "avg_price",
+    "average_price",
+    "high",
+    "low",
+    "tick_type",
+    "bid_side_total_vol",
+    "ask_side_total_vol",
+    "bid_price",
+    "bid_volume",
+    "ask_price",
+    "ask_volume",
+    "suspend",
+    "suspended",
+    "simtrade",
+    "intraday_odd",
+)
+
+
+class ShioajiLoopbackBindError(RuntimeError):
+    """The local runtime cannot initialize Shioaji's loopback channel."""
+
+
+def _require_shioaji_loopback_bind() -> None:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+    except OSError as error:
+        detail = error.strerror or str(error)
+        raise ShioajiLoopbackBindError(
+            "SHIOAJI_LOOPBACK_BIND_UNAVAILABLE:"
+            f"tcp://127.0.0.1:0:errno={error.errno}:{detail}"
+        ) from error
 
 
 class ShioajiMomentumStream:
@@ -69,6 +110,7 @@ class ShioajiMomentumStream:
         self._subscribe_failures: dict[str, str] = {}
         self._subscribed_symbols: set[str] = set()
         self._callback_errors: list[str] = []
+        self._callback_quarantine: list[dict[str, object]] = []
 
     @classmethod
     def connect_from_env(
@@ -79,7 +121,6 @@ class ShioajiMomentumStream:
     ) -> "ShioajiMomentumStream":
         """Login for market data only; no certificate or trade subscription."""
         from dotenv import load_dotenv
-        import shioaji as sj
 
         load_dotenv()
         api_key = os.getenv("SHIOAJI_API_KEY") or os.getenv("SJ_API_KEY")
@@ -90,6 +131,9 @@ class ShioajiMomentumStream:
         )
         if not api_key or not secret:
             raise RuntimeError("Shioaji data credentials are not configured")
+        _require_shioaji_loopback_bind()
+        import shioaji as sj
+
         simulation = os.getenv("SJ_SIMULATION", "true").lower() != "false"
         api = sj.Shioaji(simulation=simulation)
         api.login(
@@ -112,6 +156,11 @@ class ShioajiMomentumStream:
     def callback_errors(self) -> tuple[str, ...]:
         with self._lock:
             return tuple(self._callback_errors)
+
+    @property
+    def callback_quarantine(self) -> tuple[dict[str, object], ...]:
+        with self._lock:
+            return tuple(dict(item) for item in self._callback_quarantine)
 
     @property
     def subscribed_symbols(self) -> frozenset[str]:
@@ -366,18 +415,30 @@ class ShioajiMomentumStream:
         raw = callback_args[-1] if callback_args else None
         if raw is None or bool(getattr(raw, "intraday_odd", False)):
             return
-        try:
-            with self._ingress_lock:
+        with self._ingress_lock:
+            sequence_before = self._sequence
+            try:
                 envelope = self._map_event(raw, stream_kind)
                 with self._lock:
                     handler = self._event_handler
                 if handler is not None:
                     handler(envelope)
-        except Exception as error:
-            with self._lock:
-                self._callback_errors.append(
-                    f"{stream_kind.value}:{type(error).__name__}:{error}"
-                )
+            except Exception as error:
+                error_text = f"{stream_kind.value}:{type(error).__name__}:{error}"
+                with self._lock:
+                    self._callback_errors.append(error_text)
+                    self._callback_quarantine.append(
+                        {
+                            "stream_kind": stream_kind.value,
+                            "ingress_sequence": (
+                                self._sequence
+                                if self._sequence > sequence_before
+                                else None
+                            ),
+                            "error": error_text,
+                            "raw": _quarantine_market_fields(raw),
+                        }
+                    )
 
     def _map_event(
         self,
@@ -852,3 +913,32 @@ class ShioajiMomentumStream:
         if prefix in {"QUO", "QUT"}:
             return StreamQuotePart.BIDASK
         return None
+
+
+def _quarantine_market_fields(raw: object) -> dict[str, object]:
+    fields: dict[str, object] = {"raw_type": type(raw).__name__}
+    for name in _QUARANTINE_MARKET_FIELDS:
+        try:
+            value = getattr(raw, name)
+        except AttributeError:
+            continue
+        except Exception as error:
+            fields[name] = f"<unavailable:{type(error).__name__}:{error}>"
+            continue
+        fields[name] = _quarantine_value(value)
+    return fields
+
+
+def _quarantine_value(value: object) -> object:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, (date, datetime, time)):
+        return value.isoformat()
+    if isinstance(value, (list, tuple)):
+        return [_quarantine_value(item) for item in value]
+    try:
+        return str(value)
+    except Exception:
+        return f"<{type(value).__name__}>"
