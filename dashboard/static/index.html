@@ -257,8 +257,10 @@
               <div class="order-field"><label for="automated-stop-loss">停損（%）</label><input id="automated-stop-loss" name="stop_loss_pct" min="0.1" max="99.9" step="0.1" type="number" placeholder="必填" required></div>
               <div class="order-field"><label for="automated-take-profit">停利（%）</label><input id="automated-take-profit" name="take_profit_pct" min="0.1" step="0.1" type="number" placeholder="必填" required></div>
               <div class="order-field"><label for="automated-max-daily-loss">每日最大虧損（元）</label><input id="automated-max-daily-loss" name="max_daily_loss" min="1" step="1" type="number" placeholder="必填" required></div>
+              <div class="order-field"><label for="automated-kill-reason">緊急停止原因</label><input id="automated-kill-reason" maxlength="1000" type="text" placeholder="啟用前必填"></div>
+              <div class="order-field"><label for="automated-kill-reset-reason">解除原因</label><input id="automated-kill-reset-reason" maxlength="1000" type="text" placeholder="解除前必填"></div>
             </div>
-            <p class="order-note">只使用已發布的精確策略版本；09:00–13:20 進場，13:25 起強制出場。重啟後需重新手動啟動，且僅限 Shioaji Tick／BidAsk 驅動的本機模擬。</p>
+            <p class="order-note">只使用已發布的精確策略版本；09:00–13:20 進場，13:25 起強制出場。Kill Switch 狀態與 revision 由 Journal 保存；解除後與 process 重啟後仍需重新手動啟動策略。</p>
             <p class="error" id="automated-strategy-error" role="alert"></p>
             <div class="automated-strategy-actions">
               <button class="order-submit" id="automated-strategy-start" type="submit">啟動自動模擬</button>

@@ -51,6 +51,69 @@ def test_composition_reuses_one_provider_without_provider_io() -> None:
     assert composition.journal.records(
         composition.local_paper_commands.session_id
     )[0].record.kind == "local_paper_daily_baseline.v1"
+    assert composition.kill_switch.status()["durability"] == "EPHEMERAL_MEMORY"
+    assert composition.kill_switch.status()["restart_safe"] is False
+
+
+def test_composition_recovery_and_trading_session_rotation_preserve_kill_switch() -> None:
+    journal = InMemoryJournalRepository()
+    first = RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        local_paper_session_id="local-paper-before-rotation",
+        start_simulation_streaming=False,
+    )
+    first.kill_switch.engage(
+        actor_id="local-operator",
+        idempotency_key="composition-engage-1",
+        reason="composition recovery test",
+    )
+
+    rebuilt = RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        local_paper_session_id="local-paper-after-rotation",
+        start_simulation_streaming=False,
+    )
+
+    status = rebuilt.kill_switch.status()
+    assert rebuilt.kill_switch is rebuilt.strategy_paper_flow.kill_switch
+    assert status["control_state"] == "ENGAGED"
+    assert status["revision"] == 1
+    assert status["reason"] == "composition recovery test"
+    assert status["recovered"] is True
+
+
+def test_composition_recreate_after_reset_does_not_reengage_or_auto_start() -> None:
+    journal = InMemoryJournalRepository()
+    first = RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        local_paper_session_id="local-paper-reset-process-a",
+        start_simulation_streaming=False,
+    )
+    first.kill_switch.engage(
+        actor_id="local-operator",
+        idempotency_key="composition-engage-reset",
+        reason="engage before reset",
+    )
+    first.kill_switch.reset(
+        actor_id="local-operator",
+        idempotency_key="composition-reset-1",
+        expected_revision=1,
+        reason="operator verified recovery",
+    )
+
+    rebuilt = RuntimeComposition.create(
+        MockProvider(),
+        journal=journal,
+        local_paper_session_id="local-paper-reset-process-b",
+        start_simulation_streaming=False,
+    )
+
+    assert rebuilt.kill_switch.status()["control_state"] == "DISENGAGED"
+    assert rebuilt.kill_switch.status()["revision"] == 2
+    assert rebuilt.kill_switch.status()["recovered"] is True
 
 
 def test_composition_selects_configured_journal_through_infrastructure_factory(

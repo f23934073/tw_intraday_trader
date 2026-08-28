@@ -63,7 +63,9 @@ def test_simulation_workspace_exposes_explicit_automated_strategy_controls() -> 
         "automated-strategy-start",
         "automated-strategy-stop",
         "automated-strategy-kill",
+        "automated-kill-reason",
         "automated-strategy-kill-reset",
+        "automated-kill-reset-reason",
         "automated-strategy-status",
     ):
         assert f'id="{element_id}"' in HTML
@@ -74,6 +76,12 @@ def test_simulation_workspace_exposes_explicit_automated_strategy_controls() -> 
     assert "X-Strategy-CSRF" in simulation
     assert "loadAutomatedStrategyStatus" in simulation
     assert "submitAutomatedStrategy" in simulation
+    assert "expected_revision" in simulation
+    assert "RECOVERY_REQUIRED" in simulation
+    assert "pendingAutomatedKillKey" in simulation
+    assert "pendingAutomatedKillResetKey" in simulation
+    assert "response?.status === 409" in simulation
+    assert "await loadAutomatedStrategyStatus()" in simulation
     assert "stopAutomatedStrategy" in simulation
     assert "pendingKillOperation" in simulation
     assert "pendingResetOperation" in simulation
