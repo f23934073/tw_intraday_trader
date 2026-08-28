@@ -1,4 +1,16 @@
-"""Post-close institutional-flow data contracts."""
+"""Post-close institutional-flow data contracts.
+
+Layer:     L0 (Contracts)
+Lineage:   Shared base (institutional_data)
+Depends:   none
+Consumed:  institutional_research, institutional_prior, institutional_mvp,
+           config.institutional_mvp
+Status:    STABLE
+
+Lineages A and B share these contracts, but this package must not import either
+lineage or any execution layer. See
+architecture/contracts/institutional_bounded_context.md.
+"""
 
 from institutional_data.application import (
     InstitutionalIngestionResult,

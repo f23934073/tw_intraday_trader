@@ -523,3 +523,4 @@ tw_intraday_trader/
 5. 評分必須提供 breakdown，不只回傳一個數字
 6. 系統級安全與資料設定集中在 `config/`；策略 threshold 隨版本保存在 `strategy_catalog` 定義中
 7. 網頁紙上模擬與未來策略程式共用後端下單指令；Shioaji 只提供行情，目前不包含 Shioaji 或真實帳戶下單
+8. `institutional_*` 分為兩條互不交叉的血脈：A（`data → research → prior`，供 Candidate Prior）與 B（`data → mvp → backtest`，供 MVP 評估）。跨血脈 import 由 `tests/test_institutional_module_boundaries.py` 擋下；定位與淘汰條件見 `architecture/contracts/institutional_bounded_context.md`。

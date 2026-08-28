@@ -1,4 +1,15 @@
-"""Exploratory institutional Candidate Prior; no trading semantics."""
+"""Exploratory institutional Candidate Prior; no trading semantics.
+
+Layer:     L2-A (Candidate Prior)
+Lineage:   A  (institutional_data -> institutional_research -> institutional_prior)
+Depends:   institutional_research, institutional_data, watchlist
+Consumed:  candidate.previous_session
+Status:    EXPLORATORY
+
+Lineage B (institutional_mvp) is a separate stack built on `backtest` and must
+not be imported from here. See
+architecture/contracts/institutional_bounded_context.md.
+"""
 
 from .application import (
     InstitutionalCandidatePriorBuilder,
