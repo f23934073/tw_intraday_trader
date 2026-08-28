@@ -37,5 +37,10 @@ data/premarket/
 data/no_overnight_evidence/
 data/local_paper/
 
+# Runtime artifacts intentionally kept out of version control
+# (see .planning/2026-08-28-institutional-research-main-merge/findings.md)
+data/institutional_mvp/
+data/.locks/
+
 # Local process lock for append-only price-coverage artifact publication
 research/institutional_evaluation/acquisition/.price_coverage_acquisition.lock

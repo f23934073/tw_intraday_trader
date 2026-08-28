@@ -1,0 +1,173 @@
+ M .planning/.active_plan
+ M .planning/2026-08-20-pr008-review-followup/findings.md
+ M .planning/2026-08-20-pr008-review-followup/progress.md
+ M .planning/2026-08-20-pr008-review-followup/task_plan.md
+ M .planning/2026-08-21-finmind-sponsor-three-year-rebuild/findings.md
+ M .planning/2026-08-21-finmind-sponsor-three-year-rebuild/progress.md
+ M .planning/2026-08-21-finmind-sponsor-three-year-rebuild/task_plan.md
+ M .planning/2026-08-24-finmind-premarket-strategy-impl-plan/findings.md
+ M .planning/2026-08-24-finmind-premarket-strategy-impl-plan/progress.md
+ M .planning/2026-08-24-finmind-premarket-strategy-impl-plan/task_plan.md
+ M .planning/2026-08-26-r6-atomic-strategy-benchmark/findings.md
+ M .planning/2026-08-26-r6-atomic-strategy-benchmark/progress.md
+ M .planning/2026-08-26-r6-atomic-strategy-benchmark/task_plan.md
+ M backtest/atomic_benchmark/application.py
+ M backtest/atomic_benchmark/preflight.py
+ M backtest/finmind_snapshot.py
+ M findings.md
+ M market_data/late_delivery_capture.py
+ M market_data/late_delivery_capture_cli.py
+ M market_data/late_delivery_daily_cli.py
+ M market_data/late_delivery_evidence.py
+ M market_data/shioaji_momentum_stream.py
+ M progress.md
+ M scripts/download_finmind_sponsor_history.py
+ M scripts/launchd/com.stevehuang.tw-intraday-trader.freshness-calibration.plist
+ M scripts/preflight_atomic_entry_benchmark.py
+ M task_plan.md
+ M tests/test_atomic_entry_benchmark_full_dataset.py
+ M tests/test_atomic_entry_benchmark_postgres.py
+ M tests/test_backtest_sqlite_postgres_migration.py
+ M tests/test_finmind_sponsor_history.py
+ M tests/test_freshness_calibration_schedule.py
+ M tests/test_late_delivery_capture.py
+ M tests/test_late_delivery_evidence.py
+ M tests/test_price_coverage_scan_segment_manifest.py
+ M tests/test_shioaji_momentum_stream.py
+ M tests/test_strategy_migrations.py
+?? .planning/2026-08-24-finmind-premarket-strategy-impl-plan/implementation_plan.md
+?? .planning/2026-08-24-vwap-strategy-failure-attribution/audit_r5_terminal.py
+?? .planning/2026-08-24-vwap-strategy-failure-attribution/execute_r5_control.py
+?? .planning/2026-08-25-pr-tm-012c1-c1-runtime/
+?? .planning/2026-08-25-uncommitted-commit-packaging/
+?? .planning/2026-08-26-kill-switch-durable-control-implementati/
+?? .planning/2026-08-26-local-paper-tax-slippage-implementation-/
+?? .planning/2026-08-26-next-parallel-tasks-after-kill-switch-an/
+?? .planning/2026-08-26-pr-tm-012c1-next-session-prep/
+?? .planning/2026-08-26-pr-tm-012c1-review-remediation/
+?? .planning/2026-08-26-pr-tm-012c1-shadow/
+?? .planning/2026-08-27-d-health-late-recovery/
+?? .planning/2026-08-27-pr-tm-012c1-shadow/
+?? .planning/2026-08-27-r6-g3-eligibility-remediation/
+?? .planning/2026-08-27-supervise-three-parallel-safety-tasks/
+?? .planning/2026-08-27-trading-session-slippage-no-overnight-re/
+?? .planning/2026-08-28-pr-tm-012c1-blocker-remediation/
+?? .planning/2026-08-28-trading-day-job-audit/
+?? WORKFLOW.md
+?? architecture/hygiene_plans_index.md
+?? architecture/institutional_module_boundary_implementation_plan.md
+?? architecture/local_paper_kill_switch_durability_implementation_plan.md
+?? architecture/local_paper_tax_slippage_implementation_plan.md
+?? architecture/planning_log_single_source_implementation_plan.md
+?? architecture/price_coverage_source_digest_drift_implementation_plan.md
+?? architecture/r6_g3_dynamic_entry_reserve_amendment_a2.md
+?? architecture/static_analysis_ci_implementation_plan.md
+?? architecture/working_tree_commit_packaging_implementation_plan.md
+?? backtest/finmind_selection_bundle.py
+?? backtest/finmind_source_repair.py
+?? backtest/fugle_source_repair.py
+?? backtest/migrations/018_r6_dynamic_entry_reserve.sql
+?? data/
+?? docs/
+?? records/market_events/2026-08-25/
+?? records/market_events/2026-08-26/
+?? records/market_events/2026-08-27/
+?? records/market_events/2026-08-28/
+?? research/captures/freshness_broker_account/broker_account_20260825T113006+0800_db202416.json
+?? research/captures/freshness_broker_account/broker_account_20260825T123003+0800_f6764399.json
+?? research/captures/freshness_broker_account/broker_account_20260825T132005+0800_ec3f4f57.json
+?? research/captures/freshness_broker_account/broker_account_20260826T093505+0800_1df6a1b7.json
+?? research/captures/freshness_broker_account/broker_account_20260826T103005+0800_c78fe88f.json
+?? research/captures/freshness_broker_account/broker_account_20260826T113005+0800_d429f5ac.json
+?? research/captures/freshness_broker_account/broker_account_20260826T123000+0800_2ce20a8d.json
+?? research/captures/freshness_broker_account/broker_account_20260826T132005+0800_d45e29d4.json
+?? research/captures/freshness_broker_account/broker_account_20260827T093505+0800_68aa5d81.json
+?? research/captures/freshness_broker_account/broker_account_20260827T103003+0800_621aa3e6.json
+?? research/captures/freshness_broker_account/broker_account_20260827T113005+0800_15815231.json
+?? research/captures/freshness_broker_account/broker_account_20260827T123005+0800_726f83db.json
+?? research/captures/freshness_broker_account/broker_account_20260827T132001+0800_fbda09af.json
+?? research/captures/freshness_broker_account/broker_account_20260828T093505+0800_747cf97f.json
+?? research/captures/freshness_broker_account/broker_account_20260828T103005+0800_083c7abd.json
+?? research/captures/freshness_broker_account/broker_account_20260828T113004+0800_d86cf3a8.json
+?? research/captures/freshness_quote/quote_20260825T110016+0800.json
+?? research/captures/freshness_quote/quote_20260825T120014+0800.json
+?? research/captures/freshness_quote/quote_20260825T130132+0800.json
+?? research/captures/freshness_quote/quote_20260826T090011+0800.json
+?? research/captures/freshness_quote/quote_20260826T100010+0800.json
+?? research/captures/freshness_quote/quote_20260826T110022+0800.json
+?? research/captures/freshness_quote/quote_20260826T120017+0800.json
+?? research/captures/freshness_quote/quote_20260826T130256+0800.json
+?? research/captures/freshness_quote/quote_20260827T090011+0800.json
+?? research/captures/freshness_quote/quote_20260827T100010+0800.json
+?? research/captures/freshness_quote/quote_20260827T110012+0800.json
+?? research/captures/freshness_quote/quote_20260827T120010+0800.json
+?? research/captures/freshness_quote/quote_20260827T130142+0800.json
+?? research/captures/freshness_quote/quote_20260828T090014+0800.json
+?? research/captures/freshness_quote/quote_20260828T091718+0800.json
+?? research/captures/freshness_quote/quote_20260828T100013+0800.json
+?? research/captures/freshness_quote/quote_20260828T110017+0800.json
+?? research/captures/freshness_quote/quote_20260828T120018+0800.json
+?? research/finmind_source_repair_9960_20260320_tpex_daily_v1.json
+?? research/finmind_source_repairs/
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260825T113006+0800_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260825T123003+0800_late_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260825T132005+0800_pre_close.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260826T093505+0800_early_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260826T103005+0800_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260826T113005+0800_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260826T123000+0800_late_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260826T132005+0800_pre_close.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260827T093505+0800_early_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260827T103003+0800_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260827T113005+0800_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260827T123005+0800_late_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260827T132001+0800_pre_close.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260828T093505+0800_early_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260828T103005+0800_continuous.json
+?? research/freshness_calibration/broker_account_scheduled_runs/broker_account_run_20260828T113004+0800_continuous.json
+?? research/freshness_calibration/reviews/2026-08-25_1301_close_review.md
+?? research/freshness_calibration/reviews/2026-08-26_1302_close_review.md
+?? research/freshness_calibration/reviews/2026-08-26_post_session_cross_evidence_review.md
+?? research/freshness_calibration/reviews/2026-08-27_1301_close_review.md
+?? research/freshness_calibration/scheduled_runs/run_20260825T110000+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260825T120002+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260826T090000+0800_opening.json
+?? research/freshness_calibration/scheduled_runs/run_20260826T100005+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260826T110006+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260826T120005+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260827T090005+0800_opening.json
+?? research/freshness_calibration/scheduled_runs/run_20260827T100005+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260827T110005+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260827T120006+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260828T090006+0800_opening.json
+?? research/freshness_calibration/scheduled_runs/run_20260828T091705+0800_opening.json
+?? research/freshness_calibration/scheduled_runs/run_20260828T100003+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260828T110005+0800_continuous.json
+?? research/freshness_calibration/scheduled_runs/run_20260828T120005+0800_continuous.json
+?? research/late_delivery_evidence/runtime/
+?? research/trade_management_shadow/premarket_20260826_postfix_diagnostic.json
+?? research/trade_management_shadow/premarket_20260826_postfix_diagnostic.json.sha256
+?? research/trade_management_shadow/premarket_20260826_postfix_diagnostic_v2.json
+?? research/trade_management_shadow/premarket_20260826_postfix_diagnostic_v2.json.sha256
+?? research/trade_management_shadow/premarket_20260827.json
+?? research/trade_management_shadow/premarket_20260827.json.sha256
+?? research/trade_management_shadow/premarket_20260828.json
+?? research/trade_management_shadow/premarket_20260828.json.sha256
+?? research/trade_management_shadow/session_input_drafts/
+?? scripts/apply_r6_g3_migration_018.py
+?? scripts/audit_atomic_entry_benchmark_eligibility.py
+?? scripts/build_finmind_phase82_selection_bundle.py
+?? scripts/capture_fugle_source_repair_candidate.py
+?? scripts/derive_fugle_source_repair_candidate.py
+?? scripts/launchd/com.stevehuang.tw-intraday-trader.d-health-late-001-open-20260828.plist
+?? scripts/manage_finmind_source_repair.py
+?? scripts/run_one_shot_late_delivery_open.py
+?? scripts/supervise_atomic_entry_benchmark_preflight.py
+?? scripts/verify_finmind_selection_bundle.py
+?? tests/test_apply_r6_g3_migration_018.py
+?? tests/test_audit_atomic_entry_benchmark_eligibility.py
+?? tests/test_finmind_selection_bundle.py
+?? tests/test_finmind_source_repair.py
+?? tests/test_fugle_source_repair.py
+?? tests/test_run_one_shot_late_delivery_open.py
+?? tests/test_supervise_atomic_entry_benchmark_preflight.py
