@@ -230,12 +230,22 @@ def test_daily_report_separates_streams_and_is_built_from_session_ledgers(tmp_pa
             }
         )
     )
+    (session_dir / "passive_capture_report.json").write_text(
+        json.dumps(
+            {
+                "schema": "late-delivery-passive-capture-report-v1",
+                "session_id": SESSION_ID,
+                "status": "COMPLETE_WITH_WARNINGS",
+            }
+        )
+    )
 
     daily = build_daily_late_delivery_report(tmp_path / "records" / "market_events", SESSION_DATE)
 
     assert daily.session_count == 1
     assert daily.incomplete_session_ids == ("incomplete-passive-session",)
     assert daily.replay_failed_session_ids == ()
+    assert daily.warning_session_ids == (SESSION_ID,)
     assert daily.by_stream["BIDASK"].late_delivery_count == 1
     assert daily.by_stream["TICK"].total_events == 0
     assert daily.by_symbol["2330"].by_stream["BIDASK"].late_delivery_count == 1

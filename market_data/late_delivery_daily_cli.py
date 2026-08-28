@@ -43,6 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"finalized_session_count: {report.session_count}")
     print(f"incomplete_session_ids: {','.join(report.incomplete_session_ids) or 'none'}")
     print(f"replay_failed_session_ids: {','.join(report.replay_failed_session_ids) or 'none'}")
+    print(f"warning_session_ids: {','.join(report.warning_session_ids) or 'none'}")
     print("policy_interpretation: PROHIBITED_EVIDENCE_ONLY")
     return 0
 

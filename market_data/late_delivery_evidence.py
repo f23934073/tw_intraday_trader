@@ -23,7 +23,7 @@ from market_data.journal import JournalRecordType, verify_market_event_journal
 TAIPEI = ZoneInfo("Asia/Taipei")
 LATE_DELIVERY_COHORT_MANIFEST_SCHEMA = "late-delivery-cohort-manifest-v1"
 LATE_DELIVERY_SESSION_SCHEMA = "late-delivery-session-evidence-v1"
-LATE_DELIVERY_DAILY_SCHEMA = "late-delivery-daily-evidence-v2"
+LATE_DELIVERY_DAILY_SCHEMA = "late-delivery-daily-evidence-v3"
 
 
 class SessionPhase(StrEnum):
@@ -295,6 +295,7 @@ class LateDeliveryDailyReport:
     session_count: int
     incomplete_session_ids: tuple[str, ...]
     replay_failed_session_ids: tuple[str, ...]
+    warning_session_ids: tuple[str, ...]
     by_stream: Mapping[str, LateDeliveryTotals]
     by_symbol: Mapping[str, LateDeliverySymbolSummary]
     by_phase: Mapping[str, LateDeliverySymbolSummary]
@@ -306,6 +307,7 @@ class LateDeliveryDailyReport:
             "session_count": self.session_count,
             "incomplete_session_ids": list(self.incomplete_session_ids),
             "replay_failed_session_ids": list(self.replay_failed_session_ids),
+            "warning_session_ids": list(self.warning_session_ids),
             "by_stream": {
                 key: value.to_dict() for key, value in sorted(self.by_stream.items())
             },
@@ -499,6 +501,7 @@ def build_daily_late_delivery_report(
     reports: list[LateDeliverySessionReport] = []
     incomplete_session_ids: list[str] = []
     replay_failed_session_ids: list[str] = []
+    warning_session_ids: list[str] = []
     if session_root.exists():
         for path in sorted(session_root.glob("*/late_delivery_evidence.json")):
             raw = _mapping(json.loads(path.read_text()), "late-delivery session report")
@@ -509,7 +512,10 @@ def build_daily_late_delivery_report(
             reports.append(_session_report_from_mapping(raw))
         for path in sorted(session_root.glob("*/passive_capture_report.json")):
             raw = _mapping(json.loads(path.read_text()), "passive capture report")
-            if raw.get("schema") != "late-delivery-passive-capture-report-v1":
+            if raw.get("schema") not in {
+                "late-delivery-passive-capture-report-v1",
+                "late-delivery-passive-capture-report-v2",
+            }:
                 raise ValueError(f"unsupported passive capture report schema: {path}")
             session_id = _non_empty(raw["session_id"], "session_id")
             status = _non_empty(raw["status"], "status")
@@ -517,6 +523,8 @@ def build_daily_late_delivery_report(
                 incomplete_session_ids.append(session_id)
             elif status == "REPLAY_FAILED":
                 replay_failed_session_ids.append(session_id)
+            if status == "COMPLETE_WITH_WARNINGS" or raw.get("warnings"):
+                warning_session_ids.append(session_id)
 
     all_events = tuple(
         event
@@ -539,6 +547,7 @@ def build_daily_late_delivery_report(
         session_count=len(reports),
         incomplete_session_ids=tuple(sorted(set(incomplete_session_ids))),
         replay_failed_session_ids=tuple(sorted(set(replay_failed_session_ids))),
+        warning_session_ids=tuple(sorted(set(warning_session_ids))),
         by_stream=by_stream,
         by_symbol=by_symbol,
         by_phase=by_phase,

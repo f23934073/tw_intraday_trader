@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.stevehuang.tw-intraday-trader.d-health-late-001-open-20260828</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>exec /Users/stevehuang-work/Documents/tw_intraday_trader/.venv/bin/python /Users/stevehuang-work/Documents/tw_intraday_trader/scripts/run_one_shot_late_delivery_open.py</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>Asia/Taipei</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Month</key>
+    <integer>8</integer>
+    <key>Day</key>
+    <integer>28</integer>
+    <key>Hour</key>
+    <integer>8</integer>
+    <key>Minute</key>
+    <integer>55</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/tw_intraday-trader_d-health-late-001-open-20260828.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/tw_intraday-trader_d-health-late-001-open-20260828.stderr.log</string>
+</dict>
+</plist>

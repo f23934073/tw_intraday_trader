@@ -21,7 +21,10 @@ from market_data.late_delivery_evidence import (
     write_daily_late_delivery_report,
 )
 from market_data.qualification_capture import require_qualification_flags_off
-from market_data.shioaji_momentum_stream import ShioajiMomentumStream
+from market_data.shioaji_momentum_stream import (
+    ShioajiLoopbackBindError,
+    ShioajiMomentumStream,
+)
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -78,7 +81,17 @@ def main(argv: list[str] | None = None) -> int:
         subscribe_ack_timeout_seconds=args.subscribe_ack_timeout_seconds,
         prephase_wait_timeout_seconds=args.prephase_wait_timeout_seconds,
     )
-    stream = ShioajiMomentumStream.connect_from_env(session_id=session_id)
+    try:
+        stream = ShioajiMomentumStream.connect_from_env(session_id=session_id)
+    except ShioajiLoopbackBindError as error:
+        print("late_delivery_capture: FAILED")
+        print("mode: PASSIVE_EVIDENCE_ONLY")
+        print(f"phase: {phase.value}")
+        print("exact_replay: NOT_RUN")
+        print(f"reason: {type(error).__name__}:{error}")
+        print("safety: flags_off=true subscribe_trade=false order_path=NOT_WIRED")
+        print("gate_effect: NONE_HEALTH_POLICY_FRESHNESS_AND_P1_2_UNCHANGED")
+        return 2
     result = PassiveLateDeliveryCapture(
         stream,
         config,
@@ -90,10 +103,16 @@ def main(argv: list[str] | None = None) -> int:
         args.records_root / now.date().isoformat() / "late_delivery_daily_evidence.json",
         daily,
     )
-    print(f"late_delivery_capture: {'PASS' if result.completed else 'FAILED'}")
+    outcome = (
+        "PASS_WITH_WARNINGS"
+        if result.status == "COMPLETE_WITH_WARNINGS"
+        else "PASS" if result.completed else "FAILED"
+    )
+    print(f"late_delivery_capture: {outcome}")
+    print(f"status: {result.status}")
     print("mode: PASSIVE_EVIDENCE_ONLY")
     print(f"phase: {phase.value}")
-    print(f"exact_replay: {'PASS' if result.exact_replay_passed else 'FAILED'}")
+    print(f"exact_replay: {result.exact_replay_status}")
     print(f"session: {result.session_dir}")
     print(f"daily_report: {daily_path}")
     if result.evidence_path is not None:
@@ -102,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"report: {result.report_path}")
     for reason in result.reasons:
         print(f"reason: {reason}")
+    for warning in result.warnings:
+        print(f"warning: {warning}")
     print("safety: flags_off=true subscribe_trade=false order_path=NOT_WIRED")
     print("gate_effect: NONE_HEALTH_POLICY_FRESHNESS_AND_P1_2_UNCHANGED")
     return 0 if result.completed else 2

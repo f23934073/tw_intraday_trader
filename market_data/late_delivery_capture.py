@@ -52,18 +52,23 @@ from runtime.clock import Clock, SystemClock
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
-PASSIVE_CAPTURE_REPORT_SCHEMA = "late-delivery-passive-capture-report-v1"
+PASSIVE_CAPTURE_REPORT_SCHEMA = "late-delivery-passive-capture-report-v2"
+CALLBACK_QUARANTINE_SCHEMA = "late-delivery-callback-quarantine-v1"
 
 _PHASE_WINDOWS = {
     SessionPhase.OPEN: (time(9, 0), time(9, 30)),
     SessionPhase.MID: (time(10, 30), time(11, 0)),
     SessionPhase.CLOSE: (time(13, 0), time(13, 30)),
 }
+_REGULAR_SESSION_WINDOW = (time(9, 0), time(13, 30))
 
 
 class PassiveCaptureStream(Protocol):
     @property
     def callback_errors(self) -> tuple[str, ...]: ...
+
+    @property
+    def callback_quarantine(self) -> tuple[Mapping[str, object], ...]: ...
 
     def start(self, event_handler, lifecycle_handler) -> None: ...
 
@@ -110,11 +115,20 @@ class PassiveLateDeliveryCaptureConfig:
 @dataclass(frozen=True)
 class PassiveLateDeliveryCaptureResult:
     session_dir: Path
+    status: str
     completed: bool
     exact_replay_passed: bool
+    exact_replay_attempted: bool
     evidence_path: Path | None
     report_path: Path | None
     reasons: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+    @property
+    def exact_replay_status(self) -> str:
+        if not self.exact_replay_attempted:
+            return "NOT_RUN"
+        return "PASS" if self.exact_replay_passed else "FAILED"
 
 
 class PassiveLateDeliveryCapture:
@@ -164,6 +178,11 @@ class PassiveLateDeliveryCapture:
         worker: Thread | None = None
         report_path: Path | None = None
         evidence_path: Path | None = None
+        quarantine_path: Path | None = None
+        warnings: tuple[str, ...] = ()
+        replay_attempted = False
+        replay_passed = False
+        replay_result = None
         try:
             evidence = self._load_bootstrap_evidence(session_date)
             reference_path, reference_artifact = self._write_references(
@@ -208,8 +227,6 @@ class PassiveLateDeliveryCapture:
                 evidence=evidence,
                 session_date=session_date,
                 initialized_at=initialized_at,
-                phase_start=phase_start,
-                phase_end=phase_end,
             )
             ready_at = self._clock.now().astimezone(TAIPEI)
             health.mark_ready(
@@ -235,8 +252,27 @@ class PassiveLateDeliveryCapture:
             if worker.is_alive() or len(queue):
                 raise RuntimeError("QUEUE_DRAIN_TIMEOUT")
             callback_errors = tuple(getattr(self._stream, "callback_errors", ()))
+            callback_quarantine = tuple(
+                getattr(self._stream, "callback_quarantine", ())
+            )
+            if callback_quarantine:
+                quarantine_path = self._write_callback_quarantine(
+                    recorder.session_dir,
+                    callback_quarantine,
+                )
+            if len(callback_errors) != len(callback_quarantine):
+                raise RuntimeError(
+                    "UNACCOUNTED_CALLBACK_ERRORS:"
+                    f"errors={len(callback_errors)}:"
+                    f"quarantine={len(callback_quarantine)}"
+                )
+            quarantined_errors = tuple(
+                str(item.get("error", "")) for item in callback_quarantine
+            )
+            if callback_errors != quarantined_errors:
+                raise RuntimeError("CALLBACK_QUARANTINE_IDENTITY_MISMATCH")
             if callback_errors:
-                raise RuntimeError("CALLBACK_ERRORS:" + "|".join(callback_errors))
+                warnings = (f"CALLBACKS_QUARANTINED:{len(callback_errors)}",)
             if self._admission_failures:
                 raise RuntimeError(
                     "INGRESS_ADMISSION_FAILED:" + "|".join(self._admission_failures)
@@ -258,6 +294,8 @@ class PassiveLateDeliveryCapture:
             journal = verify_market_event_journal(recorder.session_dir)
             if not journal.valid or journal.manifest is None:
                 raise RuntimeError("FINALIZED_JOURNAL_VERIFICATION_FAILED")
+            if not journal.records:
+                raise RuntimeError("FINALIZED_JOURNAL_EMPTY")
             live_digests = build_live_projection_digest_set(
                 session_id=self.config.session_id,
                 session_date=session_date,
@@ -285,31 +323,44 @@ class PassiveLateDeliveryCapture:
                 ).digest,
                 digest_set=live_digests.to_contract_dict(),
             )
+            replay_attempted = True
             replay = verify_exact_projection_replay(
                 session_dir=recorder.session_dir,
                 bootstrap_path=bootstrap_path,
                 instrument_reference_path=reference_path,
             )
+            replay_result = replay
+            replay_passed = replay.valid
             evidence_path = write_late_delivery_session_report(
                 recorder.session_dir,
                 analyze_late_delivery_session(recorder.session_dir),
             )
             reasons = () if replay.valid else tuple(replay.errors)
+            status = (
+                "COMPLETE_WITH_WARNINGS"
+                if replay.valid and warnings
+                else "COMPLETE" if replay.valid else "REPLAY_FAILED"
+            )
             report_path = self._write_report(
                 recorder.session_dir,
-                status="COMPLETE" if replay.valid else "REPLAY_FAILED",
+                status=status,
                 reasons=reasons,
+                warnings=warnings,
                 replay=replay,
                 evidence_path=evidence_path,
                 projection_path=projection_path,
+                quarantine_path=quarantine_path,
             )
             return PassiveLateDeliveryCaptureResult(
                 session_dir=recorder.session_dir,
+                status=status,
                 completed=replay.valid,
                 exact_replay_passed=replay.valid,
+                exact_replay_attempted=replay_attempted,
                 evidence_path=evidence_path,
                 report_path=report_path,
                 reasons=reasons,
+                warnings=warnings,
             )
         except Exception as error:
             self._capture_gate.clear()
@@ -333,19 +384,24 @@ class PassiveLateDeliveryCapture:
                     recorder.session_dir,
                     status="INCOMPLETE",
                     reasons=(reason,),
-                    replay=None,
+                    warnings=warnings,
+                    replay=replay_result,
                     evidence_path=None,
                     projection_path=None,
+                    quarantine_path=quarantine_path,
                 )
             except (OSError, ValueError):
                 report_path = None
             return PassiveLateDeliveryCaptureResult(
                 session_dir=recorder.session_dir,
+                status="INCOMPLETE",
                 completed=False,
-                exact_replay_passed=False,
+                exact_replay_passed=replay_passed,
+                exact_replay_attempted=replay_attempted,
                 evidence_path=None,
                 report_path=report_path,
                 reasons=(reason,),
+                warnings=warnings,
             )
 
     def _load_bootstrap_evidence(
@@ -466,6 +522,14 @@ class PassiveLateDeliveryCapture:
             datetime.combine(session_date, end, tzinfo=TAIPEI),
         )
 
+    @staticmethod
+    def _regular_session_bounds(session_date: date) -> tuple[datetime, datetime]:
+        start, end = _REGULAR_SESSION_WINDOW
+        return (
+            datetime.combine(session_date, start, tzinfo=TAIPEI),
+            datetime.combine(session_date, end, tzinfo=TAIPEI),
+        )
+
     def _write_references(
         self,
         session_dir: Path,
@@ -525,9 +589,8 @@ class PassiveLateDeliveryCapture:
         evidence: tuple[QualificationBootstrapEvidence, ...],
         session_date: date,
         initialized_at: datetime,
-        phase_start: datetime,
-        phase_end: datetime,
     ) -> tuple[Path, dict[str, object]]:
+        regular_open, regular_close = self._regular_session_bounds(session_date)
         by_symbol = {item.reference.symbol: item for item in evidence}
         instrument_ids = sorted(
             f"{item.reference.exchange.strip().upper()}:{item.reference.symbol}"
@@ -588,8 +651,8 @@ class PassiveLateDeliveryCapture:
                 "calendar_id": "TAIWAN_EXCHANGE_SESSION",
                 "calendar_version": self._calendar_version,
                 "session_phase": self.config.phase.value,
-                "scheduled_open": phase_start.isoformat(),
-                "scheduled_close": phase_end.isoformat(),
+                "scheduled_open": regular_open.isoformat(),
+                "scheduled_close": regular_close.isoformat(),
             },
             "coverage": {
                 "required_instrument_ids": instrument_ids,
@@ -673,21 +736,56 @@ class PassiveLateDeliveryCapture:
         _write_exclusive(path, raw)
         return path
 
+    def _write_callback_quarantine(
+        self,
+        session_dir: Path,
+        entries: tuple[Mapping[str, object], ...],
+    ) -> Path:
+        raw: dict[str, object] = {
+            "schema": CALLBACK_QUARANTINE_SCHEMA,
+            "artifact_id": _artifact_id("callback-quarantine"),
+            "session_id": self.config.session_id,
+            "status": "FINALIZED",
+            "entry_count": len(entries),
+            "entries": [dict(item) for item in entries],
+            "content_sha256": "",
+        }
+        raw["content_sha256"] = _content_digest(
+            raw,
+            {"status", "content_sha256"},
+        )
+        path = session_dir / "callback_quarantine.json"
+        _write_exclusive(path, raw)
+        persisted = json.loads(path.read_text())
+        if (
+            not isinstance(persisted, dict)
+            or persisted.get("schema") != CALLBACK_QUARANTINE_SCHEMA
+            or persisted.get("status") != "FINALIZED"
+            or persisted.get("entry_count") != len(entries)
+            or persisted.get("content_sha256")
+            != _content_digest(persisted, {"status", "content_sha256"})
+        ):
+            raise RuntimeError("CALLBACK_QUARANTINE_VERIFICATION_FAILED")
+        return path
+
     def _write_report(
         self,
         session_dir: Path,
         *,
         status: str,
         reasons: tuple[str, ...],
+        warnings: tuple[str, ...],
         replay,
         evidence_path: Path | None,
         projection_path: Path | None,
+        quarantine_path: Path | None,
     ) -> Path:
         raw = {
             "schema": PASSIVE_CAPTURE_REPORT_SCHEMA,
             "session_id": self.config.session_id,
             "status": status,
             "reasons": list(reasons),
+            "warnings": list(warnings),
             "safety": {
                 "foundation_flags_off": True,
                 "subscribe_trade": False,
@@ -715,6 +813,9 @@ class PassiveLateDeliveryCapture:
                 "instrument_reference": "instrument_reference.json" if projection_path else None,
                 "projection_state": projection_path.name if projection_path else None,
                 "late_delivery_evidence": evidence_path.name if evidence_path else None,
+                "callback_quarantine": (
+                    quarantine_path.name if quarantine_path else None
+                ),
             },
             "exact_replay": None if replay is None else {
                 "passed": replay.valid,
