@@ -26,6 +26,8 @@ R2_CONFIGURATION = (
 ACKNOWLEDGEMENT = (
     ACQUISITION / "price_coverage_source_drift_acknowledgement_v1.json"
 )
+# This commit first introduced the sealed r2 configuration; descendants are post-freeze.
+R2_FREEZE_COMMIT = "bf55f357e56add002dd1244e33e5ef50bace08bf"
 ACKNOWLEDGED_ON = "2026-08-28"
 DRIFT_STATUS = "ACKNOWLEDGED_POST_FREEZE_EVOLUTION"
 SOURCE_FIELDS = (
@@ -135,12 +137,25 @@ def evaluate_source_drift(
 
 
 def _commits_since_freeze(path: str) -> list[str]:
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", R2_FREEZE_COMMIT, "HEAD"],
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if ancestry.returncode != 0:
+        raise SourceDriftAcknowledgementError(
+            "r2 freeze commit is unavailable or not an ancestor of HEAD"
+        )
+
     result = subprocess.run(
         [
             "git",
             "log",
+            "--topo-order",
             "--format=%H",
-            "--since=2026-08-21",
+            f"{R2_FREEZE_COMMIT}..HEAD",
             "--",
             path,
         ],

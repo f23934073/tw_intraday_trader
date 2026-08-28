@@ -7,9 +7,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from institutional_data.serialization import canonical_json, sha256_text
 from scripts.build_price_coverage_source_drift_acknowledgement import (
     DRIFT_STATUS,
+    SourceDriftAcknowledgementError,
+    _commits_since_freeze,
     canonical_seal_errors,
     check_acknowledgement,
     evaluate_source_drift,
@@ -30,6 +34,10 @@ PINNED_SOURCE_FIELDS = {
     "backtest/historical_download.py": "historical_downloader_source_sha256",
     "scripts/download_backtest_history.py": "cli_source_sha256",
 }
+EXPECTED_CAUSING_COMMITS = [
+    "f751843a270c074706c838cb609330716fe12757",
+    "1d9d0145bcab08aa37b6b8f9b21339f016e5584c",
+]
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -187,6 +195,36 @@ def test_drift_acknowledgement_is_canonically_sealed() -> None:
 
 def test_drift_acknowledgement_matches_reviewed_builder() -> None:
     assert check_acknowledgement() == []
+
+
+@pytest.mark.parametrize("timezone", ("UTC", "Asia/Taipei", "Pacific/Kiritimati"))
+@pytest.mark.parametrize("source_path", PINNED_SOURCE_FIELDS)
+def test_causing_commits_are_timezone_deterministic(
+    monkeypatch: pytest.MonkeyPatch,
+    timezone: str,
+    source_path: str,
+) -> None:
+    monkeypatch.setenv("TZ", timezone)
+
+    assert _commits_since_freeze(source_path) == EXPECTED_CAUSING_COMMITS
+
+
+def test_causing_commits_fail_closed_without_freeze_ancestry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailedAncestry:
+        returncode = 1
+
+    monkeypatch.setattr(
+        "scripts.build_price_coverage_source_drift_acknowledgement.subprocess.run",
+        lambda *_args, **_kwargs: FailedAncestry(),
+    )
+
+    with pytest.raises(
+        SourceDriftAcknowledgementError,
+        match="r2 freeze commit is unavailable or not an ancestor of HEAD",
+    ):
+        _commits_since_freeze("backtest/historical_download.py")
 
 
 def test_unacknowledged_source_drift_fails_closed() -> None:
