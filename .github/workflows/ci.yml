@@ -51,6 +51,9 @@ jobs:
       - name: Check dashboard JavaScript syntax
         run: python scripts/check_dashboard_js.py
 
+      - name: Check planning document consistency
+        run: python scripts/check_planning_consistency.py
+
       - name: Run tests with MockProvider-compatible defaults
         run: python -m pytest tests/ -q
 

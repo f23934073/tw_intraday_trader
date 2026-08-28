@@ -1,3 +1,8 @@
+> Deprecated on 2026-08-28. This file's `Current Phase` (Phase 13) had drifted
+> from `.planning/.active_plan` and `progress.md` (Phase 17). Per DOC-001, the
+> single source of truth for the active plan is
+> `.planning/<active_plan>/task_plan.md`.
+
 # Task Plan: Build the intraday trader execution foundation
 
 ## Goal
