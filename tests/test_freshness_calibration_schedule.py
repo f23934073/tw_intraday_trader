@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import plistlib
 from zoneinfo import ZoneInfo
 
 from config import twse_calendar_2026
@@ -14,6 +15,9 @@ from market_data.freshness_calibration_schedule import (
 TAIPEI = ZoneInfo("Asia/Taipei")
 CALENDAR = ReviewedEquityCalendar.from_path(twse_calendar_2026.PATH)
 MANIFEST = Path("research/freshness_calibration/cohort_manifest_2026-08-20_twse_2026-08-19.json")
+LAUNCHD_PLIST = Path(
+    "scripts/launchd/com.stevehuang.tw-intraday-trader.freshness-calibration.plist"
+)
 
 
 def scheduled_at(
@@ -171,7 +175,7 @@ def test_close_boundary_window_is_explicitly_twenty_minutes() -> None:
     assert SCHEDULED_QUOTE_WINDOWS[(13, 15)].duration_seconds == 1_200
 
 
-def test_accelerated_windows_are_non_overlapping_and_keep_frozen_labels() -> None:
+def test_accelerated_windows_keep_frozen_labels_and_durations() -> None:
     assert SCHEDULED_QUOTE_WINDOWS == {
         (9, 0): SCHEDULED_QUOTE_WINDOWS[(9, 0)],
         (9, 15): SCHEDULED_QUOTE_WINDOWS[(9, 15)],
@@ -191,3 +195,23 @@ def test_accelerated_windows_are_non_overlapping_and_keep_frozen_labels() -> Non
         ("continuous", 900),
         ("close", 1_200),
     ]
+
+
+def test_second_opening_launch_waits_for_first_capture_process_to_exit() -> None:
+    with LAUNCHD_PLIST.open("rb") as handle:
+        launchd = plistlib.load(handle)
+
+    triggers = {
+        (item["Hour"], item["Minute"])
+        for item in launchd["StartCalendarInterval"]
+    }
+    assert (9, 15) not in triggers
+    assert (9, 17) in triggers
+
+    decision = decide_scheduled_quote_capture(
+        scheduled_at(9, 17),
+        calendar=CALENDAR,
+    )
+    assert decision.permitted is True
+    assert decision.scheduled_for == scheduled_at(9, 15)
+    assert decision.launch_delay_seconds == 120.0
