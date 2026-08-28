@@ -10,7 +10,7 @@ import shutil
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Mapping
 from uuid import uuid4
 
 from backtest.domain import canonical_json, digest
@@ -18,7 +18,6 @@ from backtest.domain import canonical_json, digest
 from .domain import (
     ResearchReplayIntegrityError,
     canonical_object_bytes,
-    layer_multiplicity_digest,
     require_sha256,
     verify_episode_row,
     verify_ledger_manifest,

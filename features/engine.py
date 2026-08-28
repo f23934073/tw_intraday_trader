@@ -44,7 +44,11 @@ from features.rsi import (
     RsiFeatureValue,
     evaluate_wilder_rsi,
 )
-from features.specifications import FeatureRequestSpec, FeatureSpecificationRegistry
+from features.specifications import (
+    FeatureRequestSpec,
+    FeatureSpecification,
+    FeatureSpecificationRegistry,
+)
 from market_data.events import TickEvent
 from market_data.health import DataHealthState
 from market_data.instrument_reference import InstrumentReferenceStore
@@ -214,13 +218,21 @@ class FeatureEngine:
         projections: list[RequestedFeatureProjection] = []
         for request in requests:
             specification = registry.get(request.feature_id)
+            result: (
+                RollingFeatureValue
+                | OpeningRangeFeatureValue
+                | EmaCrossoverFeatureValue
+                | RsiFeatureValue
+                | BollingerReentryFeatureValue
+            )
+            source_as_of: datetime
             if specification.cadence != "COMPLETED_KBAR_1M":
                 raise ValueError(
                     f"Local Paper request cadence 不支援：{specification.cadence}"
                 )
             if request.feature_id == "opening_range_high_v1":
                 capacity = OPENING_RANGE_SESSION_BAR_CAPACITY
-                bars = tuple(
+                opening_range_bars = tuple(
                     OpeningRangeBar(
                         timestamp=item.minute,
                         high=item.high,
@@ -230,11 +242,16 @@ class FeatureEngine:
                 )
                 result = evaluate_opening_range_high(
                     request.parameters,
-                    bars,
+                    opening_range_bars,
+                )
+                source_as_of = (
+                    opening_range_bars[-1].timestamp
+                    if opening_range_bars
+                    else completed_through
                 )
             elif request.feature_id == "ema_cross_up_v1":
                 capacity = EMA_SESSION_BAR_CAPACITY
-                bars = tuple(
+                ema_bars = tuple(
                     EmaBar(
                         timestamp=item.minute,
                         close=item.close,
@@ -243,11 +260,14 @@ class FeatureEngine:
                 )
                 result = evaluate_ema_cross_up(
                     request.parameters,
-                    bars,
+                    ema_bars,
+                )
+                source_as_of = (
+                    ema_bars[-1].timestamp if ema_bars else completed_through
                 )
             elif request.feature_id == "wilder_rsi_v1":
                 capacity = RSI_SESSION_BAR_CAPACITY
-                bars = tuple(
+                rsi_bars = tuple(
                     RsiBar(
                         timestamp=item.minute,
                         close=item.close,
@@ -256,11 +276,14 @@ class FeatureEngine:
                 )
                 result = evaluate_wilder_rsi(
                     request.parameters,
-                    bars,
+                    rsi_bars,
+                )
+                source_as_of = (
+                    rsi_bars[-1].timestamp if rsi_bars else completed_through
                 )
             elif request.feature_id == "bollinger_lower_reentry_v1":
                 capacity = BOLLINGER_SESSION_BAR_CAPACITY
-                bars = tuple(
+                bollinger_bars = tuple(
                     BollingerBar(
                         timestamp=item.minute,
                         close=item.close,
@@ -269,14 +292,19 @@ class FeatureEngine:
                 )
                 result = evaluate_bollinger_lower_reentry(
                     request.parameters,
-                    bars,
+                    bollinger_bars,
+                )
+                source_as_of = (
+                    bollinger_bars[-1].timestamp
+                    if bollinger_bars
+                    else completed_through
                 )
             else:
                 capacity = required_bar_capacity(
                     request.feature_id,
                     request.parameters,
                 )
-                bars = tuple(
+                rolling_bars = tuple(
                     RollingBar(
                         timestamp=item.minute,
                         close=item.close,
@@ -287,7 +315,12 @@ class FeatureEngine:
                 result = evaluate_completed_bars(
                     request.feature_id,
                     request.parameters,
-                    bars,
+                    rolling_bars,
+                )
+                source_as_of = (
+                    rolling_bars[-1].timestamp
+                    if rolling_bars
+                    else completed_through
                 )
             projections.append(
                 self._requested_projection(
@@ -295,9 +328,7 @@ class FeatureEngine:
                     request=request,
                     specification=specification,
                     result=result,
-                    source_as_of=(
-                        bars[-1].timestamp if bars else completed_through
-                    ),
+                    source_as_of=source_as_of,
                 )
             )
         return tuple(projections)
@@ -307,7 +338,7 @@ class FeatureEngine:
         *,
         current_tick: TickEvent,
         request: FeatureRequestSpec,
-        specification,
+        specification: FeatureSpecification,
         result: (
             RollingFeatureValue
             | OpeningRangeFeatureValue

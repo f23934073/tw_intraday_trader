@@ -27,7 +27,6 @@ from .domain import (
 )
 from .repository import (
     AtomicBenchmarkConflict,
-    AtomicBenchmarkUnavailable,
     BenchmarkMatrixRepositoryPort,
 )
 

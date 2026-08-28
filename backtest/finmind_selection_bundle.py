@@ -13,7 +13,7 @@ from typing import Any, Mapping, Sequence
 
 from backtest.dataset import DatasetManifest
 from backtest.domain import canonical_json
-from backtest.finmind_history import SOURCE, SOURCE_VERSION, VOLUME_UNIT
+from backtest.finmind_history import SOURCE
 from backtest.finmind_snapshot import FinMindSnapshotPlan
 
 

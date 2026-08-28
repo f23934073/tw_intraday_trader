@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import time
 from decimal import Decimal
+from typing import Any, Mapping
 
 from atomic_strategies.protocol import (
     AtomicEvaluationStatus,
@@ -137,8 +138,8 @@ class RollingReturnEntryStrategy:
         status: AtomicEvaluationStatus,
         reason: str,
         *,
-        observed=None,
-        threshold=None,
+        observed: Mapping[str, Any] | None = None,
+        threshold: Mapping[str, Any] | None = None,
     ) -> AtomicStrategyEvaluation:
         return AtomicStrategyEvaluation(
             strategy_id=self.template.strategy_id,

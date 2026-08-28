@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Callable, cast
 
 from features.models import IntradayFeatureSnapshot
 from signals.models import (
@@ -124,7 +125,7 @@ class MomentumProjectionStore:
     def begin_session(self, session_date: date) -> None:
         if session_date == self._session_date:
             return
-        self.__init__(session_date)
+        cast(Callable[[date], None], getattr(self, "__init__"))(session_date)
 
     def apply(
         self,

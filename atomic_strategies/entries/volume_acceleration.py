@@ -176,8 +176,8 @@ class VolumeAccelerationEntryStrategy:
         status: AtomicEvaluationStatus,
         reason: str,
         *,
-        observed=None,
-        threshold=None,
+        observed: Mapping[str, Any] | None = None,
+        threshold: Mapping[str, Any] | None = None,
     ) -> AtomicStrategyEvaluation:
         return AtomicStrategyEvaluation(
             strategy_id=self.template.strategy_id,

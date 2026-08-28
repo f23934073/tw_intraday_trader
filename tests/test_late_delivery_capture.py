@@ -250,7 +250,6 @@ def test_passive_collector_finalizes_multi_symbol_evidence_without_case_taxonomy
         calendar_version="reviewed-calendar-v1",
         clock=clock,
     )
-    original_wait = capture._wait_for_capture_duration
     capture._wait_for_capture_duration = lambda: stream.emit(capture.config.cohort.symbols)  # type: ignore[method-assign]
 
     result = capture.run()

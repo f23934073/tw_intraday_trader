@@ -74,7 +74,6 @@ class PostgresAtomicStrategyRepository:
         self._connection.close()
 
     def upsert_template(self, template: StrategyTemplate) -> None:
-        document = template.template_document
         with self._transaction() as cursor:
             cursor.execute(
                 """

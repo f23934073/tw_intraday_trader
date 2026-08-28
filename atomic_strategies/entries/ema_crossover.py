@@ -147,7 +147,7 @@ class EmaCrossoverEntryStrategy:
         status: AtomicEvaluationStatus,
         reason: str,
         *,
-        observed=None,
+        observed: Mapping[str, Any] | None = None,
     ) -> AtomicStrategyEvaluation:
         return AtomicStrategyEvaluation(
             strategy_id=self.template.strategy_id,

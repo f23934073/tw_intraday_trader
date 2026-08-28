@@ -19,6 +19,7 @@ from atomic_strategies.entries.volume_acceleration import (
     VolumeAccelerationEntryStrategy,
 )
 from atomic_strategies.protocol import AtomicStrategy
+from strategy_catalog.drafts import StrategyTemplate
 
 
 class AtomicStrategyRegistry:
@@ -46,5 +47,5 @@ class AtomicStrategyRegistry:
         except KeyError as error:
             raise ValueError(f"未知或未部署的 atomic strategy：{strategy_id}") from error
 
-    def templates(self):
+    def templates(self) -> tuple[StrategyTemplate, ...]:
         return tuple(item.template for item in self._strategies.values())

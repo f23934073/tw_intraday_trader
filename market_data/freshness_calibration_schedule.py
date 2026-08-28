@@ -14,7 +14,6 @@ from typing import Callable, Mapping
 import json
 from zoneinfo import ZoneInfo
 
-from config import twse_calendar_2026
 from market_data.equity_calendar import ReviewedEquityCalendar
 
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import time
+from decimal import Decimal
+from typing import cast
 
 from config.momentum import (
     LIMIT_UP_MOMENTUM_HYPOTHESIS_V0,
@@ -18,6 +20,7 @@ from signals.evidence import (
 )
 from signals.models import (
     MomentumSignal,
+    SignalDetail,
     SignalEvaluationStatus,
     SignalResult,
 )
@@ -50,14 +53,16 @@ class LimitUpMomentumSignal:
                 feature=snapshot.return_2m,
                 points=self._weight("return_2m"),
                 threshold=self._config.min_return_2m,
-                predicate=lambda value: value >= self._config.min_return_2m,
+                predicate=lambda value: cast(Decimal, value)
+                >= self._config.min_return_2m,
             ),
             detail_for_feature(
                 rule="distance_to_limit",
                 feature=snapshot.distance_to_limit,
                 points=self._weight("distance_to_limit"),
                 threshold=self._config.max_distance_to_limit,
-                predicate=lambda value: value <= self._config.max_distance_to_limit,
+                predicate=lambda value: cast(Decimal, value)
+                <= self._config.max_distance_to_limit,
             ),
             detail_for_feature(
                 rule="volume_acceleration_2m",
@@ -65,7 +70,7 @@ class LimitUpMomentumSignal:
                 points=self._weight("volume_acceleration_2m"),
                 threshold=self._config.min_volume_acceleration_2m,
                 predicate=(
-                    lambda value: value
+                    lambda value: cast(Decimal, value)
                     >= self._config.min_volume_acceleration_2m
                 ),
             ),
@@ -125,9 +130,12 @@ class LimitUpMomentumSignal:
         )
 
     @staticmethod
-    def _component_signals(details, triggered: bool):
+    def _component_signals(
+        details: tuple[SignalDetail, ...],
+        triggered: bool,
+    ) -> tuple[MomentumSignal, tuple[MomentumSignal, ...]]:
         by_rule = {item.rule: item for item in details}
-        components = []
+        components: list[MomentumSignal] = []
         if by_rule["breakout"].passed:
             components.append(MomentumSignal.BREAKOUT)
         if by_rule["volume_acceleration_2m"].passed:

@@ -460,6 +460,18 @@ python3 -m pytest tests/ -v
 
 ---
 
+## 靜態檢查
+
+```bash
+python -m ruff check .           # lint（blocking）
+python -m ruff format --check . # 格式（目前 non-blocking）
+python -m mypy                  # signals/features/atomic_strategies
+```
+
+ruff 與 mypy 版本已在 `pyproject.toml` 的 `dev` extra 完全釘死。本機請用 `pip install -e ".[dev]"` 安裝，勿自行升級，避免規則集與 CI 不一致。
+
+---
+
 ## 專案結構
 
 ```text

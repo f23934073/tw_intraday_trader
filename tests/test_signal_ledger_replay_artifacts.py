@@ -173,7 +173,6 @@ def test_unknown_file_and_payload_byte_tamper_fail_closed(tmp_path) -> None:
 
 def test_result_load_rebuilds_economic_formula_beyond_manifest_digests(tmp_path) -> None:
     store, *values = _publish_all(tmp_path)
-    result_manifest = values[6]
     result_path = values[9]
     episode_path = result_path / "episodes.jsonl"
     manifest_path = result_path / "manifest.json"

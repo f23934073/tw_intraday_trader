@@ -12,9 +12,14 @@ OPENING_RANGE_SESSION_BAR_CAPACITY = 300
 
 
 class CompletedOpeningRangeBar(Protocol):
-    timestamp: datetime
-    high: Decimal
-    low: Decimal
+    @property
+    def timestamp(self) -> datetime: ...
+
+    @property
+    def high(self) -> Decimal: ...
+
+    @property
+    def low(self) -> Decimal: ...
 
 
 @dataclass(frozen=True)

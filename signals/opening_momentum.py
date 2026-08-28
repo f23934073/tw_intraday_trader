@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from typing import cast
+
 from config.momentum import OpeningMomentumHypothesisConfig
 from features.models import FeatureStatus, IntradayFeatureSnapshot
 from market_data.health import DataHealthState
@@ -12,6 +15,7 @@ from signals.evidence import (
 )
 from signals.models import (
     MomentumSignal,
+    SignalDetail,
     SignalEvaluationStatus,
     SignalResult,
 )
@@ -43,14 +47,16 @@ class OpeningMomentumSignal:
                 feature=snapshot.return_2m,
                 points=self._weight("return_2m"),
                 threshold=self._config.min_return_2m,
-                predicate=lambda value: value >= self._config.min_return_2m,
+                predicate=lambda value: cast(Decimal, value)
+                >= self._config.min_return_2m,
             ),
             detail_for_feature(
                 rule="distance_to_limit",
                 feature=snapshot.distance_to_limit,
                 points=self._weight("distance_to_limit"),
                 threshold=self._config.max_distance_to_limit,
-                predicate=lambda value: value <= self._config.max_distance_to_limit,
+                predicate=lambda value: cast(Decimal, value)
+                <= self._config.max_distance_to_limit,
             ),
             detail_for_feature(
                 rule="opening_volume_context",
@@ -58,7 +64,8 @@ class OpeningMomentumSignal:
                 points=self._weight("opening_volume_context"),
                 threshold=self._config.min_opening_volume_context,
                 predicate=(
-                    lambda value: value >= self._config.min_opening_volume_context
+                    lambda value: cast(Decimal, value)
+                    >= self._config.min_opening_volume_context
                 ),
             ),
             external_ratio_detail(
@@ -152,9 +159,12 @@ class OpeningMomentumSignal:
         return reasons
 
     @staticmethod
-    def _component_signals(details, triggered: bool):
+    def _component_signals(
+        details: tuple[SignalDetail, ...],
+        triggered: bool,
+    ) -> tuple[MomentumSignal, tuple[MomentumSignal, ...]]:
         by_rule = {item.rule: item for item in details}
-        components = []
+        components: list[MomentumSignal] = []
         if by_rule["breakout"].passed:
             components.append(MomentumSignal.BREAKOUT)
         if by_rule["opening_volume_context"].passed:

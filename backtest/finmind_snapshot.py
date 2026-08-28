@@ -20,7 +20,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from itertools import groupby
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from backtest.domain import HistoricalBar, canonical_json
 from backtest.finmind_history import (

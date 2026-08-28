@@ -1496,6 +1496,7 @@ def test_integrity_failure_cannot_be_reclassified_as_retryable(
             idempotency_key="illegal-retry",
             actor_id="operator",
         )
+    with postgres_test_connection.cursor() as cursor:
         cursor.execute(
             """
             SELECT count(*) FROM backtest.atomic_entry_benchmark_attempts

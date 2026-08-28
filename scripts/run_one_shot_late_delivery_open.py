@@ -10,7 +10,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import uuid
 from zoneinfo import ZoneInfo
 
 

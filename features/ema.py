@@ -12,8 +12,11 @@ EMA_SESSION_BAR_CAPACITY = 300
 
 
 class CompletedEmaBar(Protocol):
-    timestamp: datetime
-    close: Decimal
+    @property
+    def timestamp(self) -> datetime: ...
+
+    @property
+    def close(self) -> Decimal: ...
 
 
 @dataclass(frozen=True)
@@ -96,7 +99,12 @@ def evaluate_ema_cross_up(
     current_fast = fast_values[-1]
     previous_slow = slow_values[-2]
     current_slow = slow_values[-1]
-    if None in (previous_fast, current_fast, previous_slow, current_slow):
+    if (
+        previous_fast is None
+        or current_fast is None
+        or previous_slow is None
+        or current_slow is None
+    ):
         raise RuntimeError("EMA warm-up contract violated")
 
     crossed_up = previous_fast <= previous_slow and current_fast > current_slow

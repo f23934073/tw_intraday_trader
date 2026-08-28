@@ -39,7 +39,6 @@ from .domain import (
     ALGORITHM_CONTRACT_DIGEST,
     LEDGER_ROW_SCHEMA,
     MATCH_ROW_SCHEMA,
-    PARITY_SCHEMA,
     AtomicBenchmarkIntegrityError,
     FirstTriggerAdmission,
     ObservedBar,

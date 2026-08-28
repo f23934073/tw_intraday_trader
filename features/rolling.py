@@ -9,9 +9,14 @@ from typing import Any, Mapping, Protocol
 
 
 class CompletedOneMinuteBar(Protocol):
-    timestamp: datetime
-    close: Decimal
-    volume: int
+    @property
+    def timestamp(self) -> datetime: ...
+
+    @property
+    def close(self) -> Decimal: ...
+
+    @property
+    def volume(self) -> int: ...
 
 
 @dataclass(frozen=True)

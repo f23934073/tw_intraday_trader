@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
+from typing import Callable, cast
 
 from config.momentum import (
     LIMIT_LOCK_HYPOTHESIS_V0,
@@ -15,7 +16,7 @@ from config.momentum import (
     LimitLockPolicyConfig,
     MomentumStateMachineConfig,
 )
-from features.models import FeatureStatus, IntradayFeatureSnapshot
+from features.models import FeatureStatus, FeatureValue, IntradayFeatureSnapshot
 from market_data.health import DataHealthState
 from signals.models import (
     EpisodeStatus,
@@ -150,7 +151,7 @@ class MomentumStateMachine:
     def begin_session(self, session_date: date) -> None:
         if session_date == self._session_date:
             return
-        self.__init__(
+        cast(Callable[..., None], getattr(self, "__init__"))(
             session_date,
             config=self._config,
             lock_policy=self._lock_policy,
@@ -609,7 +610,7 @@ class MomentumStateMachine:
         )
 
     @staticmethod
-    def _is_true(value) -> bool:
+    def _is_true(value: FeatureValue) -> bool:
         return value.status is FeatureStatus.VALID and value.value is True
 
     def _public_stage(self, symbol: str) -> MomentumStage:

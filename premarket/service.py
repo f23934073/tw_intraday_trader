@@ -18,7 +18,6 @@ from premarket.models import (
     CompletenessStatus,
     ContextHealth,
     ContractIdentityStatus,
-    NightBar,
     SessionWindow,
     SourceObservation,
     TaifexNightContextArtifact,

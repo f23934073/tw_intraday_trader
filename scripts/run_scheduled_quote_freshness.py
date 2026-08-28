@@ -10,7 +10,6 @@ from pathlib import Path
 import subprocess
 import sys
 from typing import Sequence
-from zoneinfo import ZoneInfo
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 os.chdir(REPOSITORY_ROOT)

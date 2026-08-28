@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import time
+from typing import Any, Mapping
 
 from atomic_strategies.protocol import (
     AtomicEvaluationStatus,
@@ -142,7 +143,7 @@ class BollingerLowerReentryEntryStrategy:
         status: AtomicEvaluationStatus,
         reason: str,
         *,
-        observed=None,
+        observed: Mapping[str, Any] | None = None,
     ) -> AtomicStrategyEvaluation:
         return AtomicStrategyEvaluation(
             strategy_id=self.template.strategy_id,

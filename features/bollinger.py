@@ -12,8 +12,11 @@ BOLLINGER_SESSION_BAR_CAPACITY = 300
 
 
 class CompletedBollingerBar(Protocol):
-    timestamp: datetime
-    close: Decimal
+    @property
+    def timestamp(self) -> datetime: ...
+
+    @property
+    def close(self) -> Decimal: ...
 
 
 @dataclass(frozen=True)
