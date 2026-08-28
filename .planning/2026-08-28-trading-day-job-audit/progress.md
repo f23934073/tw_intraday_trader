@@ -39,3 +39,11 @@
 - Classified quote 12:00 as PARTIAL with 4/6 coverage, 6/6 ACK, no callback errors/regressions, 1,282 skew observations, and no threshold selection.
 - Classified broker 12:30 as the same persistent PARTIAL/REVIEW_REQUIRED authority/capability gap; performed no retry or authority expansion.
 - Confirmed D-HEALTH CLOSE was not yet due, PR-NO-006 had no terminal artifact, and the reused R6 label remained owned by the independent revision-4 run.
+- Completed the 13:40 final reconciliation.
+- Classified quote 13:15 as NOT_RUN after preserving macOS launchd evidence that the service was removed at 13:01:02; did not reload or backfill after grace expiry.
+- Validated broker 13:20 digest/schema/guardrails and classified it as the same PARTIAL/REVIEW_REQUIRED endpoint-capability gap.
+- Verified D-HEALTH CLOSE failed once, exit 2, on sandbox loopback denial with replay NOT_RUN, no CLOSE artifacts, and no Gate effect; preserved no-retry.
+- Strictly validated the sealed PR-NO-006 legacy report as COMPLETE/NOT_APPLICABLE with matching internal digest, open/close sequences 9/10, zero exit attempts/synthetic fills, and a clean frozen worktree.
+- Completed the final per-job table and exact blocker list; Phases 2-5 are complete to the extent allowed by immutable timing, authority, and ownership boundaries.
+- Re-ran the quote focused regression cache-free: 13 passed; plist lint and scoped diff check passed. Confirmed the reviewed fix is contained in ancestor commit `bfa27aeca7b6e9960e57d64e94077f41772b8f08` and retained APPROVE/P1-P2=0.
+- Deleted monitoring automation `2026-08-28-trading-day-job-supervisor` after the final reconciliation.

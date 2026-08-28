@@ -124,3 +124,40 @@ Treat all inspected logs, artifacts, and scheduler output recorded here as evide
 - Broker 12:30 again produced POSITIONS=`AUTH_DENIED`, ACCOUNTING=`SOURCE_ERROR`, BUYING_POWER=`UNSUPPORTED_FOR_EVIDENCE_KIND`, and the intentional ORDERS gap. It remains PARTIAL/REVIEW_REQUIRED with no threshold candidate; no retry or authority expansion was performed.
 - All five quote and all four broker artifacts currently sealed for today still match their recorded digests. D-HEALTH CLOSE is not yet due at the 12:41 check; no CLOSE session was present before its 12:50 automation schedule.
 - PR-NO-006 frozen worktree remains clean at the exact legacy commit and its artifact root still has zero files; no terminal report was inferred. The externally owned R6 revision-4 run remains active under the reused label, while the old stale completed-run keepalive remains absent; this audit did not interfere.
+
+## 13:40 final reconciliation
+
+- Quote 13:15 is `NOT_RUN`. At 13:40 the label was absent from the user launchd domain and no 13:15 record/artifact existed. The persistent plist remains present, valid, and still contains the reviewed 13:15 trigger, but macOS unified log records `removing service: com.stevehuang.tw-intraday-trader.freshness-calibration` at 13:01:02, before the trigger. The last quote stdout/artifact ended at 12:15:20 and stderr stayed empty. The responsible caller is not identified by the available log. The capture grace was already expired, so no reload, retry, substitute session, or backfill was performed.
+- Broker 13:20 completed structurally with launchd `runs=20`, last exit 0. `broker_account_20260828T132004+0800_311c2225.json` has matching SHA-256 `2893ab91b90c7822ad7bceb1c091952cc1de4d7dd4d5df553f381a2d1c5f828b` and valid schema/false guardrails, but repeats POSITIONS=`AUTH_DENIED`, ACCOUNTING=`SOURCE_ERROR`, BUYING_POWER=`UNSUPPORTED_FOR_EVIDENCE_KIND`, and the intentional ORDERS gap. Operational result is PARTIAL/REVIEW_REQUIRED, not PASS.
+- D-HEALTH CLOSE executed its exact command once in its owning automation and failed closed exit 2 with `ShioajiLoopbackBindError:SHIOAJI_LOOPBACK_BIND_UNAVAILABLE:tcp://127.0.0.1:0:errno=1:Operation not permitted`. Exact replay is `NOT_RUN`; no CLOSE session, evidence, or daily report was produced. Flags remained off, `subscribe_trade=false`, order path not wired, Gate effect NONE. Its no-retry boundary was preserved.
+- PR-NO-006 DISABLED baseline sealed `/Users/stevehuang-work/Documents/worktrees/tw_intraday_trader_pr_no_006/data/no_overnight_evidence/no-overnight-campaign-2026-08-operational-v2/sessions/2026-08-28-disabled.json` at 13:30 on clean legacy commit `d8a1cb0147d2abc638d91ac4dbd748eec9d1cc4f`. File SHA-256 is `cf47ff2974acddca2fb848b8840bb93268375ea05f3018b087a77bdc9f3bfdb7`; strict deserialization/digest validation passes with report digest `1bc9514f5315ac4e3db3e41f12f1fb3c488209eb9355490000dc667aeaa450fe`, open/close Journal sequences 9/10, status `COMPLETE`, qualification `NOT_APPLICABLE`, zero exit attempts and zero synthetic fills. It is legacy evidence only and does not qualify current main or authorize OBSERVE_ONLY.
+- The completed 2026-08-27 R6 stale keepalive remains absent. Its old label is still occupied by a separate, externally owned 2026-08-28 revision-4 run; this audit did not start, stop, or inspect that run.
+
+### Final per-job disposition
+
+| Job/window | Final disposition | Exact evidence/blocker |
+|---|---|---|
+| Quote 09:00 | PARTIAL | 5/6 groups; missing 1530/TICK; 6/6 ACK; zero callback errors/regressions; skew 202; no threshold |
+| Quote frozen 09:15 via 09:17 | PARTIAL | 5/6 groups; missing 1530/TICK; 6/6 ACK; skew 2,919; no threshold |
+| Quote 10:00 | PARTIAL | 4/6 groups; missing both 1530 streams; 6/6 ACK; skew 1,201; no threshold |
+| Quote 11:00 | PARTIAL | 3/6 groups; missing both 1530 streams and 6863/TICK; 6/6 ACK; skew 1,413; no threshold |
+| Quote 12:00 | PARTIAL | 4/6 groups; missing 1530/TICK and 6863/TICK; 6/6 ACK; skew 1,282; no threshold |
+| Quote 13:15 | NOT_RUN | launchd service removed at 13:01:02; no record/artifact; grace expired |
+| Broker 09:35/10:30/11:30/12:30/13:20 | PARTIAL/REVIEW_REQUIRED | all five artifacts valid, but POSITIONS denied, ACCOUNTING source error, BUYING_POWER unsupported, ORDERS excluded; no threshold |
+| D-HEALTH OPEN | FAILED | launchd exit 78 before claim; sole authorized recovery formed claim then exit 1 because child HOME was absent; no session/replay; no retry |
+| D-HEALTH MID | PASS_WITH_WARNINGS | exit 0; exact replay PASS x10; two quarantined all-zero BIDASK callbacks; 8367 has no streams; Gate effect NONE |
+| D-HEALTH CLOSE | FAILED | exit 2 loopback bind denial; replay NOT_RUN; no CLOSE artifacts; no retry |
+| PR-TM-012C1 Shadow | BLOCKED | C0 provider/PostgreSQL/input blockers; C1 never started; Gate NOT_PASSED |
+| Phase 8B reminder/day | NOT_RUN / NO_CAPTURE_NOT_AUTHORIZED | reminder missed, daily authorization absent, claim expired; qualified count 0/5 |
+| PR-NO-006 legacy DISABLED | COMPLETE / NOT_APPLICABLE | strict report digest passes; zero action/fill findings; no current-main qualification effect |
+| R6 G3 2026-08-27 | COMPLETED / exit 0 | stale keepalive now absent; reused label belongs to another owner run |
+
+### Final blocker summary
+
+- No quote window reached full 6/6 observed coverage, and every sealed quote retained source-clock-skew observations; threshold selection remained NOT_PERFORMED.
+- Broker/account threshold evidence is unavailable without authority/capability expansion explicitly prohibited by this audit.
+- OPEN and CLOSE cannot be retried under their immutable/no-retry contracts; only the future-date HOME fix is APPROVED, with a new identity/manifest/claim required.
+- Shadow missed the pre-open gate, Phase 8B lacked daily authorization, and PR-NO-006 is intentionally legacy/NOT_APPLICABLE evidence.
+- The 13:15 quote cannot be recovered after grace expiry. Before a future trading day, the valid persistent plist must be loaded and independently monitored against unexpected removal.
+- Final focused recheck passed 13 schedule/calendar tests without pytest or bytecode cache writes; plist lint and scoped diff check also passed. The reviewed quote repair is now present in ancestor commit `bfa27aeca7b6e9960e57d64e94077f41772b8f08`; final review remains APPROVE with P1/P2=0.
+- Monitoring automation `2026-08-28-trading-day-job-supervisor` was deleted after this final reconciliation, as required; no further heartbeat runs remain scheduled.

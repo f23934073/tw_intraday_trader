@@ -22,31 +22,31 @@ Identify every in-scope job expected on the 2026-08-28 Taiwan trading day, verif
 
 ### Phase 2: Verify scheduler and artifact outcomes
 
-- [ ] Inspect current scheduler state, logs, claims, exit results, and immutable artifacts.
-- [ ] Reconcile each expected run as PASS, FAIL, NOT_RUN, RUNNING, or NOT_APPLICABLE.
-- [ ] Record exact root cause for every gap.
-- **Status:** in_progress
+- [x] Inspect current scheduler state, logs, claims, exit results, and immutable artifacts.
+- [x] Reconcile each expected run as PASS, FAIL, NOT_RUN, RUNNING, or NOT_APPLICABLE.
+- [x] Record exact root cause for every gap.
+- **Status:** complete
 
 ### Phase 3: Minimal remediation
 
-- [ ] Reproduce confirmed defects with focused checks/tests.
-- [ ] Apply only the smallest safe fix.
-- [ ] Preserve live-trading and immutable-evidence fences.
-- **Status:** pending
+- [x] Reproduce confirmed defects with focused checks/tests.
+- [x] Apply only the smallest safe fix.
+- [x] Preserve live-trading and immutable-evidence fences.
+- **Status:** complete
 
 ### Phase 4: Review and verification
 
-- [ ] Review changed lines for correctness, safety, races, error handling, and test coverage.
-- [ ] Run focused tests and proportional regression/static checks.
-- [ ] Issue APPROVE only with zero blocking findings.
-- **Status:** pending
+- [x] Review changed lines for correctness, safety, races, error handling, and test coverage.
+- [x] Run focused tests and proportional regression/static checks.
+- [x] Issue APPROVE only with zero blocking findings.
+- **Status:** complete; APPROVE for the quote 09:17 scheduler fix and future-date D-HEALTH HOME fix, P1/P2=0
 
 ### Phase 5: One recovery run and final audit
 
-- [ ] Re-run only the approved in-scope job once, inside its allowed contract/window.
-- [ ] Inspect exit status and resulting artifacts/logs.
-- [ ] Report final per-job disposition and remaining blockers.
-- **Status:** pending
+- [x] Re-run only the approved in-scope job once, inside its allowed contract/window.
+- [x] Inspect exit status and resulting artifacts/logs.
+- [x] Report final per-job disposition and remaining blockers.
+- **Status:** complete; the sole OPEN recovery run failed after formal claim, was preserved, and was not retried
 
 ## Success criteria
 
