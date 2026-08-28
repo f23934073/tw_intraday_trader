@@ -244,7 +244,7 @@
   - T5: `bfa27aeca7b6e9960e57d64e94077f41772b8f08`; focused tests `11 passed`.
   - T7 architecture documents: `f99186e3620be2fb12986b26e4873fb574139e63`; `git diff --check` passed.
   - T7 planning workpads: `7b4d3cab082ce0bcd1914848b4afe5d9bc1c888a`; 64-path manifest SHA-256 `c91daf996f0980365a996b4337571ac112ccde62765ded9616d21cb614a9bd68`; `git diff --check` passed.
-  - HYG-001 repository hygiene artifacts and `.gitignore`: this report's commit; pre-commit checks recorded below.
+  - HYG-001 repository hygiene artifacts and `.gitignore`: `6a8a167f1eb86449dabe84c910d05b482bed164d`; classifier returned `UNCLASSIFIED (0)`, Python compilation passed, `git check-ignore -v` passed, and the four-path staged set passed `git diff --check`.
 - Deferred groups:
   - T2: focused suite returned `1 failed, 32 passed`; `test_phase82_bundle_reproduces_selection_and_status_only_job` failed with `FinMindSelectionBundleError: bound target job row drifted`. All T2 paths were explicitly unstaged and left unchanged.
   - T8: final cutoff at `2026-08-28T12:37:05+0800` expanded to 126 exact files. Path-manifest SHA-256 was `da0b84ca20a3d43fd377ddd973d4c1ee0bbcd41f22ceb1001f28b4b1531df88d`; file-digest-manifest SHA-256 was `ca891622ae6f88d805b807b213e1ce4ff713a64fbf066ad17483e0589fe3e8c2`. Staged paths and file digests matched the cutoff, but `git diff --check` failed on existing trailing whitespace at `research/freshness_calibration/reviews/2026-08-27_1301_close_review.md:5`. All 126 paths were explicitly unstaged and no evidence was edited.
@@ -257,3 +257,13 @@
 - `.gitignore`: added `data/institutional_mvp/` and `data/.locks/`; `git check-ignore -v` resolved both paths to the new rules and `git status --short -- data` returned no entry.
 - Post-cutoff check at `2026-08-28T12:39:12+0800`: still 126 T8 files with the same path-manifest SHA-256 `da0b84ca20a3d43fd377ddd973d4c1ee0bbcd41f22ceb1001f28b4b1531df88d`; no new evidence appeared after the cutoff.
 - T8 retention note: scheduled evidence follows the existing repository convention; a separate owner decision is still needed for long-term retention policy.
+
+## Final verification
+
+- Observed at: `2026-08-28T12:41:33+0800`.
+- Full suite: `PROVIDER=mock PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/ -q` returned `1 failed, 1784 passed, 88 skipped in 37.82s`. The only failure was the already-deferred T2 `bound target job row drifted` failure.
+- Compile: `PYTHONPYCACHEPREFIX=/private/tmp/hyg001_compileall .venv/bin/python -m compileall -q app.py backtest candidate config dashboard features market_data position runtime scoring signals simulation strategy_catalog trading scripts tests` passed.
+- Final unstaged `git diff --check` passed. T8 nevertheless remains deferred because the required staged T8 check exposed the immutable evidence trailing whitespace recorded above.
+- Remaining `git status --short`: 103 entries, exactly T2 (15 status entries), T8 (87 status entries, 126 expanded files), and T9/PCD-001 (1 status entry). `data/` is now ignored.
+- Post-cutoff evidence: none through `2026-08-28T12:41:33+0800`; the T8 expanded manifest remains 126 paths with SHA-256 `da0b84ca20a3d43fd377ddd973d4c1ee0bbcd41f22ceb1001f28b4b1531df88d`.
+- Disposition: `PARTIAL / DEFERRED`; HYG-001 is not fully accepted while T2 and T8 remain uncommitted and the full suite is red.
