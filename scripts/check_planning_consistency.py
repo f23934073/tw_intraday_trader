@@ -49,11 +49,56 @@ def _is_contained_regular_file(path: Path, parent: Path) -> bool:
     )
 
 
+def _trusted_planning_directory(
+    repository_root: Path,
+    errors: list[Diagnostic],
+) -> Path | None:
+    planning_dir = repository_root / ".planning"
+    if planning_dir.is_symlink():
+        errors.append(
+            Diagnostic(
+                "PC008",
+                ".planning must be a contained non-symlink directory",
+            )
+        )
+        return None
+    try:
+        resolved_root = repository_root.resolve(strict=True)
+        resolved_planning_dir = planning_dir.resolve(strict=True)
+    except OSError:
+        errors.append(
+            Diagnostic(
+                "PC008",
+                ".planning must be a contained non-symlink directory",
+            )
+        )
+        return None
+    if (
+        not resolved_planning_dir.is_dir()
+        or resolved_planning_dir.parent != resolved_root
+        or resolved_planning_dir != resolved_root / ".planning"
+    ):
+        errors.append(
+            Diagnostic(
+                "PC008",
+                ".planning must be a contained non-symlink directory",
+            )
+        )
+        return None
+    return resolved_planning_dir
+
+
 def _active_ticket(
     planning_dir: Path,
     errors: list[Diagnostic],
 ) -> tuple[str, Path] | None:
-    pointer_text = _read_text(planning_dir / ".active_plan")
+    pointer = planning_dir / ".active_plan"
+    if not _is_contained_regular_file(pointer, planning_dir):
+        errors.append(
+            Diagnostic("PC001", "active_plan pointer is missing or malformed")
+        )
+        return None
+    pointer_text = _read_text(pointer)
     if pointer_text is None:
         errors.append(
             Diagnostic("PC001", "active_plan pointer is missing or malformed")
@@ -103,11 +148,11 @@ def check_repository(
     """Return fail-closed errors and warning-only historical-ticket findings."""
 
     root = repository_root.resolve()
-    planning_dir = root / ".planning"
     errors: list[Diagnostic] = []
     warnings: list[Diagnostic] = []
 
-    active = _active_ticket(planning_dir, errors)
+    planning_dir = _trusted_planning_directory(root, errors)
+    active = _active_ticket(planning_dir, errors) if planning_dir is not None else None
     if active is not None:
         _, active_dir = active
         for filename in REQUIRED_TICKET_FILES:
@@ -145,7 +190,7 @@ def check_repository(
                 Diagnostic("PC006", f"{filename} is missing its planning-scope header")
             )
 
-    if planning_dir.is_dir():
+    if planning_dir is not None:
         ticket_dirs = sorted(
             path
             for path in planning_dir.iterdir()

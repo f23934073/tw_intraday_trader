@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import os
 from pathlib import Path
 
 
@@ -26,8 +27,24 @@ DECLARED_PRODUCTION_CONSUMERS: dict[Path, frozenset[str]] = {
     ),
 }
 EXCLUDED_DIRECTORY_NAMES = frozenset(
-    {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "build"}
+    {
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        "__pycache__",
+        "build",
+        "dist",
+        "node_modules",
+    }
 )
+NON_SOURCE_TOP_LEVEL_NAMES = EXCLUDED_DIRECTORY_NAMES | {
+    "cache",
+    "data",
+    "records",
+    "research",
+}
 
 
 def _absolute_imports(path: Path) -> tuple[tuple[str, int], ...]:
@@ -51,20 +68,64 @@ def _package_imports(project_root: Path, package: str) -> set[str]:
     return imports
 
 
+def _contains_python_source(project_root: Path, top_level: Path) -> bool:
+    if top_level.is_symlink():
+        return False
+    try:
+        resolved_project_root = project_root.resolve(strict=True)
+        resolved_top_level = top_level.resolve(strict=True)
+    except OSError:
+        return False
+    if (
+        not resolved_top_level.is_dir()
+        or resolved_top_level.parent != resolved_project_root
+        or resolved_top_level != resolved_project_root / top_level.name
+    ):
+        return False
+
+    for directory, directory_names, filenames in os.walk(
+        resolved_top_level, followlinks=False
+    ):
+        current_directory = Path(directory)
+        directory_names[:] = sorted(
+            name
+            for name in directory_names
+            if not name.startswith(".")
+            and name not in EXCLUDED_DIRECTORY_NAMES
+            and not (current_directory / name).is_symlink()
+        )
+        for filename in sorted(filenames):
+            candidate = current_directory / filename
+            if candidate.suffix != ".py" or candidate.is_symlink():
+                continue
+            try:
+                resolved_candidate = candidate.resolve(strict=True)
+                resolved_candidate.relative_to(resolved_top_level)
+            except (OSError, ValueError):
+                continue
+            if resolved_candidate.is_file():
+                return True
+    return False
+
+
 def _project_local_import_names(project_root: Path) -> frozenset[str]:
-    excluded_names = EXCLUDED_DIRECTORY_NAMES | {"data", "records", "research"}
+    resolved_project_root = project_root.resolve(strict=True)
     packages = {
         path.name
-        for path in project_root.iterdir()
-        if path.is_dir()
+        for path in resolved_project_root.iterdir()
+        if not path.is_symlink()
+        and path.is_dir()
         and not path.name.startswith(".")
-        and path.name not in excluded_names
-        and ((path / "__init__.py").is_file() or any(path.glob("*.py")))
+        and path.name not in NON_SOURCE_TOP_LEVEL_NAMES
+        and _contains_python_source(resolved_project_root, path)
     }
     modules = {
         path.stem
-        for path in project_root.iterdir()
-        if path.is_file() and path.suffix == ".py"
+        for path in resolved_project_root.iterdir()
+        if not path.is_symlink()
+        and path.is_file()
+        and path.suffix == ".py"
+        and path.resolve(strict=True).parent == resolved_project_root
     }
     return frozenset(packages | modules)
 
@@ -191,6 +252,53 @@ def test_boundary_checker_rejects_project_local_candidate_leak(tmp_path: Path) -
     )
 
 
+def test_boundary_checker_rejects_nested_namespace_leak(tmp_path: Path) -> None:
+    for package in ALLOWED:
+        package_root = tmp_path / package
+        package_root.mkdir()
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+    namespace_package = tmp_path / "project_namespace" / "subpkg"
+    namespace_package.mkdir(parents=True)
+    (namespace_package / "__init__.py").write_text("", encoding="utf-8")
+    violation = tmp_path / "institutional_data" / "leak.py"
+    violation.write_text("import project_namespace.subpkg\n", encoding="utf-8")
+
+    assert _boundary_violations(tmp_path) == (
+        "institutional_data/leak.py:1: institutional_data imports forbidden "
+        "project_namespace",
+    )
+
+
+def test_project_local_discovery_accepts_nested_namespace(tmp_path: Path) -> None:
+    namespace_package = tmp_path / "project_namespace" / "subpkg"
+    namespace_package.mkdir(parents=True)
+    (namespace_package / "__init__.py").write_text("", encoding="utf-8")
+    for excluded_name in (".hidden", ".venv", "cache", "data", "research"):
+        excluded_package = tmp_path / excluded_name / "subpkg"
+        excluded_package.mkdir(parents=True)
+        (excluded_package / "module.py").write_text("", encoding="utf-8")
+
+    assert _project_local_import_names(tmp_path) == frozenset({"project_namespace"})
+
+
+def test_project_local_discovery_rejects_symlink_escape(tmp_path: Path) -> None:
+    project_root = tmp_path / "repository"
+    project_root.mkdir()
+    outside_package = tmp_path / "outside" / "subpkg"
+    outside_package.mkdir(parents=True)
+    (outside_package / "module.py").write_text("", encoding="utf-8")
+    nested_namespace = project_root / "nested_namespace"
+    nested_namespace.mkdir()
+    (nested_namespace / "subpkg").symlink_to(
+        outside_package, target_is_directory=True
+    )
+    (project_root / "linked_namespace").symlink_to(
+        outside_package, target_is_directory=True
+    )
+
+    assert _project_local_import_names(project_root) == frozenset()
+
+
 def test_boundary_checker_rejects_institutional_package_matrix_drift(
     tmp_path: Path,
 ) -> None:
@@ -200,6 +308,26 @@ def test_boundary_checker_rejects_institutional_package_matrix_drift(
         (package_root / "__init__.py").write_text("", encoding="utf-8")
     unknown_package = tmp_path / "institutional_unknown"
     unknown_package.mkdir()
+    (unknown_package / "module.py").write_text("", encoding="utf-8")
+
+    assert _boundary_violations(tmp_path) == (
+        "institutional package allowlist mismatch: "
+        "declared=institutional_data,institutional_mvp,institutional_prior,"
+        "institutional_research; "
+        "discovered=institutional_data,institutional_mvp,institutional_prior,"
+        "institutional_research,institutional_unknown",
+    )
+
+
+def test_boundary_checker_rejects_nested_institutional_package_matrix_drift(
+    tmp_path: Path,
+) -> None:
+    for package in ALLOWED:
+        package_root = tmp_path / package
+        package_root.mkdir()
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+    unknown_package = tmp_path / "institutional_unknown" / "subpkg"
+    unknown_package.mkdir(parents=True)
     (unknown_package / "module.py").write_text("", encoding="utf-8")
 
     assert _boundary_violations(tmp_path) == (

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -64,6 +65,49 @@ def test_pc001_rejects_multiline_active_pointer(tmp_path: Path) -> None:
     errors, _ = checker.check_repository(root)
 
     assert "PC001: active_plan pointer is missing or malformed" in _rendered(errors)
+
+
+def test_pc001_rejects_active_pointer_symlink_escape(tmp_path: Path) -> None:
+    root = _build_valid_repository(tmp_path)
+    pointer = root / ".planning" / ".active_plan"
+    outside_pointer = root / "outside-active-plan"
+    pointer.rename(outside_pointer)
+    pointer.symlink_to(outside_pointer)
+
+    errors, _ = checker.check_repository(root)
+
+    assert "PC001: active_plan pointer is missing or malformed" in _rendered(errors)
+
+
+def test_pc001_rejects_active_pointer_directory(tmp_path: Path) -> None:
+    root = _build_valid_repository(tmp_path)
+    pointer = root / ".planning" / ".active_plan"
+    pointer.unlink()
+    pointer.mkdir()
+
+    errors, _ = checker.check_repository(root)
+
+    assert "PC001: active_plan pointer is missing or malformed" in _rendered(errors)
+
+
+def test_pc001_rejects_active_pointer_non_regular_file(tmp_path: Path) -> None:
+    root = _build_valid_repository(tmp_path)
+    pointer = root / ".planning" / ".active_plan"
+    pointer.unlink()
+    os.mkfifo(pointer)
+
+    errors, _ = checker.check_repository(root)
+
+    assert "PC001: active_plan pointer is missing or malformed" in _rendered(errors)
+
+
+def test_contained_regular_active_pointer_remains_valid(tmp_path: Path) -> None:
+    root = _build_valid_repository(tmp_path)
+
+    errors, warnings = checker.check_repository(root)
+
+    assert errors == []
+    assert warnings == []
 
 
 def test_pc002_rejects_nonexistent_active_ticket(tmp_path: Path) -> None:
@@ -167,6 +211,24 @@ def test_pc007_is_warning_only(tmp_path: Path) -> None:
         "PC007: ticket inactive-ticket is missing progress.md",
     }
     assert checker.main([], repository_root=root) == 0
+
+
+def test_pc008_rejects_planning_directory_symlink_escape(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    outside_root = _build_valid_repository(tmp_path / "outside")
+    (root / ".planning").symlink_to(
+        outside_root / ".planning", target_is_directory=True
+    )
+    for filename in checker.GLOBAL_LOG_FILES:
+        (root / filename).write_text(
+            f"{checker.PLANNING_SCOPE_MARKER}\n# Global record\n",
+            encoding="utf-8",
+        )
+
+    errors, _ = checker.check_repository(root)
+
+    assert "PC008" in _rule_ids(errors)
 
 
 def test_warn_only_downgrades_fail_closed_rule(tmp_path: Path) -> None:
