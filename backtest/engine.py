@@ -27,6 +27,7 @@ from backtest.strategies import StrategyContext, StrategyRegistry
 
 ProgressCallback = Callable[[float, str], None]
 Cancelled = Callable[[], bool]
+EntryEligibility = Callable[[date, str], bool]
 
 
 class BacktestCancelled(RuntimeError):
@@ -136,6 +137,7 @@ class HistoricalBacktestEngine:
         bars_are_ordered: bool = False,
         total_bars: int | None = None,
         terminal_timestamp_by_symbol: Mapping[str, datetime] | None = None,
+        entry_eligibility: EntryEligibility | None = None,
     ) -> BacktestEngineResult:
         self._registry.reset_runtime()
         if bars_are_ordered:
@@ -208,6 +210,9 @@ class HistoricalBacktestEngine:
                     last_prices=last_prices,
                     cash=cash,
                     bar=bar,
+                    is_last_bar=(
+                        bar.timestamp == last_timestamp_by_symbol[bar.symbol]
+                    ),
                     symbol_event_index=symbol_event_indexes[bar.symbol],
                     config=config,
                     result=result,
@@ -268,7 +273,7 @@ class HistoricalBacktestEngine:
                     position=position_context,
                     daily_features=daily_features,
                     previous_daily_features=previous_daily_features,
-                    resolved_session_date=bar.session_date,
+                    resolved_session_date=session_date,
                     is_terminal_dataset_bar=(
                         bar.timestamp
                         == self._terminal_timestamp(
@@ -288,7 +293,14 @@ class HistoricalBacktestEngine:
                         result=result,
                         event_index=symbol_event_indexes[bar.symbol],
                     )
-                elif bar.symbol not in pending and not state.entered_today:
+                elif (
+                    bar.symbol not in pending
+                    and not state.entered_today
+                    and (
+                        entry_eligibility is None
+                        or entry_eligibility(session_date, bar.symbol)
+                    )
+                ):
                     decision = self._evaluate_decision(
                         context=context,
                         config=config,
@@ -313,12 +325,25 @@ class HistoricalBacktestEngine:
                             created_at=bar.timestamp,
                             entry_signal_atr=features.atr,
                             execution_horizon=decision.execution_horizon,
-                            created_session_date=bar.session_date,
+                            created_session_date=session_date,
                         )
                         result.orders.append(
                             self._order_payload(pending[bar.symbol], status="SUBMITTED")
                         )
                         state.entered_today = True
+
+            for symbol, order in tuple(pending.items()):
+                if (
+                    order.execution_horizon is not ExecutionHorizon.DAILY_NEXT_BAR
+                    and order.created_session_date == session_date
+                ):
+                    pending.pop(symbol, None)
+                    self._replace_order_status(
+                        result,
+                        order.order_id,
+                        "UNFILLED_END_OF_SESSION",
+                        "當日沒有下一根有效 Kbar，禁止 intraday 委託跨交易日成交",
+                    )
 
             previous_close.update(session_closes)
             market_value = sum(
@@ -553,6 +578,7 @@ class HistoricalBacktestEngine:
         last_prices: dict[str, Decimal],
         cash: Decimal,
         bar: HistoricalBar,
+        is_last_bar: bool,
         symbol_event_index: int,
         config: BacktestRunConfig,
         result: BacktestEngineResult,
@@ -568,6 +594,18 @@ class HistoricalBacktestEngine:
             ):
                 return cash
         if order.side is StrategySide.ENTRY:
+            if (
+                order.execution_horizon is not ExecutionHorizon.DAILY_NEXT_BAR
+                and is_last_bar
+            ):
+                pending.pop(bar.symbol, None)
+                self._replace_order_status(
+                    result,
+                    order.order_id,
+                    "UNFILLED_END_OF_SESSION",
+                    "下一根 Kbar 已是當日最後一根，禁止建立無法當日平倉的 intraday 部位",
+                )
+                return cash
             equity = cash + sum(
                 position.shares * last_prices.get(position.symbol, position.entry_fill.price)
                 for position in positions.values()

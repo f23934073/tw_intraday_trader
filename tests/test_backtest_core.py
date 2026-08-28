@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -134,6 +134,73 @@ def test_engine_uses_next_bar_entry_and_keeps_entry_exit_attribution() -> None:
     assert trade["entry_decision"]["primary_strategy_id"] == "legacy_gap_volume_vwap_entry_v1"
     assert trade["exit_decision"]["primary_strategy_id"] == "take_profit_exit_v1"
     assert len(result.orders) == 2
+
+
+def test_engine_entry_eligibility_is_an_outer_gate_only() -> None:
+    bars = _bars()
+    baseline = HistoricalBacktestEngine().run(config=_config(), bars=bars)
+    allowed = HistoricalBacktestEngine().run(
+        config=_config(),
+        bars=bars,
+        entry_eligibility=lambda session, symbol: (
+            session.isoformat() == "2026-01-03" and symbol == "2330"
+        ),
+    )
+    blocked = HistoricalBacktestEngine().run(
+        config=_config(),
+        bars=bars,
+        entry_eligibility=lambda _session, _symbol: False,
+    )
+
+    assert [trade.to_dict() for trade in allowed.trades] == [
+        trade.to_dict() for trade in baseline.trades
+    ]
+    assert allowed.orders == baseline.orders
+    assert [point.to_dict() for point in allowed.daily_equity] == [
+        point.to_dict() for point in baseline.daily_equity
+    ]
+    assert blocked.trades == []
+    assert blocked.orders == []
+    assert blocked.strategy_counts == {}
+    assert [point.session_date for point in blocked.daily_equity] == [
+        date(2026, 1, 2),
+        date(2026, 1, 3),
+    ]
+
+
+def test_intraday_entry_signal_on_last_bar_does_not_fill_next_session() -> None:
+    bars = [
+        _bar(2, 13, 25, 100, 101, 99, 100),
+        _bar(3, 9, 0, 103, 103, 103, 103),
+        _bar(3, 13, 30, 103, 105, 103, 104),
+        _bar(4, 9, 0, 100, 101, 99, 100),
+    ]
+
+    result = HistoricalBacktestEngine().run(config=_config(), bars=bars)
+
+    assert result.trades == []
+    assert result.fills == []
+    assert len(result.orders) == 1
+    assert result.orders[0]["status"] == "UNFILLED_END_OF_SESSION"
+    assert result.unresolved_positions == []
+
+
+def test_intraday_entry_does_not_fill_on_session_terminal_bar() -> None:
+    bars = [
+        _bar(2, 13, 25, 100, 101, 99, 100),
+        _bar(3, 9, 0, 103, 103, 103, 103),
+        _bar(3, 13, 29, 103, 105, 103, 104),
+        _bar(3, 13, 30, 104, 105, 103, 104),
+        _bar(4, 9, 0, 100, 101, 99, 100),
+    ]
+
+    result = HistoricalBacktestEngine().run(config=_config(), bars=bars)
+
+    assert result.trades == []
+    assert result.fills == []
+    assert len(result.orders) == 1
+    assert result.orders[0]["status"] == "UNFILLED_END_OF_SESSION"
+    assert result.unresolved_positions == []
 
 
 def test_engine_result_is_reproducible_across_repeated_runs() -> None:
