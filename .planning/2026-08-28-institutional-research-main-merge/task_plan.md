@@ -40,10 +40,10 @@ Package the completed three-institutional-investor MVP research implementation a
 
 ### Phase 4: Commit and local-main integration
 
-- [ ] Commit the verified package.
-- [ ] Ensure the commit is reachable from local `main` while preserving unrelated worktree changes.
-- [ ] Verify local ancestry and report remote divergence separately.
-- **Status:** in_progress
+- [x] Commit the verified package.
+- [x] Ensure the commit is reachable from local `main` while preserving unrelated worktree changes.
+- [x] Verify local ancestry and report remote divergence separately.
+- **Status:** complete
 
 ## Errors Encountered
 

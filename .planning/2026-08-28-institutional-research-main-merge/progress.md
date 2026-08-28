@@ -11,3 +11,4 @@
 - Staged whitespace check, scoped compile, and Ruff all pass. No forbidden runtime/data path is staged.
 - Created the integration commit and replayed the focused suite in a detached clean worktree: `102 passed`.
 - Full clean-worktree regression after providing the expected project `.venv` path completed `1721 passed, 86 skipped, 1 failed`. The one source-digest failure was reproduced on parent `a6e096a`, so it predates and is unrelated to this package.
+- Fast-forwarded local `main` from `a6e096a` to integration commit `b9b15ff`; ancestry verification passed and all scoped paths are clean afterward. Remote push remains intentionally not performed.
