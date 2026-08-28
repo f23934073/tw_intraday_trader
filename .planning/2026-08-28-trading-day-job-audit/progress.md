@@ -1,0 +1,37 @@
+# Progress: 2026-08-28 trading-day job audit
+
+## 2026-08-28
+
+- Read applicable planning, code-review, and surgical-change skills.
+- Completed memory quick pass for scheduler/runtime safety history.
+- Confirmed the shared checkout contains extensive unrelated work and active plans.
+- Created isolated planning records without switching the shared active-plan pointer.
+- Identified three repository scheduler families and recorded their explicit safety/retry boundaries.
+- Verified the reviewed calendar and all launchd triggers before market open.
+- Verified the D-HEALTH pinned runtime identity and focused tests before its 08:55 automatic start.
+- Found stale persistent D-HEALTH plist metadata; deferred remediation until after the already-loaded one-shot runs.
+- Observed launchd wrapper exit 78 before claim due macOS Documents access denial.
+- Per user authorization, ran the reviewed pinned recovery once; identity passed but Shioaji initialization exited 1 because HOME was absent from the minimal child environment.
+- Preserved the formal no-retry claim/result and confirmed no capture session or gate effect.
+- Confirmed the 09:00 quote job started and identified a likely same-label overlap defect affecting the 09:15 trigger.
+- Classified the R6 keepalive as a stale completed 2026-08-27 job rather than today's trading-day capture.
+- Implemented and reviewed the minimal 09:17 LaunchAgent offset plus regression; focused verification is green and review disposition is APPROVE.
+- Installed and safely reloaded the reviewed quote plist after the first process exited; the 09:17 second capture started exactly once.
+- Implemented and reviewed the D-HEALTH OS-derived HOME child-environment fix in the pinned worktree; 42 focused tests pass.
+- Verified both opening quote captures reached exit 0 with two immutable artifacts; both are partial-coverage evidence, not threshold approval.
+- Verified the 09:35 broker/account read-only capture reached exit 0 with the expected ORDERS gap.
+- Reconciled Shadow as BLOCKED before C1, Phase 8B reminder as missed/no-capture, and PR-NO-006 DISABLED baseline as healthy RUNNING under its separate supervisor.
+- Created and read back a five-occurrence current-thread heartbeat to continue full-day supervision through 13:40.
+- Completed the 09:40 read-only heartbeat: no newly due capture was missing; all three sealed artifact digests still match, and D-HEALTH MID/CLOSE remain not yet due.
+- Corrected the operational reading of broker 09:35 from structural CAPTURED to PARTIAL/REVIEW_REQUIRED: all four evidence kinds are unavailable or intentionally excluded, with no safe broker/live-fence-compliant repair or retry.
+- Confirmed the stale R6 keepalive still respawns only its completed/no-op path (`runs=4428`, last exit 0); left it untouched.
+- Completed the 10:40 read-only heartbeat and validated the new 10:00 quote and 10:30 broker artifacts against their recorded SHA-256/schema identities.
+- Classified quote 10:00 as PARTIAL with 4/6 coverage (both 1530 streams missing), 6/6 ACK, no callback errors/regressions, 1,201 skew observations, and no threshold selection.
+- Classified broker 10:30 as the same persistent PARTIAL/REVIEW_REQUIRED authority/capability gap; did not cross the broker/live fence or retry.
+- Verified D-HEALTH MID is a single still-running invocation with a growing session journal and no terminal evidence/replay result; left it under its owning automation.
+- Confirmed the stale R6 keepalive remains no-op operational noise (`runs=4778`, last exit 0); left it untouched.
+- Completed the 11:40 read-only heartbeat and validated all four quote plus all three broker artifacts against recorded SHA-256/schema identities.
+- Classified quote 11:00 as PARTIAL with 3/6 coverage, 6/6 ACK, no callback errors/regressions, 1,413 skew observations, and no threshold selection.
+- Classified broker 11:30 as the same persistent PARTIAL/REVIEW_REQUIRED authority/capability gap; performed no retry or authority expansion.
+- Verified D-HEALTH MID terminal exit 0, `COMPLETE_WITH_WARNINGS`, exact replay PASS across 10 repeats, two quarantined all-zero BIDASK callbacks, missing 8367 coverage, and Gate effect NONE.
+- Confirmed the old completed-run R6 stale keepalive was replaced externally by a new independent revision-4 owner run under the same label; did not inspect or interfere with it.

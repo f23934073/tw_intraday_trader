@@ -760,3 +760,64 @@
   `BACKTEST_DATABASE_URL` or shared PostgreSQL DSN is available, so no
   application matrix activation, full 28,325,340-bar scan, durable formal
   preflight registration, family-head mutation, or attempt was performed.
+
+## 2026-08-26 formal Backtest database handoff and G3 start
+
+- The dedicated formal Backtest PostgreSQL is
+  `localhost:5090/tw_intraday_trader_backtest`; it is not a test database and
+  was never exported as `TEST_POSTGRES_DSN`.
+- Read-only verification found 49 Backtest tables: the 47 copied historical
+  tables plus the two Migration-017 relations. All 17 migrations are applied,
+  with `017_r6_matrix_revision_and_preflight.sql` latest.
+- Before activation the copied R6 state rebuilt exactly: one family at head
+  sequence 0 and active revision 1, one sealed revision-1 matrix, seven slots,
+  zero attempts, zero preflights, one operation, and one outbox row.
+- The `ATOMIC_BACKTEST_DEFAULT` binding and completed source Run both match the
+  frozen Dataset ID and manifest digest; the expected payload SHA remains
+  `216d306d2df5ec3f6221e6e96c3998129774c966f844e9d923634d96f275c31d`.
+- A1 activation succeeded through the frozen CAS: active revision `1 -> 2`,
+  head sequence remains 0, attempts remain 0, and revision-2 matrix ID is
+  `r6-matrix-sha256-aaab7731d6f5f1fa6fed4cfe932637d8a097dad34fec23ee4d7ff44932817a20`.
+- The formal G3 dry-run resolved exactly 28,325,340 bars and seven slots. The
+  single execute traversal reached its first durable-free progress checkpoint
+  at 1,000,000 bars without error; publication and PostgreSQL preflight
+  registration occur only after EOF and artifact verification.
+
+## 2026-08-26 formal G3 interruption diagnosis
+
+- The original process is no longer running and its terminal session cannot be
+  resumed. The last temporary eligibility write was at 19:18 Asia/Taipei.
+- The incomplete staging tree contains 42,020 eligibility rows and occupies
+  approximately 211 MB. It has no final manifest and cannot be accepted or
+  resumed as immutable formal evidence.
+- Formal PostgreSQL remains fail closed: preflight rows 0, attempt rows 0,
+  family head sequence 0, active matrix revision 2, release state NOT_READY.
+- The exact external termination cause is not proven by the remaining files.
+  A clean re-execution must use a supervised long-lived process and must not
+  reuse the incomplete staging tree as authority.
+- Follow-up system diagnostics found no Python crash report, reboot, traceback,
+  or memory-pressure termination evidence. macOS only records the process
+  connection closing at 19:18:32. The strongest supported inference is that
+  the foreground Python child was terminated with its Codex exec session;
+  this is an orchestration-lifetime failure, not evidence of Dataset or
+  strategy-runtime rejection.
+
+## 2026-08-26 launchd-supervised G3 re-execution
+
+- Added a dedicated fixed-command supervisor for the formal G3 preflight. It
+  uses `launchctl submit` with one fixed label and `caffeinate -i`; it exposes
+  no arbitrary shell or command arguments and has no automatic retry.
+- The worker loads the gitignored project `.env`, requires the exact
+  `localhost:5090/tw_intraday_trader_backtest` identity, removes any inherited
+  `TEST_POSTGRES_DSN`, and never serializes credentials.
+- Submission, current-run, RUNNING/COMPLETED/FAILED status, stdout, stderr,
+  worker PID, exit code, and timestamps are durable under the supervisor run
+  root. The existing frozen preflight implementation remains unchanged.
+- The interrupted 211 MB staging tree was moved intact to the dedicated
+  `interrupted` directory. It was not deleted or reused as authority.
+- Supervised run `r6-g3-20260826T112555Z-f64bdce1` is loaded in launchd under
+  `com.tw-intraday-trader.r6-g3-preflight`; worker PID 44474 has parent PID 1,
+  proving it is no longer tied to the Codex exec session.
+- After launch, PostgreSQL remained preflights 0, attempts 0, head 0, active
+  revision 2, release NOT_READY. A fresh staging directory was created and the
+  worker was consuming one CPU core.

@@ -6,7 +6,7 @@ Use the FinMind Sponsor 6,000-request hourly allowance to build a durable, resum
 
 ## Current Phase
 
-Phase 44 — 2026-08-25 checkpoint-safe continuation
+Phase 83 — owner-authorized FinMind acquisition for job finmind-sponsor-3fb900f8f272077e
 
 ## Phases
 
@@ -343,9 +343,35 @@ Phase 44 — 2026-08-25 checkpoint-safe continuation
 ### Phase 44: 2026-08-25 checkpoint-safe continuation
 
 - [x] Re-read the referenced task and complete isolated planning records, run session catch-up, and verify live SQLite remains authoritative.
-- [ ] Resume only job `finmind-sponsor-5631808b9766f955` from exact next pending `2498 / 2024-10-28` using positive official usage preflight and the 6,000/0/0.25/10-second settings.
-- [ ] If a transport timeout occurs, preserve the exact checkpoint, wait a full 60 seconds, and retry the same job; stop separately for auth, quota, provider, or data-quality failures.
-- [ ] Audit every new partition, reconcile any `EMPTY`/`INVALID` and fixed-grid observations, update aggregate coverage, and preserve the next exact checkpoint.
+- [x] Resume only job `finmind-sponsor-5631808b9766f955` from exact next pending `2498 / 2024-10-28` using positive official usage preflight and the 6,000/0/0.25/10-second settings.
+- [x] If a transport timeout occurs, preserve the exact checkpoint, wait a full 60 seconds, and retry the same job; stop separately for auth, quota, provider, or data-quality failures. No timeout occurred in this batch.
+- [x] Audit every new partition, reconcile any `EMPTY`/`INVALID` and fixed-grid observations, update aggregate coverage, and preserve the next exact checkpoint.
+- **Status:** complete; no next pending
+
+### Phase 45: 2026-08-25 remaining-positive-allowance continuation
+
+- [x] Re-rank the sealed 2026-08-20 snapshots after excluding 237 complete symbols, recent/ineligible listings, and quarantined 7610; select eight established symbols across distinct industries.
+- [x] Verify official TWSE listing dates for 1314, 1434, 1609, 1904, 2548, 2897, 5234, and 8033, then create deterministic job `finmind-sponsor-9ab5c7b3040ee001` without provider access.
+- [x] Spend only the official positive preflight remainder with one calendar and checkpoint-first KBar persistence; preserve the exact next pending at the budget edge.
+- [x] Audit all partial partitions, reconcile any `EMPTY`/`INVALID` and fixed-grid observations, and update aggregate coverage.
+- **Status:** paused at the official budget edge; next pending `1609 / 2025-07-30`
+
+### Phase 46: 2026-08-25 checkpoint-safe quota resume
+
+- [x] Re-read the referenced task and complete isolated planning records, run session catch-up, and verify the live SQLite checkpoint without provider access.
+- [x] Resume only job `finmind-sponsor-9ab5c7b3040ee001` from exact next pending `1609 / 2025-07-30` using positive official usage preflight and the 6,000/0/0.25/10-second settings.
+- [x] If a transport timeout occurs, preserve the exact checkpoint, wait a full 60 seconds, and retry the same job; stop separately for auth, quota, provider, or data-quality failures. No timeout occurred in this batch.
+- [x] Audit every new partition, reconcile any `EMPTY`/`INVALID` and fixed-grid observations, update aggregate coverage, and preserve the exact next checkpoint.
+- **Status:** paused at the official budget edge; next pending `1904 / 2026-05-18`
+
+### Phase 47: 2026-08-25 official-preflight continuous continuation
+
+- [x] Re-read the planning skill, referenced task, isolated planning records, memory guidance, session catch-up, and dirty-worktree summary.
+- [x] Inspect the live implementation of `--continuous-hourly` before provider access; it still switches to direct quota probes after the first batch and therefore cannot be used unchanged under the current positive-preflight-only rule.
+- [x] Make the narrow CLI/test change so every continuous batch uses official usage preflight and zero-allowance polls never call the data endpoint.
+- [x] Reconcile live SQLite and resume only job `finmind-sponsor-9ab5c7b3040ee001` from its exact durable checkpoint with 6,000/0/0.25/10-second settings.
+- [ ] On transport timeout, preserve the checkpoint, wait a full 60 seconds, and retry the same job; stop separately for auth, quota, provider, or data-quality failures.
+- [ ] Audit all new partitions, reconcile `EMPTY`/`INVALID` and fixed-grid observations, consume remaining positive allowance on the next eligible diversified tranche if the current job completes, and preserve the exact next checkpoint.
 - **Status:** in progress
 
 ## Decisions Made
@@ -430,6 +456,8 @@ Phase 44 — 2026-08-25 checkpoint-safe continuation
 | Phase 35 sparse-day helper generated invalid SQLite `IN (15,)` syntax | 1 | The completed offline job audit had already passed; correct the later diagnostic to parameterized predicates before using sparse-day output. No database/provider state changed. |
 | Two parallel official TWSE diagnostic curls ran without network escalation and failed DNS resolution | 1 | Re-ran the same read-only official queries with approved network access; no FinMind request, checkpoint, or trading state was involved. |
 | Phase 36 automation-manager updates did not return and were terminated after bounded waits | 1-2 | Re-read the persisted automation file after each attempt and confirmed it remained the stale 16:32 one-shot; no raw automation file edit was made and no acquisition checkpoint was affected. |
+| First Phase 44 TWSE OpenAPI `jq` filter used dot notation for Chinese field names | 1 | The official response reached the pipe, but `jq` rejected the local filter before producing rows. Retry with bracket notation; no FinMind request or acquisition state was involved. |
+| First Phase 44 error-log patch included an empty second-file hunk | 1 | Re-applied a narrow single-file patch; the failed patch changed no file. |
 | A read-only attempt-timestamp query used non-existent `created_at` instead of `requested_at` | 1 | Read the `finmind_history_attempts` schema and reran the query with `requested_at`; no database state changed. |
 | Computer Use fallback was not allowed to control the Codex desktop app | 1 | Stopped without UI actions. The stale automation remains unchanged and must not be treated as a valid future continuation; SQLite acquisition state is unaffected. |
 | Current continuation first used unsupported `read_thread` `turnLimit=20` | 1 | Re-read the referenced task with the documented maximum of 10; no workspace or provider state changed. |
@@ -438,3 +466,648 @@ Phase 44 — 2026-08-25 checkpoint-safe continuation
 | The live Phase 39 HTTPS read raised uncaught `ConnectionResetError: [Errno 54] Connection reset by peer` after 761 KBar checkpoints | 1 | Preserved the exact durable checkpoint at `2464 / 2023-10-04`, waited a full 60 seconds, and reran the same deterministic job; it resumed at `2464 / 2023-10-11` and completed without duplication. |
 | Legacy TPEx daily-close URLs ignored the requested 2023 date and returned the current 2026-08-24 table | 1 | Switched to TPEx's current official `afterTrading/tradingStock` JSON endpoint with `date=2023/09/01&code=5903`; it returned the requested historical month. |
 | The Phase 42 live process ended on a FinMind transport timeout after the interactive session was no longer attached | 1 | Live SQLite retained 1,559 `READY` checkpoints and exact next pending `2851 / 2024-01-19`; the full 60-second backoff had elapsed, and offline audit verified every checkpoint before deterministic resume. |
+| Two Phase 45 official TWSE `curl` diagnostics first ran inside the restricted DNS sandbox | 1 each | Re-ran the same read-only exchange queries with approved network access; no FinMind request, checkpoint, or trading state was involved. |
+| First Phase 45 multi-file planning patch used stale findings-tail context | 1 | The patch failed atomically and changed no planning file; re-applied narrow per-file patches against the current tails. |
+| Phase 46 progress status patch matched the earlier Phase 13 `in progress` line | 1 | Restored Phase 13 and re-applied the Phase 46 status with unique section context; acquisition SQLite was unaffected. |
+
+## 2026-08-25 18:02 Heartbeat Reconciliation
+
+- [x] Reject the stale `finmind-sponsor-ffbf4a85539d9edc / 1785 / 2025-11-20` heartbeat checkpoint after live SQLite confirms that job is already complete.
+- [x] Confirm the existing single writer for `finmind-sponsor-bea0aa382a988bb0` remains attached and advances checkpoints; do not start a second process.
+- [x] Run a live partial offline audit and SQLite `quick_check` without interrupting acquisition.
+- [x] Update and re-read the existing `finmind` heartbeat so its next run treats the live SQLite checkpoint and current job as authoritative.
+- [ ] Allow the current official-preflight-only writer to finish; then run the full job audit and official EMPTY/fixed-grid reconciliation before selecting the next tranche.
+
+## Phase 48: 2026-08-25 completed-job reconciliation and next tranche
+
+- [x] Confirm the existing writer completed `finmind-sponsor-bea0aa382a988bb0` without starting a duplicate process.
+- [x] Audit all 5,816 partitions, reconcile both `EMPTY` dates and every true five-/twenty-minute grid against official TWSE/TPEx evidence, and verify SQLite integrity.
+- [x] Select eight established unused high-market-value stocks across distinct industries from the sealed metadata and verify their official listing dates cover the frozen range.
+- [x] Create deterministic job `finmind-sponsor-4b3f3a6045f8fa25` in status-only mode, then start exactly one official-preflight-only continuous writer.
+- [x] Update and read back the existing `finmind` heartbeat for the new job and the 20:02 Asia/Taipei checkpoint review.
+- [ ] Let the new writer continue through official positive allowance, then complete its full audit and official exception reconciliation.
+
+### Phase 48 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| First official TWSE curl could not resolve DNS in the restricted sandbox | 1 | Re-ran the same read-only official query with approved network access; no FinMind request or checkpoint was involved. |
+| TPEx disposal POST omitted `type=code` and returned the full market table | 1 | Re-issued the official request with the page-native code filter and bounded `jq` selection. |
+| First TWSE OpenAPI `jq` filter changed `.` to the symbol array, and the attempted OTC OpenAPI URL returned a redirect page | 1 each | Bound the row symbol before `index()` for listed stocks; verified 5478 from the official Big5 ISIN OTC table instead. |
+
+## Phase 49: 2026-08-25 20:02 completion, official reconciliation, and continuation
+
+- [x] Keep unified session 36269 as the only writer until `finmind-sponsor-4b3f3a6045f8fa25` completes; do not repeat its calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions and reconcile all eight `EMPTY` dates plus every true 14/15/53/54-row grid against official TWSE/TPEx evidence.
+- [x] Recompute aggregate coverage from live SQLite and verify `PRAGMA quick_check`.
+- [x] Dynamically exclude all 301 complete symbols, ETFs, recent listings, and mixed-market 7610; select eight established unused leaders across distinct industries and verify their official listing dates.
+- [x] Start exactly one official-preflight-only continuous writer for deterministic job `finmind-sponsor-92f5d638b5e2a786` and run a zero-issue partial audit while it advances.
+- [x] Update and read back the existing `finmind` heartbeat for the new job and the 21:02 Asia/Taipei checkpoint review.
+- [ ] Let the attached writer consume only future positive usage releases; after job completion, run the full 5,816-partition audit and official exception reconciliation before choosing another tranche.
+
+### Phase 49 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Initial read-only state query used the non-existent table name `intraday_partitions` | 1 | Read the live SQLite schema and reran the same query against `finmind_history_partitions`; no database or provider state changed. |
+| First official TWSE/TPEx reconciliation curls could not resolve DNS inside the restricted sandbox | 1 each | Re-ran the same read-only official queries with approved network access; no FinMind request or checkpoint was involved. |
+| The first TWSE historical-suspension URL used the page route rather than its declared data API | 1 | Read the official form's `data-api`, queried `/afterTrading/TWTAWU`, and confirmed the 2832 block was not a material-information suspension before reconciling it through the official reduction report. |
+| Initial listing-date `jq` expressions used invalid Chinese-key dot syntax and then an ineffective array binding | 1 each | Used bracket-key access and explicit symbol comparisons; all eight selected listing dates were returned from the sealed official TWSE company response. |
+
+## Phase 50: 2026-08-25 21:02 completion, audit, and quota-preserving continuation
+
+- [x] Keep unified session 3882 as the only writer until `finmind-sponsor-92f5d638b5e2a786` completes; do not repeat its sealed calendar or any prior symbol-day.
+- [x] Audit all 5,816 partitions, classify every 14/15/53/54-row observation by raw timestamp grid, and reconcile every true grid against official TWSE disposition evidence.
+- [x] Recompute complete-symbol aggregate coverage from live SQLite and verify `PRAGMA quick_check`.
+- [x] Exclude all complete symbols, ETFs, recent listings, and mixed-market 7610; select eight established leaders with lower industry coverage and verify official listing dates.
+- [x] Start exactly one official-positive-preflight continuous writer for deterministic job `finmind-sponsor-02b4a95947f469ef`.
+- [x] Update and read back the existing `finmind` heartbeat for the current job and the 22:02 Asia/Taipei checkpoint review.
+- [x] Leave the current writer attached while it consumes only positive usage releases; after completion, run the full audit and official exception reconciliation before choosing another tranche.
+
+### Phase 50 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| First sealed company-snapshot query assumed a top-level `data` object | 1 | Inspected the local JSON shape and queried its array rows; no provider request or database write occurred. |
+| Two listing-date `jq` filters used invalid Chinese-key dot syntax or an ineffective array binding | 1 each | Used bracket-key access and explicit symbol comparisons; no provider request or acquisition state changed. |
+
+## Phase 51: 2026-08-25 22:02 completion, official EMPTY reconciliation, and continuation
+
+- [x] Keep unified session 38949 as the only writer until `finmind-sponsor-02b4a95947f469ef` completes; do not repeat its sealed calendar or any prior checkpoint.
+- [x] Audit all 5,816 partitions, reconcile all three `EMPTY` observations against official TWSE/TPEx daily data, classify every exact 14/15/53/54-row observation from raw timestamps, and verify SQLite integrity.
+- [x] Recompute aggregate coverage from live SQLite and select eight established unused stocks across lower-coverage industries from the sealed metadata.
+- [x] Create deterministic job `finmind-sponsor-a8934cc8956881c4` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Update and read back the existing `finmind` heartbeat for the current job and the 23:02 Asia/Taipei checkpoint review.
+- [x] Leave the new writer attached while it consumes only official positive releases; after completion, run the full audit and official exception reconciliation before selecting another tranche.
+
+## Phase 52: 2026-08-25 23:02 completion, official reconciliation, and next diversified writer
+
+- [x] Keep unified session 27519 as the only writer until `finmind-sponsor-a8934cc8956881c4` completes; do not repeat its sealed calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, reconcile all thirteen `EMPTY` observations and every true 14/15/53/54-row fixed grid against official TWSE/TPEx evidence, and verify SQLite integrity.
+- [x] Recompute aggregate coverage from live SQLite, dynamically exclude completed/recent/ineligible symbols, and select eight established stocks across the lowest-coverage industries.
+- [x] Create deterministic job `finmind-sponsor-1ef906d2ec154185` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Update and read back the existing `finmind` heartbeat for the new job and the 00:02 Asia/Taipei checkpoint review.
+- [x] Leave session 4350 attached while it consumes only official positive releases; after completion, run the full audit and official exception reconciliation before selecting another tranche.
+
+## Phase 53: 2026-08-26 00:02 provider-safe pause and audited checkpoint handoff
+
+- [x] Re-read the isolated planning records and referenced task, then use live SQLite plus session 4350 as the authority before considering any writer action.
+- [x] Confirm session 4350 exited on one FinMind HTTP 502 provider failure after durably checkpointing 1,805 symbol-days; do not retry the provider again in the same heartbeat.
+- [x] Audit all 1,805 checkpointed partitions, classify every current exact 14/15/53/54-row observation from sealed raw timestamps, reconcile 1809's true grids to official TWSE disposition periods, and verify SQLite integrity.
+- [x] Preserve exact next pending `2908 / 2025-02-05`, update the existing `finmind` heartbeat for 01:02 Asia/Taipei, and read back the persisted automation.
+- [x] At the next heartbeat, first prove no other writer exists and the checkpoint has not advanced; after the hour-long cooldown, resume only the same deterministic job if the provider preflight is healthy.
+
+**Status:** resumed after the full cooldown and completed with a clean full audit
+
+### Phase 52 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Combined planning-file output exceeded the tool display limit | 1 | Re-read the records in bounded sections before using live SQLite as the operational authority. |
+| Read-only request accounting queried non-existent `attempted_at` columns | 1 | Read the live attempts schema and re-ran the query with `requested_at`; no database or provider state changed. |
+| Initial TWSE company-snapshot `jq` used invalid Chinese-key dot syntax | 1 | Used bracket-key access and explicit symbol comparisons; no provider request was made. |
+| Initial TPEx disposal POST omitted the page-native `type=code` filter and returned the full table | 1 | Re-issued the official request with `type=code` and bounded output to the four 6231 records. |
+
+## Phase 54: 2026-08-26 01:15 completion, official reconciliation, and next diversified writer
+
+- [x] Confirm session 4350 is gone and live SQLite is unchanged at `2908 / 2025-02-05`, then resume only deterministic job `finmind-sponsor-1ef906d2ec154185` after the full cooldown.
+- [x] Complete and audit all 5,816 partitions, reconcile all 66 `EMPTY` dates and every true fixed-grid observation against official TWSE/TPEx evidence, and verify SQLite integrity.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, dynamically exclude all completed/recent/ineligible symbols, and select eight established stocks across previously under-covered industries.
+- [x] Create deterministic job `finmind-sponsor-a94adbad11a795af` without provider requests, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a zero-issue partial audit while the new writer advances and preserve its live exact checkpoint for the next heartbeat.
+- [x] Leave session 29235 as the sole writer while it consumes official-positive releases; after completion, run the full audit and official exception reconciliation before selecting another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 54 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Catch-up poll found unified session 4350 already closed, aborting the combined display step | 1 | Re-ran the authoritative status and SQLite checks separately; both confirmed the exact durable checkpoint and no writer before resume. |
+| Initial sealed company-snapshot `jq` filter used invalid Chinese-key dot syntax | 1 | Re-ran the local-only query with bracket-key access and verified all eight listing dates; no provider request or acquisition state changed. |
+| Status-only check accidentally combined `--continuous-hourly` with an offline mode | 1 | Argparse rejected the command before client construction; reran status-only without the incompatible flag, so zero provider requests were made. |
+| First automation-manager update omitted the required `mode` discriminator | 1 | Repeated the same full update with `mode="update"`; the app accepted it and the persisted automation was read back. |
+
+## Phase 55: 2026-08-26 03:23 completion, official reconciliation, and continuation
+
+- [x] Confirm session 29235 remains the only writer, let it consume only official-positive releases, and complete deterministic job `finmind-sponsor-a94adbad11a795af` without duplicate requests.
+- [x] Audit all 5,816 partitions, reconcile all 50 `EMPTY` dates against official TWSE daily data, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Reconcile 3147's thirteen five-minute and sixteen twenty-minute grids against the four official TPEx disposition periods.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established stocks across under-covered industries, and verify official listing dates cover the frozen range.
+- [x] Create deterministic job `finmind-sponsor-e4f09907ed83d1b4` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Leave session 23235 as the sole writer, update and re-read the existing `finmind` heartbeat, and audit the current partial checkpoint before handoff.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 55 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Initial official TPEx daily-close query returned no rows because 8482 is TWSE-listed | 1 | Switched to TWSE's official `STOCK_DAY` endpoint and reconciled all 50 EMPTY dates across 22 affected months. |
+| First official TWSE query could not resolve DNS in the restricted sandbox | 1 | Re-ran the same read-only request with approved network access; no FinMind request or checkpoint was involved. |
+| Initial sealed listing-date `jq` filters changed scope to the candidate array before reading row fields | 1 each market | Bound each company row explicitly and re-ran the local-only queries; all eight listing dates were recovered without provider access. |
+
+## Phase 56: 2026-08-26 05:48 completion, official reconciliation, and continuation
+
+- [x] Confirm session 23235 remained the only writer and completed deterministic job `finmind-sponsor-e4f09907ed83d1b4` without duplicate requests.
+- [x] Audit all 5,816 partitions, reconcile all eight `EMPTY` dates against official TPEx daily data, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Reconcile `4171 / 2025-10-31` to its official TPEx five-minute disposition period.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established stocks across distinct under-covered industries, and verify official listing dates cover the frozen range.
+- [x] Create deterministic job `finmind-sponsor-303a4e6207a3385b` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Leave session 54912 as the sole writer, update and read back the existing `finmind` heartbeat, and preserve a zero-issue partial checkpoint for handoff.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+## Phase 57: 2026-08-26 06:35 completion, official reconciliation, and continuation
+
+- [x] Keep session 54912 as the only writer until `finmind-sponsor-303a4e6207a3385b` completes; do not repeat its sealed calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, reconcile all 107 `EMPTY` dates against official TWSE/TPEx daily data, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established unused stocks across distinct low-coverage industries, and verify their official listing dates.
+- [x] Create deterministic job `finmind-sponsor-2f1359a59f6f020a` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a zero-issue bounded audit while the new writer waits for rolling quota, update the existing `finmind` heartbeat, and read back the persisted schedule.
+- [x] Leave session 41184 attached; after the job completes, run its full 5,816-partition audit and official exception reconciliation before choosing another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 57 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Initial process/status diagnostic used sandbox-blocked `ps` and omitted required `--symbols` from status-only mode | 1 each | Switched to the attached unified session and supplied the deterministic symbol set; no provider request or database mutation occurred. |
+| SQLite CLI later returned `unable to open database file` despite the completed audit opening the same store | 1 | Used Python SQLite URI `mode=ro` for the bounded status and `quick_check`; no acquisition state changed. |
+| Official EMPTY checker hit Python 3.13's `Missing Subject Key Identifier` certificate-chain rejection | 1 | Retained the official HTTPS endpoints, used a request-local compatibility SSL context, and reconciled all 107 dates; no FinMind request was made. |
+| Initial local listing-date `jq` expressions used Chinese-key dot syntax and then changed scope before reading the row | 1 each | Bound each row and used bracket-key access; all eight sealed official listing dates were recovered without provider access. |
+
+## Phase 58: 2026-08-26 07:45 completion, official reconciliation, and continuation
+
+- [x] Confirm session 41184 remained the only writer and completed deterministic job `finmind-sponsor-2f1359a59f6f020a` without duplicate requests.
+- [x] Audit all 5,816 partitions, reconcile all eight `EMPTY` dates against official TWSE/TPEx daily data, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established unused stocks across distinct low-coverage industries, and verify official listing dates cover the frozen range.
+- [x] Exclude 6028 after its sealed official record showed a 2026-03-30 listing date, then create deterministic job `finmind-sponsor-4d9501078e3a36dd` without provider access.
+- [x] Start exactly one official-positive-preflight continuous writer, run a zero-issue bounded audit, and update/read back the existing `finmind` heartbeat.
+- [x] Leave session 68331 attached; after the job completes, run its full audit and official exception reconciliation before choosing another tranche.
+
+**Status:** complete after one checkpoint-safe transport recovery and a clean full audit
+
+## Phase 59: 2026-08-26 08:55 transport recovery, completion, and continuation
+
+- [x] Confirm session 68331 was the sole writer and preserve its exact durable boundary after `ConnectionResetError: [Errno 54] Connection reset by peer` at 3,880/5,816 partitions, next pending `5403 / 2024-08-22`.
+- [x] Verify more than the required 60-second backoff had elapsed, audit the 3,880-partition checkpoint, then resume only deterministic job `finmind-sponsor-4d9501078e3a36dd` without repeating its sealed calendar or prior symbol-days.
+- [x] Complete and audit all 5,816 partitions, reconcile all eight `EMPTY` dates against official TWSE/TPEx evidence, classify all exact 14/15/53/54-row observations, and verify SQLite integrity.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established unused stocks across distinct under-covered industries, and verify their sealed official listing dates cover the frozen range.
+- [x] Create deterministic job `finmind-sponsor-ec68ea09b56c8162` in status-only mode without provider requests, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a zero-issue bounded audit while the new writer advances, update the existing `finmind` heartbeat, and read back the persisted 09:55 Asia/Taipei schedule.
+- [x] Leave session 67947 attached; after the job completes, run its full 5,816-partition audit and official exception reconciliation before choosing another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 59 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Several guessed TWSE `TWT49U` routes returned 404 or the unrelated ex-rights report while locating the 2107 suspension cause | 1 each | Located the official `TWTAUU` cash-capital-reduction report and confirmed 2107 resumed on 2023-09-18 after `退還股款`; no FinMind request or acquisition state changed. |
+| The first direct official TWSE curl could not resolve DNS inside the restricted sandbox | 1 | Re-ran the same read-only official query with approved network access; no FinMind request or checkpoint was involved. |
+| Initial sealed-company parser treated the JSON arrays as JSONL and raised `JSONDecodeError` | 1 | Loaded each sealed snapshot as one array and verified all eight selected listing dates locally. |
+| First automation update used the obsolete `automationId` key instead of required `id` | 1 | Repeated the same full update with `id="finmind"`; the app accepted it and the persisted automation was read back. |
+
+## Phase 60: 2026-08-26 09:55 single-writer quota monitoring and partial reconciliation
+
+- [x] Confirm session 67947 remained the only writer and had advanced the live SQLite checkpoint; do not launch a second writer while it was active or waiting for rolling allowance.
+- [x] Observe the writer wait on official usage at 4,081 partitions, then confirm it resumed only after positive rolling releases without a quota-error probe.
+- [x] Run bounded offline audits while acquisition continued and verify SQLite integrity at the durable checkpoints.
+- [x] Reconcile all 17 current `EMPTY` partitions against official TWSE/TPEx daily data and reconcile 6163's twelve fixed five-minute grids to its official TPEx disposition period.
+- [x] Update and read back the existing `finmind` heartbeat for the 10:55 Asia/Taipei checkpoint review.
+- [x] Leave session 67947 attached; after the deterministic job completes, run a full 5,816-partition audit and repeat final official exception reconciliation before choosing another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 60 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Guessed `/zh-tw/bulletin/disposal` page returned 404 and the dynamic TPEx menu endpoint returned HTTP 520 | 1 each | Located the official `/zh-tw/announce/market/disposal.html` page, read its declared action, and queried the public `/www/zh-tw/bulletin/disposal` data route. |
+| TPEx OpenAPI disposition endpoint returned only current daily announcements rather than the required 2025 history | 1 | Switched to the official historical page API and confirmed the exact 6163 period and five-minute measure. |
+
+## Phase 61: 2026-08-26 10:55 completion, final reconciliation, and next diversified writer
+
+- [x] Keep session 67947 as the only writer until deterministic job `finmind-sponsor-ec68ea09b56c8162` completes; do not repeat its sealed calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, reconcile all 62 `EMPTY` dates against official TWSE/TPEx daily data, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established unused stocks across distinct low-coverage industries, and verify their sealed official listing dates.
+- [x] Create deterministic job `finmind-sponsor-3eead7cc8a091d5b` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a zero-issue bounded audit while the new writer advances, update the existing `finmind` heartbeat, and read back the persisted 11:55 Asia/Taipei schedule.
+- [x] Leave session 38603 attached; after the job completes, run its full audit and official exception reconciliation before choosing another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 61 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| SQLite CLI returned `unable to open database file` during parallel read-only checks | 1 | Switched to Python SQLite URI `mode=ro`; `quick_check=ok` and no acquisition state changed. |
+| First read-only aggregate query used the obsolete table name `finmind_partitions` | 1 | Read the live schema and reran against `finmind_history_partitions`; no database or provider state changed. |
+| `read_thread` rejected `turnLimit=12` because the supported maximum is 10 | 1 | Re-read the referenced task with `turnLimit=10`; no workspace or provider state changed. |
+
+## Phase 62: 2026-08-26 11:55 completion, official reconciliation, and continuation
+
+- [x] Keep session 38603 as the only writer until deterministic job `finmind-sponsor-3eead7cc8a091d5b` completes; do not repeat its sealed calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, reconcile the sole `EMPTY` against official TPEx daily data, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Reconcile 3055's five- and twenty-minute fixed grids against official TWSE disposition records.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established unused stocks across distinct low-coverage industries, and verify sealed official listing dates.
+- [x] Create deterministic job `finmind-sponsor-650f66990c1d45b8` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a zero-issue bounded audit while the new writer advances and preserve its exact live checkpoint for the next heartbeat.
+- [x] Leave session 42665 attached; after the job completes, run its full audit and official exception reconciliation before choosing another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+## Phase 63: 2026-08-26 12:55 completion, official reconciliation, and continuation
+
+- [x] Confirm session 42665 is the sole writer until deterministic job `finmind-sponsor-650f66990c1d45b8` completes; never repeat its sealed calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, reconcile all 26 `EMPTY` dates against official TWSE daily and capital-reduction records, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Reconcile 4994's two fixed five-minute grids against the official TWSE disposition period.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established unused stocks across eight low-coverage industries, and verify sealed official listing dates.
+- [x] Create deterministic job `finmind-sponsor-be65322fdea607a1` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a zero-issue bounded audit while the new writer advances and preserve its exact live checkpoint for the next heartbeat.
+- [x] Leave session 79300 attached; after the job completes, run its full audit and official exception reconciliation before choosing another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 63 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| The first official TWSE EMPTY checker run hit sandbox DNS denial | 1 | Re-ran the same read-only official endpoint check with approved network access; no FinMind request or SQLite checkpoint was affected. |
+
+## Phase 64: 2026-08-26 13:55 completion, official reconciliation, and continuation
+
+- [x] Confirm session 79300 is the sole writer until deterministic job `finmind-sponsor-be65322fdea607a1` completes; never repeat its sealed calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, reconcile all five `EMPTY` dates against official TWSE daily data, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Reconcile all eighteen five-minute grids for 1795, 6613, and 8933 against official TWSE/TPEx disposition periods.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established unused stocks across distinct low-coverage industries, and verify sealed official listing dates.
+- [x] Create deterministic job `finmind-sponsor-384674f97d4e6598` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a zero-issue bounded audit while the new writer advances and preserve an exact live checkpoint for the next heartbeat.
+- [x] Leave session 86167 attached; after the job completes, run its full audit and official exception reconciliation before choosing another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 64 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| A read-only `sqlite3` URI invocation returned `unable to open database file (14)` | 1 | Used the repository Python runtime with SQLite URI `mode=ro`, then confirmed `PRAGMA quick_check=ok` with `sqlite3 -readonly`; no provider request or database mutation occurred. |
+
+## Phase 65: 2026-08-26 14:55 completion, official reconciliation, and continuation
+
+- [x] Confirm session 86167 remained the sole writer and completed deterministic job `finmind-sponsor-384674f97d4e6598` without repeating its calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, reconcile all fourteen `EMPTY` dates against official TWSE/TPEx daily data, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Reconcile 1711's ten five-minute and six twenty-minute grids against its two official TWSE disposition periods.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight established unused stocks across distinct industries, and verify sealed official listing dates.
+- [x] Create deterministic job `finmind-sponsor-b4cd8cc35cfd5e45` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a zero-issue bounded audit while the new writer advances, update the existing heartbeat, and read back the persisted schedule.
+- [x] Leave session 73543 attached; after the job completes, run its full audit and official exception reconciliation before choosing another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 65 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Two parallel `sqlite3 -readonly` detail queries returned `unable to open database file (14)` against the completed WAL store | 1 each | Re-ran the same read-only queries through Python SQLite URI `mode=ro`; later integrity check remained `ok`, with no provider request or database mutation. |
+| The first official EMPTY checker run could not resolve TWSE/TPEx hosts inside the restricted sandbox | 1 | Re-ran the same read-only exchange checks with approved network access; all fourteen dates matched and no FinMind request was involved. |
+
+## Phase 66: 2026-08-26 15:55 completion, official reconciliation, and continuation
+
+- [x] Keep session 73543 as the sole writer until deterministic job `finmind-sponsor-b4cd8cc35cfd5e45` completes; never repeat its sealed calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, reconcile both `EMPTY` dates against official TWSE/TPEx daily data, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Reconcile all fixed grids for 3587 and 4722 against official TPEx/TWSE disposition records.
+- [x] Recompute aggregate usable coverage excluding quarantined 7610, select eight unused stocks across distinct low-coverage industries, and verify their sealed official listing dates.
+- [x] Create deterministic job `finmind-sponsor-bd63b6c8046d18f1` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a zero-issue bounded audit while the new writer advances, update the existing heartbeat, and read back the persisted 16:55 Asia/Taipei schedule.
+- [x] Leave session 25403 attached; after the job completes or safely stops, preserve its exact checkpoint before any continuation.
+
+**Status:** complete at a clean audited partial handoff
+
+### Phase 66 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| The first Python detail query selected obsolete job-summary columns after successfully printing partition detail and `quick_check=ok` | 1 | Kept the valid read-only partition output and used the downloader's authoritative status/audit contract; no provider request or database mutation occurred. |
+| The first official EMPTY checker run could not resolve TWSE/TPEx hosts inside the restricted sandbox | 1 | Re-ran the same read-only exchange checks with approved network access; both dates matched official zero-volume/no-OHLC rows. |
+| Initial TPEx disposition requests used compact dates that the official form ignored | 2 | Used the official slash-delimited date input; TPEx returned the exact 3587 five-minute disposition period. |
+| Initial heartbeat update overstated 4722's five-minute subset as twenty instead of ten | 1 | Corrected the persisted automation immediately and retained the separately verified combined count of twenty five-minute grids across 3587 and 4722. |
+
+## Phase 67: 2026-08-26 16:55 transport-backoff same-job continuation
+
+- [x] Confirm session 25403 stopped on a transport timeout, verify the exact SQLite checkpoint and failed-attempt timestamp, and run a zero-issue offline audit before resuming.
+- [x] Confirm more than the full 60-second backoff elapsed and resume only deterministic job `finmind-sponsor-bd63b6c8046d18f1` from `4551 / 2026-07-30`.
+- [x] Start exactly one replacement writer session 94617 using official positive usage preflight and the existing 6,000/0/0.25/10-second settings.
+- [x] Run a bounded zero-issue audit and verify SQLite integrity while the replacement writer advances.
+- [x] Update and read back the existing heartbeat for the 17:55 Asia/Taipei review with the new sole-session identity and exact audited checkpoint.
+- [x] Preserve session 94617's exact timeout checkpoint and continue the same deterministic job in Phase 68 without repeating its calendar or prior partitions.
+
+**Status:** complete at a clean audited transport-timeout handoff
+
+### Phase 67 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Session 25403 stopped on a FinMind transport timeout at `4551 / 2026-07-30` | 1 | Preserved all 2,894 checkpoints, verified the 16:33:36+08:00 failed attempt plus clean audit/integrity, waited more than 60 seconds, and resumed the same deterministic job without repeating its calendar or prior partitions. |
+
+## Phase 68: 2026-08-26 17:55 second transport-backoff continuation
+
+- [x] Confirm session 94617 stopped on a transport timeout, verify its exact SQLite checkpoint and failed-attempt timestamp, and run a zero-issue offline audit before resuming.
+- [x] Confirm more than the full 60-second backoff elapsed and resume only deterministic job `finmind-sponsor-bd63b6c8046d18f1` from `4743 / 2025-01-10`.
+- [x] Start exactly one replacement writer session 27433 using official positive usage preflight and the existing 6,000/0/0.25/10-second settings.
+- [x] Run a bounded zero-issue audit, verify SQLite integrity, and update/read back the 18:55 heartbeat with the new sole-session identity.
+- [x] Preserve session 27433's exact timeout checkpoint and continue the same deterministic job in Phase 69 without repeating its calendar or prior partitions.
+
+**Status:** complete at a clean audited transport-timeout handoff
+
+### Phase 68 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Session 94617 stopped on a FinMind transport timeout at `4743 / 2025-01-10` | 1 | Preserved all 3,248 checkpoints, verified the 17:01:57+08:00 failed attempt plus clean audit/integrity, waited more than 60 seconds, and resumed the same deterministic job without repeating its calendar or prior partitions. |
+| First automation update omitted required `status` and therefore changed nothing | 1 | Re-issued the full update with `status=ACTIVE`; read-back confirms session 27433 and the 18:55 Asia/Taipei heartbeat. |
+
+## Phase 69: 2026-08-26 18:55 third transport-backoff continuation
+
+- [x] Confirm session 27433 stopped on a transport timeout, verify its exact SQLite checkpoint and failed-attempt timestamp, and run a zero-issue offline audit before resuming.
+- [x] Confirm more than the full 60-second backoff elapsed and resume only deterministic job `finmind-sponsor-bd63b6c8046d18f1` from `4743 / 2026-05-13`.
+- [x] Start exactly one replacement writer session 92530 using official positive usage preflight and the existing 6,000/0/0.25/10-second settings.
+- [x] Run a bounded zero-issue audit, verify SQLite integrity, and update/read back the 19:55 heartbeat with the new sole-session identity.
+- [x] Preserve session 92530's exact timeout checkpoint and continue the same deterministic job in Phase 70 without repeating its calendar or prior partitions.
+
+**Status:** complete at a clean audited transport-timeout handoff
+
+### Phase 69 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Session 27433 stopped on a FinMind transport timeout at `4743 / 2026-05-13` | 1 | Preserved all 3,567 checkpoints, verified the 18:02:27+08:00 failed attempt plus clean audit/integrity, waited more than 60 seconds, and resumed the same deterministic job without repeating its calendar or prior partitions. |
+
+## Phase 70: 2026-08-26 19:55 fourth transport-backoff continuation
+
+- [x] Confirm session 92530 stopped on a transport timeout, verify its exact SQLite checkpoint and failed-attempt timestamp, and run a zero-issue offline audit before resuming.
+- [x] Confirm more than the full 60-second backoff elapsed and resume only deterministic job `finmind-sponsor-bd63b6c8046d18f1` from `6902 / 2023-09-11`.
+- [x] Start exactly one replacement writer session 69253 using official positive usage preflight and the existing 6,000/0/0.25/10-second settings.
+- [x] Run a bounded zero-issue audit, verify SQLite integrity, and update/read back the 20:55 heartbeat with the new sole-session identity.
+- [x] Keep session 69253 as the sole writer until the job completes, then run the full 5,816-partition audit and official exception reconciliation before selecting another tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 70 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Session 92530 stopped on a FinMind transport timeout at `6902 / 2023-09-11` | 1 | Preserved all 4,377 checkpoints, verified the 19:07:16+08:00 failed attempt plus clean audit/integrity, waited more than 60 seconds, and resumed the same deterministic job without repeating its calendar or prior partitions. |
+| Direct `sqlite3` read-only access returned `unable to open database file` | 1 | Used the repository Python runtime with a SQLite URI in `mode=ro`; the failed attempt was read and `quick_check=ok` without mutation. |
+
+## Phase 71: 2026-08-26 20:55 completion, official reconciliation, and next diversified writer
+
+- [x] Confirm session 69253 completed deterministic job `finmind-sponsor-bd63b6c8046d18f1` without repeating its sealed calendar or checkpointed symbol-days.
+- [x] Audit all 5,816 partitions, reconcile all 59 `EMPTY` dates against official TWSE/TPEx daily data, classify all 14/15/53/54-row observations, and verify SQLite integrity.
+- [x] Reconcile 3289, 4551, and 5432 fixed five-minute grids against official TPEx/TWSE disposition periods.
+- [x] Recompute completed-symbol and industry coverage, exclude recent/ineligible listings and 7610, and select eight established unused stocks across distinct broad industries using the sealed market-value and official company snapshots.
+- [x] Create deterministic job `finmind-sponsor-8f4d2c6ad7feaa95` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a bounded zero-issue audit, verify SQLite integrity, and update/read back the 21:55 heartbeat with the new sole-session identity.
+- [x] Preserve session 85663's exact timeout checkpoint and continue the same deterministic job in Phase 72 without repeating its calendar or prior partitions.
+
+**Status:** complete at a clean audited transport-timeout handoff
+
+### Phase 71 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| First inline Python official-EMPTY checker passed literal `\\n` escapes to `python -c` and raised `SyntaxError` | 1 | Recreated the read-only checker as a temporary `/private/tmp` script via `apply_patch`; all 59 official rows were reconciled without changing workspace or provider acquisition state. |
+
+## Phase 72: 2026-08-26 21:55 transport-backoff same-job continuation
+
+- [x] Confirm session 85663 stopped on a transport timeout, verify its exact SQLite checkpoint and failed-attempt timestamp, and run a zero-issue offline audit before resuming.
+- [x] Confirm more than the full 60-second backoff elapsed and resume only deterministic job `finmind-sponsor-8f4d2c6ad7feaa95` from `3708 / 2025-06-20`.
+- [x] Start exactly one replacement writer session 42127 using official positive usage preflight and the existing 6,000/0/0.25/10-second settings.
+- [x] Run a bounded zero-issue audit, verify SQLite integrity, and update/read back the 22:55 heartbeat with the new sole-session identity.
+- [x] Confirm session 42127 completed, run the full audit and official fixed-grid reconciliation, then select the next diversified tranche.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 72 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Session 85663 stopped on a FinMind transport timeout at `3708 / 2025-06-20` | 1 | Preserved all 3,351 checkpoints, verified the 21:41:37+08:00 failed attempt plus clean audit/integrity, waited more than 60 seconds, and resumed the same deterministic job without repeating its calendar or prior partitions. |
+| First automation update used `automationId` instead of the required `id` field | 1 | Re-issued the full update with `id=finmind`; read-back confirms session 42127 and the 22:55 Asia/Taipei heartbeat. |
+
+## Phase 73: 2026-08-26 22:55 completion, official reconciliation, and next diversified writer
+
+- [x] Confirm session 42127 completed deterministic job `finmind-sponsor-8f4d2c6ad7feaa95` without repeating its sealed calendar or checkpointed symbol-days.
+- [x] Audit all 5,816 partitions, verify SQLite integrity, and classify all exact 14/15/53/54-row observations from sealed raw payloads.
+- [x] Reconcile all 3498 and 3708 fixed five-minute grids against official TPEx/TWSE disposition periods; no EMPTY or INVALID requires investigation.
+- [x] Recompute complete-symbol and industry coverage, exclude recent/ineligible listings and 7610, and select eight established unused high-market-value stocks across distinct low-coverage industries.
+- [x] Create deterministic job `finmind-sponsor-f9f1b8a5d0b7fb85` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a later bounded audit, verify SQLite integrity, update/read back the next heartbeat, and leave session 81526 attached as the sole writer.
+
+**Status:** paused after session 81526 provider failure; see Phase 74
+
+### Phase 73 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Direct `sqlite3 -readonly` returned `unable to open database file` | 1 | Used repository Python with a SQLite URI in `mode=ro`; full audit remained clean and `quick_check=ok`. |
+| The first TPEx disposition URL used the retired `/www/zh-tw/announce/market/disposal` route and returned no JSON/404 | 1 | Read the current official page contract and queried `/www/zh-tw/bulletin/disposal`, which returned the exact 3498 period. |
+| Restricted sandbox DNS prevented the initial official-exchange and FinMind network calls | 1 | Re-ran only the authorized read-only exchange queries and the sole FinMind writer with approved network access; no duplicate partition or second writer was created. |
+
+## Phase 74: 2026-08-26 23:55 provider-failure safe pause
+
+- [x] Confirm sole writer session 81526 stopped on a FinMind HTTP 502 provider failure and verify its exact SQLite checkpoint and failed-attempt timestamp.
+- [x] Preserve all 2,968 durable partitions, run a zero-issue offline audit, and verify SQLite integrity without retrying the provider failure in this heartbeat.
+- [x] Reconcile all eight partial-job `EMPTY` partitions against official TWSE daily rows and classify every exact 14/15/53/54-row observation from sealed raw payloads.
+- [x] Reconcile all 4764, 6547, and 6596 fixed five-/twenty-minute grids against official TWSE/TPEx disposition periods.
+- [x] Update and read back the next 00:55 heartbeat so the same deterministic job can resume only after confirming no writer and the exact live checkpoint.
+
+**Status:** complete at a clean audited provider-failure pause
+
+### Phase 74 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Session 81526 stopped on FinMind HTTP 502 at `6754 / 2023-11-16` | 1 | Preserved all 2,968 checkpoints, audited them with zero issues, kept the failed attempt as evidence, and did not retry the provider failure in the same heartbeat. |
+| Restricted sandbox DNS blocked the first official TWSE EMPTY query | 1 | Re-ran only the authorized read-only official query with approved network access; no FinMind request or checkpoint changed. |
+
+## Phase 75: 2026-08-27 00:55 same-job provider recovery
+
+- [x] Re-read all isolated planning records and confirm SQLite remained paused at `6754 / 2023-11-16` with 2,968 durable partitions and no checkpoint drift.
+- [x] Confirm the old session no longer exists and more than the required 60 seconds elapsed after the HTTP 502 provider failure.
+- [x] Resume only deterministic job `finmind-sponsor-f9f1b8a5d0b7fb85` from its exact checkpoint using the 6,000/0/0.25/10-second continuous-hourly settings.
+- [x] Verify the formerly pending `6754 / 2023-11-16` partition was checkpointed first, then run a bounded zero-issue audit and SQLite integrity check.
+- [x] Keep session 65950 as the sole writer through completion; never start a second writer while it is active.
+- [x] Update and read back the next heartbeat with the latest live checkpoint and sole-writer identity.
+
+**Status:** complete with a clean full audit and official reconciliation
+
+### Phase 75 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Sandboxed `pgrep` could not access the macOS process list because `sysmond` was unavailable | 1 | Confirmed session 81526 is unknown/closed through the managed session API and verified SQLite had not advanced before starting session 65950. |
+
+## Phase 76: 2026-08-27 01:55 completion, official reconciliation, and next diversified writer
+
+- [x] Confirm session 65950 completed deterministic job `finmind-sponsor-f9f1b8a5d0b7fb85` without repeating its sealed calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, reconcile all sixteen `EMPTY` dates against official TWSE/TPEx daily and suspension records, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Reconcile all fixed grids for 4764, 6547, 6596, 6754, 6763, and 6869 against official TWSE/TPEx disposition periods.
+- [x] Recompute aggregate coverage excluding quarantined 7610, select eight established unused stocks across eight low-coverage industries, and verify their sealed official listing dates.
+- [x] Create deterministic job `finmind-sponsor-864f26b849120817` without provider access, then start exactly one official-positive-preflight continuous writer.
+- [x] Run a bounded zero-issue audit, verify SQLite integrity, and update/read back the 02:55 heartbeat with the new sole-session identity.
+- [x] Leave session 6930 attached; after completion or a safe stop, preserve its exact checkpoint before any continuation.
+
+**Status:** complete at a clean audited live handoff
+
+### Phase 76 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| First read-only job query used obsolete acquisition table names | 1 | Read the live schema and reran against `finmind_history_jobs` and `finmind_history_partitions`; no provider request or database mutation occurred. |
+| First status-only creation included `--continuous-hourly`, which is incompatible with offline mode | 1 | Re-ran status-only without the online flag; deterministic job creation still used zero provider requests. |
+| First TPEx official checker hit the local Python certificate-chain compatibility error | 1 | Repeated only the read-only official exchange lookup with the repository's established compatibility context; no FinMind request or checkpoint changed. |
+
+## Phase 77: 2026-08-27 02:55 completion and data-quality pause
+
+- [x] Confirm session 6930 completed deterministic job `finmind-sponsor-864f26b849120817` without repeating its sealed calendar or any checkpointed symbol-day.
+- [x] Audit all 5,816 partitions, classify every exact 14/15/53/54-row observation, and verify SQLite integrity.
+- [x] Reconcile all 210 `EMPTY` partitions against official TWSE/TPEx daily rows.
+- [x] Isolate and preserve the sole official-priced mismatch at `9960 / 2026-03-20` without repeating the checkpoint or manufacturing a minute bar.
+- [x] Stop before creating or starting another provider job; retain zero writer and report the data-quality blocker explicitly.
+- [x] Update the isolated planning records and remove the obsolete hourly continuation because repeated checks cannot change immutable provider evidence.
+
+**Status:** safely paused on one provider data-quality gap
+
+### Phase 77 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| The first long-running official EMPTY checker yielded a session identifier that the parallel wrapper did not print | 1 | Let the read-only exchange lookup finish, then re-ran it once with explicit session capture; no FinMind request or SQLite state changed. |
+| Sandboxed `ps` was denied while checking the detached official checker | 1 | Used the managed execution-session result instead; no acquisition process was started. |
+
+## Phase 78: source-repair workflow implementation
+
+- [x] Inspect the live FinMind acquisition schema, audit contracts, tests, and downstream Dataset boundary to find the smallest provenance-preserving repair seam.
+- [x] Define a fail-closed repair lifecycle that keeps immutable FinMind raw responses unchanged, records official discrepancy evidence separately, and forbids daily-only evidence from becoming minute bars.
+- [x] Implement the repair registry and CLI operations with deterministic digests, explicit review states, and transactional application of only verified minute-level replacement evidence.
+- [x] Add focused regression tests for quarantine, daily-only rejection, provenance/digest checks, idempotency, and verified minute-level application.
+- [x] Exercise the workflow against `9960 / 2026-03-20` without fabricating a bar, rerun the full FinMind audit/SQLite integrity checks, and document the safe next action.
+
+**Status:** complete; 9960 remains safely quarantined pending timestamped minute evidence
+
+### Phase 78 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| TPEx official daily data contains regular-market OHLC for `9960 / 2026-03-20`, while FinMind returned HTTP/payload 200 with `data=[]` | 1 | Preserved both immutable evidence paths, quarantined 9960 from usable-complete coverage in planning, and stopped before the next job. |
+| Snapshot integration test expected lowercase `tpex`, but the existing reference mapping contract emits canonical uppercase `TPEX` | 1 | Corrected only the test expectation to the established mapping contract; repair data and runtime behavior were unchanged. |
+| The new snapshot test was inserted before the tamper test's remaining body, leaving `evidence_id` out of scope | 1 | Restored the tamper assertions to their original test and kept the snapshot lifecycle test independent. |
+| Web open rejected the parameterized TPEx endpoint as an unsafe URL | 1 | Retained the already sealed local official reconciliation evidence and used the canonical endpoint URI in the repair record; no FinMind or exchange request was repeated. |
+| SQLite CLI integrity check returned `unable to open database file`, including once after parallel WAL connections closed | 2 | Kept both successful audits and switched to Python SQLite URI `mode=ro` for the non-mutating integrity query. |
+| `.venv/bin/ruff` is not installed in this workspace | 1 | Used Python compile validation, focused regression tests, and scoped diff inspection instead of installing new dependencies. |
+| Import-order cleanup patch used stale line order after a prior edit and did not apply | 1 | Read the current test header and applied the cleanup against the exact current lines. |
+| Combined discovery command stopped after `rg --files -g AGENTS.md` found no file and returned non-zero | 1 | Confirmed there is no applicable AGENTS.md and reran source discovery as independent read-only commands. |
+
+## Phase 79: timestamped alternate-source evidence discovery
+
+- [x] Inventory local immutable/raw market-data artifacts and configured read-only stores for an exact `9960 / 2026-03-20` minute or trade timestamp.
+- [x] Check official/public source capabilities for historical intraday timestamps at the required symbol-day grain without using FinMind or a quota-error probe.
+- [x] If exact timestamped raw evidence exists, validate its grain, timezone, uniqueness, session bounds, OHLCV/amount consistency, and source lineage before proposing a candidate.
+- [x] Confirm the selected Fugle route required no broker/account login and did not use Shioaji or another credential fallback.
+- [x] Preserve the quarantined case, immutable FinMind checkpoint, `execution_enabled=false`, unrelated worktree changes, and no-commit/no-push boundary.
+
+**Status:** complete; one verified candidate is PENDING_REVIEW with no approval or activation
+
+### Phase 79 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| Initial combined skill/memory discovery output was truncated | 1 | Re-read both selected `SKILL.md` files independently before starting evidence discovery. |
+| `rg` against the single-line 10 MB Dataset manifest emitted the entire line and swamped the bounded output | 1 | Treated the output only as discovery, then switched to structured JSON parsing for any further manifest checks; no data was changed. |
+| Sandboxed localhost PostgreSQL connection was denied with `Operation not permitted` | 1 | Repeated the same schema/count query outside the network sandbox under explicit read-only SQL (`BEGIN READ ONLY`) and printed no credential values. |
+| Direct web open of the TPEx Swagger JSON returned HTTP 403 | 1 | Used the official indexed Swagger UI inventory and official TPEx trading/data-service pages; did not retry the blocked URL or infer a hidden endpoint. |
+| Broad repository `rg` did not exclude `.env` and emitted the configured Fugle key value in tool output | 1 | Stopped secret-bearing searches, will reference only the environment-variable name, exclude `.env` from all later discovery, and recommend key rotation after the repair attempt. No secret value is copied into planning or evidence artifacts. |
+| PM safety gate declared the exposed Fugle credential unusable | 1 | Prohibited all requests with that key and all Shioaji/other-credential fallback; preserved only secret-free offline code/evidence and marked the phase `BLOCKED_PENDING_CREDENTIAL_ROTATION`. |
+| The single rotated-key Fugle capture returned the exact target bar but omitted requested `turnover`, so the first validator sealed it as `REJECTED` | 1 | Do not re-request. Preserve the immutable HTTP 200 raw body and perform a narrower offline amount reconciliation only because TPEx proves one transaction and the sole Fugle bar has flat OHLC and one lot. |
+
+## Phase 80: independent repair review and activation gate
+
+- [x] Have a named reviewer inspect raw SHA-256 `a02cc385e76125beb54db2ad74f427ce9a17c7ce41661b29574345815f2b3a6f`, canonical SHA-256 `ebd88a7487cab63d7ff08810798f48ae5d9c57fff558cd6111c7143d2eaa51f9`, the 10:55-to-10:56 label conversion, and the single-transaction amount proof.
+- [x] Record an explicit `APPROVE` decision against evidence `finmind-repair-evidence-ac310a47f4e804507a79` as review `finmind-repair-review-f28f1fdb50e78806a1df` by `Codex PM independent review`.
+- [x] If approved, require a separate named activation actor and change note before making the overlay ACTIVE.
+- [x] Activate only the reviewed 9960 / 2026-03-20 overlay under owner authorization by `stevehuang-work`, preserving the original FinMind EMPTY partition.
+
+**Status:** complete; `finmind-repair-activation-83ca14d4d3d0ca89ac42` is ACTIVE with one repaired bar
+
+### Historical activation authorization
+
+The owner provided the following complete authorization after reviewer approval; it is retained as historical gate evidence:
+
+`授權啟用 case finmind-repair-9f08aa0024440e4601ac，review_id=finmind-repair-review-f28f1fdb50e78806a1df，actor=<OWNER_NAMED_ACTOR_ID>，change_note=<OWNER_SPECIFIED_CHANGE_NOTE>；僅啟用此 9960 / 2026-03-20 source-repair overlay，不得觸碰其他 partition、provider、broker、下單、commit 或 push。`
+
+### Phase 80 activation result
+
+- Owner supplied `actor=stevehuang-work` and change note `activate_approved_9960_2026-03-20_source_repair_overlay_after_pm_review_f28f1fdb50e78806a1df`.
+- The one-time activation command created `finmind-repair-activation-83ca14d4d3d0ca89ac42`; post-activation repair audit is 1/1 with zero issues and one active bar.
+- SQLite `quick_check=ok`; the original `finmind_history_partitions` row remains `EMPTY`, zero bars, with its original raw/canonical digests.
+- No provider, broker, order, commit, or push action occurred.
+
+## Phase 81: immutable repaired snapshot/Dataset materialization
+
+- [x] Identify the existing formal snapshot/Dataset CLI and its required frozen identity without inventing any field.
+- [x] Build exactly one new immutable artifact from the live acquisition store so the ACTIVE 9960 overlay is consumed.
+- [x] Verify repair lineage and raw/canonical/review/activation digests, original EMPTY preservation, exactly one repaired bar, stream/materialization agreement, and complete offline audit.
+- [x] Report artifact ID/path/digest and the next unfinished three-year acquisition step, then stop for PM review.
+
+**Status:** complete; immutable repaired Dataset is sealed and verified, awaiting PM review
+
+### Phase 81 Errors
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| First bounded `jq` inspection assumed `included_partitions` was nested under `identity.selection` | 1 | Read only the plan's key structure; the canonical field is `identity.included_partitions`. No artifact or database state changed. |
+| `import_backtest_dataset.py --help` imported the configured PostgreSQL application layer and failed because no DSN was present | 1 | No import or database write occurred. Use the lower-level read-only `HistoricalDatasetCatalog` contract to audit the already materialized artifact; do not introduce a PostgreSQL/default-binding step. |
+
+## Phase 82: offline diversified status-only acquisition job
+
+- [x] Record the independent Phase 81 PM approval and preserve its immutable Dataset identity.
+- [x] Re-rank only the sealed 2026-08-20 market-value/current-industry artifacts after excluding all 453 included symbols, ETFs, recent/incomplete listings, mixed-market 7610, and every SQLite-completed symbol.
+- [x] Verify each selected symbol's pre-2023-08-19 listing date only from already sealed local official evidence.
+- [x] Create exactly one deterministic diversified eight-symbol job in `STATUS-ONLY` mode without any provider request or job execution.
+- [x] Audit the resulting local job identity/state, update the isolated workpad, report the exact handoff, and stop for PM review.
+
+**Status:** complete and PM-approved; deterministic job remains QUEUED with zero calendar/partitions/attempts, awaiting separate owner authority for any provider stage
+
+### Phase 82 PM remediation
+
+- [x] Copy the two already verified official company JSON byte streams into immutable content-addressed workspace paths without refetching or transforming them.
+- [x] Seal one deterministic content-addressed selection bundle containing the complete selector/exclusion/input/output/job-state provenance required by PM.
+- [x] Add a read-only verifier that checks the bundle self-digest and referenced bytes, reproduces the full ranking/selection/config/job identity, and validates the existing zero-child QUEUED state.
+- [x] Add focused tamper regressions for official bytes, alias map, exclusion set, and selected ordering; run only offline verification/tests.
+- [x] Report the exact bundle path/digest and stop for PM re-review without touching the existing job or any external/provider path.
+
+**Remediation status:** complete and PM-approved (P1=0, P2=0); durable bundle `e9faeaddafc8a81b60289b07ec56571615b623b80f9d7a8d47912e7bf4af7d97` resolved the provenance blocker
+
+## Phase 83: owner-authorized FinMind acquisition
+
+- [x] Confirm there is no other FinMind writer and revalidate the exact QUEUED/null-calendar/zero-child checkpoint read-only.
+- [x] Run the authorized downloader with one official positive-usage preflight, then seal the 2330 calendar and acquire only when available usage is positive.
+- [x] Preserve exact per-symbol-day SQLite checkpoints; after transport timeout or connection reset, wait a full 60 seconds and resume the same deterministic job from `next_pending`.
+- [x] Stop on auth, quota, provider, or data-quality failure without hiding the error or touching any external execution path.
+- [x] After completion or safe stop, run offline partition audit and SQLite integrity checks, update the workpad, and report requests/counts/bars/next checkpoint.
+
+**Status:** complete and PM-approved (P1=0, P2=0); owner requested a full stop with no successor job or Dataset
+
+### Phase 83 completion evidence
+
+- Official positive preflight reported 6,000 available requests. The sole writer used 5,817 requests: one sealed 2330 calendar plus 5,816 symbol-days.
+- Final state is `COMPLETED`: 5,802 `READY`, 14 expected `EMPTY`, zero `INVALID`, 676,190 bars, and `next_pending=null`.
+- Offline replay audit verified 5,816/5,816 partitions with zero issues; SQLite `quick_check=ok`.
+- TWSE official evidence reconciles all exceptions: 2607 resumed on 2025-10-07 after cash-capital-reduction trading suspension; all eight 2901 dates have official non-price activity but no OHLC; 1718's ten five-minute and ten twenty-minute grids exactly match its two official disposition periods. The other 95 exact 14/15/53/54-row observations are irregular natural sparse trading.
+- The run required no timeout resume and encountered no auth, quota, provider, or data-quality stop. `execution_enabled=false` and all no-broker/no-order/no-PostgreSQL/no-release boundaries were preserved.
+- Independent PM review reproduced the live COMPLETED state, 727 sessions, 5,817 recorded requests, config digest `3fb900f8f272077e5af478103b0af7075da9f5d87be9e197dd174a82b1f6c009`, 5,816/5,816 audit with zero issues, SQLite `quick_check=ok`, and no downloader process. Disposition: `APPROVE`, P1=0, P2=0.
+- The Phase 82 selection-bundle verifier intentionally binds the pre-acquisition `QUEUED` row and now reports target-row drift after successful completion. It remains valid historical pre-state evidence but must not be represented as a verifier of the current Phase 83 post-acquisition state.
+- Per the owner's final direction, stop here: do not create another tranche and do not materialize or activate a successor Dataset.

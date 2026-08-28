@@ -1,0 +1,24 @@
+# Findings
+
+- 2026-08-28 C0 was BLOCKED by sandbox loopback denial and PostgreSQL `OPERATIONALERROR`; today's canonical input directory was absent.
+- Prior work already contains a reviewed-boundary external execution design and a separate immutable input prepare/review/promote workflow, but the external service was not approved or installed.
+- Official OpenAI documentation search did not identify a narrow automation-specific AF_INET loopback allowance. This favors an external host runner over a sandbox bypass.
+- Current time reached 08:59 on 2026-08-28; today's complete 09:00 boundary cannot be repaired. The next reviewed trading day is 2026-08-31.
+- The repo already has an external supervisor/readiness implementation, but its own reviewed design marks installation ineligible for two independent reasons: the macOS sandbox cannot enforce exact argv while admitting standalone Python for C0/worker/pytest/C1, and Shioaji does not publish a complete stable provider endpoint allowlist.
+- The deployment templates deliberately remain `NOT_APPROVED`, disabled, uninstalled, and deny all network. Installing them would not fix provider/PostgreSQL access and would violate their gate.
+- No legitimate daily input candidate sources were found under `research/`; only the historical 2026-08-27 missing-source draft exists.
+- The active automation definition exposes `execution_environment="local"` but no narrow per-automation network/loopback permission field.
+- Local Codex CLI 0.148.0-alpha.15 exposes only broad `danger-full-access` or full sandbox bypass for this class of restriction; enabling either would violate the reviewed least-privilege execution design.
+- Therefore there is no safe repo-only switch that repairs both Shioaji loopback and PostgreSQL while preserving the current formal gate. The existing external design must first resolve its independent OS-level argv confinement and provider-egress review blockers.
+- The input workflow intentionally requires four explicit external candidate files. Repository-wide inspection found no operational EntryDecision, Draft, Shadow policy, or pre-open RiskSnapshot candidate for 2026-08-31.
+- The 2026-08-31 RiskSnapshot cannot be validly created before its 08:30–09:00 capture window. A human review must occur after that snapshot and before canonical promotion/C1 admission.
+- A read-only PostgreSQL probe reproduced `OperationalError` for both DSNs inside the Codex sandbox.
+- The same probe, with host-side approval and forced `default_transaction_read_only=on`, connected successfully to both distinct DSNs on PostgreSQL 17.11. The database and credentials are healthy; the failure is solely the automation sandbox path.
+- `codex doctor --json` confirms the current task has restricted filesystem and network sandboxes and no `execve` wrapper helper. Global command rules support exact prefix approvals, which is narrower than `danger-full-access` but still runs the reviewed script host-side.
+- A viable Codex-native remediation is therefore: pre-approve only the two reviewed Python entrypoint prefixes, then amend the automation prompt to permit those already-approved host-side commands while retaining no interactive escalation, no fallback, and all execution flags false.
+- Host-side prefix approvals were granted for exactly `.venv/bin/python scripts/preflight_trade_management_shadow.py` and `.venv/bin/python scripts/run_trade_management_shadow_c1.py`; only `--help` was executed, with no provider/database/capture activity.
+- The existing automation was updated in place. It now permits non-interactive auto-reviewed host-side execution only for the two reviewed C0/C1 entrypoints, forbids every other escalation, forbids `danger-full-access` and sandbox bypass, and remains fail-closed if guardian approval is unavailable.
+- Schedule, project, model, reasoning effort, data-only flags, no-order boundary, and `NOT_PASSED` multi-day policy were preserved.
+- A host-side run of the reviewed C0 provider worker succeeded: Shioaji 1.7.2 simulation login/logout true, `subscribe_trade=false`, `error_code=null`, exit 0. No order, CA, or trade callback capability was used.
+- This proves the first two blockers are remediated by the updated exact-entrypoint host-side path. It does not authorize rerunning today's immutable formal C0.
+- The remaining blocker is upstream evidence, not code: no authoritative producer/source has supplied the 2026-08-31 EntryDecision, Thesis Draft, Shadow policy, or pre-open RiskSnapshot. The agent cannot create or self-approve those facts without violating the review boundary.

@@ -1,5 +1,146 @@
 # Findings and Decisions
 
+## 2026-08-27 — Resume historical-data and R6 next stages
+
+- Live source-repair authority, not the stale isolated workpad, says case `finmind-repair-9f08aa0024440e4601ac` is `ACTIVE` with activation `finmind-repair-activation-83ca14d4d3d0ca89ac42`, one active bar, audit 1/1, and zero issues. The next truthful step is a new immutable snapshot/Dataset that records this repair lineage; no provider call or repeated activation is needed.
+- The wider three-year acquisition is not complete: current SQLite holds 454 distinct symbols and 329,333 partitions, recent jobs are terminal, and no writer or heartbeat is active. Snapshot verification is the immediate next phase, not proof of full-market completion.
+- R6's post-release next stage is already frozen by the owning task: durable eligibility-audit registration, CAS creation/activation of matrix revision 3, exactly one full seven-slot G3 preflight, and independent artifact/PostgreSQL Gate review. G4 and every trading stage remain separate and unauthorized.
+- If the R6 durable transitions require an actor or change note not frozen by the contract, the task must stop and return the exact missing fields rather than infer the owner's identity.
+- R6's read-only preflight now proves the released migration and canonical artifact are eligible for the planned continuation, but durable work is correctly blocked on an exact `actor_id`. No audit registration, revision-3 state, preflight, attempt, or release transition was created.
+- The merged package does not yet expose the required application/repository use cases for eligibility-audit registration and revision-3 CAS activation. Those seams must be implemented and independently reviewed before any formal PostgreSQL mutation; direct SQL would violate the frozen contract.
+- `確認三大法人策略資料` should not start the prepared 2,781-symbol Shioaji r3 scan as a duplicate primary history source. Its dependency-safe next stage is an offline Coverage Audit and MVP Evaluation Universe freeze over the new FinMind immutable Dataset; Shioaji remains only a separately authorized gap/exception source.
+- PM review found no request-change blocker in the new institutional consumer plan. It correctly separates the metadata-only FinMind handoff and MVP coverage audit from formal `PriceCoverageAuditV1`, PIT, holdout, runtime defaults, and outcome generation.
+- The institutional consumer cannot yet freeze its universe: the one sealed source/target pair is 2026-08-18 -> 2026-08-19, while the Dataset ends 2026-08-18. A digest-pinned historical or prospectively accumulated series with at least 60 overlapping target sessions is independently required; Dataset completion alone does not satisfy this gate.
+- The new immutable history Dataset is materialized as `dataset-finmind-sponsor-sha256-4defb3967d4e89f87d920197877358a8237cdf9baa51be1001fb156b70310ce4`, with 453 symbols and 51,213,436 bars. It is not yet PM-approved because the owning task's full source-versus-materialized equality audit is still running; latest live evidence reports zero mismatch and no mutable-state writes.
+- R6 no longer waits for actor identity: the exact actor is `SteveHuangJob`, the eligibility audit and revision-3 CAS activation are durable, and one G3 preflight is supervised at 3.53% with zero errors/restarts and zero formal attempts. Completion still requires final immutable-artifact/PostgreSQL verification and independent Gate review.
+- The existing R6 30-minute supervisor is the only monitor needed. Creating a duplicate would add race/noise without additional evidence; PM should use bounded task snapshots and act only on completion or attention-required events.
+- Cross-task supervision is now durable through heartbeat `r6-pm`, scheduled at minute 15/45 and attached to this PM conversation. It coordinates completion review and handoff while delegating R6 process telemetry to the pre-existing `r6-g3-preflight-30` monitor.
+- The 51,213,436-bar full equality audit has now passed with zero mismatch. Dataset ID, manifest digest, bars digest, and saved-plan digest are stable against the first atomic publication; this clears the data-equality blocker but still requires the owning task's bounded handoff and independent PM review before institutional consumption.
+- Independent Phase 81 file inspection matches the reported manifest and plan file hashes and confirms the expected 10.596 GB JSONL payload. The saved snapshot directory also contains a 32 KiB SHM sidecar and a zero-byte WAL sidecar; this may be a harmless SQLite read-connection artifact, but PM must verify sealed database identity and absence of uncheckpointed WAL content before approval.
+- Phase 81 is independently `APPROVE` with P1=0/P2=0. Actual payload SHA, manifest digest, snapshot-plan digests/handoff, both SQLite quick checks, exact repair projection digests, original EMPTY partition, 9960 materialized row, and focused regressions all pass. The SHM sidecar has no open holder and the zero-byte WAL contains no uncheckpointed data; copied main-file SHA is exactly pinned by the plan.
+- Both approved downstream continuations are active in their original tasks. History is restoring the deterministic status-only job seam; Institutional is verifying only exact metadata pins. Neither has reported an immediate blocker or crossed the provider/outcome/G4/trading boundaries.
+- Phase 82 physical evidence currently matches its handoff: official company snapshot identities/counts, sealed FinMind locators, one exact QUEUED eight-symbol job, null calendar/status payloads, and zero partitions. Remaining review work is direct attempt-count proof plus independent config/selection reproduction.
+- Phase 82 selection and job identity reproduce exactly, but provenance is not durable: official listing snapshots and selector logic are available only in `/private/tmp`, while the SQLite job row contains only the final config. Hashes in a planning note do not preserve the source bytes or algorithm after temp cleanup. This is a P2 replay/audit blocker before any calendar/provider stage.
+- Phase 82 P2 remediation now passes independent re-review. The exact TWSE/TPEx bytes are preserved under content-addressed project paths and remain byte-identical to the reviewed temp inputs. Bundle self-digest `e9faeadd...7d97` binds the selector contract, six source references, approved Dataset/plan identities, 66 completed-job bindings, exact 453/426/454 symbol sets, full ranking/selection, config digest, job ID, and post-create state. The repository verifier independently reproduces 1,284 eligible rows, 29 ranked candidates, the exact eight-symbol order, config/job identity, and live SQLite state; 18 focused tests pass including four fail-closed tamper cases.
+- The bundle's self-digest is a canonical semantic digest computed with the `bundle_digest` field omitted; consequently the physical JSON file SHA-256 is `ef9a1b60...6e677`, not the filename suffix. This is internally consistent and verified by the tool, but downstream users must call it a self-digest rather than a raw-file digest.
+- Institutional PR-MVP-EVAL-001 metadata-only handoff is independently `APPROVE`, P1=0/P2=0. The workpad preserves the exact Dataset/plan/9960 pins and no forbidden artifact or provider action. Direct inspection of `finmind_institutional_mvp_candidate_observation_v1_2026-08-24-r2.json` confirms exactly 17 candidates, each sourced from 2026-08-18 and usable only from 2026-08-19, while the approved Dataset ends 2026-08-18. Overlapping target sessions remain exactly zero, so `WAITING_FOR_INSTITUTIONAL_SERIES / INSUFFICIENT_EVIDENCE` is the only valid state and no Evaluation Universe may be frozen.
+
+## 2026-08-27 — R6 A2 Migration 018 remote release
+
+- Owner authorization is exact and scoped to branch `codex/r6-a2-migration018-20260827`, commit `ed477898e707435036936a91afe07f3b846f4758`, destination `origin`, PR creation, green CI, final integration checks, and merge.
+- The same authorization expressly excludes audit registration, revision-3 activation, G3 preflight, Local Paper, broker, and real-money execution; remote release must stop after merge/reachability proof.
+- The dirty primary checkout remains evidence/PM state only and is not an integration surface. All Git release mutations must use the clean isolated R6 worktree.
+- Pre-push freeze passed: clean worktree, exact HEAD `ed477898`, parent and merge-base `7931d31`, `0 behind / 1 ahead`, remote URL `https://github.com/f23934073/tw_intraday_trader.git`, tree digest `f130410c7757fa803ac1e36f6a762f9edd8ca5a2`, and no remote branch collision.
+- PR #6 was created with exact reviewed scope and is structurally mergeable, but initial CI is not green. Python 3.11 failed only `test_start_writes_durable_submission_before_launch` and `test_start_refuses_second_loaded_job` because the Linux runner correctly triggered the production macOS-only guard before the tests' mocked launchd assertions; PostgreSQL Journal passed.
+- Correct remediation is test-harness portability, not weakening runtime safety: simulated launchd unit tests must set the module platform seam to `darwin`, production must continue rejecting non-macOS execution, and Linux guard behavior remains directly tested.
+- The staged eight-line remediation satisfies that exact contract: two targeted `darwin` monkeypatches plus a new explicit Linux rejection test, all in the existing supervisor test file. No production or workflow file changed, so PM independent remediation review is `APPROVE` pending completed test/CI evidence.
+- Approved remediation commit is `aced00adf19cad54d0cec7c399f0d6f5ea67d624`, one test file and eight insertions; production remains bit-for-bit at the reviewed `ed477898` payload.
+- Concurrent PR #5 advanced `main` to `9ab43c3` while PR #6 CI was running. A mergeable label alone is insufficient: final CI/merge-ref evidence must bind R6 to that latest base so source-repair changes and R6 are tested together without rewriting either branch history.
+- Final integration passed after that base movement: all three required jobs are green, GitHub reports `CLEAN/MERGEABLE`, and PR merge ref `e69630f` is a two-parent merge of exact latest main `9ab43c3` plus approved R6 head `aced00a`. PM disposition is final `APPROVE TO MERGE`.
+- Release is complete: PR #6 is `MERGED`, merge commit `d5b86382c06a34e3a26ba2b23e3d714c783f0348` is live `origin/main`, original R6 `ed477898` and remediation `aced00a` are both reachable, and post-merge main CI `33035268279` is green across Python 3.11, Python 3.12, and PostgreSQL Journal.
+- The release stopped exactly at integration. No audit registration, revision-3 activation, G3 preflight, Local Paper, broker, or real-money operation occurred.
+
+## 2026-08-27 — Active branch and Codex-task PM reconciliation
+
+- Treat Git reachability, PR review/check state, and Codex task state as three separate facts. A branch is mergeable only after all three are reconciled.
+- The primary checkout is not a safe merge surface: local `main` is `ahead 19, behind 4` relative to the currently recorded `origin/main`, and the worktree contains extensive tracked and untracked changes from several task families.
+- The first local inventory found ten registered worktrees, including two prunable `/private/tmp` entries, six staged no-overnight branches, a Trade Management Shadow runtime branch, and three branches at the current recorded `origin/main` prepared for later integration/evidence work.
+- `codex/local-paper-tax-slippage-20260826` points to `786f452` while the recorded `origin/main` is merge commit `037197e`, whose subject says PR #2 merged that branch. This branch is already reachable from the recorded remote main and must not be merged again.
+- The Codex task-list request with `limit=100` exceeded the API maximum of 50. It changed no task state; retry with the supported bound.
+- After a successful current fetch, GitHub has two PRs in total. PR #2 (`codex/local-paper-tax-slippage-20260826`) is merged at `037197e` with Python 3.11, Python 3.12, and PostgreSQL Journal checks successful. It requires no additional merge.
+- PR #1 (`docs(architecture): 建立全專案 current-state 架構圖集`) was initially observed open at `e80f577` with all three CI checks successful and no review decision. While formal review was beginning, user `Steve_project` merged it at 2026-08-27T01:15:39Z as merge commit `33c9b3a`; the freshly fetched `origin/main` contains that head. Do not fabricate a retroactive approval decision; perform only post-merge STE-5 task/Linear reconciliation.
+- The newly created worktree tasks `No-Overnight 新版整合與 PostgreSQL UAT`, `Shadow fill.v3 相容性整合`, and `Local Paper 滑價校準證據工具` are all currently `active`; do not duplicate or restart them.
+- Two additional repo tasks, `建立三年歷史資料` and `歷史台股回測準備度`, are active in the dirty primary checkout. Their branch ownership is not isolated, so their output cannot be packaged or merged until their conversations and change provenance are inspected.
+- Reachability after the current fetch shows `PR-NO-001` through `PR-NO-006` are all unmerged and based 25 commits behind current `origin/main`; their right-only histories are cumulative (1, 2, 3, 4, 5, and 7 commits). Do not merge those six stale stages independently. The active `No-Overnight 新版整合與 PostgreSQL UAT` task is already porting their reviewed semantics onto current main.
+- `codex/pr-tm-012c1-runtime-readiness-20260826` is also unmerged on the old divergent lineage (4 current-main commits missing, 19 branch-only commits). Do not merge it wholesale. The active `Shadow fill.v3 相容性整合` task starts from current main and is adding regression-first v2/v3 compatibility.
+- The three 2026-08-27 integration/evidence branches currently equal `origin/main@037197e`; their task worktrees contain ongoing uncommitted implementation and are not yet review candidates.
+- The older `確認未合併到 main 的 branches` task is `active` only because it is waiting on an approval. It overlaps this PM reconciliation and must not be allowed to perform a competing merge workflow.
+- The D-HEALTH-LATE-001 OPEN task remains active but has not armed launchd: it is blocked on safely changing the old provider-executing Codex automation to read-only verification. This is operational work in progress, not a merge candidate.
+- PR #1 advanced `origin/main` from `037197e` to `33c9b3a`. The three active 2026-08-27 worktree tasks must incorporate the new docs-only main before their final review/merge gate and rerun their required validation; do not interrupt or discard current in-progress changes.
+- PM follow-ups were delivered to the owning tasks: STE-5 post-merge cleanup, branch-audit deconfliction, current-main synchronization for No-Overnight/Shadow/slippage, and supervisor-only monitoring. No follow-up granted a new execution, broker, evidence, or merge authority.
+- Worktree inspection confirms the three active 2026-08-27 tasks have isolated scoped changes: No-Overnight modifies/creates its domain, Journal, runtime guard, config, tests, and a forward-port map; Shadow modifies its composition/activation seams plus compatibility tests; slippage calibration adds only its planning state and analyzer module so far.
+- The already merged tax/slippage worktree is clean. The detached kill-switch integration checkout, PR-NO-003 through PR-NO-006 worktrees, and old Trade Management runtime checkout are also clean, supporting their use as source evidence rather than active edit surfaces.
+- After PR #1, the dirty primary checkout is now `ahead 19, behind 6`. It contains unrelated R6, FinMind, institutional, D-HEALTH, freshness, Trade Management, and PM changes/evidence. It remains categorically unsuitable for direct integration or a broad commit.
+- `歷史台股回測準備度` is actively following the requested gate loop: A2 received `REQUEST CHANGES`, fixes/re-review are in progress, and source-only full audit plus Migration 018 remain correctly blocked until approval and coverage >= 0.95.
+- `建立三年歷史資料` discovered no independent local minute evidence for the 9960 repair and then reported that a recursive search accidentally printed the `FUGLE_API_KEY` value from `.env` in tool output. Treat the credential as exposed: the task was instructed to stop all Fugle/key use and remain offline-only until owner rotation.
+- The prior PR-TM-012C1 2026-08-27 automation completed one C0 and correctly failed closed on loopback/PostgreSQL/identity/input blockers; C1 did not start and `Production Shadow Gate=NOT_PASSED`. The old task requires no retry.
+- The original Freshness/Portfolio conversation is idle at a real-environment authorization boundary (`SJ_SIMULATION=false`). Do not resume or infer authorization from this PM request; the broker/account freshness and Portfolio Phase 1 gates remain blocked.
+- PR-NO-006 Phase 15 received an independent APPROVE, but only for the separately authorized supervised DISABLED capture. The existing capture is running once at `21fd771d` and is monitored read-only by its heartbeat; it must never be launched again.
+- The completed PR-TM external-runner documentation commit `bd020b5` exists only on the divergent local `main`, not on `codex/pr-tm-012c1-runtime-readiness-20260826`. Its five docs depend on a broader old-lineage implementation series; standalone cherry-pick would document capabilities absent from current main.
+- Directly merging the old PR-TM branch is also unsafe: its delta from current main spans 91 files and roughly 42k inserted lines across R5 replay, price coverage, C1 runtime, external runner, scripts, tests, and large artifacts. It has no single approved integration disposition. Classify the ended docs task as completed-but-not-mergeable, not as an omitted merge.
+- The local `main` has 19 commits not in remote main, belonging to four distinct task families: R5 signal-ledger replay, Trade Management Shadow/C1/external runner, r3 price coverage, and R6 benchmark/amendment A1. They cannot be pushed or merged as one unit; each must be packaged from its owning task only after its own review/evidence gate.
+- The active branch tasks acknowledged `origin/main@33c9b3a` as their final-review base. Shadow compatibility has 7 new compatibility tests and 17 legacy builder/observer tests passing; this is interim evidence, not approval.
+- The superseded branch-audit task is now idle with no merge/push/delete action. STE-5 post-merge cleanup is active and is attempting its documented Linear update-script fallback because direct Linear writes are denied by its session policy.
+- STE-5 post-merge cleanup completed without repository mutation. Git merge is independently verified, but its Linear workpad/status could not be updated because write calls require approval while that task's policy is `never`, and no script/credential fallback exists. STE-5 therefore remains `In Progress`, with STE-6 still shown as a blocker. Classify it as Git-complete / tracking-blocked, not fully closed.
+- D-HEALTH-LATE-001 OPEN external-runner implementation completed in its original task without running the provider command. It configured one launchd attempt for 2026-08-28 08:55 and a one-shot 09:35 read-only Codex verification, with `runs=0`, no claim/result/session/evidence yet, and reported 27 focused tests plus compile/plist/diff checks passing. It now requires independent code review before the scheduled operational attempt is accepted.
+- D-HEALTH independent review round 1 is `REQUEST CHANGES`: the installed plist executes an uncommitted runner and mutable imported modules from the broadly dirty shared primary checkout. The O_EXCL claim freezes only the command text, not the runner/CLI/cohort/calendar/source/venv identity. The reviewed bytes can therefore differ from the 2026-08-28 first-and-only attempt, a P1 provenance and safety gap.
+- The 09:35 Codex automation is correctly read-only and fail-closed; a not-yet-complete result is reported rather than retried. It is not the blocker. The request-change packet requires unloading the mutable-main LaunchAgent while `runs=0`, moving the reviewed payload to a clean pinned checkout or equivalently strong loaded-bootstrap content identity, and adding a no-provider-on-source-drift adversarial test.
+- The D-HEALTH owner accepted the review, unloaded the mutable LaunchAgent with `runs=0`, confirmed there are no claim/result/session/evidence artifacts, and created clean branch `codex/d-health-open-pinned-20260828` at `origin/main@33c9b3a`. Remediation and re-review are still in progress; no provider attempt is authorized before approval.
+- `建立三年歷史資料` acknowledged the credential-safety gate and completed offline-only work: 13 focused tests passed, SQLite integrity is valid, and the case remains `QUARANTINED` with zero minute evidence/review/activation. It is correctly blocked as `BLOCKED_PENDING_CREDENTIAL_ROTATION`; do not resume until the owner rotates the key without pasting it into a task.
+- `歷史台股回測準備度` completed its one-shot source-only audit with all `28,325,340` source bars read. The observed eligible coverage is `0.995893643087254413`, above the `0.95` threshold, with zero formal attempts. It is now independently rereading the canonical artifact before beginning Migration 018 and must not rerun the scan.
+- Shadow fill.v3 compatibility is on `origin/main@33c9b3a` and the new-main full regression passed (`1507 passed, 43 skipped`); PostgreSQL remains explicitly not passed because the three DSN-dependent checks were skipped. Self-review fixed VWAP-evidence and Decimal-context defects; independent adversarial review remains pending.
+- Slippage calibration's read-only dry run correctly failed closed: actual execution calibration is unqualified, model-proxy coverage has `0/42` required groups qualified, and no metric was manufactured from sessions lacking clock disposition. Full/static/diff validation remains in progress.
+- Shadow's independent adversarial review returned `REQUEST_CHANGES` with P1=0 and P2=4: stored PostgreSQL fingerprints were not checked on read, a public builder accepted non-terminal partial prefixes, the observer used two Journal snapshots, and policy quantity was not bound to the authoritative aggregate. The task is fixing all four before re-review; commit and merge remain prohibited.
+- Both Shadow and No-Overnight currently modify `trading/postgres_journal.py` and its unit tests. PM coordination requires Shadow to produce a minimal approved read-path patch, then No-Overnight to integrate it semantically rather than overwrite either side and rerun all Journal/PostgreSQL gates before declaring merge safety.
+- Migration 018 passed the bounded second verification after the first disposable container exhausted its disk: full no-DSN `1735 passed, 88 skipped`, disposable PostgreSQL 17 `26 passed`, and production dry-run coverage remained `0.995893643087254413`. The migration was then applied transactionally to the Backtest DB and independently rechecked; active revision remains 2, family head and attempts remain 0, and no revision-3 matrix/preflight/audit registration was created.
+- Shadow closed-loop re-review is `APPROVE` with P1=0/P2=0 and local commit `47a9303`. PM independently reviewed the exact 10-file diff, reran the actual focused suite (`26 passed`), compilation, and diff checks with no new P1/P2. Local PostgreSQL integration remains skipped; remote PostgreSQL CI is required before merge.
+- The managed approval gate rejected pushing `codex/shadow-fill-v3-compat-20260827` to `origin` because it requires owner confirmation of the exact private-code payload and destination. Do not work around the rejection. The reviewed commit remains local and unmerged until that confirmation is supplied.
+- The owner has now explicitly authorized pushing exactly `codex/shadow-fill-v3-compat-20260827@47a9303da0db26a17dd553488901af8caa423a55` to `https://github.com/f23934073/tw_intraday_trader.git`, creating a PR, waiting for all CI to pass, and merging it into `main`.
+- Release preflight re-fetched `origin/main@33c9b3ab9d3b8300221e47b11685dfc24d7a5e51` and verified the isolated Shadow worktree is clean, the authorized branch is exactly `0 behind / 1 ahead`, the base is an ancestor of the authorized commit, and `git diff --check` passes.
+- The exact authorized branch push succeeded and GitHub PR #3 was created at `https://github.com/f23934073/tw_intraday_trader/pull/3`. Merge remains blocked until every required CI check succeeds and GitHub reports a mergeable state.
+- PR #3 CI returned Python 3.11 PASS and Python 3.12 PASS, but PostgreSQL Journal failed 3 of 25 tests. PostgreSQL normalizes `TIMESTAMPTZ` to the connection timezone, so reconstructing a record at UTC changed the ISO-offset bytes used by the immutable Journal fingerprint even though the instant was equal. This is a real P1 release blocker, not an infrastructure flake.
+- The fix must preserve the original Journal fingerprint and historical records rather than globally changing the domain fingerprint algorithm or rewriting immutable rows. New PostgreSQL writes need a self-describing fingerprint envelope that preserves the original aware ISO timestamp; the reader must verify the stored instant and digest, with a bounded UTC/Taipei compatibility path for legacy raw digests.
+- The reviewed remediation is commit `f6a38b1` on the same PR branch. It changes only `trading/postgres_journal.py` and `tests/test_shadow_postgres_journal_fingerprint.py`; focused validation is `31 passed, 3 skipped`, full isolated no-DSN regression is `1515 passed, 44 skipped`, and compilation/diff checks pass. It has been pushed to PR #3 for a fresh PostgreSQL CI run.
+- GitHub shows `Steve_project` externally merged PR #3 at 2026-08-27 02:14:42Z as `023a082`, while its head was still `47a9303` and PostgreSQL Journal was failed. The later branch update `f6a38b1` was therefore not part of that merge. Remote `main@023a082` contains `47a9303`; the branch now has a clean two-file forward diff containing only the reviewed fix.
+- PR #4 PostgreSQL CI then reduced the failures from 3 to 1: all replay/restart behavior passed, and the remaining failure was an outdated UAT regex expecting the later reducer's `order state integrity` error. The new reader correctly rejects the corruption earlier as `JournalConflictError: stored fingerprint conflicts...`.
+- Commit `254317b` changes only the two corruption assertions in `tests/test_local_paper_postgres.py` to require that stronger earlier failure for both order-state and fill-v3 tampering. Local focused validation is `31 passed, 4 skipped`; production checks remain unchanged and a third remote PostgreSQL run is required.
+- PR #4 third run passed Python 3.11, Python 3.12, and PostgreSQL Journal. `Steve_project` merged it at 2026-08-27T02:21:53Z as `7931d31e53657c4f28e684402589c2b20501c1d9`; final remote-main ancestry checks pass for `47a9303`, `f6a38b1`, `254317b`, and `7931d31`.
+- The owning Codex task is `Shadow fill.v3 相容性整合` (`01a040b9-0761-7611-9dde-aa4f51a8d9af`). The dependent task is `No-Overnight 新版整合與 PostgreSQL UAT` (`01a040b9-0761-7611-9dde-aa263d9b7dca`), which was instructed to sync `7931d31`, preserve the PostgreSQL integrity semantics, and rerun its gates.
+- The dirty primary checkout was not updated, reset, or used as a merge surface. It remains `ahead 19 / behind 11` with extensive unrelated user/task changes; remote-main verification was performed from the isolated Shadow worktree.
+- Slippage calibration independent review returned `REQUEST_CHANGES` with 3 P1 and 3 P2 findings covering causal time windows, clock authority, instrument eligibility, per-symbol pair coverage, fill lineage, and atomic sealing. The owner is fixing all six and will reseal artifacts before round-two review.
+- D-HEALTH remediation round one returned clean branch `codex/d-health-open-pinned-20260828` at `0bb2ee2`, with a loaded non-login-shell boundary, `runs=0`, provider attempts 0, and 33 focused tests passing. PM round-two review nevertheless remains `REQUEST_CHANGES`: the dedicated worktree has no `.env`, and every Shioaji credential alias in the user launchd environment is unset, so the one-shot claim would be consumed before a credential-missing failure.
+- D-HEALTH must add a secret-safe external credential boundary after source/runtime verification, record only path/owner/mode/key-presence metadata, filter child environment keys, and ensure missing/insecure credential or setup exceptions produce auditable NOT_RUN with provider callable zero. Secret values must never enter Git, plist, manifest, artifacts, logs, or messages.
+- The R6 A2/Migration 018 packaging task is active on clean branch `codex/r6-a2-migration018-20260827`. Its scoped transplant excludes R5, Shadow, price coverage, D-HEALTH, Local Paper, and broker paths; focused `94 passed, 28 skipped` and full no-DSN `1588 passed, 70 skipped`, with disposable PostgreSQL validation still in progress.
+- Preserve existing task-specific gates. In particular, evidence capture, Production Shadow, Local Paper, broker-account, and real-money authority remain distinct; a completed implementation or approved review never grants a later operational stage.
+- Resume incomplete work in its owning Codex task whenever possible so its prior approvals, immutable artifact identities, and scope constraints remain attached to the work.
+- Do not merge broad dirty-worktree content merely because a related task ended. The merge unit must be an reviewed branch/PR with explicit commit identity and passing required checks.
+- After reconciliation, start only work whose dependencies and authorization are already satisfied; otherwise leave it blocked with a concrete next gate.
+- Owner scope correction: this PM task must not overlap `評估實盤交易就緒差距` (`01a03d58-1eda-7a12-8404-b8b308bc6255`). That referenced task owns the supervision of `Shadow fill.v3 相容性整合`, `No-Overnight 新版整合與 PostgreSQL UAT`, and `Local Paper 滑價校準證據工具`; exclude that supervisor and those child workstreams from this PM inventory, messaging, review, and merge decisions.
+- Fresh fetch confirms `origin/main=7931d31e53657c4f28e684402589c2b20501c1d9` and there are currently no remote-tracking branches whose commits are outside `origin/main`.
+- Local branches still outside `origin/main` are: `codex/r6-a2-migration018-20260827@ce8e9b6`, `codex/d-health-open-pinned-20260828@8d3747f`, dirty divergent local `main@a6e096a`, six old No-Overnight stages, and the old `codex/pr-tm-012c1-runtime-readiness-20260826@15a852c` lineage.
+- The six No-Overnight stages and current No-Overnight integration worktree are excluded by the owner correction. Treat the old PR-TM Shadow lineage as overlap-sensitive/excluded unless the user later assigns it explicitly outside the readiness task. The two actionable non-overlap candidate branches are therefore R6 A2/Migration 018 and D-HEALTH OPEN pinned runtime; their task/review states still require live verification.
+- Live task polling confirms `歷史台股回測準備度` remains active. Its A2/Migration 018 branch has all 32 focused PostgreSQL cases passing, but four broader Journal fingerprint failures appeared in the newest-main disposable PostgreSQL run; the owning task is reproducing the minimum case on detached `origin/main` to classify baseline versus branch regression. It is not review-ready or merge-ready.
+- `codex/d-health-open-pinned-20260828@8d3747f` is clean and `6 ahead / 5 behind` current `origin/main`. It has no open PR and must not be merged until its owning task and latest review disposition are mapped live, then the branch is reconciled with current main and revalidated.
+- Scope recheck against the full referenced conversation shows both candidates are also overlap: the readiness task explicitly includes R6/historical readiness in its staged work and says it continues supervising existing Freshness evidence, which owns D-HEALTH. Exclude both R6 and D-HEALTH from this PM. After that correction there is no actionable unmerged branch, open PR, or active Codex task outside the referenced readiness ownership tree.
+- The only other unmerged local ref is dirty divergent `main`, which mixes multiple task families and is not a reviewable or mergeable unit. Every other unmerged named branch belongs to the excluded No-Overnight or Trade Management Shadow lineages.
+- The prior inventory mistake was treating only `active` tasks as unfinished. Codex task status is process state, not completion disposition: `idle` and `notLoaded` tasks must be read before they can be classified as complete, blocked, stalled, or superseded.
+- The first 50-visible-task scan contains several unfinished logical lines despite idle process state. `建立三年歷史資料` has a source-repair candidate at `PENDING_REVIEW`, with zero activation, and needs an independent reviewer disposition before any activation. `確認三大法人策略資料` has committed r3 activation metadata but has not executed the 2,781-symbol Shioaji Raw Coverage Scan; that provider action retains its own explicit authorization gate.
+- The many STE-5 conversation boxes are repeated follow-up attempts for one Linear issue, not separate implementation branches. Its PR is merged, but the latest conversation remains externally blocked because Linear state/workpad writes were denied; the issue is still `In Progress` and must not be falsely marked complete.
+- `實作 Local Paper Kill Switch` and `Tax/Slippage` not-loaded task conversations are logically complete: PR #2 merged as `037197e1` and main CI passed, so their process status does not represent unfinished implementation.
+- `確認未合併到 main 的 branches` is a completed stale snapshot and is superseded by this PM reconciliation; it should not be resumed as a second branch manager.
+- The latest R6 owner task is now idle because its scoped package is complete, not because it is abandoned: `codex/r6-a2-migration018-20260827@ed477898` is a clean one-commit branch directly on `origin/main@7931d31`, with independent adversarial `APPROVED`, no-DSN `1603 passed, 71 skipped`, disposable PostgreSQL 17 full `1674 passed`, and focused PostgreSQL `32 passed`. It is locally review-ready but unpushed; R6 G3 activation remains a later separate gate.
+- Visible UI inventory contains 52 entries: 46 Codex tasks, including 21 tw_intraday_trader conversations and 25 STE-5 follow-up conversations. The 25 STE entries collapse to one logical Linear issue; task-box count is therefore not equal to independent unfinished work count.
+- Within the current repository, the main non-child continuations are R6 package release review, 9960 source-repair review, and r3 scan authorization. The direct readiness child tree and Freshness/D-HEALTH/No-Overnight/Shadow work remain excluded from this PM.
+- Excluded-task boundary update only: No-Overnight synced `main@7931d31`; disposable PostgreSQL reached `32 passed / 1 failed`, where the sole failure exposes `local_paper_fill.v4` compatibility against a v3-bound monetary reader. The owning readiness task is handling that overlap; this PM will not message, review, or merge it.
+- R6 PM review froze exact payload `ed477898` on base `7931d31`: 38 files, 18,442 insertions, one commit, clean worktree, `0 behind / 1 ahead`, and whitespace-clean. Its prior packaging approval expressly authorizes only a mergeable local package, not push, merge, audit registration, revision-3 activation, or G3 execution.
+- The 9960 candidate directory is present with manifest, canonical bars, validation, and SHA sidecar. Initial top-level `jq` field selection returned null for nested identity fields, so review must inspect the real schema keys rather than infer missing data; no candidate or durable state was changed.
+- The 9960 candidate manifest is structurally populated: `artifact_id=fugle-source-repair-candidate-9960-20260320-v1`, one bar, raw SHA `a02cc385...f2b3a6f`, canonical SHA `ebd88a74...2eaa51f9`, and `status=ACCEPTED_FOR_PROPOSAL`. Validation binds one flat-price official transaction, 1 lot/1,000 shares, TWD 22,900, source label conversion to `10:56+08:00`, and all daily reconciliation checks true while explicitly retaining `source_turnover_twd=null`.
+- Source-repair transition code keeps review and activation separate. `review()` accepts only minute evidence matching the current candidate and records reviewer/rationale/digests; `activate()` remains a distinct later transition requiring the exact approval review. This PM review must not call activation.
+- R6 static scan found no TODO/FIXME, shell execution, `eval`, or `exec` in production changes. Broad exception handling is limited to cleanup/CLI boundaries and will be inspected with the high-risk migration/preflight paths; SQL uses repository-local statements, with `SELECT *` confined to known internal benchmark tables rather than user input.
+- Independent PM focused rerun on exact R6 commit passed `94 passed, 28 skipped` in 8.94 seconds, matching the packaging review's focused no-DSN result. Migration 018 is schema-only, locks each family, rejects any revision/head/release/attempt/preflight drift, widens constraints additively to revision 3, and does not insert or activate revision-3 state.
+- A2 tests explicitly cover reserve-after-deadline rejection, source-audit/preflight projection equivalence, and additive preservation of revision-2 protocol. The tracked canonical audit test binds its SHA sidecar, 28,325,340 bars, 132,234 observed sessions, 131,691 eligible sessions, 0.995893643087254413 ratio, head 0, and attempts 0.
+- The source-repair database is `data/finmind_sponsor/history.sqlite3`. Phase 80 requires review of evidence `finmind-repair-evidence-ac310a47f4e804507a79`; current planning evidence says state `PENDING_REVIEW`, audit 1/1 with zero issues, original partition `EMPTY`, and zero active repair bars. The next operation can be a named review only; activation remains separate.
+- Read-only SQLite confirms the live case and minute evidence digests/timestamps exactly match the candidate, with zero reviews and zero activations. The query's final active-bar count used a guessed table name and failed after those successful reads; this is a PM inspection error, not evidence corruption, and no database state changed.
+- The 9960 implementation's `START_PLUS_ONE_MINUTE_EXCEPT_13_30_V1` contract is directly regression-tested: ordinary minute labels advance by one minute, the `13:30` closing-auction label does not, and missing turnover is rejected unless the official reference proves exactly one flat-price transaction whose OHLC, volume, and implied amount reconcile.
+- The exact R6 diff remains whitespace-clean and its isolated worktree remains clean after PM test replay.
+- R6 PM disposition is `APPROVE` for the exact local package `codex/r6-a2-migration018-20260827@ed477898e707435036936a91afe07f3b846f4758`. There are no P1/P2 findings after focused replay, production compilation, CLI smoke checks, diff validation, and clean-worktree verification. This does not authorize push, PR, merge, audit registration, revision-3 activation, or G3.
+- 9960 PM review is durably `APPROVE` as `finmind-repair-review-f28f1fdb50e78806a1df`, reviewer `Codex PM independent review`. Post-review state is `APPROVED` with `current_activation_id=null`, `active_bar_count=0`, audit 1/1 and zero issues, and SQLite integrity `ok`; activation remains a separate owner gate.
+- Fugle's current Historical Candles contract says whole-lot equity minute volume is measured in lots and `turnover` applies only to daily/weekly/monthly candles. The sealed one-lot 9960 minute response therefore correctly lacks turnover; the narrow one-transaction flat-price derivation is consistent with the provider contract and remains guarded by negative regressions.
+- Original conversation `歷史台股回測準備度` (`01a02d3a-5a41-7580-a827-a8ce24d97f1e`) completed the PM handoff as `LOCAL RELEASE-READY`, reconfirming exact commit/base/clean state and returning one precise remote-release authorization sentence without changing the package.
+- Original conversation `建立三年歷史資料` (`01a02323-6a92-7632-9ba6-88debb96c3ab`) completed the PM handoff as `APPROVED_AWAITING_OWNER_ACTIVATION`, reconfirming the review lineage, zero activation/active bars, original `EMPTY` partition, and the precise named-actor activation sentence without provider access or activation.
+- Actual schema stores gzip-compressed raw and canonical evidence in `finmind_source_repair_evidence`; there is no separate bar table. After deterministic decompression, DB raw bytes hash exactly to `a02cc385...f2b3a6f` and canonical bytes hash exactly to `ebd88a74...2eaa51f9`. Focused source-repair tests independently pass `15 passed`.
+- The original FinMind partition remains `EMPTY`, bar_count 0, with unchanged raw/canonical digests; `PRAGMA quick_check=ok`. The raw Fugle capture file itself hashes to the stored raw digest, and metadata records exactly one successful credentialed request with no credential value persisted.
+
 ## 2026-08-19 — Freshness Calibration Evidence
 
 ### Requirements
@@ -29,6 +170,77 @@
   bytes were emitted after removing the invalid `WorkingDirectory` setting.
 - This improves collection reliability only. It does not repair partial
   callback coverage, set a freshness threshold, or unblock Portfolio Phase 1.
+
+## 2026-08-25 — Frozen close-window quote evidence
+
+- A 15-minute Tick/BidAsk-only close artifact was captured from 13:01 to
+  13:16 Asia/Taipei against the unchanged frozen `2886:high`, `6863:mid`,
+  `1530:low` cohort. Its SHA-256 is
+  `79e883fe1a1e3027caa085d7955d9ee0d21aad0533deff98975ac8ee28228401`.
+- Digest/schema, paired acknowledgement (6/6), per-row `CONNECTED/ACTIVE`
+  lifecycle, callback errors (0), and callback monotonicity regressions (0)
+  passed. `1530/TICK` had no callback, so coverage is 5/6 and the formal
+  result remains `REVIEW_REQUIRED_PARTIAL_COVERAGE`.
+- 962/1,037 records retain source-clock skew. The artifact ends before 13:30,
+  so it is early-close cadence evidence only. It does not select any quote
+  threshold, establish source-clock comparability, or represent broker/account
+  freshness.
+- The close review is
+  `research/freshness_calibration/reviews/2026-08-25_1301_close_review.md`.
+  All eight thresholds remain unset and Portfolio Phase 1 remains blocked.
+
+## 2026-08-26 — Frozen close-window quote evidence
+
+- A 15-minute Tick/BidAsk-only close artifact was captured from 13:02 to
+  13:17 Asia/Taipei against the unchanged frozen `2886:high`, `6863:mid`,
+  `1530:low` cohort. Its SHA-256 is
+  `b1d6714c697a86bc016a203c290e9d1a9cdd4cfbcce63b8ab4076bccf41e8ef1`.
+- Digest/schema, paired acknowledgement (6/6), per-row `CONNECTED/ACTIVE`
+  lifecycle, callback errors (0), and callback monotonicity regressions (0)
+  passed. `1530/TICK` had no callback, so coverage is 5/6 and the formal
+  result remains `REVIEW_REQUIRED_PARTIAL_COVERAGE`.
+- 1,649/1,695 records retain source-clock skew. The artifact ends before
+  13:30, so it is early-close cadence evidence only. It does not select any
+  quote threshold, establish source-clock comparability, or represent
+  broker/account freshness.
+- The close review is
+  `research/freshness_calibration/reviews/2026-08-26_1302_close_review.md`.
+  All eight thresholds remain unset and Portfolio Phase 1 remains blocked.
+
+## 2026-08-26 — Post-session cross-evidence verification
+
+- Verification resumed after the 13:17 close artifact. The workspace contains
+  scheduled quote artifacts and separately redacted broker/account artifacts
+  for 2026-08-25 and 2026-08-26. Their existence alone is not qualification;
+  schema, integrity, endpoint capability, lifecycle, and timing evidence must
+  be checked separately before any review conclusion.
+- The next audit also verifies that the installed quote close trigger observes
+  the required 13:30 session boundary. No threshold, Portfolio code, or
+  broker/order mutation is authorized by this audit.
+- Offline inspection of ten redacted broker/account artifacts (five on each
+  of 2026-08-25 and 2026-08-26) passed schema/digest and read-only guardrail
+  validation, but none is a successful broker freshness observation:
+  `POSITIONS=AUTH_DENIED(TokenError)`, `ACCOUNTING=SOURCE_ERROR`
+  (`ShioajiConnectionError`), and `BUYING_POWER=UNSUPPORTED_FOR_EVIDENCE_KIND`
+  in all ten. `ORDERS` is correctly retained as the existing excluded
+  `update_status`/trade-callback gap. These are constrained evidence gaps, not
+  candidate thresholds.
+- Quote artifacts across the same dates have paired acknowledgement and zero
+  callback errors/monotonicity failures. Coverage varies from 4/6 to 6/6,
+  with the low-tier Tick absence being a market-activity result rather than a
+  collector failure. The ordinary scheduler is configured for 13:15 plus
+  1,200 seconds, which reaches 13:35 and can observe the required boundary;
+  the 13:02 one-shot capture was deliberately shorter and does not test it.
+- The full review is
+  `research/freshness_calibration/reviews/2026-08-26_post_session_cross_evidence_review.md`.
+  It retains every threshold as unset and identifies the broker/account
+  simulation source access failure as the primary remaining collection gap.
+
+## 2026-08-27 — Frozen close-window quote evidence
+
+- `quote_20260827T130142+0800.json` passed integrity, 6/6 acknowledgement,
+  lifecycle, callback-error, monotonicity, and clock-skew checks. Coverage is
+  5/6 because `1530/TICK` is absent; no threshold is selected.
 
 ## 2026-08-22 — Frozen close-window execution
 
@@ -668,6 +880,71 @@
 - ATR propagation is engine-tested end to end: the signal-bar ATR travels through the pending entry, becomes immutable position context at fill, triggers on a later completed bar, and exits on the following open.
 - The final suite has 337 passing and 1 skipped test. Python compilation, Dashboard inline JavaScript compilation, and whitespace validation also pass.
 - The implemented slice remains historical/data-only: no CA activation, trade subscription, broker callback, or broker order submission was introduced.
+
+## D-HEALTH-LATE-001 minimum-pass findings (2026-08-25)
+
+- The failed CLOSE capture could not be reclassified because its malformed SDK callbacks were recorded only as error strings; their raw market fields were not retained in a verifiable artifact.
+- The minimum safe relaxation is therefore prospective: preserve `TickEvent` validation and quarantine each failed callback with its SDK ingress sequence, error identity, selected raw market fields, and a content digest.
+- A callback anomaly is warning-only only when error and quarantine counts match, every error string matches its quarantine entry, the quarantine artifact verifies after persistence, the bounded queue drains, the Journal finalizes and verifies, and exact replay runs and passes.
+- Missing or mismatched quarantine evidence, queue drain failure, admission/recorder failure, Journal verification failure, and replay failure remain hard failures.
+- New reports use passive-capture schema v2 and daily schema v3; the daily builder continues to accept retained passive-capture v1 reports.
+- This change does not alter Health, Admission, Freshness, watermark, foundation flags, provider trade subscription, consumer authority, Historical Qualification, Freshness Calibration, or P1.2 gates.
+
+## D-HEALTH-LATE-001 one-shot OPEN runner findings (2026-08-27)
+
+- The repository already fails closed before constructing Shioaji when `127.0.0.1:0` cannot bind; removing that guard would restore the native-crash risk and is out of scope.
+- The required change belongs at the execution boundary: one local launchd attempt must own the exact OPEN command, while the Codex automation may only inspect retained artifacts.
+- No sandbox attempt may precede the launchd attempt, and neither runner may retry or choose an alternate session.
+- The runner must preserve `subscribe_trade=false`, foundation flags off, and every Health/Admission/Freshness/watermark and qualification gate contract.
+- The current Codex cron is still active at weekdays 08:55 and its prompt executes the provider command itself; it must be changed before enabling launchd or both schedulers could contend for the same OPEN run.
+- The repository's existing launchd convention uses an absolute interpreter/script path, `TZ=Asia/Taipei`, unbuffered output, and explicit stdout/stderr logs. The new one-shot runner should follow those conventions but must add an immutable run identity and self-disable/no-op after its first terminal attempt.
+- The automation control tool accepted the existing automation id in `view` mode after rejecting the wrong `automationId` key; future updates must use `id` and full preserved fields.
+- The frozen OPEN phase is 09:00-09:30 Asia/Taipei with a 600-second pre-connect allowance, so 08:55 is a valid start. The local job must not start earlier than 08:50 or at/after 09:30.
+- The existing launchd plist validates with `plutil`; its absolute-path and logging structure is reusable without touching the capture CLI or phase contracts.
+- At 2026-08-27 09:10 Asia/Taipei, today's OPEN phase had already started, so arming a new one-shot for today would violate the reviewed first-attempt setup. The runner must target the next reviewed trading day instead.
+- The reviewed 2026 calendar has no 2026-08-28 closure and Friday is a weekday, so 2026-08-28 is the next eligible target date.
+- Another repository launchd supervisor already uses an `O_EXCL` claim before sensitive work specifically to prevent launchd re-invocation. The OPEN runner should reuse this simple pattern rather than invent a scheduler framework.
+- The implemented runner accepts provider execution only on 2026-08-28 from 08:50:00 through 08:59:59 Asia/Taipei, ensuring the full 09:00-09:30 OPEN window remains available. Off-date or delayed launch still consumes the one-shot claim and records `NOT_RUN`; it cannot be retried later.
+- Focused verification passed: 6 runner tests, Python compilation, launchd plist lint, and scoped whitespace validation.
+- The native Codex automation update handler did not persist changes, and policy prevents UI control of Codex. A validated exact TOML replacement was therefore installed with a recoverable `/private/tmp` backup after explicit scoped approval.
+- Readback confirms the old provider-running weekday cron is replaced by one `COUNT=1` read-only inspection at 09:35; its prompt expressly prohibits provider execution, retry, artifact mutation, and gate claims.
+- The initial daily one-shot would have fired on 2026-08-27 before the target run; pre-execution review corrected it to Friday 09:35 with `COUNT=1`. Readback now shows the intended post-capture schedule.
+- launchd is loaded with the exact 2026-08-28 08:55 calendar trigger, `runs=0`, and no claim/result file. No provider command was started during installation or verification.
+
+## D-HEALTH-LATE-001 immutable runtime remediation (2026-08-27)
+
+- Independent review returned `REQUEST CHANGES`: the loaded plist referenced a shared dirty checkout (`ahead 19 / behind 6`), while the one-shot claim sealed only argv and did not establish reviewed source/runtime identity for the next-day attempt.
+- The unsafe LaunchAgent was unloaded before any provider attempt. Its final observed state was `runs=0`, `last exit code=(never exited)`; post-unload lookup is absent and no claim/result artifact exists.
+- The 09:35 Codex automation remains active as a Friday `COUNT=1` read-only inspection and still prohibits provider execution or retry.
+- Completion now requires a commit-pinned clean worktree from `origin/main@33c9b3a`, adversarial source/runtime drift rejection before provider invocation, and a loaded plist whose exact pinned path/HEAD/identity can be read back.
+- Readback confirms `origin/main=33c9b3ab9d3b8300221e47b11685dfc24d7a5e51`; shared `main` is exactly `ahead 19, behind 6` with broad unrelated changes. The dedicated branch name `codex/d-health-open-pinned-20260828` is unused.
+- The dedicated worktree is clean at `33c9b3a`. It has no `.venv`; the shared interpreter is Python 3.13.5 with Shioaji 1.7.2, but reusing that mutable shared path would not satisfy runtime identity.
+- `pyproject.toml` uses version ranges rather than a locked broker environment, so the remediation must create a dedicated interpreter environment and seal its resolved package/binary identity in the reviewed manifest.
+- `.venv/` is already ignored in the reviewed base, so a dedicated worktree-local environment can coexist with `git status --porcelain --untracked-files=all` cleanliness. No lock file exists; resolved versions and binary/tree digests must therefore be frozen explicitly.
+- The shared environment contains an editable install bound to dirty `main`, confirming it cannot be copied or reused. The pinned environment must omit editable project installation and import project code only from the clean worktree cwd.
+- The reviewed D-HEALTH transplant is limited to 8 tracked files: five market-data guard/quarantine/report modules and three focused test modules. `equity_calendar.next_trading_day()` and all unrelated dirty changes are excluded.
+- A fresh worktree-local venv was created with no editable project install. Exact installed runtime/test packages are Shioaji 1.7.2, python-dotenv 1.2.3, pytest 9.1.1, iniconfig 2.3.0, packaging 26.3, pluggy 1.6.0, and Pygments 2.21.0.
+- The first immutable-runtime test slice passed all 33 runner/capture/evidence/stream tests. The only warning/compile issue was sandbox inability to write cache files in the sibling worktree, not a product failure; validation will redirect caches to `/private/tmp`.
+- The final clean branch is `codex/d-health-open-pinned-20260828` at `0bb2ee2fb25c5d818a1784a84ea49e2881265aee`, with four scoped local commits: payload `ffd4d79`, initial seal `e37d2a9`, non-login `/bin/sh -c` boundary hardening `f905520`, and final reseal `0bb2ee2`; nothing was pushed or merged.
+- The sealed manifest binds all tracked source except its self-referential manifest path, explicit critical runner/CLI/cohort/calendar files, the exact capture argv, Python 3.13.5 interpreter bytes, `pyvenv.cfg`, exact distributions, and full stdlib/site-packages tree digests.
+- The bootstrap runner now imports no project module before complete identity verification. Adversarial source and site-packages drift tests exercise the actual identity gate, retain provider calls at zero, and write auditable `NOT_RUN` results with exit 78.
+- Final read-only identity rehearsal passed at final HEAD. Focused tests are `33 passed`; compilation, template/rendered plist lint, rendered shell syntax, and diff checks pass.
+- Loaded plist readback uses the non-login `/bin/sh -c` boundary, points only to the dedicated worktree, and embeds HEAD plus manifest/runner/interpreter digests. launchd remains `runs=0`, `last exit code=(never exited)`, with no claim/result/session/evidence. The 09:35 Codex automation remains read-only and now inspects the pinned state and records paths.
+
+## D-HEALTH-LATE-001 external credential remediation (2026-08-27)
+
+- Second independent review returned `REQUEST CHANGES`: the dedicated checkout has no `.env`, user launchd has no Shioaji credential aliases, and current `connect_from_env()` searches only the dedicated project root after identity verification. The first one-shot would therefore claim and fail for missing credentials.
+- The loaded job was confirmed at `runs=0`, `last exit code=(never exited)` with no formal artifacts, then unloaded. The Friday 09:35 Codex automation remains active and read-only.
+- The credential fix must be metadata-only in evidence: absolute path, owner, mode, selected allowed key names, and presence. Secret values and hashes are prohibited from Git, manifest, plist, claim/result, logs, tests, and conversation.
+- The child environment must be allowlisted to Shioaji key/secret aliases plus `SJ_SIMULATION`; unrelated Fugle, FinMind, broker-account, or ambient secret variables must not cross the boundary.
+- P2 requires `source_payload_head` to become a checked identity statement or be removed; an unchecked manifest field is not acceptable evidence.
+- The selected external boundary is `/Users/stevehuang-work/Documents/tw_intraday_trader/.env`. It is owner UID 501, one regular link, and was tightened from `0644` to `0600` without reading, copying, or rewriting values. Allowed-name inspection found one API alias and one secret alias; `SJ_SIMULATION` is absent and the reviewed child boundary supplies the existing `true` default.
+- The runner opens the exact absolute path with no-follow/close-on-exec flags, validates single regular file, owner, exact owner-only mode, and stable file metadata across the read. It filters lines before dotenv parsing and retains only the selected Shioaji API alias, selected Shioaji secret alias, and `SJ_SIMULATION`.
+- The late-delivery CLI now calls `connect_from_env(load_dotenv_file=False)`, so the child cannot search another dotenv file. Its environment is reconstructed from a small non-secret runtime allowlist plus only the three selected Shioaji fields; ambient Fugle, FinMind, broker-account, and other secrets are dropped.
+- Exact secret values are redacted from subprocess stdout/stderr and setup exceptions before launchd output or result persistence. A value-aware scan of all tracked files plus manifest, rendered/installed plist, and automation reported `leak_file_count=0` without printing values.
+- Missing file, insecure mode, missing key, calendar import/evaluation, subprocess setup, redaction, and filtered-env tests all use temporary state roots. Final focused verification is `42 passed`; no formal claim/result was created.
+- P2 was resolved by removing `source_payload_head`. Final identity is HEAD `8d3747f28c2fc3e8f2582504932114526c7c4ea1`, manifest SHA-256 `07cbfaa0a1a227a35e723e7b6ecedbfb712999bf2cc443653421209b407e9d9b`, clean-worktree verification, and source-tree digest `ae7d97bff3ebf117dd12844e738ee83bd31a31dc68e54ba569928e14260642b8`.
+- Final loaded readback uses `/bin/sh -c`, the pinned runner/interpreter, exact credential path, final HEAD and hashes, and remains `runs=0`, `last exit code=(never exited)`. Formal state count is zero; 09:35 automation remains active/read-only.
 
 ## Previous-day premarket watchlist planning findings (2026-08-19)
 

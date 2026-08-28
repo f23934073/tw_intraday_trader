@@ -1,0 +1,22 @@
+# Progress: PR-TM-012C1 Shadow evidence 2026-08-26
+
+- 2026-08-26 08:47 Asia/Taipei: restored automation memory and inspected reviewed entrypoint contracts.
+- No formal C0 or C1 command has been run yet.
+- 2026-08-26 08:48 Asia/Taipei: calendar accepted today as a trading day; daily inputs are missing while both named DSN variables are present.
+- 2026-08-26 08:49:17 Asia/Taipei: ran the reviewed C0 entrypoint once; it exited 139 in the native SDK before artifact persistence.
+- 2026-08-26 08:49:56 Asia/Taipei: confirmed no C0/C1 artifact or sidecar exists, did not run C1, and closed the run as `BLOCKED / NOT_PASSED`.
+- 2026-08-26 08:51:31 Asia/Taipei: user-authorized C0 retry reproduced the same native SDK exit 139; retry artifact and sidecar were absent.
+- 2026-08-26 08:52-08:54 Asia/Taipei: isolated the failure to `sj.Shioaji(simulation=True)`, proved sandbox TCP/UDP loopback bind denial, inspected the compiled Solace dependency, and verified SIGSEGV in the macOS crash report. No code or settings were changed.
+- 2026-08-26: user authorized a fix. Scope frozen to native crash containment and immutable fail-closed evidence; no sandbox bypass or gate relaxation.
+- 2026-08-26 09:01-09:02 Asia/Taipei: focused suite passed 17 tests. A real postfix C0 diagnostic survived the child SIGSEGV, wrote a sealed BLOCKED artifact and sidecar, and retained all safety flags. Proceeding to avoid the known crash entirely with a loopback capability probe.
+- 2026-08-26 09:03-09:04 Asia/Taipei: added parent-side TCP/UDP loopback capability detection. V2 C0 diagnostic wrote a BLOCKED artifact with `LOOPBACK_BIND_DENIED`, produced no new crash report, and kept the subprocess fallback. Combined relevant regression passed 55 tests.
+- 2026-08-26 09:06 Asia/Taipei: full suite passed 1490 tests with 57 skipped; compilation and whitespace checks passed. Fix is complete and remains uncommitted.
+- 2026-08-26: user requested a commit. Packaging is constrained to the verified exit-139 fix hunks; existing unrelated and prior uncommitted work remains unstaged.
+- Commit payload reviewed: exactly three tracked files, 182 insertions and 11 deletions. Cached diff now contains only provider `error_code`, loopback detection, subprocess containment/worker dispatch, artifact projection, and three focused regressions.
+- 2026-08-26 09:26 Asia/Taipei: created local commit `7f69504`, verified the exact commit in a clean detached worktree (`13 passed`), removed the temporary worktree, and confirmed the index is clean. No push performed.
+- 2026-08-26 09:37 Asia/Taipei: user requested continuation after C1 commit `9abc89f`; started a read-only readiness audit for the next complete session rather than a post-open partial run.
+- Calendar selected 2026-08-27; its four required reviewed session inputs are all absent. Current TCP loopback bind remains denied.
+- Verified both DSNs are present and distinct but loopback-based; UDP bind and read-only PostgreSQL connections are also denied/failing in the current sandbox.
+- Inspected automation `pr-tm-012c1-shadow`: ACTIVE, weekdays 08:35, local project execution, reviewed prompt unchanged. No duplicate or schedule mutation was made.
+- Closed readiness audit as BLOCKED on external prerequisites; no post-open C0/C1 run, input generation, provider construction, database mutation, or execution action occurred.
+- Used OpenAI Docs plus local Codex diagnostics to audit the sandbox boundary. No documented narrow automation setting was found; broad `danger-full-access`/sandbox bypass is explicitly unsafe and was not used.

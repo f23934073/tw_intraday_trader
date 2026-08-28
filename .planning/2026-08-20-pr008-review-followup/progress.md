@@ -154,6 +154,23 @@
 - 2026-08-21: Sealed metadata-only r0/r1 segment manifests. r0 covers the pre-coverage trusted non-empty prefix (0..410); r1 covers 411..677 and pins the r1 scan configuration, 259 non-empty observations, 8 typed provider-empty observations, and the rate-limit pause before index 678 / symbol 2101. Registered configuration r2 before any resume, with the new timeout/mapping taxonomy and explicit coverage-scan flag. Updated the CLI pause guidance to preserve that flag on a future coverage resume. Focused tests: 26 passed. Full regression: 993 passed, 2 skipped. JSON, canonical digest, compile, and `git diff --check` passed. Ruff is not installed and was not executed.
 - 2026-08-21: Revalidated that the paused job remains at 678/2,738 with retry symbol 2101 and that r2's canonical/source digests still match. Provider allowance remains below the safe threshold, so no retry was run. Registered and locally validated the active `pr008-r2-price-coverage-resume` thread heartbeat for the next Taiwan weekday reset window. It may only perform the frozen data-only resume after metadata preflight; outcome, price payload, population, and holdout boundaries remain closed.
 - 2026-08-24: Heartbeat metadata preflight stopped before r2 digest/source checks because the frozen `dataset-download-f914feaddea04e37b3cbdcfce2b0179b` job was absent from both the workspace SQLite database and the configured PostgreSQL repository. No provider query, price payload access, outcome access, or resume was performed. Workspace search found no copy of the job id. Two app automation pause calls timed out without changing the app-owned heartbeat state; its prompt fails closed at the same missing-job preflight. Phase 24 is blocked pending immutable job-store restoration or research-owner approval of an entirely new acquisition lineage.
+- 2026-08-26: Owner selected option 2, an append-only r3 lineage. Began metadata-only recovery across available local stores; provider execution, price payload reads, dataset creation, population freeze, outcome generation, and holdout remain prohibited until recovery and r3 drift gates pass.
+- 2026-08-26: Exhausted available local metadata stores and found no original job or partitions. Historical r0/r1/r2 artifact gates remain valid (`16 passed`), but no r3 resume artifact was published because its checkpoint pins cannot be independently reconstructed. No provider was built or called; a fresh-job lineage now requires a distinct initialization gate and target-order freeze.
+- 2026-08-26: Owner authorized a fresh r3 job. Began create-only design so job/request/target order can be frozen before any historical Kbar call; downstream formal research locks remain disabled.
+- 2026-08-26: Added a dedicated fresh-r3 metadata initializer, pure contract-target normalization, deterministic exact-once job identity, append-only artifact publication, and focused adversarial tests. Initial focused gate passed 12 tests; compilation and `git diff --check` passed, while Ruff remains not installed. No provider call has occurred yet.
+- 2026-08-26: First live initializer attempt failed before provider construction because `.env` was loaded after importing PostgreSQL-backed application settings. No job or artifact was created. Corrected import-time configuration order before any retry.
+- 2026-08-26: The corrected metadata-only initializer created one fresh r3 QUEUED job and immutable target/config artifacts. Read-only PostgreSQL postflight confirmed exact request/target digests, 2,781 targets, zero partitions, zero Dataset, and only one r3 job. Focused gates pass 18 tests; full regression passes 1,501 with 57 skips. Scan and every downstream research/runtime gate remain disabled pending independent re-review and a separate authorization.
+- 2026-08-26: Independent review rejected the generic job execution boundary. Atomically quarantined the exact zero-partition job as `PRICE_COVERAGE_PREPARED / PREPARED`, added generic lineage rejection before provider construction, and left all price/data/outcome permissions disabled.
+- 2026-08-26: Added no-follow root traversal, a repository-wide 0600 acquisition flock, symlink-safe artifact reads, and crash-replay-safe sidecar/JSON publication. Preserved original r3 artifacts and published append-only quarantine rev2 with digest `f44d1e87a81fd9aedded1d7bc1a42e2032d564e437431fe47f5d62fcf3db27af`.
+- 2026-08-26: Final remediation gates pass: 59 focused tests; 1,537 full-suite passes and 59 skips; compile/canonical digest/whitespace checks pass. Ruff remains not installed. R3 is prepared/quarantined, not scan-authorized.
+- 2026-08-26: Owner requested the next phase. Began Phase 27 activation-readiness implementation; scope is dedicated preflight/runner and immutable source binding only. Live r3 remains PREPARED, and no Kbar/provider/outcome action is authorized in this phase.
+- 2026-08-26: Phase 27 implementation now has a dedicated immutable activation schema/verifier, registration CLI, process-lifetime acquisition lock, exact PREPARED-to-PRICE_COVERAGE_SCAN compare-and-set, and a raw-scan finalizer that never decodes partition payloads or creates a Dataset. Focused activation/history gates pass 55 tests; live artifacts/job/provider remain untouched.
+- 2026-08-26: Final Phase 27 no-live verification passes 55 focused tests and 1,552 full-suite tests with 59 skips. Compile and `git diff --check` pass; Ruff remains unavailable. No activation artifact was published and the live r3 PREPARED job was not opened or mutated. Work stops at the explicitly required scoped Git source-freeze gate.
+- 2026-08-26: Owner continuation completed the scoped source freeze (`f751843`) and immutable activation freeze (`2697619`). Metadata-only registration and exact replay published digest `ce5ecd701915309664320832df89201666083d0e5147488139a2048055e50c4f` with zero provider/Kbar/job mutation. Final full regression passes 1,555 tests with 61 skips; final activation/artifact gate passes 19 tests. Actual r3 scan remains stopped pending explicit start direction.
+- 2026-08-27: PM continuation superseded the pending Shioaji r3 start for the MVP. Phase 29 is now a deliberate hold, not a provider-start gate. Began Phase 30 as an offline-only consumer audit: reuse the upstream immutable FinMind Dataset and existing Dataset/Catalog/Audit contracts; do not construct any provider, materialize a placeholder Dataset, inspect outcome/holdout, commit, or push.
+- 2026-08-27: Restored the complete PR-008 plan/findings/progress context and ran the planning session catch-up. The shared worktree contains extensive concurrent changes, including the upstream FinMind snapshot/acquisition path; this phase will not edit source or disturb those changes.
+- 2026-08-27: Confirmed the reusable producer/consumer boundary in current source: FinMind snapshot plan -> immutable `HistoricalDatasetCatalog` Dataset -> canonical manifest verification, with repair lineage preserved and `research_eligible=false`. No second historical store or default-binding mutation is needed for the MVP consumer.
+- 2026-08-27: Initial planning pass read only the repair-aware snapshot-plan metadata before Dataset publication. This state is now superseded: the exact Dataset was subsequently materialized and passed the bounded PR-MVP-EVAL-001 handoff verification. The missing historical daily institutional candidate-batch series remains unchanged.
 
 ### Test Results
 
@@ -217,15 +234,142 @@
 | Focused Phase 22 scan taxonomy and lineage gates | 32 passed | PASS |
 | Full repository regression after Phase 22 taxonomy | 987 passed, 2 skipped | PASS |
 | Phase 22 Ruff, compile, and `git diff --check` | Pass | PASS |
+| Focused fresh-r3 quarantine, path, lineage, and generic-resume gates | 59 passed | PASS |
+| Full repository regression after r3 quarantine | 1,537 passed, 59 skipped | PASS |
+| R3 compile, canonical sidecars, and `git diff --check` | Pass | PASS |
+| R3 Ruff | Not installed / not executed | NOT EXECUTED |
+| Focused Phase 27 activation/history gates | 55 passed | PASS |
+| Full regression after Phase 27 activation foundation | 1,552 passed, 59 skipped | PASS |
+| Phase 27 compile and `git diff --check` | Pass | PASS |
+| Phase 27 Ruff | Not installed / not executed | NOT EXECUTED |
+| Scoped r3 source commit | `f751843` | PASS |
+| Metadata-only activation registration + exact replay | Same digest `ce5ecd70...e50c4f`; provider/Kbar/job mutation false | PASS |
+| Activation artifact commit | `2697619` | PASS |
+| Final activation/artifact gates | 19 passed | PASS |
+| Full regression after activation artifact freeze | 1,555 passed, 61 skipped | PASS |
+
+### 2026-08-27 - Phase 30 Offline FinMind Consumer Planning Complete
+
+- Synchronized the existing PR-008 workpad without changing the repository-wide active-plan pointer or touching concurrent source work.
+- Kept the 2,781-symbol Shioaji r3 scan on hold; no provider, broker, account, trading, price-payload, return, PnL, outcome, or holdout call was made.
+- Audited the existing `FinMindSnapshotPlan -> HistoricalDatasetCatalog -> DatasetManifest` producer seam and confirmed the consumer must reuse the new immutable Dataset rather than materialize a second history store or activate `ATOMIC_BACKTEST_DEFAULT`.
+- Audited formal `PriceCoverageAuditV1`, PIT-universe, `CompositeResearchInputManifestV1`, FinMind institutional MVP batch, CandidatePool, and backtest application seams. Formal contracts remain frozen; the MVP needs distinct non-formal coverage/universe identities.
+- Initial planning recorded the repair-aware plan while the target manifest was absent. That transient state is now closed by the exact PM-approved manifest and bars digest handoff documented below.
+- Refreshed the upstream `建立三年歷史資料` task: the single offline materializer is still processing 51,213,436 bars from the saved plan, with no external API or PostgreSQL/default-binding action; this task will not duplicate, interrupt, or restart it.
+- Found a second independent blocker: the only sealed institutional candidate observation targets 2026-08-19, one session after the planned Dataset end. It cannot be joined to the price data.
+- Published consumer-side phases PR-MVP-EVAL-001 through PR-MVP-EVAL-005 with exact handoff fields and acceptance criteria. After PR-MVP-EVAL-001 passes, the current terminal state is `WAITING_FOR_INSTITUTIONAL_SERIES / INSUFFICIENT_EVIDENCE`; outcome generation is not authorized.
+
+### 2026-08-27 - Phase 30A PR-MVP-EVAL-001 Bounded Handoff Verification
+
+- Received the PM-approved immutable Dataset identity after the upstream P1=0/P2=0 full-data review.
+- Confirmed only by filesystem metadata that the Dataset directory, 103,340,016-byte manifest, 10,596,416,681-byte bars file, and 103,323,542-byte saved plan exist as regular non-symlink objects. The bars file was not opened, hashed, or iterated.
+- Parsed bounded manifest and plan projections. Dataset identity, date range, requested/observed counts, bar count, storage/profile/order, research boundary, issues, selection counts, sole exclusion, and 9960 repair lineage agree with the handoff.
+- A first manifest-to-plan `jq input` comparison had the wrong streaming evaluation order and exited without writes. The exact equality check will use existing domain loaders instead.
+- The first domain-loader verifier successfully parsed the canonical schema and internal manifest digest before its raw-byte comparison failed because the command authored a literal `\\n`. This was verifier quoting, not artifact drift; no file was modified or bars content opened.
+- The corrected provider-free verifier passed canonical manifest bytes/digest, snapshot-plan schema and four embedded digests, exact manifest/plan identity equality, all approved handoff pins, the 454-target/453-included selection arithmetic, the sole 7610 exclusion, and exact 9960 repair lineage. `bars.jsonl` remained unopened.
+- Confirmed the only institutional observation is source 2026-08-18 -> target 2026-08-19 with 17 published candidates and false formal/outcome/order/production permissions. Its target lies outside the verified Dataset range, so overlap is zero.
+- PR-MVP-EVAL-001 closes as `PASS (METADATA-ONLY)`. No Dataset/Coverage/Universe artifact was created, no binding or database was queried/mutated, and no provider, bars iterator, outcome, holdout, broker, order, commit, push, PR, or merge action occurred.
+
+### 2026-08-27 - PM Review Disposition
+
+- Received independent disposition `PR-MVP-EVAL-001 APPROVE (P1=0, P2=0)`.
+- Reviewer independently confirmed 17 candidates all map from source session 2026-08-18 to usable/target session 2026-08-19; the verified price Dataset ends 2026-08-18, so overlapping target sessions are exactly 0.
+- Stopped at `WAITING_FOR_INSTITUTIONAL_SERIES / INSUFFICIENT_EVIDENCE`. No next-stage authority was inferred and no external, runtime, research-outcome, repository-release, or trading action was taken.
+
+### 2026-08-27 - Phase 31 Candidate-Series Authority
+
+- Owner explicitly authorized creation of at least 60 overlapping, digest-pinned institutional candidate sessions.
+- Interpreted the authority narrowly: FinMind institutional acquisition, normalization, immutable candidate batches, and one series manifest. Price payloads, outcome, holdout, Evaluation Universe freeze, Shioaji r3, runtime/default binding, broker, and orders remain excluded.
+- Began local inventory and source-seam inspection before any provider call.
+- Local inventory confirms zero existing daily batch artifacts/series artifacts. Reuse targets are the reviewed 2026 equity calendar, frozen candidate policy, daily application service, FinMind adapter, and immutable batch repository.
+
+### 2026-08-27 - Phase 31 Candidate-Series Completion
+
+- Added the minimal `InstitutionalMvpCandidateSeriesPlanV1` and `InstitutionalMvpCandidateSeriesV1` domain/CLI seam. It reuses the reviewed daily service, parser, policy, calendar, FinMind adapter, and immutable daily repository.
+- Verified the exact approved price Dataset manifest and snapshot-plan metadata without opening or iterating `bars.jsonl`, then froze 60 T/T+1 pairs before provider access. Plan digest: `0f11907b01d713aba768ee62ff8c0b9cf61283ed2b326fdc32efaf177c8569b4`.
+- The sandboxed provider preflight returned `PROVIDER_PREFLIGHT_FAILED` with zero batches. Re-ran the exact frozen plan in the approved network environment; it completed all 60 sessions. The accepted consumer manifest digest is `71723f527c673cd0e6d225f03ee7083ad260fe2005b96401792cdd5fd5ed1931`.
+- Preserved the first pre-review series projection (`315c4de6...11e29e`) append-only, then replayed the same 60 exact batches offline to add explicit per-batch policy/calendar/mapping-count lineage. No second provider call occurred; consumers must pin only the accepted `71723f52...d1931` revision.
+- Offline reconstruction verified 60 unique overlapping target sessions, 60 exact batch digests, 1,168 candidate entries, Dataset lineage pins, candidate ranks, T/T+1 chronology, raw-response digests, current-mapping limitations, and all downstream permission locks.
+- Replayed the exact series from local immutable batches as `IDEMPOTENT_REPLAY`; no second provider request was needed. Token and Authorization-header scans were clean.
+- Focused institutional regression: 59 passed. Compile and whitespace checks passed; Ruff is unavailable. Full regression: 1,749 passed, 88 skipped, one unrelated `test_finmind_selection_bundle` failure caused by current mutable Phase 82 target-job row drift.
+- Stopped at `INSTITUTIONAL_SERIES_READY / NEXT_GATE_NOT_AUTHORIZED`. No Coverage Audit, Evaluation Universe, outcome, holdout, runtime/default binding, broker, order, commit, push, PR, or merge action was taken.
+
+### 2026-08-27 - Phase 32 Coverage/Universe Authority
+
+- Owner explicitly authorized the next Coverage Audit and Evaluation Universe Freeze stage.
+- Scope is the already planned non-formal MVP path: metadata-only FinMind Dataset coverage plus exact intersection with the accepted 60-session institutional candidate series. Formal PIT eligibility, outcome, holdout, runtime/default binding, broker, and orders remain excluded.
+- Began source/contract reconciliation. The formal coverage amendment still requires PIT/reference/corporate-action inputs and a coverage-only concentration owner review; this phase must not relabel the MVP audit or universe as formal evidence.
+- Completed the first offline join profile without opening `bars.jsonl`: the acquisition-declared Dataset passes its numeric 95%/99% gates after uniform full-window READY qualification, but the candidate-to-price join covers only 199/319 candidate symbols and is strongly weaker for TPEx.
+- Selected the fail-closed universe rule already implied by the amendment: only candidate memberships whose symbol has >=99% full-window READY price partitions and whose exact target partition is READY may enter. This produces 889 membership rows across 199 symbols and all 60 sessions; all exclusions remain explicit in the audit.
+
+### 2026-08-27 - Phase 32 Coverage Audit and MVP Universe Freeze Complete
+
+- Added the offline coverage/universe contract, verifier, and CLI. The command reads only the approved Dataset manifest/snapshot-plan metadata and immutable institutional candidate metadata; it does not open `bars.jsonl`, call a provider, or inspect price/Kbar values, return, PnL, outcome, or holdout.
+- Published coverage audit `8c60c80a18b3c4aecdaaaff547231203b54361718d4d8638f1ee400ee1690470` as `PASS_FOR_NON_FORMAL_MVP_FREEZE_ONLY`. The acquisition-declared current-snapshot denominator has 435/454 qualified symbols (95.8150%) and 316,055/316,245 READY qualified partitions (99.9399%).
+- The candidate join includes 889/1,168 observations across 199/319 symbols and all 60 sessions. Exclusions are 271 observations whose symbols are absent from the price Dataset plus eight observations from symbols below the uniform 99% full-window READY rule. TPEx included-observation coverage is 36.8% versus TWSE 80.8245%, so formal/all-market claims remain blocked.
+- Published universe `dd1f4f30d7795a3dc4d802f51d23f52f8cd3fa0a17d01f2c57f71713011120e3` as `FROZEN_NON_FORMAL_MVP`. All formal population, outcome, holdout, production, runtime-strategy, and order permissions remain false.
+- Exact replay returned `IDEMPOTENT_REPLAY`. Focused institutional regression passed 55 tests; compile and `git diff --check` passed. Ruff is unavailable (`NOT_EXECUTED`). Full regression passed 1,754 tests with 88 skips; the sole failure is the previously recorded unrelated mutable Phase 82 target-job row drift.
+- Stopped before `CompositeResearchInputManifestV1`, outcome generation, holdout, runtime/default binding, broker, order, commit, push, PR, or merge. Phase 32 is complete only for the explicitly scoped non-formal MVP universe.
+
+### 2026-08-27 - Phase 33 Review Cycle 1
+
+- Performed architecture, semantic, publication-path, and trust-boundary review of the new coverage/universe builder, shared series publisher/loader, exact-batch CLI loader, and tests.
+- Added adversarial tests before implementation for false content digests, symlink/hardlink artifact paths, batch path escape, symlinked batch reads, covered-symbol market drift, candidate-series count drift, overlapping included/excluded symbols, and self-rehashed arbitrary coverage authority.
+- The expected red gate reproduced all findings: 13 failed and 8 passed. Failures are confined to the newly added adversarial cases and the deliberately strengthened universe-builder call contract; no existing passing behavior regressed before remediation.
+
+### 2026-08-27 - Phase 33 Review Cycle 2
+
+- Hardened the shared content-addressed publisher/loader with full body-digest/artifact-id checks, schema/category binding, no-follow owner-controlled paths, an exact publication lock, single-link artifact reads, safe stale-temporary recovery, and correct one-winner idempotency under concurrency.
+- Hardened the offline exact-batch loader with canonical path components, directory-descriptor traversal, no symlink/special/hardlink reads, and candidate-batch body digest/id/session verification before returning a payload.
+- Strengthened coverage/universe semantics: exact selection-audit binding, current-snapshot/research/storage/source contract checks, partition status/bar-count invariants, candidate-series authority/count/session/rank/market invariants, market cross-checks, and mandatory coverage reconstruction before universe construction or verification.
+- Added valid BLOCKED behavior for zero-candidate and zero-qualified-symbol evidence. No output schema or accepted real artifact membership changed.
+- First concurrency implementation exposed a transient two-link window (`1 failed / 34 passed`). Added a secure per-category publication lock and stale-link recovery; the corrected focused gate passed 76 tests.
+- Real 60-session replay returned `IDEMPOTENT_REPLAY` with unchanged coverage digest `8c60c80a...1690470`, universe digest `dd1f4f30...11120e3`, 889 memberships, 199 symbols, and 60 sessions. Artifact file SHA-256 values and 0440/single-link metadata remained unchanged; only new 0600 publication lock files were added to the two category directories.
+- Repository virtualenv still lacks the Ruff module, but the installed system Ruff executable was discovered and the complete Phase 33 scoped set passed `ruff check`. Compile and whitespace gates also pass.
+
+### 2026-08-27 - Phase 33 Final Review Disposition
+
+- Added and passed the final T/T+1 Dataset-order adversarial gate; focused Phase 33/institutional regression is 77 passed.
+- Real artifact replay remains exact and idempotent: coverage `8c60c80a18b3c4aecdaaaff547231203b54361718d4d8638f1ee400ee1690470`, universe `dd1f4f30d7795a3dc4d802f51d23f52f8cd3fa0a17d01f2c57f71713011120e3`, 889 memberships, 199 symbols, 60 sessions.
+- Canonical-byte comparison, recursive forbidden secret/OHLCV/return/PnL/outcome key scan, owner/mode/link metadata, scoped Ruff, compile, and whitespace gates pass.
+- Final full regression: 1,776 passed, 88 skipped, one previously known unrelated Phase 82 mutable target-job row drift failure. Its four adjacent immutable selection-bundle tamper tests pass; no Phase 33 file reads or mutates that SQLite job.
+- Final decision: `APPROVED` with P1=0/P2=0 for the explicitly non-formal MVP Coverage Audit and Evaluation Universe Freeze. All formal and execution permissions remain closed.
+
+### 2026-08-27 - Phase 34 PR-MVP-EVAL-005 Authority
+
+- Received explicit owner authority for only the frozen-universe non-formal offline A/B diagnostic.
+- Preserved the prohibitions on strategy changes, tuning, formal holdout, provider/broker access, runtime/default binding, and orders.
+- Selected the minimum architecture: one content-addressed pre-outcome plan, one read-only Catalog view, one engine-level entry-eligibility port, and one append-only non-formal result artifact.
+- No price bar, return, PnL, outcome, or holdout value was read during this design/freeze preparation step.
+
+### 2026-08-27 - Phase 34 Offline A/B Diagnostic Complete
+
+- Added a provider-neutral, content-addressed diagnostic plan/result contract, a read-only Catalog bar view, an outer engine entry-eligibility port, and an explicit freeze/execute CLI. No second price Dataset or runtime binding was created.
+- The first frozen plan `693a009b...b891` completed both arms but failed closed before result publication. A bounded aggregate replay found four cross-session trades despite zero unresolved positions and zero eligibility violations.
+- Fixed the existing engine boundary by cancelling non-daily pending orders at session end while preserving `DAILY_NEXT_BAR`. The second frozen plan `d7df1f02...0a86` still failed closed because an intraday entry could fill on the session's terminal bar and could not be exited on the same event.
+- Added a second surgical engine guard that rejects a non-daily entry before a terminal-bar fill. Strategy definitions, thresholds, priority, capital, and cost model were not changed. Focused engine/daily/MVP regressions passed 52 tests.
+- Froze final plan `d5e2908df7e984ef563e5a7af3128bebcb9803eef757c005a6fdcc191222bb66` before opening bars. It pins the exact Dataset/candidate-series/coverage/universe/protocol/code identities, 60 target sessions, 435 symbols, 889 memberships, and 4,568,727 selected bars.
+- Published result `1b62e1e7eaa8887e3c604f927f73a4db2628f33f91e03ac7d947364d077c6a52` as `NON_FORMAL_MVP_OBSERVATION_ONLY`: price-only 793 trades versus institutional-filter 77; expectancy delta -1,704.466846 TWD; trade retention 9.709962%; win-rate delta +1.054683 percentage points.
+- A second full two-arm replay returned the same result digest as `IDEMPOTENT_REPLAY`. Both arms have zero unresolved positions and 60 per-session observations.
+- Canonical load, 0440/single-link metadata, forbidden secret-key scan, scoped Ruff, compile, whitespace, artifact tamper tests, and exact replay pass. Full regression: 1,783 passed, 88 skipped, one previously known unrelated Phase 82 mutable target-job row drift failure.
+- Final Phase 34 disposition: `APPROVED` for the authorized non-formal offline diagnostic only. The observation does not show improved per-trade expectancy or profit factor from the institutional filter. Formal outcome/holdout, PIT/full-market claims, strategy tuning, runtime/default binding, provider/broker calls, production, and orders remain disabled.
 
 ### Errors
 
 | Error | Resolution |
 |---|---|
+| The first outer-gate test compared all strategy-evaluation counters with an ungated run | Corrected the assertion to the execution outcomes that must remain identical; suppressing non-target entry evaluations is the intended outer-gate behavior. |
+| The first diagnostic fixture used a generic imported manifest without FinMind plan/source identities | Kept the tiny Catalog payload unchanged and supplied a projected immutable manifest carrying the exact snapshot identities required by the consumer contract. |
+| The first manifest verifier used institutional canonical JSON on a Dataset cadence summary containing floats | Reconstituted `DatasetManifest` and used its own canonical `manifest_digest` contract instead of crossing serialization bounded contexts. |
+| The first engine-result digest used institutional canonical JSON on existing float projections | Used the backtest bounded context's deterministic `digest()` for the existing engine result projection while retaining float-free institutional artifact fields. |
+| The first real plan completed both arms but post-run validation rejected four cross-session intraday trades | Preserve the failed plan, add a session-end cancellation for non-daily pending orders, and keep explicit daily-next-session orders unchanged. |
+| The second real plan still allowed an intraday entry to fill on the session terminal bar | Preserve the second failed plan, reject terminal-bar intraday entry fills before position creation, add a dedicated regression, and freeze a new plan revision. |
 | `sqlite3 -readonly data/backtest/backtest.sqlite3` could not open the database | Retried with Python SQLite `mode=ro&immutable=1`; inspection succeeded without writes. |
 | `python` command not found while refreshing coverage evidence | Switched to `python3`; failed attempt made no repository changes. |
 | System Python reported `No module named pytest` | Compile and whitespace checks still completed; focused tests will use the repository virtual environment. |
 | `.venv/bin/ruff` was unavailable | Focused pytest passed; retain compile and `git diff --check` as the available format/static gates. |
+| First series execution in the restricted sandbox returned `PROVIDER_PREFLIGHT_FAILED` before any batch | Re-ran the exact digest-pinned plan with approved FinMind network access; all 60 batches completed and the series sealed. |
+| Full regression Phase 82 selection-bundle test found its mutable target job row had drifted | Preserve the unrelated live SQLite state and report the full gate honestly; focused institutional regression passes 59 tests. |
 | Six `test_trade_management_shadow_validation.py` tests fail at `timedelta(seconds=Decimal(...))` | Preserve unrelated user/concurrent work; report the full gate honestly and verify the remaining suite separately. |
 | Acquisition diagnostic rejected `ValidationCheck` objects | Replay the already sealed TWSE raw bytes and serialize only scalar check-status counts; no raw evidence was lost. |
 | TPEx Swagger and report page returned HTTP 403 through the web reader | Inspect official contract through a browser-like fixed HTTPS request and retain the 403 as a source-access limitation. |

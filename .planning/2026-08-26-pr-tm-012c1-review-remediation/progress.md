@@ -1,0 +1,44 @@
+# Progress: PR-TM-012C1 adversarial review remediation
+
+- 2026-08-26: user authorized fixes after a read-only adversarial review.
+- Activated planning-with-files, architecture-patterns, and karpathy-guidelines.
+- Scoped implementation to immutable attempts, reviewed promotion, C1 admission, and review-only external execution design.
+- No formal run, canonical reviewed input, automation, service, permission, provider, database, or execution state has been changed.
+- Added adversarial tests for versioned attempts, single-read candidate bytes, separate human approval, canonical promotion, C1 approval enforcement, and post-review source tamper.
+- The first focused collection failed at the expected missing review/promotion module boundary; no test body or runtime capability executed.
+- Implemented the pure artifact-pair writer, RiskSnapshot provenance, single-read candidate validation, separate review approval CLI, canonical promotion CLI, and C1 approval/bundle enforcement.
+- The first implemented run reached 9 passing tests with one stale expected error string; the unsafe canonical path was correctly rejected.
+- Added RiskSnapshot provenance mismatch, incomplete artifact-pair, canonical tamper, and symlinked canonical-directory regressions.
+- Expanded premarket/C1 suite reached 41 passing tests with one stale C1 argv fixture; it now supplies the required missing approval path and still forbids provider connection.
+- Closed formal C1 TOCTOU by reading each canonical source once and using the same bytes for approval digest checks, domain parsing, and reported evidence digests.
+- C1 now verifies the referenced immutable review packet and canonical bundle identity before any provider or database connection.
+- Added symlink rejection to draft approval/promotion paths and canonical promotion roots.
+- Final focused input/C0/C1 suite passes 49 tests; the full repository suite passes 1,570 tests with 61 skipped.
+- Compilation, diff check, all five CLI help paths, and input-workflow import boundary checks pass.
+- Confirmed the legacy 2026-08-27 packet sidecar digest remains `32531ce578ea5cb1160fb43928c2184372708c22a4184b1067921c70c29ccc11`; no canonical input or approval directory exists for that date.
+- Updated the existing automation memory only; the automation definition, launchd, sandbox, supervisor, permissions, DSNs, provider, databases, and execution state were not changed.
+- 2026-08-26: user authorized fixes for the second read-only adversarial review findings.
+- Re-activated planning-with-files, architecture-patterns, and karpathy-guidelines; no formal runtime or external service action is authorized.
+- Added second-review regressions for C0/promotion commit locks, admission-byte hashing, complete workflow identity, RiskSnapshot timing, no-replace publication, and external-design consistency.
+- Initial focused collection is red at the expected missing RiskSnapshot window contract; no runtime capability executed.
+- Implemented C0/promotion commit-marker admission, exact preflight admission-byte hashing, no-replace canonical reservation, complete workflow runtime identity, and reviewed RiskSnapshot time ordering.
+- Corrected the external design to serialize one collector per market date and to admit the exact clean-check Git child.
+- First post-fix focused suite passed 56 tests; added explicit after-admission and review-before-capture regressions before final verification.
+- Final focused input/C0/C1 suite passed 58 tests; the complete Trade Management suite passed 175 tests.
+- Full repository suite passed 1,579 tests with 61 skipped; compilation, five CLI help contracts, import-boundary tests, whitespace, and diff checks passed.
+- Confirmed no canonical input or approval exists for 2026-08-27 and the legacy packet sidecar digest remains `32531ce578ea5cb1160fb43928c2184372708c22a4184b1067921c70c29ccc11`.
+- 2026-08-26: final read-only re-review found two additional P1 evidence-integrity gaps: future-dated review evidence and unverified C0 component payload digests.
+- Focused review suite passed 68 tests and the full repository suite passed 1,579 tests with 61 skipped, but the two uncovered paths remained blocking; no commit was made.
+- User authorized only these two P1 fixes, a final read-only re-review, and a scoped commit if the review passes.
+- Re-activated planning-with-files, karpathy-guidelines, and code-review-excellence; no C0/C1 run, reviewed input creation, external runner action, or execution capability is authorized.
+- Added red regressions for future candidate capture, future review timestamp, and retained-claimed-digest tampering of all three C0 component payloads.
+- Confirmed the expected red state: 5 failures, consisting only of absent trusted-clock injection and absent C0 component-digest recomputation.
+- Implemented operation-clock injection for prepare/review/promotion, future capture/review rejection, C1 approval-time revalidation, and typed C0 component reconstruction with digest comparison.
+- The five new regressions pass; the expanded focused input/C0/C1 suite passes 73 tests.
+- Updated the operational runbook to state trusted process-clock bounds and independent C0 component-digest recomputation.
+- Final read-only re-review found no actionable finding.
+- Verification passed: 73 focused input/C0/C1 tests, 172 complete Trade Management tests, 1,584 full-suite tests with 61 skipped, compilation, five CLI help paths, six import/execution-boundary tests, whitespace, and diff checks.
+- Both existing 2026-08-26 diagnostic C0 artifacts independently reproduced valid provider/PostgreSQL/rehearsal component digests.
+- Scoped staged review contained exactly 13 PR-TM-012C1 files; planning and every unrelated dirty-worktree change remained unstaged.
+- Created commit `06cbdf248e780e809989df0fae35ae0bb2c4fc1f` (`fix(shadow): harden reviewed input admission`) without pushing.
+- Post-commit verification confirmed no staged residue, no 2026-08-27 canonical input or approval, and the legacy draft sidecar digest remained unchanged.

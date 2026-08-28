@@ -142,8 +142,9 @@ execution mutation.
   executed yet.
 - [ ] Generate and audit all seven signal ledgers/match plans without provider,
   broker, lifecycle, or result publication.
-- **Status:** implementation candidate verified; formal full-Dataset rerun is
-  blocked because the application PostgreSQL DSN is not configured
+- **Status:** clean formal re-execution is running under a launchd-supervised
+  job independent of the Codex terminal; matrix revision 2 remains active and
+  no preflight or attempt has been registered early
 
 ### R6.G4: Formal seven-attempt replay
 
@@ -168,7 +169,7 @@ R6 G0 historical revision: PASSED
 R6 G0 Amendment A1: PASSED / CONTRACT FROZEN
 R6 G1: PASSED
 R6 G2: PASSED
-R6 G3: IMPLEMENTATION VERIFIED / FORMAL EXECUTION BLOCKED ON APPLICATION DSN
+R6 G3: FORMAL SUPERVISED RE-EXECUTION RUNNING / PREFLIGHT 0 / ATTEMPTS 0
 Formal progress: 50%
 Remaining: 50%
 R6 formal replay: 0 / 7 / NOT AUTHORIZED
@@ -199,3 +200,7 @@ Local Paper / Broker / Real-money: PROHIBITED
 | Build-binding patch assumed a non-exact nearby sentence | 1 | `apply_patch` failed atomically; applied the source-manifest and registration edits as smaller exact-context patches. |
 | Scoped A1 `git add` could not create `.git/index.lock` in the sandbox | 1 | Retry the same exact five-path staging command with explicit Git-index escalation; unrelated paths remain excluded. |
 | First A1 domain/application focused run retained the historical algorithm digest assertion | 1 | Preserve the historical v1 constant in code and update the current A1 regression to the frozen v2 digest while adding explicit v1 compatibility coverage. |
+| Formal Backtest DB verifier imported Dataset constants from the domain module | 1 | Use the authoritative `RESEARCH_BASELINE` projection from the application module instead; no database write occurred. |
+| Formal Backtest DB verifier assumed the outbox column was named `event_type` | 1 | Remove non-Gate classification fields from the verifier and check only the required family/matrix/slot/binding/source identities plus aggregate operation/outbox counts. |
+| Sandbox denied the first `ps` process-health sample | 1 | Re-run the same read-only process inspection with explicit approval; the formal preflight process remained healthy. |
+| The long-running formal G3 terminal session ended before Dataset EOF | 1 | Preserve the incomplete 211 MB temporary artifact as failure evidence, verify PostgreSQL retained zero preflights/attempts and head 0, and require a clean supervised re-execution rather than treating partial bytes as resumable authority. |

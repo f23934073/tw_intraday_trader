@@ -478,3 +478,59 @@
   fail-closed error when PostgreSQL is selected without
   `BACKTEST_DATABASE_URL` or a shared PostgreSQL DSN. Formal progress remains
   `50%`, Formal Replay remains `0 / 7`, and G4-G5/trading remain blocked.
+
+## 2026-08-26 formal G3 execution started
+
+- Verified the operator-provisioned dedicated database without exposing its
+  DSN: `tw_intraday_trader_backtest` is reached through localhost port 5090,
+  has 49 Backtest tables, and has all 17 migrations through Migration 017.
+- Verified the copied formal state before mutation: one family, revision-1
+  matrix, seven slots, head 0, attempts 0, preflights 0, and the exact frozen
+  Dataset binding/source Run lineage.
+- Executed the approved A1 activation. Matrix revision 2 is now active; family
+  head remains 0 and no attempt was created.
+- The revision-2 G3 dry-run resolved the frozen Dataset bar count and all seven
+  slots. Started the only formal full-Dataset preflight process; it reached
+  `1,000,000 / 28,325,340` bars with bounded memory and no error.
+- G3 is not passed yet. EOF count/SHA, the 31-member artifact, durable
+  preflight registration, independent audit, and formal Review remain pending.
+  G4-G5, Local Paper, provider, broker, and real-money paths remain closed.
+- The unchanged formal process subsequently reached
+  `2,000,000 / 28,325,340` bars. Artifact staging continued to grow while
+  process memory remained approximately 1%; no attempt or performance result
+  was created.
+
+## 2026-08-26 formal G3 interruption recorded
+
+- A later status check found no live preflight process and no resumable
+  terminal session. The staging directory remained incomplete at 211 MB with
+  42,020 eligibility rows and a last modification time of 19:18 Asia/Taipei.
+- Read-only PostgreSQL verification confirmed the all-or-none boundary held:
+  preflights 0, attempts 0, family head 0, active revision 2, release
+  `NOT_READY`.
+- G3 is fail closed and remains at formal progress 50%. No G4 or trading path
+  was opened. A clean supervised re-execution is required; the incomplete
+  staging tree is retained until an explicitly authorized cleanup/restart.
+- Crash/reboot/memory-pressure diagnostics were negative. The formal process
+  had been launched as a foreground child of the transient Codex exec session,
+  so the supported operational diagnosis is parent-session termination. The
+  next execution must be detached/supervised and write durable stdout/stderr,
+  PID, exit-code, and completion evidence.
+
+## 2026-08-26 supervised formal G3 restarted
+
+- Implemented `scripts/supervise_atomic_entry_benchmark_preflight.py` with
+  fixed start/status/worker commands, launchd ownership, idle-sleep prevention,
+  exact formal-DB admission, single-label exclusion, atomic status evidence,
+  durable stdout/stderr, and no automatic retry.
+- Added nine dedicated supervisor regressions; combined supervisor,
+  application, and full-Dataset preflight scope passed `35 passed`.
+  Compilation, CLI help, and scoped `git diff --check` passed before launch.
+- Moved the incomplete first-run staging tree intact to
+  `data/backtest/atomic_entry_benchmark/interrupted/`; no evidence was deleted.
+- Submitted formal run `r6-g3-20260826T112555Z-f64bdce1` to launchd. The
+  worker is RUNNING as PID 44474 with PPID 1, uses the exact dedicated Backtest
+  database, and has a new clean preflight staging tree.
+- Post-launch durable state remains preflights 0, attempts 0, family head 0,
+  active matrix revision 2, release NOT_READY. G4 and all trading paths remain
+  closed until EOF, artifact verification, registration, and Review.
