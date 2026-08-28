@@ -1,0 +1,106 @@
+{
+  "artifact_type": "TradeManagementShadowPremarketReadiness",
+  "manifest": {
+    "calendar_digest": "1671338c8247f7f5344657912f469fce111b82b9be0dea1d61d21eb6d3a3593a",
+    "calendar_schema_version": "twse_calendar_2026_v1",
+    "code_identity": "git:a6e096af6d966f6e46f8549e4ea6ac1d0d48b7f9:source-sha256:2f31e15abd81c089357b06b54a0fb334640ecc302586f2bc2d18c7c92118347d",
+    "connection_session_id": "pr-tm-012c1-c0-20260827",
+    "evidence_only": true,
+    "execution_authority": false,
+    "execution_enabled": false,
+    "exit_policy_version": "exit-policy-v1",
+    "fill_model_version": "shadow-observation-no-fill-v1",
+    "journal_schema_version": "journal-v1",
+    "market_date": "2026-08-27",
+    "migration_versions": [
+      "001_journal.sql",
+      "002_trading_schema.sql"
+    ],
+    "prepared_at": "2026-08-27T08:39:02.016744+08:00",
+    "provider": "shioaji",
+    "provider_identity": "shioaji:unknown:simulation=true",
+    "provider_simulation": true,
+    "provider_version": "unknown",
+    "qualifying_real_session": false,
+    "risk_policy_version": "risk-v1",
+    "scheduled_close": "2026-08-27T13:30:00+08:00",
+    "scheduled_open": "2026-08-27T09:00:00+08:00",
+    "session_id": "tm-shadow-20260827-2330",
+    "strategy_id": "opening_range_breakout",
+    "strategy_version": "opening_range_breakout_entry_v1",
+    "symbol": "2330",
+    "thesis_version": "orb-breakout-v1",
+    "validator_version": "trade-management-shadow-validation-v1",
+    "version": "trade-management-premarket-v1"
+  },
+  "manifest_digest": "ed3a94b587bcd9e2d79fb9df5f481abf2dbf4a776d3acc926b84a8ecaa1ea734",
+  "postgres_preflight": {
+    "connected": false,
+    "digest": "24ef52cbdc43ddb54c525706cbb6713ad52574baf2e028d3472cfd686f17b917",
+    "driver_version": "3.3.4",
+    "dsn_configured": true,
+    "error_code": "OPERATIONALERROR",
+    "evidence_row_counts": {
+      "journal_records": 0,
+      "journal_sessions": 0,
+      "projection_checkpoints": 0
+    },
+    "evidence_scope_session_id": "tm-shadow-20260827-2330",
+    "migration_versions": [],
+    "server_major": null,
+    "table_names": [],
+    "transaction_read_only": false
+  },
+  "production_shadow_gate": "NOT_PASSED",
+  "provider_preflight": {
+    "credential_keys_present": [
+      "API_KEY",
+      "SECRET"
+    ],
+    "digest": "debdf2c8b8c7779847918bb31529e832c5c99cc27a8b4def0df1b24caa0a30e5",
+    "environment_identity": null,
+    "error_code": "LOOPBACK_BIND_DENIED",
+    "login_succeeded": false,
+    "logout_succeeded": false,
+    "subscribe_trade": false
+  },
+  "readiness_report": {
+    "blockers": [
+      "PROVIDER_PREFLIGHT_FAILED",
+      "PROVIDER_IDENTITY_MISMATCH",
+      "POSTGRES_PREFLIGHT_FAILED",
+      "POSTGRES_NOT_READ_ONLY",
+      "POSTGRES_SCHEMA_MISMATCH",
+      "POSTGRES_MIGRATION_MISMATCH"
+    ],
+    "execution_authority": false,
+    "execution_enabled": false,
+    "manifest_digest": "ed3a94b587bcd9e2d79fb9df5f481abf2dbf4a776d3acc926b84a8ecaa1ea734",
+    "postgres_preflight_digest": "24ef52cbdc43ddb54c525706cbb6713ad52574baf2e028d3472cfd686f17b917",
+    "provider_preflight_digest": "debdf2c8b8c7779847918bb31529e832c5c99cc27a8b4def0df1b24caa0a30e5",
+    "qualifying_real_session": false,
+    "rehearsal_digest": "284d82b98300fcd92fa77f6110f51331a276f45fc822c531179d67bc6fa59502",
+    "report_id": "shadow_premarket_v1_6f505b4d8a0f1dffcde98d2099caceaa17c489d7481106ab2eaa2798bdb738a8",
+    "status": "BLOCKED",
+    "version": "trade-management-premarket-v1"
+  },
+  "readiness_report_digest": "69d73ed4c59b95a9965adc2b347b39bb34c71f170ee9cb65dc1b2e3b587e6a3b",
+  "rehearsal": {
+    "digest": "284d82b98300fcd92fa77f6110f51331a276f45fc822c531179d67bc6fa59502",
+    "execution_enabled": false,
+    "historical_replay_verified": true,
+    "journal_recovery_verified": true,
+    "operational_composition_verified": true,
+    "qualifying_real_session": false,
+    "readiness_report_deterministic": true,
+    "replay_parity_matched": true,
+    "source_class": "TEST_FIXTURE_AND_HISTORICAL_REPLAY",
+    "test_targets": [
+      "tests/test_trade_management_c1_session.py",
+      "tests/test_trade_management_operational_composition.py",
+      "tests/test_trade_management_replay.py",
+      "tests/test_trade_management_shadow_operation.py",
+      "tests/test_trade_management_shadow_validation.py"
+    ]
+  }
+}

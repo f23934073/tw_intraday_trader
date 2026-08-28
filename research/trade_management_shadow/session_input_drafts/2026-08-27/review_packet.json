@@ -1,0 +1,27 @@
+{
+  "artifact_type": "TradeManagementShadowInputReviewPacket",
+  "binding": null,
+  "blockers": [
+    "MISSING_SOURCE:entry_decision",
+    "MISSING_SOURCE:risk_snapshot",
+    "MISSING_SOURCE:shadow_policy",
+    "MISSING_SOURCE:thesis_draft"
+  ],
+  "calendar_digest": "1671338c8247f7f5344657912f469fce111b82b9be0dea1d61d21eb6d3a3593a",
+  "calendar_schema_version": "twse_calendar_2026_v1",
+  "candidate_sources": {},
+  "candidate_valid": false,
+  "canonical_input_dir": "/Users/stevehuang-work/Documents/tw_intraday_trader/research/trade_management_shadow/session_inputs/2026-08-27",
+  "evidence_only": true,
+  "execution_authority": false,
+  "execution_enabled": false,
+  "formal_c1_eligible": false,
+  "market_date": "2026-08-27",
+  "packet_digest": "32531ce578ea5cb1160fb43928c2184372708c22a4184b1067921c70c29ccc11",
+  "production_shadow_gate": "NOT_PASSED",
+  "review_approval": null,
+  "reviewed": false,
+  "runtime_code_identity": "git:9abc89f175690bcbae5df2c889bbfb4bd3e75be7:source-sha256:50fe0c554459a0bbf585109c12ed4074e715c3ad5ccf0188792c3470f063f6c4",
+  "status": "PENDING_REVIEW",
+  "version": "trade-management-shadow-input-review-v1"
+}

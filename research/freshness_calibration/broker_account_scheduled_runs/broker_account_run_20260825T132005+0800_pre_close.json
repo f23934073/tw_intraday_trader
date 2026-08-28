@@ -1,0 +1,32 @@
+{
+  "artifact": "research/captures/freshness_broker_account/broker_account_20260825T132005+0800_ec3f4f57.json",
+  "inspection": {
+    "artifact_name": "broker_account_20260825T132005+0800_ec3f4f57.json",
+    "byte_length": 3757,
+    "evidence_gaps": [
+      {
+        "evidence_kind": "ORDERS",
+        "invoked": false,
+        "reason": "REQUIRES_EXCLUDED_UPDATE_STATUS_OR_TRADE_CALLBACK",
+        "source_reference": "shioaji.api.update_status + shioaji.api.list_trades",
+        "threshold_supported": false
+      }
+    ],
+    "evidence_kinds": [
+      "POSITIONS",
+      "ACCOUNTING",
+      "BUYING_POWER"
+    ],
+    "observation_count": 3,
+    "review_status": "REVIEW_REQUIRED",
+    "schema_version": "broker_account_freshness_v1",
+    "sha256": "e810e6f63372c6bae47a9646a32c802cc60994aa426d676f758fc6df34a0858d",
+    "threshold_candidates": null
+  },
+  "now": "2026-08-25T13:20:05.611328+08:00",
+  "provider_called": true,
+  "reason": "reviewed TWSE calendar and scheduled window both permit capture",
+  "status": "CAPTURED",
+  "threshold_candidates": null,
+  "window_label": "pre_close"
+}

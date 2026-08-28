@@ -1,0 +1,107 @@
+{
+  "artifact_type": "TradeManagementShadowPremarketReadiness",
+  "manifest": {
+    "calendar_digest": "1671338c8247f7f5344657912f469fce111b82b9be0dea1d61d21eb6d3a3593a",
+    "calendar_schema_version": "twse_calendar_2026_v1",
+    "code_identity": "git:3ff0182c2024fb5419b7ed4f5c5cce8df5ef4813:source-sha256:76c79d4bb922c49d3cdc4be5e68540e05e57cc17d6091bb8af085e0fecbf2a82",
+    "connection_session_id": "pr-tm-012c1-c0-20260826-postfix-diagnostic-v2",
+    "evidence_only": true,
+    "execution_authority": false,
+    "execution_enabled": false,
+    "exit_policy_version": "exit-policy-v1",
+    "fill_model_version": "shadow-observation-no-fill-v1",
+    "journal_schema_version": "journal-v1",
+    "market_date": "2026-08-26",
+    "migration_versions": [
+      "001_journal.sql",
+      "002_trading_schema.sql"
+    ],
+    "prepared_at": "2026-08-26T09:03:48.449403+08:00",
+    "provider": "shioaji",
+    "provider_identity": "shioaji:unknown:simulation=true",
+    "provider_simulation": true,
+    "provider_version": "unknown",
+    "qualifying_real_session": false,
+    "risk_policy_version": "risk-v1",
+    "scheduled_close": "2026-08-26T13:30:00+08:00",
+    "scheduled_open": "2026-08-26T09:00:00+08:00",
+    "session_id": "trade-management-shadow-20260826-postfix-diagnostic-v2",
+    "strategy_id": "opening_range_breakout",
+    "strategy_version": "opening_range_breakout_entry_v1",
+    "symbol": "2330",
+    "thesis_version": "orb-breakout-v1",
+    "validator_version": "trade-management-shadow-validation-v1",
+    "version": "trade-management-premarket-v1"
+  },
+  "manifest_digest": "21e79e0c82fbaf9fe7ba3ec57a2a1f3d4ace55d540fb6d549b314c3e8dcdabc9",
+  "postgres_preflight": {
+    "connected": false,
+    "digest": "5e8db6cc7034f5ebfcb8412e87f901dd87cdf16217f495b473672be17cc722c8",
+    "driver_version": "3.3.4",
+    "dsn_configured": true,
+    "error_code": "OPERATIONALERROR",
+    "evidence_row_counts": {
+      "journal_records": 0,
+      "journal_sessions": 0,
+      "projection_checkpoints": 0
+    },
+    "evidence_scope_session_id": "trade-management-shadow-20260826-postfix-diagnostic-v2",
+    "migration_versions": [],
+    "server_major": null,
+    "table_names": [],
+    "transaction_read_only": false
+  },
+  "production_shadow_gate": "NOT_PASSED",
+  "provider_preflight": {
+    "credential_keys_present": [
+      "API_KEY",
+      "SECRET"
+    ],
+    "digest": "debdf2c8b8c7779847918bb31529e832c5c99cc27a8b4def0df1b24caa0a30e5",
+    "environment_identity": null,
+    "error_code": "LOOPBACK_BIND_DENIED",
+    "login_succeeded": false,
+    "logout_succeeded": false,
+    "subscribe_trade": false
+  },
+  "readiness_report": {
+    "blockers": [
+      "SESSION_WINDOW_NOT_FUTURE",
+      "PROVIDER_PREFLIGHT_FAILED",
+      "PROVIDER_IDENTITY_MISMATCH",
+      "POSTGRES_PREFLIGHT_FAILED",
+      "POSTGRES_NOT_READ_ONLY",
+      "POSTGRES_SCHEMA_MISMATCH",
+      "POSTGRES_MIGRATION_MISMATCH"
+    ],
+    "execution_authority": false,
+    "execution_enabled": false,
+    "manifest_digest": "21e79e0c82fbaf9fe7ba3ec57a2a1f3d4ace55d540fb6d549b314c3e8dcdabc9",
+    "postgres_preflight_digest": "5e8db6cc7034f5ebfcb8412e87f901dd87cdf16217f495b473672be17cc722c8",
+    "provider_preflight_digest": "debdf2c8b8c7779847918bb31529e832c5c99cc27a8b4def0df1b24caa0a30e5",
+    "qualifying_real_session": false,
+    "rehearsal_digest": "284d82b98300fcd92fa77f6110f51331a276f45fc822c531179d67bc6fa59502",
+    "report_id": "shadow_premarket_v1_f42a5408039030b87c707dcc233d44f2cd6cbaff349c9cc94c9b1d4a9a637fa1",
+    "status": "BLOCKED",
+    "version": "trade-management-premarket-v1"
+  },
+  "readiness_report_digest": "191544391f15744e102e7c5efd000c46ac89fa333727e5a500aa2f5cfe5b4856",
+  "rehearsal": {
+    "digest": "284d82b98300fcd92fa77f6110f51331a276f45fc822c531179d67bc6fa59502",
+    "execution_enabled": false,
+    "historical_replay_verified": true,
+    "journal_recovery_verified": true,
+    "operational_composition_verified": true,
+    "qualifying_real_session": false,
+    "readiness_report_deterministic": true,
+    "replay_parity_matched": true,
+    "source_class": "TEST_FIXTURE_AND_HISTORICAL_REPLAY",
+    "test_targets": [
+      "tests/test_trade_management_c1_session.py",
+      "tests/test_trade_management_operational_composition.py",
+      "tests/test_trade_management_replay.py",
+      "tests/test_trade_management_shadow_operation.py",
+      "tests/test_trade_management_shadow_validation.py"
+    ]
+  }
+}

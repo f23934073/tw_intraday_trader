@@ -1,0 +1,95 @@
+{
+  "schema_version": "broker_account_freshness_v1",
+  "artifact_kind": "BROKER_ACCOUNT_READ_ONLY_FRESHNESS_EVIDENCE",
+  "capture_id": "f6764399-cd02-4592-974a-3abb83b6bacc",
+  "captured_at": "2026-08-25T12:30:03.506040+08:00",
+  "completed_at": "2026-08-25T12:30:05.223542+08:00",
+  "environment": "shioaji:1.7.2:simulation=true",
+  "account_scope": "STOCK_ACCOUNT_SELECTED_REDACTED",
+  "projection_boundary": "broker_account_calibration_metadata_only",
+  "guardrails": {
+    "submit_order": false,
+    "cancel_order": false,
+    "modify_order": false,
+    "activate_ca": false,
+    "subscribe_trade": false,
+    "trade_callback": false,
+    "update_status": false,
+    "retry": false
+  },
+  "observations": [
+    {
+      "probe_id": "d88a4e32-fce0-43b5-a971-ceb8c87c0e1a",
+      "evidence_kind": "POSITIONS",
+      "source_reference": "shioaji.api.list_positions",
+      "request_started_at": "2026-08-25T12:30:05.022252+08:00",
+      "response_received_at": "2026-08-25T12:30:05.033545+08:00",
+      "projection_updated_at": "2026-08-25T12:30:05.033601+08:00",
+      "round_trip_ms": 11.294916,
+      "outcome": "AUTH_DENIED",
+      "error_class": "TokenError",
+      "source_as_of_at": null,
+      "source_as_of_disposition": "UNAVAILABLE_DUE_TO_REQUEST_FAILURE",
+      "response_shape": null,
+      "capability_disposition": "UNAVAILABLE"
+    },
+    {
+      "probe_id": "4500e5de-e3bf-42da-87af-a4679e477822",
+      "evidence_kind": "ACCOUNTING",
+      "source_reference": "shioaji.api.list_profit_loss",
+      "request_started_at": "2026-08-25T12:30:05.033752+08:00",
+      "response_received_at": "2026-08-25T12:30:05.034187+08:00",
+      "projection_updated_at": "2026-08-25T12:30:05.034200+08:00",
+      "round_trip_ms": 0.437667,
+      "outcome": "SOURCE_ERROR",
+      "error_class": "ShioajiConnectionError",
+      "source_as_of_at": null,
+      "source_as_of_disposition": "UNAVAILABLE_DUE_TO_REQUEST_FAILURE",
+      "response_shape": null,
+      "capability_disposition": "UNAVAILABLE"
+    },
+    {
+      "probe_id": "32aff00a-911f-4c75-b77d-6ea1b08e7e37",
+      "evidence_kind": "BUYING_POWER",
+      "source_reference": "shioaji.api.account_balance",
+      "request_started_at": "2026-08-25T12:30:05.034245+08:00",
+      "response_received_at": "2026-08-25T12:30:05.034306+08:00",
+      "projection_updated_at": "2026-08-25T12:30:05.034613+08:00",
+      "round_trip_ms": 0.061,
+      "outcome": "UNSUPPORTED_FOR_EVIDENCE_KIND",
+      "error_class": "ACCOUNT_BALANCE_NOT_CONFIRMED_AS_BUYING_POWER",
+      "source_as_of_at": null,
+      "source_as_of_disposition": "DATE_ONLY_NOT_AS_OF",
+      "response_shape": {
+        "container_type": "AccountBalance",
+        "item_count": 1,
+        "item_types": [
+          "AccountBalance"
+        ],
+        "field_names": [
+          "acc_balance",
+          "date",
+          "errmsg",
+          "status"
+        ]
+      },
+      "capability_disposition": "ACCOUNT_BALANCE_NOT_CONFIRMED_AS_BUYING_POWER"
+    }
+  ],
+  "evidence_gaps": [
+    {
+      "evidence_kind": "ORDERS",
+      "source_reference": "shioaji.api.update_status + shioaji.api.list_trades",
+      "invoked": false,
+      "reason": "REQUIRES_EXCLUDED_UPDATE_STATUS_OR_TRADE_CALLBACK",
+      "threshold_supported": false
+    }
+  ],
+  "threshold_selection": "PROHIBITED_IN_CAPTURE_ARTIFACT",
+  "limitations": [
+    "No raw provider response, credential, account identifier, position, balance, PnL, or order detail is persisted.",
+    "Successful response receipt is not a source-as-of guarantee when the provider omits an explicit as-of timestamp.",
+    "Account balance is not treated as a documented buying-power authority.",
+    "Orders freshness is unavailable under the approved no-update-status/no-callback constraint."
+  ]
+}

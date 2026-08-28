@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.stevehuang.tw-intraday-trader.d-health-late-001-open-20260828</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>set -eu; runner='/Users/stevehuang-work/Documents/worktrees/tw_intraday_trader_d_health_open_20260828/scripts/run_one_shot_late_delivery_open.py'; python='/Users/stevehuang-work/Documents/worktrees/tw_intraday_trader_d_health_open_20260828/.venv/bin/python'; runner_sha=$(/usr/bin/shasum -a 256 &quot;$runner&quot; | /usr/bin/awk '{print $1}'); if [ &quot;$runner_sha&quot; != '6e1b6c7f4f4d17090abcc93c4f2e3a74277b3745e34ec78a3ae2ccb0c725fe49' ]; then /usr/bin/printf '%s' &quot;IMMUTABLE_BOUNDARY_REJECTED:RUNNER_SHA256_MISMATCH:observed=$runner_sha:expected=6e1b6c7f4f4d17090abcc93c4f2e3a74277b3745e34ec78a3ae2ccb0c725fe49&quot; 1&gt;&amp;2; exit 78; fi; python_sha=$(/usr/bin/shasum -a 256 &quot;$python&quot; | /usr/bin/awk '{print $1}'); if [ &quot;$python_sha&quot; != '542c879fdc2cfe0be223e4729082bac529780d90c6d811c853de852765b35a35' ]; then /usr/bin/printf '%s' &quot;IMMUTABLE_BOUNDARY_REJECTED:INTERPRETER_SHA256_MISMATCH:observed=$python_sha:expected=542c879fdc2cfe0be223e4729082bac529780d90c6d811c853de852765b35a35&quot; 1&gt;&amp;2; exit 78; fi; exec &quot;$python&quot; &quot;$runner&quot; --expected-head 'c4a59eabf81b7c7f0839a9d342ccb2b650e9f529' --expected-manifest-sha256 '8276bbd96cbc27ac910245581f7d18e176a7bb4c97fb67d5b973e707f90aff08' --expected-runner-sha256 '6e1b6c7f4f4d17090abcc93c4f2e3a74277b3745e34ec78a3ae2ccb0c725fe49' --expected-interpreter-sha256 '542c879fdc2cfe0be223e4729082bac529780d90c6d811c853de852765b35a35' --credential-file '/Users/stevehuang-work/Documents/tw_intraday_trader/.env' --state-root '/Users/stevehuang-work/.local/share/tw_intraday_trader_d_health_open_20260828/one_shot'</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>Asia/Taipei</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Month</key>
+    <integer>8</integer>
+    <key>Day</key>
+    <integer>28</integer>
+    <key>Hour</key>
+    <integer>8</integer>
+    <key>Minute</key>
+    <integer>55</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/stevehuang-work/.local/share/tw_intraday_trader_d_health_open_20260828/logs/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/stevehuang-work/.local/share/tw_intraday_trader_d_health_open_20260828/logs/stderr.log</string>
+</dict>
+</plist>
