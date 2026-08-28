@@ -35,3 +35,7 @@
 - Classified broker 11:30 as the same persistent PARTIAL/REVIEW_REQUIRED authority/capability gap; performed no retry or authority expansion.
 - Verified D-HEALTH MID terminal exit 0, `COMPLETE_WITH_WARNINGS`, exact replay PASS across 10 repeats, two quarantined all-zero BIDASK callbacks, missing 8367 coverage, and Gate effect NONE.
 - Confirmed the old completed-run R6 stale keepalive was replaced externally by a new independent revision-4 owner run under the same label; did not inspect or interfere with it.
+- Completed the 12:40 read-only heartbeat and validated all five quote plus all four broker artifacts against their recorded digests.
+- Classified quote 12:00 as PARTIAL with 4/6 coverage, 6/6 ACK, no callback errors/regressions, 1,282 skew observations, and no threshold selection.
+- Classified broker 12:30 as the same persistent PARTIAL/REVIEW_REQUIRED authority/capability gap; performed no retry or authority expansion.
+- Confirmed D-HEALTH CLOSE was not yet due, PR-NO-006 had no terminal artifact, and the reused R6 label remained owned by the independent revision-4 run.
