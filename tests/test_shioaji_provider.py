@@ -1,6 +1,6 @@
 """Tests for ShioajiProvider's snapshot mapping and batching."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 import sys
 from types import SimpleNamespace
 

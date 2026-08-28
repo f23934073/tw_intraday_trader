@@ -55,10 +55,6 @@ extend-exclude = [".venv", "build", "data", "records", "research", ".planning"]
 [tool.ruff.lint]
 select = ["F", "E9"]
 
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["F401", "F811"]
-"**/__init__.py" = ["F401"]
-
 [tool.ruff.lint.isort]
 known-first-party = [
     "app",

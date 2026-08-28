@@ -6,8 +6,6 @@ from decimal import Decimal
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-import pytest
-
 from atomic_strategies.feature_requests import resolve_feature_requests
 from atomic_strategies.registry import AtomicStrategyRegistry
 from backtest.atomic_strategy_adapter import resolve_atomic_entry_set

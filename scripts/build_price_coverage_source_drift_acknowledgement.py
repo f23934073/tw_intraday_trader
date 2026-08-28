@@ -139,7 +139,7 @@ def _commits_since_freeze(path: str) -> list[str]:
         [
             "git",
             "log",
-            "--format=%h",
+            "--format=%H",
             "--since=2026-08-21",
             "--",
             path,

@@ -8,13 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_trade_management_replay import POLICY, SNAPSHOT, hard_invalid_events
+from tests.test_trade_management_replay import SNAPSHOT, hard_invalid_events
 from tests.test_trade_management_shadow import config
 from trading.journal import (
     InMemoryJournalRepository,
     JournalAppendResult,
     JournalConflictError,
-    JournalRecord,
     JournalSession,
     ProjectionCheckpoint,
 )

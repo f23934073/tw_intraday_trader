@@ -51,8 +51,43 @@ def _package_imports(project_root: Path, package: str) -> set[str]:
     return imports
 
 
+def _project_local_import_names(project_root: Path) -> frozenset[str]:
+    excluded_names = EXCLUDED_DIRECTORY_NAMES | {"data", "records", "research"}
+    packages = {
+        path.name
+        for path in project_root.iterdir()
+        if path.is_dir()
+        and not path.name.startswith(".")
+        and path.name not in excluded_names
+        and ((path / "__init__.py").is_file() or any(path.glob("*.py")))
+    }
+    modules = {
+        path.stem
+        for path in project_root.iterdir()
+        if path.is_file() and path.suffix == ".py"
+    }
+    return frozenset(packages | modules)
+
+
+def _institutional_package_names(project_root: Path) -> frozenset[str]:
+    return frozenset(
+        name
+        for name in _project_local_import_names(project_root)
+        if name.startswith("institutional_")
+    )
+
+
 def _boundary_violations(project_root: Path) -> tuple[str, ...]:
     violations: list[str] = []
+    project_local_names = _project_local_import_names(project_root)
+    declared_packages = frozenset(ALLOWED)
+    discovered_packages = _institutional_package_names(project_root)
+    if discovered_packages != declared_packages:
+        violations.append(
+            "institutional package allowlist mismatch: "
+            f"declared={','.join(sorted(declared_packages))}; "
+            f"discovered={','.join(sorted(discovered_packages))}"
+        )
     for package, declared_allowed in ALLOWED.items():
         package_root = project_root / package
         if not package_root.is_dir():
@@ -61,10 +96,7 @@ def _boundary_violations(project_root: Path) -> tuple[str, ...]:
         allowed = declared_allowed | {package}
         for path in sorted(package_root.rglob("*.py")):
             for imported, line in _absolute_imports(path):
-                if (
-                    imported.startswith("institutional_")
-                    or imported in EXECUTION_LAYERS
-                ) and imported not in allowed:
+                if imported in project_local_names and imported not in allowed:
                     relative = path.relative_to(project_root)
                     violations.append(
                         f"{relative}:{line}: {package} imports forbidden {imported}"
@@ -92,6 +124,10 @@ def test_institutional_data_has_no_institutional_dependencies() -> None:
     imports = _package_imports(PROJECT_ROOT, "institutional_data")
 
     assert imports.isdisjoint(frozenset(ALLOWED) - {"institutional_data"})
+
+
+def test_allowed_packages_match_actual_institutional_packages() -> None:
+    assert _institutional_package_names(PROJECT_ROOT) == frozenset(ALLOWED)
 
 
 def test_lineage_a_and_b_do_not_cross() -> None:
@@ -124,7 +160,9 @@ def test_every_institutional_init_declares_layer_and_lineage() -> None:
 
 def test_boundary_checker_rejects_synthetic_violation(tmp_path: Path) -> None:
     for package in ALLOWED:
-        (tmp_path / package).mkdir()
+        package_root = tmp_path / package
+        package_root.mkdir()
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
     violation = tmp_path / "institutional_prior" / "violation.py"
     violation.write_text(
         "from institutional_mvp.domain import InstitutionalMvpDailyPolicy\n",
@@ -134,4 +172,40 @@ def test_boundary_checker_rejects_synthetic_violation(tmp_path: Path) -> None:
     assert _boundary_violations(tmp_path) == (
         "institutional_prior/violation.py:1: institutional_prior imports "
         "forbidden institutional_mvp",
+    )
+
+
+def test_boundary_checker_rejects_project_local_candidate_leak(tmp_path: Path) -> None:
+    for package in (*ALLOWED, "candidate"):
+        package_root = tmp_path / package
+        package_root.mkdir()
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+    violation = tmp_path / "institutional_data" / "leak.py"
+    violation.write_text(
+        "from candidate.previous_session import PreviousSessionCandidateBuilder\n",
+        encoding="utf-8",
+    )
+
+    assert _boundary_violations(tmp_path) == (
+        "institutional_data/leak.py:1: institutional_data imports forbidden candidate",
+    )
+
+
+def test_boundary_checker_rejects_institutional_package_matrix_drift(
+    tmp_path: Path,
+) -> None:
+    for package in ALLOWED:
+        package_root = tmp_path / package
+        package_root.mkdir()
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+    unknown_package = tmp_path / "institutional_unknown"
+    unknown_package.mkdir()
+    (unknown_package / "module.py").write_text("", encoding="utf-8")
+
+    assert _boundary_violations(tmp_path) == (
+        "institutional package allowlist mismatch: "
+        "declared=institutional_data,institutional_mvp,institutional_prior,"
+        "institutional_research; "
+        "discovered=institutional_data,institutional_mvp,institutional_prior,"
+        "institutional_research,institutional_unknown",
     )

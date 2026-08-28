@@ -78,6 +78,18 @@ def test_pc002_rejects_nonexistent_active_ticket(tmp_path: Path) -> None:
     )
 
 
+def test_pc002_rejects_active_ticket_symlink_escape(tmp_path: Path) -> None:
+    root = _build_valid_repository(tmp_path)
+    active_ticket = root / ".planning" / "active-ticket"
+    outside_ticket = root / "outside-ticket"
+    active_ticket.rename(outside_ticket)
+    active_ticket.symlink_to(outside_ticket, target_is_directory=True)
+
+    errors, _ = checker.check_repository(root)
+
+    assert "PC002" in _rule_ids(errors)
+
+
 def test_pc003_rejects_missing_active_ticket_file(tmp_path: Path) -> None:
     root = _build_valid_repository(tmp_path)
     (root / ".planning" / "active-ticket" / "progress.md").unlink()
@@ -85,6 +97,18 @@ def test_pc003_rejects_missing_active_ticket_file(tmp_path: Path) -> None:
     errors, _ = checker.check_repository(root)
 
     assert "PC003: active ticket is missing progress.md" in _rendered(errors)
+
+
+def test_pc003_rejects_required_file_symlink_escape(tmp_path: Path) -> None:
+    root = _build_valid_repository(tmp_path)
+    required_file = root / ".planning" / "active-ticket" / "progress.md"
+    outside_file = root / "outside-progress.md"
+    required_file.rename(outside_file)
+    required_file.symlink_to(outside_file)
+
+    errors, _ = checker.check_repository(root)
+
+    assert "PC003" in _rule_ids(errors)
 
 
 def test_pc004_rejects_root_task_plan(tmp_path: Path) -> None:

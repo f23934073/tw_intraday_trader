@@ -34,6 +34,21 @@ def _read_text(path: Path) -> str | None:
         return None
 
 
+def _is_contained_regular_file(path: Path, parent: Path) -> bool:
+    if path.is_symlink():
+        return False
+    try:
+        resolved_parent = parent.resolve(strict=True)
+        resolved_path = path.resolve(strict=True)
+    except OSError:
+        return False
+    return (
+        resolved_path.is_file()
+        and resolved_path.parent == resolved_parent
+        and resolved_path == resolved_parent / path.name
+    )
+
+
 def _active_ticket(
     planning_dir: Path,
     errors: list[Diagnostic],
@@ -58,7 +73,20 @@ def _active_ticket(
         ".",
         "..",
     }
-    if not is_direct_child or not ticket_dir.is_dir():
+    resolved_ticket_dir = ticket_dir
+    try:
+        resolved_planning_dir = planning_dir.resolve(strict=True)
+        resolved_ticket_dir = ticket_dir.resolve(strict=True)
+    except OSError:
+        is_resolved_direct_child = False
+    else:
+        is_resolved_direct_child = (
+            not ticket_dir.is_symlink()
+            and resolved_ticket_dir.is_dir()
+            and resolved_ticket_dir.parent == resolved_planning_dir
+            and resolved_ticket_dir == resolved_planning_dir / ticket_name
+        )
+    if not is_direct_child or not is_resolved_direct_child:
         errors.append(
             Diagnostic(
                 "PC002",
@@ -66,7 +94,7 @@ def _active_ticket(
             )
         )
         return None
-    return ticket_name, ticket_dir
+    return ticket_name, resolved_ticket_dir
 
 
 def check_repository(
@@ -83,7 +111,7 @@ def check_repository(
     if active is not None:
         _, active_dir = active
         for filename in REQUIRED_TICKET_FILES:
-            if not (active_dir / filename).is_file():
+            if not _is_contained_regular_file(active_dir / filename, active_dir):
                 errors.append(
                     Diagnostic("PC003", f"active ticket is missing {filename}")
                 )
