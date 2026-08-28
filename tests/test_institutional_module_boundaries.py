@@ -40,7 +40,6 @@ EXCLUDED_DIRECTORY_NAMES = frozenset(
     }
 )
 NON_SOURCE_TOP_LEVEL_NAMES = EXCLUDED_DIRECTORY_NAMES | {
-    "cache",
     "data",
     "records",
     "research",
@@ -252,6 +251,22 @@ def test_boundary_checker_rejects_project_local_candidate_leak(tmp_path: Path) -
     )
 
 
+def test_boundary_checker_rejects_project_local_cache_leak(tmp_path: Path) -> None:
+    for package in ALLOWED:
+        package_root = tmp_path / package
+        package_root.mkdir()
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+    cache_package = tmp_path / "cache" / "subpkg"
+    cache_package.mkdir(parents=True)
+    (cache_package / "module.py").write_text("", encoding="utf-8")
+    violation = tmp_path / "institutional_data" / "leak.py"
+    violation.write_text("import cache.subpkg\n", encoding="utf-8")
+
+    assert _boundary_violations(tmp_path) == (
+        "institutional_data/leak.py:1: institutional_data imports forbidden cache",
+    )
+
+
 def test_boundary_checker_rejects_nested_namespace_leak(tmp_path: Path) -> None:
     for package in ALLOWED:
         package_root = tmp_path / package
@@ -273,7 +288,7 @@ def test_project_local_discovery_accepts_nested_namespace(tmp_path: Path) -> Non
     namespace_package = tmp_path / "project_namespace" / "subpkg"
     namespace_package.mkdir(parents=True)
     (namespace_package / "__init__.py").write_text("", encoding="utf-8")
-    for excluded_name in (".hidden", ".venv", "cache", "data", "research"):
+    for excluded_name in (".hidden", ".venv", "data", "records", "research"):
         excluded_package = tmp_path / excluded_name / "subpkg"
         excluded_package.mkdir(parents=True)
         (excluded_package / "module.py").write_text("", encoding="utf-8")

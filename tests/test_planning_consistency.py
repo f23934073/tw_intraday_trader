@@ -168,6 +168,33 @@ def test_pc004_rejects_root_task_plan(tmp_path: Path) -> None:
     )
 
 
+def test_pc004_rejects_broken_root_task_plan_symlink(tmp_path: Path) -> None:
+    root = _build_valid_repository(tmp_path)
+    (root / "task_plan.md").symlink_to(root / "missing-task-plan.md")
+
+    errors, _ = checker.check_repository(root)
+
+    assert "PC004" in _rule_ids(errors)
+
+
+def test_pc004_rejects_other_root_task_plan_entries(tmp_path: Path) -> None:
+    for entry_type in ("symlink", "directory", "fifo"):
+        root = _build_valid_repository(tmp_path / entry_type)
+        task_plan = root / "task_plan.md"
+        if entry_type == "symlink":
+            outside_task_plan = tmp_path / "outside-task-plan.md"
+            outside_task_plan.write_text("# Outside\n", encoding="utf-8")
+            task_plan.symlink_to(outside_task_plan)
+        elif entry_type == "directory":
+            task_plan.mkdir()
+        else:
+            os.mkfifo(task_plan)
+
+        errors, _ = checker.check_repository(root)
+
+        assert "PC004" in _rule_ids(errors)
+
+
 def test_pc005_rejects_oversized_global_log(tmp_path: Path) -> None:
     root = _build_valid_repository(tmp_path)
     (root / "findings.md").write_text(
@@ -194,6 +221,41 @@ def test_pc006_rejects_missing_scope_header(tmp_path: Path) -> None:
         "PC006: progress.md is missing its planning-scope header"
         in _rendered(errors)
     )
+
+
+def test_pc006_rejects_global_log_symlink_escape(tmp_path: Path) -> None:
+    for filename in checker.GLOBAL_LOG_FILES:
+        root = _build_valid_repository(tmp_path / filename)
+        global_log = root / filename
+        outside_log = tmp_path / f"outside-{filename}"
+        global_log.unlink()
+        outside_log.write_text(
+            f"{checker.PLANNING_SCOPE_MARKER}\n# Outside record\n",
+            encoding="utf-8",
+        )
+        global_log.symlink_to(outside_log)
+
+        errors, _ = checker.check_repository(root)
+
+        assert "PC006" in _rule_ids(errors)
+
+
+def test_pc006_rejects_global_log_non_regular_entries_without_blocking(
+    tmp_path: Path,
+) -> None:
+    for entry_type in ("directory", "fifo"):
+        for filename in checker.GLOBAL_LOG_FILES:
+            root = _build_valid_repository(tmp_path / f"{entry_type}-{filename}")
+            global_log = root / filename
+            global_log.unlink()
+            if entry_type == "directory":
+                global_log.mkdir()
+            else:
+                os.mkfifo(global_log)
+
+            errors, _ = checker.check_repository(root)
+
+            assert "PC006" in _rule_ids(errors)
 
 
 def test_pc007_is_warning_only(tmp_path: Path) -> None:

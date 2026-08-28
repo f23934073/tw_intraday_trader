@@ -161,7 +161,8 @@ def check_repository(
                     Diagnostic("PC003", f"active ticket is missing {filename}")
                 )
 
-    if (root / "task_plan.md").exists():
+    root_task_plan = root / "task_plan.md"
+    if root_task_plan.is_symlink() or root_task_plan.exists():
         errors.append(
             Diagnostic(
                 "PC004",
@@ -171,7 +172,12 @@ def check_repository(
         )
 
     for filename in GLOBAL_LOG_FILES:
-        text = _read_text(root / filename)
+        global_log = root / filename
+        text = (
+            _read_text(global_log)
+            if _is_contained_regular_file(global_log, root)
+            else None
+        )
         if text is None:
             errors.append(
                 Diagnostic("PC006", f"{filename} is missing its planning-scope header")
