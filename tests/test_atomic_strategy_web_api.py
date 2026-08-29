@@ -39,7 +39,10 @@ class _AtomicServiceProbe:
         )
 
     def save_strategy_set(self, snapshot, **kwargs):
-        if any(item.strategy_set_version_id == snapshot.strategy_set_version_id for item in self.strategy_sets):
+        if any(
+            item.strategy_set_version_id == snapshot.strategy_set_version_id
+            for item in self.strategy_sets
+        ):
             return False
         self.strategy_sets.append(snapshot)
         self.created.append({"strategy_set": snapshot, **kwargs})
@@ -53,7 +56,10 @@ class _AtomicServiceProbe:
         )
 
     def is_strategy_set_archived(self, strategy_set_version_id):
-        return self.get_strategy_set(strategy_set_version_id).strategy_set_id in self.archived_strategy_set_ids
+        return (
+            self.get_strategy_set(strategy_set_version_id).strategy_set_id
+            in self.archived_strategy_set_ids
+        )
 
     def archive_strategy_set(self, strategy_set_version_id, **kwargs):
         snapshot = self.get_strategy_set(strategy_set_version_id)
@@ -105,7 +111,10 @@ class _BacktestProbe:
         self.calls.append(kwargs)
         if kwargs["idempotency_key"] == "atomic-conflict":
             raise BacktestIdempotencyConflict("same key, different digest")
-        return ({"run_id": "run-atomic-web-1", "status": "QUEUED", "config_digest": "run-digest"}, False)
+        return (
+            {"run_id": "run-atomic-web-1", "status": "QUEUED", "config_digest": "run-digest"},
+            False,
+        )
 
     def atomic_backtest_dataset_status(self, **kwargs):
         self.calls.append({"action": "dataset-status", **kwargs})
@@ -127,6 +136,22 @@ class _BacktestProbe:
             "vwap_semantic": "COMPLETED_1M_CLOSE_VOLUME_WEIGHTED_PROXY",
             "research_eligible": False,
             "issues": ["AMOUNT_DERIVED_PROXY"],
+            "formal_research_readiness": {
+                "ready": False,
+                "status": "DATA_NOT_READY",
+                "reason_codes": ["CURRENT_SNAPSHOT_UNIVERSE"],
+                "research_truth_snapshot_digest": "c" * 64,
+            },
+            "readiness": {
+                "platform": {"ready": True, "status": "PLATFORM_READY"},
+                "data": {"ready": False, "status": "DATA_NOT_READY"},
+                "strategy": {
+                    "ready": False,
+                    "status": "NO_QUALIFYING_STRATEGY",
+                    "qualification_ids": [],
+                    "effect": "DISPLAY_ONLY_NO_LIFECYCLE_MUTATION",
+                },
+            },
         }
 
     def get_run(self, run_id):
@@ -161,6 +186,12 @@ class _BacktestProbe:
                 "baseline_run_id": kwargs["baseline_run_id"],
                 "challenger_run_id": kwargs["challenger_run_id"],
                 "verdict": "INSUFFICIENT_EVIDENCE",
+                "display_status": "NO_QUALIFYING_STRATEGY",
+                "strategy_readiness": {
+                    "ready": False,
+                    "status": "NO_QUALIFYING_STRATEGY",
+                    "effect": "DISPLAY_ONLY_NO_LIFECYCLE_MUTATION",
+                },
                 "evidence_digest": "qualification-evidence-digest",
                 "evidence": {"verdict": "INSUFFICIENT_EVIDENCE", "reasons": []},
             },
@@ -229,6 +260,9 @@ def test_atomic_strategy_web_routes_require_csrf_and_use_exact_set(monkeypatch) 
     )
     assert binding.status_code == 200
     assert binding.json()["binding"]["binding_revision"] == 4
+    assert binding.json()["binding"]["readiness"]["platform"]["status"] == "PLATFORM_READY"
+    assert binding.json()["binding"]["readiness"]["data"]["status"] == "DATA_NOT_READY"
+    assert binding.json()["binding"]["readiness"]["strategy"]["status"] == "NO_QUALIFYING_STRATEGY"
 
     launched = client.post(
         "/api/backtests/runs/atomic",
@@ -349,7 +383,10 @@ def test_atomic_requests_forbid_unknown_fields_and_protect_run_mutations(monkeyp
     for path, body in (
         ("/api/backtests/runs/run-1/cancel", {"idempotency_key": "cancel-1"}),
         ("/api/backtests/runs/run-1/retry", {"idempotency_key": "retry-1"}),
-        ("/api/backtests/runs/run-1/clone", {"idempotency_key": "clone-1", "change_note": "test", "overrides": {}}),
+        (
+            "/api/backtests/runs/run-1/clone",
+            {"idempotency_key": "clone-1", "change_note": "test", "overrides": {}},
+        ),
     ):
         hostile = client.post(path, headers={"Origin": "https://evil.example"}, json=body)
         assert hostile.status_code == 403, (path, hostile.text)
@@ -511,11 +548,7 @@ def test_backtest_qualification_is_strict_csrf_protected_and_audited(monkeypatch
             "Idempotency-Key": "qualification-web-request-policy",
             "X-Strategy-CSRF": token,
         },
-        json=payload
-        | {
-            "protocol": payload["protocol"]
-            | {"policy": {"minimum_oos_trades": 1}}
-        },
+        json=payload | {"protocol": payload["protocol"] | {"policy": {"minimum_oos_trades": 1}}},
     )
     assert client_owned_policy.status_code == 422
 
@@ -529,6 +562,8 @@ def test_backtest_qualification_is_strict_csrf_protected_and_audited(monkeypatch
     )
     assert created.status_code == 201
     assert created.json()["qualification"]["qualification_id"] == "qualification-web-1"
+    assert created.json()["qualification"]["verdict"] == "INSUFFICIENT_EVIDENCE"
+    assert created.json()["qualification"]["display_status"] == "NO_QUALIFYING_STRATEGY"
     call = backtest.calls[-1]
     assert call["action"] == "qualification"
     assert call["hypothesis_id"] == "v2-beats-v1"

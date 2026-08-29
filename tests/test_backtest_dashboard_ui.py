@@ -48,8 +48,8 @@ def test_dashboard_uses_collapsible_left_navigation_and_neutral_homepage() -> No
 
 def test_historical_backtest_has_three_accessible_tabs() -> None:
     assert 'role="tablist" aria-label="歷史回測工作流程"' in HTML
-    assert HTML.count('data-backtest-tab=') == 3
-    assert HTML.count('data-backtest-panel=') == 3
+    assert HTML.count("data-backtest-tab=") == 3
+    assert HTML.count("data-backtest-panel=") == 3
     for tab_name in (
         "1. 設定策略組合",
         "2. 回測工作與結果",
@@ -81,7 +81,29 @@ def test_atomic_launcher_reports_server_managed_dataset_readiness() -> None:
     assert "expected_binding_revision" in BACKTEST
     assert "expected_dataset_digest" in BACKTEST
     assert 'dataset.status === "READY"' not in BACKTEST
-    assert "/api/backtests/datasets\"" not in BACKTEST
+    assert '/api/backtests/datasets"' not in BACKTEST
+
+
+def test_formal_readiness_is_split_into_platform_data_and_strategy() -> None:
+    for readiness_id in (
+        "backtest-platform-readiness",
+        "backtest-data-readiness",
+        "backtest-strategy-readiness",
+    ):
+        assert f'id="{readiness_id}"' in HTML
+    assert "projection?.status" in BACKTEST
+    assert "NO_QUALIFYING_STRATEGY" in BACKTEST
+    assert "formal_research_readiness" in BACKTEST
+    assert "不會改變 lifecycle" in BACKTEST
+
+
+def test_formal_result_ui_consumes_summary_formal_evidence_only() -> None:
+    assert "const formalEvidence = summary.formal_evidence || null;" in BACKTEST
+    assert "data.formal_evidence" not in BACKTEST
+    assert "summary.formal_evidence" in HTML
+    assert "120 個 active dates" in HTML
+    assert "至少 4 個 Walk-forward folds" in HTML
+    assert "至少 3/4 正向" in HTML
 
 
 def test_legacy_runs_are_read_only_in_the_atomic_clone_flow() -> None:

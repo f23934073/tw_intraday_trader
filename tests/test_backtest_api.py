@@ -44,22 +44,42 @@ def test_backtest_routes_execute_without_starting_simulation(monkeypatch) -> Non
         catalog = HistoricalDatasetCatalog(root / "datasets")
         repository = SQLiteBacktestRepository(root / "backtest.sqlite3")
         manifest = catalog.create_imported_dataset(
-            bars=_bars(), source="fixture", universe_scope="DATE_EFFECTIVE", research_eligible=True,
+            bars=_bars(),
+            source="fixture",
+            universe_scope="DATE_EFFECTIVE",
+            research_eligible=True,
         )
         repository.upsert_dataset(manifest.to_dict(), "READY")
         service = BacktestApplicationService(
-            MockProvider(), repository=repository, catalog=catalog, workers=1,
+            MockProvider(),
+            repository=repository,
+            catalog=catalog,
+            workers=1,
         )
         monkeypatch.setattr(server, "_backtest_service", service)
         monkeypatch.setattr(server, "_composition", None)
         monkeypatch.setattr(server, "_simulation_service", None)
         try:
-            assert server.backtest_capabilities()["enabled"] is True
+            capabilities = server.backtest_capabilities()
+            assert capabilities["enabled"] is True
+            assert capabilities["readiness"] == {
+                "platform": {"ready": True, "status": "PLATFORM_READY"},
+                "data": {"ready": False, "status": "DATA_NOT_READY"},
+                "strategy": {
+                    "ready": False,
+                    "status": "NO_QUALIFYING_STRATEGY",
+                    "qualification_ids": [],
+                    "effect": "DISPLAY_ONLY_NO_LIFECYCLE_MUTATION",
+                },
+            }
             strategy_payload = server.backtest_strategies()
             definitions = strategy_payload["strategies"]
             assert {item["side"] for item in definitions} == {"ENTRY", "EXIT"}
             assert all(item["backtest_executable"] for item in definitions)
-            assert next(item for item in definitions if item["side"] == "ENTRY")["strategy_id"] == "legacy_gap_volume_vwap_entry_v1"
+            assert (
+                next(item for item in definitions if item["side"] == "ENTRY")["strategy_id"]
+                == "legacy_gap_volume_vwap_entry_v1"
+            )
             assert strategy_payload["selection"]["mode"] == "SINGLE_OR_MULTI"
             created = server.create_backtest_run(
                 server.BacktestRunRequest(
@@ -87,13 +107,18 @@ def test_backtest_routes_execute_without_starting_simulation(monkeypatch) -> Non
             multi = server.create_backtest_run(
                 server.BacktestRunRequest(
                     dataset_id=manifest.dataset_id,
-                    entry_strategy_ids=["legacy_gap_volume_vwap_entry_v1", "momentum_breakout_entry_v1"],
+                    entry_strategy_ids=[
+                        "legacy_gap_volume_vwap_entry_v1",
+                        "momentum_breakout_entry_v1",
+                    ],
                     exit_strategy_ids=["take_profit_exit_v1", "end_of_day_exit_v1"],
                     entry_policy="ANY",
                     exit_policy="ANY",
                     priority_order=[
-                        "take_profit_exit_v1", "end_of_day_exit_v1",
-                        "legacy_gap_volume_vwap_entry_v1", "momentum_breakout_entry_v1",
+                        "take_profit_exit_v1",
+                        "end_of_day_exit_v1",
+                        "legacy_gap_volume_vwap_entry_v1",
+                        "momentum_breakout_entry_v1",
                     ],
                     minimum_oos_trades=1,
                     idempotency_key="backtest-api-multi-strategy-test",
@@ -103,6 +128,16 @@ def test_backtest_routes_execute_without_starting_simulation(monkeypatch) -> Non
             multi_run = _wait_for_completed(service, multi["run"]["run_id"])
             assert len(multi_run["config"]["strategy_set"]["entry_strategy_ids"]) == 2
             assert len(multi_run["config"]["strategy_set"]["exit_strategy_ids"]) == 2
+            assert (
+                server.BacktestRunRequest(
+                    dataset_id=manifest.dataset_id,
+                    entry_strategy_ids=["legacy_gap_volume_vwap_entry_v1"],
+                    exit_strategy_ids=["end_of_day_exit_v1"],
+                    engine_version="backtest-engine-v3-tw",
+                    idempotency_key="formal-v3-schema-contract",
+                ).engine_version
+                == "backtest-engine-v3-tw"
+            )
         finally:
             service.close()
             monkeypatch.setattr(server, "_backtest_service", None)

@@ -9,7 +9,13 @@ from datetime import date, datetime, timedelta
 from typing import Any, Mapping
 
 from backtest.comparability import run_comparability_diff
-from backtest.domain import BacktestRunConfig, digest
+from backtest.domain import (
+    ENGINE_V3_TW,
+    BacktestRunConfig,
+    FormalEvidence,
+    digest,
+    formal_evidence_from_result,
+)
 from backtest.engine import BacktestEngineResult
 
 
@@ -30,6 +36,9 @@ def summarize_run(
     ]
     full = _trade_metrics(trades)
     oos = _trade_metrics(oos_trades)
+    if config.engine_version == ENGINE_V3_TW:
+        full = {**full, **_active_date_metrics(trades)}
+        oos = {**oos, **_active_date_metrics(oos_trades)}
     equity_metrics = _equity_metrics(equity, config.starting_cash)
     attribution = _strategy_attribution(trades, result.strategy_counts)
     reasons: list[str] = []
@@ -58,14 +67,30 @@ def summarize_run(
         "strategy_attribution": attribution,
         "unresolved_position_count": len(result.unresolved_positions),
     }
-    summary["result_digest"] = digest(
-        {
-            "summary": summary,
-            "trades": trades,
-            "equity": equity,
-            "decisions": [decision.to_dict() for decision in result.decisions],
+    digest_input: dict[str, Any] = {
+        "summary": summary,
+        "trades": trades,
+        "equity": equity,
+        "decisions": [decision.to_dict() for decision in result.decisions],
+    }
+    if config.engine_version == ENGINE_V3_TW:
+        if result.formal_evidence is None:
+            raise ValueError("backtest-engine-v3-tw 缺少 formal_evidence")
+        formal_evidence = FormalEvidence.from_dict(result.formal_evidence).to_dict()
+        if formal_evidence["active_dates"] != full["active_date_count"]:
+            raise ValueError("formal_evidence active_dates 與 trades 不一致")
+        summary["formal_evidence"] = formal_evidence
+        summary["risk"] = {
+            "profit_factor": oos["profit_factor"],
+            "expectancy": oos["expectancy"],
+            "max_drawdown": equity_metrics["max_drawdown"],
+            "win_rate_ci": oos["win_rate_ci"],
+            "active_dates": oos["active_dates"],
+            "capacity_before_cost_shares": formal_evidence["capacity"]["before_cost_shares"],
+            "capacity_after_cost_shares": formal_evidence["capacity"]["after_cost_shares"],
         }
-    )
+        digest_input["formal_evidence"] = formal_evidence
+    summary["result_digest"] = digest(digest_input)
     return summary
 
 
@@ -78,6 +103,12 @@ def compare_runs(
 ) -> dict[str, Any]:
     baseline_config = dict(baseline_run["config"])
     challenger_config = dict(challenger_run["config"])
+    if (
+        baseline_config.get("engine_version") == ENGINE_V3_TW
+        or challenger_config.get("engine_version") == ENGINE_V3_TW
+    ):
+        formal_evidence_from_result(baseline_result)
+        formal_evidence_from_result(challenger_result)
     config_diff = run_comparability_diff(baseline_config, challenger_config)
     comparable = not config_diff
     baseline_summary = baseline_result["summary"]
@@ -88,12 +119,10 @@ def compare_runs(
         for key in metric_keys
     }
     deltas["max_drawdown"] = (
-        challenger_summary["equity"]["max_drawdown"]
-        - baseline_summary["equity"]["max_drawdown"]
+        challenger_summary["equity"]["max_drawdown"] - baseline_summary["equity"]["max_drawdown"]
     )
     deltas["total_return"] = (
-        challenger_summary["equity"]["total_return"]
-        - baseline_summary["equity"]["total_return"]
+        challenger_summary["equity"]["total_return"] - baseline_summary["equity"]["total_return"]
     )
     delta_ci = _clustered_win_rate_delta_ci(
         baseline_result.get("trades", []),
@@ -151,6 +180,16 @@ def _trade_metrics(trades: list[Mapping[str, Any]]) -> dict[str, Any]:
         "average_win": gross_profit / wins if wins else 0.0,
         "average_loss": -gross_loss / sum(value < 0 for value in net) if gross_loss else 0.0,
     }
+
+
+def _active_date_metrics(trades: list[Mapping[str, Any]]) -> dict[str, Any]:
+    active_dates = sorted(
+        {
+            datetime.fromisoformat(str(trade["exit"]["filled_at"])).date().isoformat()
+            for trade in trades
+        }
+    )
+    return {"active_dates": active_dates, "active_date_count": len(active_dates)}
 
 
 def _equity_metrics(equity: list[Mapping[str, Any]], starting_cash: Any) -> dict[str, Any]:
@@ -218,7 +257,8 @@ def _metric_delta(challenger: Any, baseline: Any) -> float | None:
 
 
 def _trade_diff(
-    baseline: list[Mapping[str, Any]], challenger: list[Mapping[str, Any]],
+    baseline: list[Mapping[str, Any]],
+    challenger: list[Mapping[str, Any]],
 ) -> dict[str, list[dict[str, Any]]]:
     def identity(trade: Mapping[str, Any]) -> tuple[str, str]:
         return trade["symbol"], trade["entry"]["filled_at"]
@@ -240,8 +280,12 @@ def _trade_diff(
         )
     return {
         "shared": shared,
-        "baseline_only": [baseline_by_key[key] for key in sorted(set(baseline_by_key) - set(challenger_by_key))],
-        "challenger_only": [challenger_by_key[key] for key in sorted(set(challenger_by_key) - set(baseline_by_key))],
+        "baseline_only": [
+            baseline_by_key[key] for key in sorted(set(baseline_by_key) - set(challenger_by_key))
+        ],
+        "challenger_only": [
+            challenger_by_key[key] for key in sorted(set(challenger_by_key) - set(baseline_by_key))
+        ],
     }
 
 
@@ -260,10 +304,20 @@ def _clustered_win_rate_delta_ci(
     left_days, right_days = sorted(left), sorted(right)
     deltas: list[float] = []
     for _ in range(samples):
-        left_values = [outcome for day in (generator.choice(left_days) for _ in left_days) for outcome in left[day]]
-        right_values = [outcome for day in (generator.choice(right_days) for _ in right_days) for outcome in right[day]]
+        left_values = [
+            outcome
+            for day in (generator.choice(left_days) for _ in left_days)
+            for outcome in left[day]
+        ]
+        right_values = [
+            outcome
+            for day in (generator.choice(right_days) for _ in right_days)
+            for outcome in right[day]
+        ]
         if left_values and right_values:
-            deltas.append(sum(right_values) / len(right_values) - sum(left_values) / len(left_values))
+            deltas.append(
+                sum(right_values) / len(right_values) - sum(left_values) / len(left_values)
+            )
     if not deltas:
         return None
     deltas.sort()
@@ -285,7 +339,11 @@ def _wilson_interval(wins: int, count: int) -> list[float]:
     proportion = wins / count
     denominator = 1 + z * z / count
     centre = (proportion + z * z / (2 * count)) / denominator
-    margin = z * math.sqrt(proportion * (1 - proportion) / count + z * z / (4 * count * count)) / denominator
+    margin = (
+        z
+        * math.sqrt(proportion * (1 - proportion) / count + z * z / (4 * count * count))
+        / denominator
+    )
     return [max(0.0, centre - margin), min(1.0, centre + margin)]
 
 

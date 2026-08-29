@@ -52,7 +52,9 @@ def test_strategy_management_uses_accessible_workflow_tabs() -> None:
 
 
 def test_switching_atomic_template_clears_stale_draft_status() -> None:
-    selection_start = BACKTEST.index('button.addEventListener("click", () => {', BACKTEST.index("function renderAtomicTemplates"))
+    selection_start = BACKTEST.index(
+        'button.addEventListener("click", () => {', BACKTEST.index("function renderAtomicTemplates")
+    )
     selection_end = BACKTEST.index("renderAtomicManagement();", selection_start)
     selection_handler = BACKTEST[selection_start:selection_end]
     assert 'strategyDraftMessage.textContent = "";' in selection_handler
@@ -62,16 +64,20 @@ def test_selecting_or_cloning_draft_keeps_library_open_with_editor_on_right() ->
     assert 'id="strategy-editor-mount"' in HTML
     assert 'id="strategy-draft-editor-card"' in HTML
     assert 'id="strategy-library-editor-mount"' in HTML
-    assert HTML.index('id="strategy-library-editor-mount"') < HTML.index('id="strategy-version-list"')
+    assert HTML.index('id="strategy-library-editor-mount"') < HTML.index(
+        'id="strategy-version-list"'
+    )
     assert 'viewName === "library" && activeAtomicDraft()' in BACKTEST
 
     draft_handler = BACKTEST[
-        BACKTEST.index("function renderAtomicDrafts"):
-        BACKTEST.index("function renderAtomicVersions")
+        BACKTEST.index("function renderAtomicDrafts") : BACKTEST.index(
+            "function renderAtomicVersions"
+        )
     ]
     clone_handler = BACKTEST[
-        BACKTEST.index("async function cloneAtomicVersion"):
-        BACKTEST.index("async function submitAtomicStrategySet")
+        BACKTEST.index("async function cloneAtomicVersion") : BACKTEST.index(
+            "async function submitAtomicStrategySet"
+        )
     ]
     assert "renderAtomicManagement();" in draft_handler
     assert 'setStrategyManagementView("editor"' not in draft_handler
@@ -81,13 +87,14 @@ def test_selecting_or_cloning_draft_keeps_library_open_with_editor_on_right() ->
 def test_sealed_draft_offers_clone_instead_of_editing_original() -> None:
     assert 'id="strategy-draft-clone" type="button" hidden' in HTML
     editor = BACKTEST[
-        BACKTEST.index("function renderAtomicParameterEditor"):
-        BACKTEST.index("function readAtomicParameters")
+        BACKTEST.index("function renderAtomicParameterEditor") : BACKTEST.index(
+            "function readAtomicParameters"
+        )
     ]
-    assert 'control.disabled = sealed' in editor
-    assert 'strategyChangeNote.readOnly = sealed' in editor
-    assert 'strategyDraftClone.hidden = !sealed' in editor
-    assert 'strategyDraftSave.hidden = sealed' in editor
+    assert "control.disabled = sealed" in editor
+    assert "strategyChangeNote.readOnly = sealed" in editor
+    assert "strategyDraftClone.hidden = !sealed" in editor
+    assert "strategyDraftSave.hidden = sealed" in editor
     assert "draft?.published_strategy_version_id" in editor
     assert 'strategyDraftClone?.addEventListener("click", cloneActiveAtomicDraft)' in BACKTEST
     assert "await cloneAtomicVersion(draft.published_strategy_version_id)" in BACKTEST
@@ -100,7 +107,7 @@ def test_strategy_set_minimum_is_editable_and_selects_at_least_n_policy() -> Non
     assert 'id="strategy-set-minimum-help"' in HTML
     assert 'strategySetMinimum?.addEventListener("input"' in BACKTEST
     assert 'strategySetPolicy.value = "AT_LEAST_N"' in BACKTEST
-    assert 'strategySetMinimum.disabled' not in BACKTEST
+    assert "strategySetMinimum.disabled" not in BACKTEST
 
 
 def test_strategy_set_cards_can_create_revisions_and_archive_with_confirmation() -> None:
@@ -123,7 +130,7 @@ def test_atomic_backtest_launcher_uses_exact_set_not_raw_strategy_ids() -> None:
     assert 'id="atomic-backtest-dataset"' not in HTML
     assert "dataset_id: atomicBacktestDataset.value" not in BACKTEST
     assert 'id="atomic-backtest-dataset-status"' in HTML
-    assert 'if (!atomic) {' in BACKTEST
+    assert "if (!atomic) {" in BACKTEST
     assert '"atomic-backtest-clone"' in BACKTEST
     assert 'starting_cash: document.getElementById("atomic-backtest-cash").value' in BACKTEST
 
@@ -152,6 +159,10 @@ def test_backtest_qualification_ui_uses_fixed_windows_and_durable_mutation() -> 
     assert "feature_adapter_identity" in BACKTEST
     assert "walk_forward_windows:" in BACKTEST
     assert "只供人工審核，不會自動啟用策略" in BACKTEST
+    assert "display_status" in BACKTEST
+    assert "persisted verdict" in BACKTEST
+    assert "NO_QUALIFYING_STRATEGY" in BACKTEST
+    assert "Formal v3" in BACKTEST
 
 
 def test_browser_mutation_key_survives_response_loss_and_server_error() -> None:

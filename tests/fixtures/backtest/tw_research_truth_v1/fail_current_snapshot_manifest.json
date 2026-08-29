@@ -1,0 +1,23 @@
+{
+  "bar_count": 1,
+  "bars_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "cadence_summary": {},
+  "capabilities": ["OHLCV", "KBAR_1M"],
+  "created_at": "2026-01-02T00:00:00+08:00",
+  "dataset_id": "dataset-current-snapshot-v1",
+  "delta_bar_count": 0,
+  "end_date": "2026-01-01",
+  "issues": ["CURRENT_CONTRACTS_ONLY"],
+  "manifest_digest": "42a4b761634070cfd6e61ec707e523924f57b6e38bd2f2c2038a2cf873f987f4",
+  "observed_symbols": ["2330"],
+  "parent_dataset_id": null,
+  "profile": "KBAR_1M_V1",
+  "requested_symbols": ["2330"],
+  "research_eligible": false,
+  "source": "CURRENT_PROVIDER",
+  "start_date": "2025-01-01",
+  "storage_format": "JSONL_FULL_V1",
+  "symbol_last_timestamps": [],
+  "universe_scope": "CURRENT_SNAPSHOT",
+  "universe_selection": "ALL_CURRENT"
+}

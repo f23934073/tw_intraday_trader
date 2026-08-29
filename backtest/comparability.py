@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from backtest.domain import canonical_json, digest
+from backtest.cost_policy_tw import verify_cost_policy_snapshot
+from backtest.domain import (
+    COST_POLICY_CONTRACT_VERSION,
+    ENGINE_V3_TW,
+    EXECUTION_POLICY_CONTRACT_VERSION,
+    RESEARCH_TRUTH_CONTRACT_VERSION,
+    canonical_json,
+    digest,
+    verify_contract_snapshot,
+)
+from backtest.execution_policy_tw import verify_execution_policy_snapshot
 
 
 _IGNORED_RUN_FIELDS = {
@@ -72,6 +82,8 @@ def run_comparability_diff(
     Feature adapter runtime must remain identical.
     """
 
+    _verify_v3_contracts(baseline)
+    _verify_v3_contracts(challenger)
     keys = sorted((set(baseline) | set(challenger)) - _IGNORED_RUN_FIELDS)
     output = [
         {
@@ -122,10 +134,7 @@ def run_comparability_diff(
         if left_contracts[request_identity] != right_contracts[request_identity]:
             output.append(
                 {
-                    "field": (
-                        "atomic_strategy_run_snapshot.feature_contracts."
-                        + request_identity
-                    ),
+                    "field": ("atomic_strategy_run_snapshot.feature_contracts." + request_identity),
                     "baseline": left_contracts[request_identity],
                     "challenger": right_contracts[request_identity],
                 }
@@ -136,11 +145,9 @@ def run_comparability_diff(
 def comparability_contract_digest(config: Mapping[str, Any]) -> str:
     """Stable identity used by the experiment-family aggregate."""
 
+    _verify_v3_contracts(config)
     snapshot = verified_atomic_snapshot(config)
-    projection = {
-        key: config.get(key)
-        for key in sorted(set(config) - _IGNORED_RUN_FIELDS)
-    }
+    projection = {key: config.get(key) for key in sorted(set(config) - _IGNORED_RUN_FIELDS)}
     projection["exit_contract"] = _exit_contract(config)
     projection["atomic_runtime"] = (
         {
@@ -156,6 +163,7 @@ def comparability_contract_digest(config: Mapping[str, Any]) -> str:
 def baseline_research_config_digest(config: Mapping[str, Any]) -> str:
     """Exact Baseline research identity independent of one execution Run ID."""
 
+    _verify_v3_contracts(config)
     snapshot = verified_atomic_snapshot(config)
     if snapshot is None:
         raise ValueError("Experiment Baseline 必須是 Atomic Run Snapshot v2")
@@ -172,12 +180,37 @@ def baseline_research_config_digest(config: Mapping[str, Any]) -> str:
         "atomic_run_request_digest",
         "dataset_binding_snapshot",
     }
-    projection = {
-        key: config.get(key)
-        for key in sorted(set(config) - ignored)
-    }
+    projection = {key: config.get(key) for key in sorted(set(config) - ignored)}
     projection["atomic_strategy_run_snapshot"] = snapshot
     return digest(projection)
+
+
+def _verify_v3_contracts(config: Mapping[str, Any]) -> None:
+    snapshots = {
+        "execution_policy_snapshot": EXECUTION_POLICY_CONTRACT_VERSION,
+        "cost_policy_snapshot": COST_POLICY_CONTRACT_VERSION,
+        "research_truth_snapshot": RESEARCH_TRUTH_CONTRACT_VERSION,
+    }
+    engine_version = config.get("engine_version")
+    present = [name for name in snapshots if config.get(name) is not None]
+    if engine_version != ENGINE_V3_TW:
+        if present:
+            raise ValueError("legacy Run 不可攜帶 v3 seam snapshots")
+        return
+    for name, contract_version in snapshots.items():
+        value = config.get(name)
+        if not isinstance(value, Mapping):
+            raise ValueError(f"backtest-engine-v3-tw 缺少 {name}")
+        if name == "execution_policy_snapshot":
+            verify_execution_policy_snapshot(value)
+        elif name == "cost_policy_snapshot":
+            verify_cost_policy_snapshot(value)
+        else:
+            verify_contract_snapshot(
+                value,
+                label=name,
+                expected_contract_version=contract_version,
+            )
 
 
 def _exit_contract(config: Mapping[str, Any]) -> dict[str, Any]:

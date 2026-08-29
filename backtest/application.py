@@ -20,14 +20,23 @@ from backtest.comparability import (
     run_comparability_diff,
     verify_run_identity,
 )
+from backtest.cost_policy_tw import (
+    STANDARD_SELL_STT_RATE,
+    build_cost_policy_snapshot,
+)
 from backtest.domain import (
     AggregationPolicy,
     BacktestRunConfig,
+    ENGINE_V3_TW,
     RunStatus,
     StrategySetSnapshot,
+    decimal,
     digest,
+    formal_evidence_from_result,
+    verify_contract_snapshot,
 )
 from backtest.engine import BacktestCancelled, HistoricalBacktestEngine
+from backtest.execution_policy_tw import build_execution_policy_snapshot
 from backtest.feature_adapters import verify_vwap_amount_contract
 from backtest.dataset_binding import (
     ATOMIC_BACKTEST_DEFAULT,
@@ -46,6 +55,7 @@ from backtest.qualification import (
     build_qualification_evidence,
     experiment_family_id,
     research_baseline_identity_digest,
+    verify_qualification_record,
 )
 from backtest.repository import BacktestRepository
 from backtest.repository import BacktestIdempotencyConflict
@@ -63,6 +73,12 @@ from backtest.research_control import (
     verify_cash_admission_preflight,
 )
 from backtest.run_control import DurableRunControlProbe, ThrottledProgressReporter
+from backtest.research_truth import (
+    ResearchTruthUnavailable,
+    build_research_truth_snapshot,
+    require_formal_research_truth,
+    research_readiness_projection,
+)
 from backtest.sqlite_repository import SQLiteBacktestRepository
 from backtest.strategies import StrategyRegistry
 from atomic_strategies.registry import AtomicStrategyRegistry
@@ -116,7 +132,9 @@ class BacktestApplicationService:
                 backtest_settings.BACKTEST_DATA_DIR / "research_controls" / "preflights"
             )
         )
-        if self._atomic_repository is None and isinstance(self._repository, PostgresBacktestRepository):
+        if self._atomic_repository is None and isinstance(
+            self._repository, PostgresBacktestRepository
+        ):
             pool = self._repository.connection_pool
             if pool is not None:
                 self._atomic_repository = PostgresAtomicStrategyRepository(pool=pool)
@@ -125,7 +143,9 @@ class BacktestApplicationService:
             repository=self._repository,
             catalog=self._catalog,
         )
-        self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="historical-backtest")
+        self._executor = ThreadPoolExecutor(
+            max_workers=workers, thread_name_prefix="historical-backtest"
+        )
         self._closed = False
 
     @staticmethod
@@ -186,6 +206,12 @@ class BacktestApplicationService:
             close()
 
     def capabilities(self) -> dict[str, Any]:
+        platform_ready = bool(backtest_settings.BACKTEST_ENABLED)
+        datasets = self.list_datasets()
+        data_ready = any(
+            item.get("formal_research_readiness", {}).get("ready") is True for item in datasets
+        )
+        strategy_readiness = self._strategy_readiness()
         return {
             "enabled": backtest_settings.BACKTEST_ENABLED,
             "provider": type(self._provider).__name__,
@@ -199,10 +225,23 @@ class BacktestApplicationService:
             "incremental_sync": {
                 "enabled": backtest_settings.BACKTEST_INCREMENTAL_SYNC_ENABLED,
                 "timezone": "Asia/Taipei",
-                "close_time": backtest_settings.BACKTEST_INCREMENTAL_SYNC_CLOSE_TIME.strftime("%H:%M"),
+                "close_time": backtest_settings.BACKTEST_INCREMENTAL_SYNC_CLOSE_TIME.strftime(
+                    "%H:%M"
+                ),
                 "overlap_days": backtest_settings.BACKTEST_INCREMENTAL_SYNC_OVERLAP_DAYS,
             },
             "safety": "只讀歷史行情；不會啟動券商下單、帳務、CA 或 trade subscription。",
+            "readiness": {
+                "platform": {
+                    "ready": platform_ready,
+                    "status": ("PLATFORM_READY" if platform_ready else "PLATFORM_NOT_READY"),
+                },
+                "data": {
+                    "ready": data_ready,
+                    "status": "DATA_READY" if data_ready else "DATA_NOT_READY",
+                },
+                "strategy": strategy_readiness,
+            },
         }
 
     def strategies(self, side: str | None = None) -> list[dict[str, Any]]:
@@ -225,7 +264,7 @@ class BacktestApplicationService:
         return self._strategy_catalog.save(payload)
 
     def list_datasets(self) -> list[dict[str, Any]]:
-        return self._repository.list_datasets()
+        return [self._dataset_projection(dataset) for dataset in self._repository.list_datasets()]
 
     def create_derived_daily_dataset(
         self,
@@ -293,12 +332,14 @@ class BacktestApplicationService:
             job
             for job in self._repository.list_jobs()
             if job["job_id"] != job_id
-            and job["kind"] in {
+            and job["kind"]
+            in {
                 "DATASET_SYNC",
                 "DATASET_DOWNLOAD",
                 IncrementalHistoricalSync.JOB_KIND,
             }
-            and job["status"] in {
+            and job["status"]
+            in {
                 RunStatus.QUEUED.value,
                 RunStatus.RUNNING.value,
                 RunStatus.CANCELLING.value,
@@ -370,7 +411,10 @@ class BacktestApplicationService:
         else:
             job = existing
             created = False
-            if job["status"] in {RunStatus.QUEUED.value, RunStatus.RUNNING.value} and self._job_is_fresh(job):
+            if job["status"] in {
+                RunStatus.QUEUED.value,
+                RunStatus.RUNNING.value,
+            } and self._job_is_fresh(job):
                 raise IncrementalSyncDeferred(
                     f"增量同步工作仍在執行：{job_id}",
                     scheduler_state="SYNC_IN_PROGRESS",
@@ -471,6 +515,44 @@ class BacktestApplicationService:
             priority_order=tuple(priority_order or ()),
         )
         self._validate_strategy_selection(strategy_set, dataset)
+        v3_snapshots: dict[str, Mapping[str, Any] | None] = {
+            "execution_policy_snapshot": None,
+            "cost_policy_snapshot": None,
+            "research_truth_snapshot": None,
+        }
+        research_baseline_digest: str | None = None
+        baseline: dict[str, Any] | None = None
+        if engine_version == ENGINE_V3_TW:
+            verified_dataset, _ = self._verified_atomic_dataset(
+                dataset_id,
+                strategy_set,
+                registry=self._registry,
+                resolution=None,
+            )
+            manifest = self._catalog.get_manifest(dataset_id)
+            v3_snapshots = self._build_v3_snapshots(
+                dataset=verified_dataset,
+                manifest=manifest,
+                commission_rate=commission_rate,
+                sell_tax_rate=sell_tax_rate,
+                slippage_bps=slippage_bps,
+            )
+            if baseline_run_id is not None:
+                baseline = self._repository.get_run(baseline_run_id)
+                verify_run_identity(baseline)
+                if baseline["status"] != RunStatus.COMPLETED.value:
+                    raise ValueError("Formal v3 Experiment Baseline 必須先完成")
+                if baseline["config"].get("engine_version") != ENGINE_V3_TW:
+                    raise ValueError("Formal v3 Challenger 的 Baseline 必須使用 v3-tw engine")
+                research_baseline_digest = research_baseline_identity_digest(baseline["config"])
+                derived_family_id = experiment_family_id(research_baseline_digest)
+                if experiment_id is not None and experiment_id != derived_family_id:
+                    raise ValueError(
+                        "Formal v3 experiment_id 必須是 server-derived family identity"
+                    )
+                experiment_id = derived_family_id
+            elif experiment_id is not None:
+                raise ValueError("Formal v3 experiment family 必須指定已完成的 Baseline")
         config = BacktestRunConfig(
             dataset_id=dataset_id,
             dataset_digest=str(dataset["manifest_digest"]),
@@ -486,9 +568,16 @@ class BacktestApplicationService:
             engine_version=engine_version,
             experiment_id=experiment_id,
             baseline_run_id=baseline_run_id,
+            research_baseline_digest=research_baseline_digest,
             parent_run_id=parent_run_id,
             change_note=change_note,
+            **v3_snapshots,
         )
+        if baseline is not None:
+            config_diff = run_comparability_diff(baseline["config"], config.to_dict())
+            if config_diff:
+                fields = "、".join(item["field"] for item in config_diff)
+                raise ValueError(f"Formal v3 Challenger 與 Baseline 不可比較：{fields}")
         record = {
             "run_id": f"run-{uuid4().hex}",
             "idempotency_key": self._validate_idempotency_key(idempotency_key),
@@ -546,9 +635,7 @@ class BacktestApplicationService:
             verify_run_identity(replay)
             replay_config = BacktestRunConfig.from_dict(replay["config"])
             if replay_config.atomic_run_request_digest != request_digest:
-                raise BacktestIdempotencyConflict(
-                    "相同 idempotency key 的 Atomic Run request 不同"
-                )
+                raise BacktestIdempotencyConflict("相同 idempotency key 的 Atomic Run request 不同")
             return replay, True
         if repository.is_strategy_set_archived(strategy_set_version_id):
             raise StrategyCatalogConflict(
@@ -570,9 +657,7 @@ class BacktestApplicationService:
                 raise ValueError("Experiment Baseline 必須是 Atomic Run")
             if baseline["config"].get("dataset_amount_contract") is None:
                 raise ValueError("Experiment Baseline 缺少 G5 Dataset amount evidence")
-            research_baseline_digest = research_baseline_identity_digest(
-                baseline["config"]
-            )
+            research_baseline_digest = research_baseline_identity_digest(baseline["config"])
             family_id = experiment_family_id(research_baseline_digest)
             dataset_id = str(baseline["dataset_id"])
             binding_snapshot = (
@@ -587,9 +672,7 @@ class BacktestApplicationService:
                 )
             binding = self._repository.get_dataset_binding(ATOMIC_BACKTEST_DEFAULT)
             if binding is None:
-                raise AtomicBacktestBindingUnavailable(
-                    "ATOMIC_BACKTEST_DEFAULT 尚未設定"
-                )
+                raise AtomicBacktestBindingUnavailable("ATOMIC_BACKTEST_DEFAULT 尚未設定")
             if (
                 binding["revision"] != expected_binding_revision
                 or binding["dataset_digest"] != expected_dataset_digest
@@ -667,9 +750,7 @@ class BacktestApplicationService:
             "created_at": _now(),
         }
         if baseline is None:
-            create_bound = getattr(
-                self._repository, "create_atomic_run_from_binding", None
-            )
+            create_bound = getattr(self._repository, "create_atomic_run_from_binding", None)
             if not callable(create_bound):
                 raise RuntimeError("standalone Atomic Run binding requires PostgreSQL")
             run, idempotent = create_bound(
@@ -820,6 +901,8 @@ class BacktestApplicationService:
             or baseline["config"].get("dataset_amount_contract") != amount_contract
         ):
             raise ValueError("Experiment Baseline Dataset evidence 已漂移")
+        research_truth = build_research_truth_snapshot(self._catalog.get_manifest(dataset_id))
+        data_readiness = research_readiness_projection(research_truth)
         return {
             "available": True,
             "resolution_mode": resolution_mode,
@@ -834,14 +917,23 @@ class BacktestApplicationService:
             "bar_count": int(dataset["bar_count"]),
             "capabilities": list(dataset.get("capabilities", ())),
             "amount_kind": amount_contract.get("kind") if amount_contract else None,
-            "amount_contract_digest": (
-                amount_contract.get("digest") if amount_contract else None
-            ),
-            "vwap_semantic": (
-                amount_contract.get("vwap_semantic") if amount_contract else None
-            ),
+            "amount_contract_digest": (amount_contract.get("digest") if amount_contract else None),
+            "vwap_semantic": (amount_contract.get("vwap_semantic") if amount_contract else None),
             "research_eligible": bool(dataset.get("research_eligible")),
             "issues": list(dataset.get("issues", ())),
+            "formal_research_readiness": data_readiness,
+            "readiness": {
+                "platform": {
+                    "ready": bool(backtest_settings.BACKTEST_ENABLED),
+                    "status": (
+                        "PLATFORM_READY"
+                        if backtest_settings.BACKTEST_ENABLED
+                        else "PLATFORM_NOT_READY"
+                    ),
+                },
+                "data": data_readiness,
+                "strategy": self._strategy_readiness(),
+            },
         }
 
     def _select_ready_dataset(
@@ -904,9 +996,7 @@ class BacktestApplicationService:
             or not run.get("result_digest")
             or run["result_digest"] != postflight.get("control_result_digest")
         ):
-            raise CashAdmissionControlNotAccepted(
-                "R5_CONTROL_POSTFLIGHT_NOT_ACCEPTED"
-            )
+            raise CashAdmissionControlNotAccepted("R5_CONTROL_POSTFLIGHT_NOT_ACCEPTED")
         return dict(registration)
 
     def _verified_result(self, run_id: str) -> dict[str, Any]:
@@ -931,9 +1021,17 @@ class BacktestApplicationService:
 
     def cancel_run(self, run_id: str) -> dict[str, Any]:
         run = self._repository.get_run(run_id)
-        if run["status"] not in {RunStatus.QUEUED.value, RunStatus.PREFLIGHT.value, RunStatus.RUNNING.value}:
+        if run["status"] not in {
+            RunStatus.QUEUED.value,
+            RunStatus.PREFLIGHT.value,
+            RunStatus.RUNNING.value,
+        }:
             raise ValueError("只有尚未完成的回測可以取消")
-        return self._repository.update_run(run_id, status=RunStatus.CANCELLING.value, progress_message="正在取消，會在下一個安全事件邊界停止")
+        return self._repository.update_run(
+            run_id,
+            status=RunStatus.CANCELLING.value,
+            progress_message="正在取消，會在下一個安全事件邊界停止",
+        )
 
     def cancel_atomic_run(
         self,
@@ -993,13 +1091,14 @@ class BacktestApplicationService:
             unsupported = sorted(set(overrides) - allowed_atomic_overrides)
             if unsupported:
                 raise ValueError(
-                    "原子策略回測只能調整資金、成本與評估門檻；不可覆寫："
-                    + "、".join(unsupported)
+                    "原子策略回測只能調整資金、成本與評估門檻；不可覆寫：" + "、".join(unsupported)
                 )
         config = _deep_merge(existing["config"], overrides)
         config["parent_run_id"] = run_id
         config["baseline_run_id"] = existing["config"].get("baseline_run_id") or run_id
-        config["experiment_id"] = existing["config"].get("experiment_id") or f"experiment-{uuid4().hex}"
+        config["experiment_id"] = (
+            existing["config"].get("experiment_id") or f"experiment-{uuid4().hex}"
+        )
         return self._create_from_config(
             config=config,
             idempotency_key=idempotency_key,
@@ -1008,7 +1107,32 @@ class BacktestApplicationService:
         )
 
     def summary(self, run_id: str) -> dict[str, Any]:
-        return self._verified_result(run_id)["summary"]
+        result = self._verified_result(run_id)
+        summary = deepcopy(dict(result["summary"]))
+        run = self._repository.get_run(run_id)
+        if run.get("config", {}).get("engine_version") == ENGINE_V3_TW:
+            formal_evidence_from_result(result)
+            truth = require_formal_research_truth(run["config"]["research_truth_snapshot"])
+            if (
+                truth["dataset_id"] != run["dataset_id"]
+                or truth["dataset_manifest_digest"] != run["dataset_digest"]
+            ):
+                raise ResearchTruthUnavailable(
+                    "research_truth_snapshot 與 Run Dataset identity 不一致"
+                )
+            summary["readiness"] = {
+                "platform": {
+                    "ready": bool(backtest_settings.BACKTEST_ENABLED),
+                    "status": (
+                        "PLATFORM_READY"
+                        if backtest_settings.BACKTEST_ENABLED
+                        else "PLATFORM_NOT_READY"
+                    ),
+                },
+                "data": research_readiness_projection(truth),
+                "strategy": self._strategy_readiness(run_id=run_id),
+            }
+        return summary
 
     def result(self, run_id: str) -> dict[str, Any]:
         return self._verified_result(run_id)
@@ -1017,7 +1141,9 @@ class BacktestApplicationService:
         self._verified_result(run_id)
         if page < 1 or not 1 <= page_size <= 250:
             raise ValueError("page 必須大於 0，page_size 必須介於 1 與 250")
-        trades, total = self._repository.list_trades(run_id, offset=(page - 1) * page_size, limit=page_size)
+        trades, total = self._repository.list_trades(
+            run_id, offset=(page - 1) * page_size, limit=page_size
+        )
         return {"page": page, "page_size": page_size, "total": total, "trades": trades}
 
     def trade(self, run_id: str, trade_id: str) -> dict[str, Any]:
@@ -1070,7 +1196,8 @@ class BacktestApplicationService:
         trade = self.trade(run_id, trade_id)
         run = self._repository.get_run(run_id)
         symbol_bars = [
-            bar for bar in self._catalog.load_bars(run["dataset_id"])
+            bar
+            for bar in self._catalog.load_bars(run["dataset_id"])
             if bar.symbol == trade["symbol"]
         ]
         entry_at = datetime.fromisoformat(str(trade["entry"]["filled_at"]))
@@ -1085,7 +1212,11 @@ class BacktestApplicationService:
             "symbol": trade["symbol"],
             "bars": [bar.to_dict() for bar in symbol_bars[start_index:end_index]],
             "markers": [
-                {"side": "ENTRY", "at": trade["entry"]["filled_at"], "price": trade["entry"]["price"]},
+                {
+                    "side": "ENTRY",
+                    "at": trade["entry"]["filled_at"],
+                    "price": trade["entry"]["price"],
+                },
                 {"side": "EXIT", "at": trade["exit"]["filled_at"], "price": trade["exit"]["price"]},
             ],
         }
@@ -1108,7 +1239,10 @@ class BacktestApplicationService:
         challenger = self._repository.get_run(challenger_run_id)
         verify_run_identity(baseline)
         verify_run_identity(challenger)
-        if baseline["status"] != RunStatus.COMPLETED.value or challenger["status"] != RunStatus.COMPLETED.value:
+        if (
+            baseline["status"] != RunStatus.COMPLETED.value
+            or challenger["status"] != RunStatus.COMPLETED.value
+        ):
             raise ValueError("只有已完成的回測可以比較")
         comparison = compare_runs(
             baseline_run=baseline,
@@ -1151,17 +1285,14 @@ class BacktestApplicationService:
             raise ValueError("hypothesis_id 不可為空")
         primary_window = EvaluationWindow.from_dict(protocol["primary_window"])
         walk_forward_windows = tuple(
-            EvaluationWindow.from_dict(item)
-            for item in protocol.get("walk_forward_windows", ())
+            EvaluationWindow.from_dict(item) for item in protocol.get("walk_forward_windows", ())
         )
         request_document = {
             "baseline_run_id": baseline_run_id,
             "challenger_run_id": challenger_run_id,
             "hypothesis_id": hypothesis,
             "primary_window": primary_window.to_dict(),
-            "walk_forward_windows": [
-                item.to_dict() for item in walk_forward_windows
-            ],
+            "walk_forward_windows": [item.to_dict() for item in walk_forward_windows],
             "actor_id": actor,
             "change_note": note,
         }
@@ -1174,7 +1305,7 @@ class BacktestApplicationService:
                 request_digest=request_digest,
             )
             if existing is not None:
-                return existing, True
+                return self._qualification_projection(existing), True
         self._require_control_result_accepted(baseline_run_id)
         self._require_control_result_accepted(challenger_run_id)
         baseline = self._repository.get_run(baseline_run_id)
@@ -1187,16 +1318,10 @@ class BacktestApplicationService:
             raise ValueError("Qualification Baseline 與 authoritative family 不一致")
         if family["family_id"] != experiment_family_id(selected_baseline_digest):
             raise ValueError("Experiment family identity 已漂移")
-        if family["comparability_digest"] != comparability_contract_digest(
-            baseline["config"]
-        ):
+        if family["comparability_digest"] != comparability_contract_digest(baseline["config"]):
             raise ValueError("Experiment family comparability identity 已漂移")
         current_attempt = next(
-            (
-                item
-                for item in family["attempts"]
-                if item["run_id"] == challenger_run_id
-            ),
+            (item for item in family["attempts"] if item["run_id"] == challenger_run_id),
             None,
         )
         if current_attempt is None:
@@ -1211,9 +1336,7 @@ class BacktestApplicationService:
                 planned_attempts=int(family["planned_attempts"]),
                 baseline_run_id=baseline_run_id,
                 research_baseline_digest=selected_baseline_digest,
-                attempted_run_ids=tuple(
-                    str(item["run_id"]) for item in family["attempts"]
-                ),
+                attempted_run_ids=tuple(str(item["run_id"]) for item in family["attempts"]),
                 family_head_sequence=int(family["head_sequence"]),
                 family_snapshot_digest=str(family["family_snapshot_digest"]),
                 alpha=family["alpha"],
@@ -1244,6 +1367,11 @@ class BacktestApplicationService:
                     "trades": list(result.get("trades", [])),
                     "equity": list(result.get("daily_equity", [])),
                     "decisions": list(result.get("decisions", [])),
+                    **(
+                        {"formal_evidence": formal_evidence_from_result(result)}
+                        if run["config"].get("engine_version") == ENGINE_V3_TW
+                        else {}
+                    ),
                 }
             )
             if recomputed != result_digest:
@@ -1260,6 +1388,13 @@ class BacktestApplicationService:
             raise ValueError("目前資料集 manifest 內容與 digest 不一致")
         if verified_manifest.manifest_digest != str(baseline["dataset_digest"]):
             raise ValueError("目前資料集 manifest 與 Run Snapshot digest 不一致")
+        for run in selected:
+            if run["config"].get("engine_version") == ENGINE_V3_TW:
+                self._verify_frozen_v3_snapshots(
+                    BacktestRunConfig.from_dict(run["config"]),
+                    dataset=dataset,
+                    manifest=verified_manifest,
+                )
         evidence = build_qualification_evidence(
             baseline_run=baseline,
             challenger_run=challenger,
@@ -1271,8 +1406,10 @@ class BacktestApplicationService:
             dataset_start_date=date.fromisoformat(verified_manifest.start_date),
             dataset_end_date=date.fromisoformat(verified_manifest.end_date),
         )
-        qualification_id = f"qualification-{uuid5(NAMESPACE_URL, f'tw-intraday-trader:qualification:{key}').hex}"
-        return create(
+        qualification_id = (
+            f"qualification-{uuid5(NAMESPACE_URL, f'tw-intraday-trader:qualification:{key}').hex}"
+        )
+        record, replayed = create(
             {
                 "qualification_id": qualification_id,
                 "idempotency_key": key,
@@ -1296,39 +1433,62 @@ class BacktestApplicationService:
                 "created_at": _now(),
             }
         )
+        return self._qualification_projection(record), replayed
 
     def list_qualifications(self, *, limit: int = 100) -> list[dict[str, Any]]:
         read = getattr(self._repository, "list_qualifications", None)
         if not isinstance(self._repository, PostgresBacktestRepository) or not callable(read):
             raise RuntimeError("Backtest Qualification 只允許讀取 PostgreSQL")
-        return read(limit=limit)
+        return [self._qualification_projection(item) for item in read(limit=limit)]
 
     def get_qualification(self, qualification_id: str) -> dict[str, Any]:
         read = getattr(self._repository, "get_qualification", None)
         if not isinstance(self._repository, PostgresBacktestRepository) or not callable(read):
             raise RuntimeError("Backtest Qualification 只允許讀取 PostgreSQL")
-        return read(qualification_id)
+        return self._qualification_projection(read(qualification_id))
 
-    def _run_dataset_sync(self, job_id: str, years: int, symbols: list[str] | None, symbol_limit: int | None) -> None:
+    def _run_dataset_sync(
+        self, job_id: str, years: int, symbols: list[str] | None, symbol_limit: int | None
+    ) -> None:
         if self._repository.get_job(job_id)["status"] == RunStatus.CANCELLING.value:
-            self._repository.update_job(job_id, status=RunStatus.CANCELLED.value, progress_message="資料集工作已取消")
+            self._repository.update_job(
+                job_id, status=RunStatus.CANCELLED.value, progress_message="資料集工作已取消"
+            )
             return
-        self._repository.update_job(job_id, status=RunStatus.RUNNING.value, progress_message="正在取得歷史 Kbar")
+        self._repository.update_job(
+            job_id, status=RunStatus.RUNNING.value, progress_message="正在取得歷史 Kbar"
+        )
         try:
             manifest = self._catalog.collect_from_provider(
                 self._provider,
                 years=years,
                 symbols=symbols,
                 symbol_limit=symbol_limit,
-                progress=lambda value, message: self._repository.update_job(job_id, progress=value, progress_message=message),
-                cancelled=lambda: self._repository.get_job(job_id)["status"] == RunStatus.CANCELLING.value,
+                progress=lambda value, message: self._repository.update_job(
+                    job_id, progress=value, progress_message=message
+                ),
+                cancelled=lambda: self._repository.get_job(job_id)["status"]
+                == RunStatus.CANCELLING.value,
             )
             self._repository.upsert_dataset(manifest.to_dict(), "READY")
-            self._repository.update_job(job_id, status=RunStatus.COMPLETED.value, resource_id=manifest.dataset_id, progress=1.0, progress_message="歷史資料集已封存")
+            self._repository.update_job(
+                job_id,
+                status=RunStatus.COMPLETED.value,
+                resource_id=manifest.dataset_id,
+                progress=1.0,
+                progress_message="歷史資料集已封存",
+            )
         except DatasetCancelled:
-            self._repository.update_job(job_id, status=RunStatus.CANCELLED.value, progress_message="資料集工作已取消")
+            self._repository.update_job(
+                job_id, status=RunStatus.CANCELLED.value, progress_message="資料集工作已取消"
+            )
         except Exception as error:
-            self._repository.update_job(job_id, status=RunStatus.FAILED.value, error_message=str(error), progress_message="資料集工作失敗")
+            self._repository.update_job(
+                job_id,
+                status=RunStatus.FAILED.value,
+                error_message=str(error),
+                progress_message="資料集工作失敗",
+            )
 
     def _run_incremental_sync(self, job_id: str) -> None:
         try:
@@ -1398,10 +1558,14 @@ class BacktestApplicationService:
                 ):
                     raise ValueError("Atomic Run Dataset amount evidence 已漂移")
             manifest = self._catalog.get_manifest(config.dataset_id)
+            if config.engine_version == ENGINE_V3_TW:
+                self._verify_frozen_v3_snapshots(
+                    config,
+                    dataset=dataset,
+                    manifest=manifest,
+                )
             bars = self._catalog.iter_bars_ordered(config.dataset_id)
-            terminal_timestamps = self._catalog.symbol_last_timestamps(
-                config.dataset_id
-            )
+            terminal_timestamps = self._catalog.symbol_last_timestamps(config.dataset_id)
             self._transition_run_or_cancel(
                 run_id,
                 expected_statuses=(RunStatus.PREFLIGHT.value,),
@@ -1440,9 +1604,7 @@ class BacktestApplicationService:
                 )
                 if not callable(finalize_control):
                     raise RuntimeError("R5 postflight 需要 PostgreSQL durable repository")
-                baseline_run_id = str(
-                    config.research_control_snapshot["baseline_run_id"]
-                )
+                baseline_run_id = str(config.research_control_snapshot["baseline_run_id"])
                 baseline = self._repository.get_run(baseline_run_id)
                 baseline_result = self._repository.get_result(baseline_run_id)
                 preflight = verify_cash_admission_preflight(
@@ -1529,9 +1691,7 @@ class BacktestApplicationService:
             atomic_config.pop("atomic_run_request_digest", None)
             parsed = BacktestRunConfig.from_dict(atomic_config)
             stored_atomic = dict(parsed.atomic_strategy_run_snapshot or {})
-            snapshot = ExactStrategySetSnapshot.from_dict(
-                dict(stored_atomic["strategy_set"])
-            )
+            snapshot = ExactStrategySetSnapshot.from_dict(dict(stored_atomic["strategy_set"]))
             resolution = resolve_atomic_entry_set(
                 self._require_atomic_repository(),
                 self._atomic_registry,
@@ -1582,6 +1742,19 @@ class BacktestApplicationService:
             if not idempotent:
                 self._executor.submit(self._run_backtest, run["run_id"])
             return run, idempotent
+        if config.get("engine_version") == ENGINE_V3_TW:
+            parsed = BacktestRunConfig.from_dict(config)
+            dataset, _ = self._verified_atomic_dataset(
+                parsed.dataset_id,
+                parsed.strategy_set,
+                registry=self._registry,
+                resolution=None,
+            )
+            self._verify_frozen_v3_snapshots(
+                parsed,
+                dataset=dataset,
+                manifest=self._catalog.get_manifest(parsed.dataset_id),
+            )
         strategy_set = dict(config["strategy_set"])
         return self.create_run(
             dataset_id=str(config["dataset_id"]),
@@ -1592,11 +1765,23 @@ class BacktestApplicationService:
             entry_min_trigger_count=int(strategy_set.get("entry_min_trigger_count", 1)),
             exit_min_trigger_count=int(strategy_set.get("exit_min_trigger_count", 1)),
             priority_order=list(strategy_set.get("priority_order", ())),
-            starting_cash=str(config.get("starting_cash", backtest_settings.BACKTEST_DEFAULT_STARTING_CASH)),
-            position_fraction=str(config.get("position_fraction", backtest_settings.BACKTEST_DEFAULT_POSITION_FRACTION)),
-            commission_rate=str(config.get("commission_rate", backtest_settings.BACKTEST_DEFAULT_COMMISSION_RATE)),
-            sell_tax_rate=str(config.get("sell_tax_rate", backtest_settings.BACKTEST_DEFAULT_SELL_TAX_RATE)),
-            slippage_bps=str(config.get("slippage_bps", backtest_settings.BACKTEST_DEFAULT_SLIPPAGE_BPS)),
+            starting_cash=str(
+                config.get("starting_cash", backtest_settings.BACKTEST_DEFAULT_STARTING_CASH)
+            ),
+            position_fraction=str(
+                config.get(
+                    "position_fraction", backtest_settings.BACKTEST_DEFAULT_POSITION_FRACTION
+                )
+            ),
+            commission_rate=str(
+                config.get("commission_rate", backtest_settings.BACKTEST_DEFAULT_COMMISSION_RATE)
+            ),
+            sell_tax_rate=str(
+                config.get("sell_tax_rate", backtest_settings.BACKTEST_DEFAULT_SELL_TAX_RATE)
+            ),
+            slippage_bps=str(
+                config.get("slippage_bps", backtest_settings.BACKTEST_DEFAULT_SLIPPAGE_BPS)
+            ),
             target_win_rate=str(config.get("target_win_rate", "0.50")),
             minimum_oos_trades=int(config.get("minimum_oos_trades", 30)),
             max_drawdown_guardrail=str(config.get("max_drawdown_guardrail", "0.20")),
@@ -1630,8 +1815,7 @@ class BacktestApplicationService:
         if dataset is None:
             return
         available = {
-            str(capability).strip().upper()
-            for capability in dataset.get("capabilities", ())
+            str(capability).strip().upper() for capability in dataset.get("capabilities", ())
         }
         for definition in definitions:
             missing = sorted(set(definition.required_capabilities) - available)
@@ -1639,6 +1823,119 @@ class BacktestApplicationService:
                 raise ValueError(
                     f"資料集缺少 {definition.strategy_id} 所需能力：{'、'.join(missing)}"
                 )
+
+    def _build_v3_snapshots(
+        self,
+        *,
+        dataset: Mapping[str, Any],
+        manifest: DatasetManifest,
+        commission_rate: Any,
+        sell_tax_rate: Any,
+        slippage_bps: Any,
+    ) -> dict[str, Mapping[str, Any]]:
+        if manifest.manifest_digest != str(dataset.get("manifest_digest") or ""):
+            raise ResearchTruthUnavailable("Dataset manifest digest 已漂移")
+        truth = require_formal_research_truth(
+            build_research_truth_snapshot(manifest),
+            manifest=manifest,
+        )
+        if decimal(sell_tax_rate) != STANDARD_SELL_STT_RATE:
+            raise ValueError("backtest-engine-v3-tw sell tax 必須由 frozen cost policy 管理")
+        execution_calibration = truth["execution_calibration_contract"]
+        slippage_calibration = truth["slippage_calibration_contract"]
+        if decimal(slippage_bps) != decimal(slippage_calibration["slippage_bps"]):
+            raise ResearchTruthUnavailable("Run slippage 與 Dataset calibration 不一致")
+        return {
+            "execution_policy_snapshot": build_execution_policy_snapshot(
+                max_participation_rate=execution_calibration["max_participation_rate"],
+                participation_calibration_digest=execution_calibration[
+                    "participation_calibration_digest"
+                ],
+                bar_volume_unit=str(execution_calibration["bar_volume_unit"]),
+            ),
+            "cost_policy_snapshot": build_cost_policy_snapshot(
+                commission_rate=commission_rate,
+                slippage_bps=slippage_calibration["slippage_bps"],
+                slippage_calibration_digest=slippage_calibration["slippage_calibration_digest"],
+            ),
+            "research_truth_snapshot": truth,
+        }
+
+    def _verify_frozen_v3_snapshots(
+        self,
+        config: BacktestRunConfig,
+        *,
+        dataset: Mapping[str, Any],
+        manifest: DatasetManifest,
+    ) -> None:
+        if config.engine_version != ENGINE_V3_TW:
+            return
+        expected = self._build_v3_snapshots(
+            dataset=dataset,
+            manifest=manifest,
+            commission_rate=config.commission_rate,
+            sell_tax_rate=config.sell_tax_rate,
+            slippage_bps=config.slippage_bps,
+        )
+        for field_name, snapshot in expected.items():
+            if getattr(config, field_name) != snapshot:
+                raise ResearchTruthUnavailable(f"{field_name} 與目前 immutable evidence 漂移")
+
+    def _dataset_projection(self, dataset: Mapping[str, Any]) -> dict[str, Any]:
+        projection = deepcopy(dict(dataset))
+        try:
+            manifest = DatasetManifest.from_dict(dataset)
+            catalog_manifest = self._catalog.get_manifest(manifest.dataset_id)
+            if (
+                manifest.manifest_digest != str(dataset.get("manifest_digest") or "")
+                or manifest.to_dict() != catalog_manifest.to_dict()
+            ):
+                raise ResearchTruthUnavailable("DATASET_MANIFEST_INTEGRITY")
+            readiness = research_readiness_projection(build_research_truth_snapshot(manifest))
+        except Exception:
+            readiness = {
+                "ready": False,
+                "status": "DATA_NOT_READY",
+                "reason_codes": ["DATASET_MANIFEST_INTEGRITY"],
+                "research_truth_snapshot_digest": None,
+            }
+        projection["formal_research_readiness"] = readiness
+        return projection
+
+    def _strategy_readiness(self, *, run_id: str | None = None) -> dict[str, Any]:
+        read = getattr(self._repository, "list_qualifications", None)
+        eligible: list[str] = []
+        if callable(read):
+            try:
+                for record in read(limit=100):
+                    verified = verify_qualification_record(record)
+                    if verified["verdict"] != "ELIGIBLE_FOR_PROMOTION_REVIEW":
+                        continue
+                    if run_id is not None and verified["challenger_run_id"] != run_id:
+                        continue
+                    eligible.append(str(verified["qualification_id"]))
+            except (RuntimeError, ValueError, KeyError, TypeError):
+                eligible = []
+        return {
+            "ready": bool(eligible),
+            "status": ("STRATEGY_QUALIFIED" if eligible else "NO_QUALIFYING_STRATEGY"),
+            "qualification_ids": eligible,
+            "effect": "DISPLAY_ONLY_NO_LIFECYCLE_MUTATION",
+        }
+
+    @staticmethod
+    def _qualification_projection(record: Mapping[str, Any]) -> dict[str, Any]:
+        verified = verify_qualification_record(record)
+        qualified = verified["verdict"] == "ELIGIBLE_FOR_PROMOTION_REVIEW"
+        return {
+            **verified,
+            "display_status": ("STRATEGY_QUALIFIED" if qualified else "NO_QUALIFYING_STRATEGY"),
+            "strategy_readiness": {
+                "ready": qualified,
+                "status": ("STRATEGY_QUALIFIED" if qualified else "NO_QUALIFYING_STRATEGY"),
+                "effect": "DISPLAY_ONLY_NO_LIFECYCLE_MUTATION",
+            },
+        }
 
     def _verified_atomic_dataset(
         self,
@@ -1654,18 +1951,23 @@ class BacktestApplicationService:
         registered_manifest = DatasetManifest.from_dict(dataset).to_dict()
         manifest = self._catalog.get_manifest(dataset_id)
         if manifest.to_dict() != registered_manifest:
-            raise DatasetBindingIntegrityError(
-                "PostgreSQL Dataset 與 filesystem manifest 不一致"
-            )
+            raise DatasetBindingIntegrityError("PostgreSQL Dataset 與 filesystem manifest 不一致")
         self._validate_strategy_selection(strategy_set, dataset, registry=registry)
         raw_amount = dataset.get("amount_contract")
         amount_contract = dict(raw_amount) if isinstance(raw_amount, Mapping) else None
         if amount_contract is not None:
-            stored_digest = str(amount_contract.get("digest") or "")
-            amount_body = dict(amount_contract)
-            amount_body.pop("digest", None)
-            if not stored_digest or digest(amount_body) != stored_digest:
-                raise ValueError("Dataset amount contract digest 不一致")
+            if amount_contract.get("contract_version") is not None:
+                verify_contract_snapshot(
+                    amount_contract,
+                    label="Dataset amount contract",
+                    expected_contract_version="tw-amount-v1",
+                )
+            else:
+                stored_digest = str(amount_contract.get("digest") or "")
+                amount_body = dict(amount_contract)
+                amount_body.pop("digest", None)
+                if not stored_digest or digest(amount_body) != stored_digest:
+                    raise ValueError("Dataset amount contract digest 不一致")
         requires_vwap = bool(
             resolution is not None
             and any(
@@ -1770,9 +2072,7 @@ class BacktestApplicationService:
             return
         if run["status"] == RunStatus.CANCELLING.value:
             raise BacktestCancelled("回測工作已取消")
-        raise RuntimeError(
-            f"回測狀態轉換衝突：預期 {expected_statuses}，實際 {run['status']}"
-        )
+        raise RuntimeError(f"回測狀態轉換衝突：預期 {expected_statuses}，實際 {run['status']}")
 
 
 def _now() -> str:

@@ -718,6 +718,15 @@
       .backtest-intro { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0 0 14px; }
       .backtest-notice { background: color-mix(in srgb, var(--amber) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--line)); border-radius: 9px; color: var(--muted); font-size: 12px; line-height: 1.5; margin-bottom: 14px; padding: 10px 12px; }
       .backtest-notice strong { color: var(--text); font-weight: 600; }
+      .backtest-readiness { display: grid; gap: 9px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 14px; }
+      .backtest-readiness-card { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--amber); border-radius: 9px; display: grid; gap: 4px; min-width: 0; padding: 10px 11px; }
+      .backtest-readiness-card > span { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+      .backtest-readiness-card > strong { color: var(--amber); font-size: 12px; overflow-wrap: anywhere; }
+      .backtest-readiness-card > small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+      .backtest-readiness-card.ready { border-left-color: var(--green); }
+      .backtest-readiness-card.ready > strong { color: var(--green); }
+      .backtest-readiness-card.not-ready { border-left-color: var(--red); }
+      .backtest-readiness-card.not-ready > strong { color: var(--red); }
       .backtest-grid { display: grid; gap: 12px; grid-template-columns: minmax(230px, .75fr) minmax(360px, 1.25fr); }
       .backtest-card { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 11px; min-width: 0; padding: 13px; }
       .backtest-card.wide { grid-column: 1 / -1; }
@@ -829,6 +838,7 @@
         .candidate-panel, .detail-panel { max-height: none; overflow: visible; }
         .candidate-list { flex: none; max-height: 300px; }
         .drawer-panel, .backtest-drawer .drawer-panel, .strategy-catalog-drawer .drawer-panel { height: 100%; left: 0; padding: 16px; top: 0; width: 100vw; }
+        .backtest-readiness { grid-template-columns: 1fr; }
         .atomic-management-grid, .strategy-parameter-grid { grid-template-columns: 1fr; }
         .atomic-management-grid .wide { grid-column: auto; }
         .strategy-management-body { display: block; overflow-y: auto; padding-right: 2px; }

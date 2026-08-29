@@ -1,0 +1,127 @@
+{
+  "amount_contract": {
+    "contract_version": "tw-amount-v1",
+    "semantics": "TURNOVER",
+    "snapshot_digest": "d6b11652c4d28fc3eaa9c038f4e1722050184929bf7669ac18d817112b7940b3",
+    "status": "VERIFIED",
+    "unit": "TWD"
+  },
+  "bar_count": 1,
+  "bars_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "cadence_summary": {},
+  "calendar_contract": {
+    "contract_version": "tw-calendar-v1",
+    "semantics": "DATE_EFFECTIVE",
+    "snapshot_digest": "1f35c5811d67f3e178e0c255e88776eb47ee38dc7c8d5e50a8eca501ba829036",
+    "status": "VERIFIED"
+  },
+  "capabilities": ["OHLCV", "KBAR_1M", "SESSION_BOUNDARIES"],
+  "closing_auction_event_contract": {
+    "contract_version": "tw-closing-auction-event-v1",
+    "event_time": "13:30:00+08:00",
+    "price_semantics": "AUCTION_ONLY",
+    "snapshot_digest": "e9a0f3b5fb1149c307cc7fb05c5bd9a2461cd43fe563fe41e4264607e21027dd",
+    "status": "VERIFIED",
+    "volume_semantics": "AUCTION_ONLY"
+  },
+  "completeness_contract": {
+    "contract_version": "tw-completeness-v1",
+    "coverage_ratio": "1.0",
+    "duplicate_count": 0,
+    "end_date": "2026-01-01",
+    "invalid_ohlc_count": 0,
+    "missing_count": 0,
+    "out_of_order_count": 0,
+    "snapshot_digest": "031cf79b15440e9b2ee69f47b651fdaf0531529e35963231543cddb1b5bad385",
+    "start_date": "2023-01-01",
+    "status": "VERIFIED"
+  },
+  "corporate_action_contract": {
+    "contract_version": "tw-corporate-action-v1",
+    "semantics": "POINT_IN_TIME",
+    "snapshot_digest": "df7aef1f927d55fe229fb2c53553cdd6980c9f9f5e56168366ae8f04a663ef7c",
+    "status": "VERIFIED"
+  },
+  "created_at": "2026-01-02T00:00:00+08:00",
+  "dataset_id": "dataset-formal-pass-v1",
+  "delta_bar_count": 0,
+  "end_date": "2026-01-01",
+  "execution_calibration_contract": {
+    "bar_volume_unit": "SHARES",
+    "contract_version": "tw-participation-calibration-v1",
+    "max_participation_rate": "0.05",
+    "participation_calibration_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "snapshot_digest": "9642f060a0f3d124ea241117f6835a7b64aa07d4d9105b4426b0efb0b6840c80",
+    "status": "VERIFIED"
+  },
+  "issues": [],
+  "listing_contract": {
+    "contract_version": "tw-pit-listing-v1",
+    "delisted_included": true,
+    "semantics": "POINT_IN_TIME",
+    "snapshot_digest": "0791683f148ca258f9be28d094e741843e00c1062f558faa7dadb1c473d2e211",
+    "status": "VERIFIED"
+  },
+  "manifest_digest": "805c35dbbf10b76bbac7fdddfffefe6da0e48821d190a170edc7ca10a2772079",
+  "observed_symbols": ["2330"],
+  "parent_dataset_id": null,
+  "payload_order": "TIMESTAMP_SYMBOL_ASC_V1",
+  "price_limit_contract": {
+    "contract_version": "tw-price-limit-v1",
+    "semantics": "POINT_IN_TIME",
+    "snapshot_digest": "fe11b06f0f02511f5083da06e96785ab7b1512e0449f78d869ef9afe6d2831d7",
+    "status": "VERIFIED"
+  },
+  "profile": "KBAR_1M_V1",
+  "reference_price_contract": {
+    "contract_version": "tw-reference-price-v1",
+    "semantics": "DATE_EFFECTIVE",
+    "snapshot_digest": "b5400873f98cd1d13e3741e0f3c85f71393226774c3b73ce23dd6cbef466fbb7",
+    "status": "VERIFIED"
+  },
+  "requested_symbols": ["2330"],
+  "research_eligible": true,
+  "session_contract": {
+    "contract_version": "tw-session-v1",
+    "phase_semantics": "EXPLICIT",
+    "snapshot_digest": "2bb0e951d8f23a28afb02068bf132528d04de2cdea9eeb6afa7091ded5234d15",
+    "status": "VERIFIED",
+    "timezone": "Asia/Taipei"
+  },
+  "slippage_calibration_contract": {
+    "contract_version": "tw-slippage-calibration-v1",
+    "slippage_bps": "5",
+    "slippage_calibration_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "snapshot_digest": "bf79efd236973d6f32c5d643af40e35fa17596be10b2e6ce79a729442605a537",
+    "status": "VERIFIED"
+  },
+  "source": "IMMUTABLE_FIXTURE",
+  "special_regime_contract": {
+    "classification": "COMPLETE",
+    "contract_version": "tw-special-regime-v1",
+    "snapshot_digest": "a5913d56991698e57bb8f50571f2a9b6525607bdf25cf3985e51f060bd0b3080",
+    "status": "VERIFIED",
+    "unknown_count": 0
+  },
+  "start_date": "2023-01-01",
+  "storage_format": "JSONL_FULL_V1",
+  "symbol_last_timestamps": [
+    {"symbol": "2330", "timestamp": "2026-01-01T13:30:00+08:00"}
+  ],
+  "universe_contract": {
+    "contract_version": "tw-pit-universe-v1",
+    "scope": "DATE_EFFECTIVE",
+    "snapshot_digest": "94c45d0cea79d7d4cbe17464a55b58ad7069dab1bfb4b1709ec2da7921f45f5b",
+    "status": "VERIFIED",
+    "survivorship_free": true
+  },
+  "universe_scope": "DATE_EFFECTIVE",
+  "universe_selection": "DATE_EFFECTIVE_ALL_V1",
+  "volume_contract": {
+    "contract_version": "tw-volume-v1",
+    "phase_semantics": "EXPLICIT",
+    "snapshot_digest": "ab07a5fe9af65120d47f7ba0004fd2b9ffc1cb200f76677a4c6bf2380555f3cc",
+    "status": "VERIFIED",
+    "unit": "SHARES"
+  }
+}

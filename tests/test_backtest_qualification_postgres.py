@@ -133,9 +133,7 @@ def _save_completed_run(
     baseline_run_id: str | None = None,
 ) -> None:
     baseline_config = (
-        repository.get_run(baseline_run_id)["config"]
-        if baseline_run_id is not None
-        else None
+        repository.get_run(baseline_run_id)["config"] if baseline_run_id is not None else None
     )
     config = _config(
         set_id,
@@ -156,9 +154,7 @@ def _save_completed_run(
             "created_at": "2026-08-22T09:00:00+08:00",
         }
     )
-    result_digest = digest(
-        {"summary": {}, "trades": [], "equity": [], "decisions": []}
-    )
+    result_digest = digest({"summary": {}, "trades": [], "equity": [], "decisions": []})
     repository.save_result(
         run_id,
         {
@@ -210,6 +206,7 @@ def test_postgres_qualification_is_immutable_replayable_and_integrity_checked(
         workers=1,
     )
     try:
+
         def qualify():
             return service.qualify_runs(
                 baseline_run_id="qualification-baseline",
@@ -251,6 +248,13 @@ def test_postgres_qualification_is_immutable_replayable_and_integrity_checked(
         assert second_replayed is True
         assert first == second
         assert first["evidence"]["effect"] == "REVIEW_ONLY_NO_LIFECYCLE_MUTATION"
+        assert first["verdict"] == "INSUFFICIENT_EVIDENCE"
+        assert first["display_status"] == "NO_QUALIFYING_STRATEGY"
+        assert first["strategy_readiness"] == {
+            "ready": False,
+            "status": "NO_QUALIFYING_STRATEGY",
+            "effect": "DISPLAY_ONLY_NO_LIFECYCLE_MUTATION",
+        }
         detail = service.get_qualification(first["qualification_id"])
         assert {key: detail[key] for key in first} == first
         historical_family = dict(first["family_snapshot"])
@@ -258,12 +262,14 @@ def test_postgres_qualification_is_immutable_replayable_and_integrity_checked(
         assert digest(historical_family) == historical_digest
         assert historical_digest == first["family_snapshot_digest"]
         assert historical_family["attempts"][0]["qualification_id"] is None
-        assert detail["current_family_snapshot"]["attempts"][0][
-            "qualification_id"
-        ] == first["qualification_id"]
-        assert detail["current_family_snapshot"]["attempts"][0][
-            "hypothesis_id"
-        ] == "challenger-beats-baseline"
+        assert (
+            detail["current_family_snapshot"]["attempts"][0]["qualification_id"]
+            == first["qualification_id"]
+        )
+        assert (
+            detail["current_family_snapshot"]["attempts"][0]["hypothesis_id"]
+            == "challenger-beats-baseline"
+        )
         assert service.list_qualifications()[0] == first
         with pytest.raises(BacktestIdempotencyConflict):
             service.qualify_runs(
@@ -276,9 +282,7 @@ def test_postgres_qualification_is_immutable_replayable_and_integrity_checked(
                 change_note="不同 request",
             )
 
-        family = repository.get_experiment_family_for_run(
-            "qualification-challenger"
-        )
+        family = repository.get_experiment_family_for_run("qualification-challenger")
         baseline = repository.get_run("qualification-baseline")
         assert family["family_id"] == experiment_family_id(
             research_baseline_identity_digest(baseline["config"])
@@ -378,9 +382,7 @@ def test_postgres_equivalent_baseline_runs_share_one_family_budget(
 ) -> None:
     pool_module = pytest.importorskip("psycopg_pool")
     apply_migrations(postgres_test_connection)
-    pool = pool_module.ConnectionPool(
-        postgres_test_dsn, min_size=1, max_size=3, open=True
-    )
+    pool = pool_module.ConnectionPool(postgres_test_dsn, min_size=1, max_size=3, open=True)
     repository = PostgresBacktestRepository(pool=pool)
     manifest = _manifest()
     repository.upsert_dataset(manifest.to_dict(), "READY")
@@ -416,19 +418,13 @@ def test_postgres_equivalent_baseline_runs_share_one_family_budget(
             baseline_run_id="equivalent-baseline-b",
         )
 
-        family_a = repository.get_experiment_family_for_run(
-            "equivalent-challenger-a"
-        )
-        family_b = repository.get_experiment_family_for_run(
-            "equivalent-challenger-b"
-        )
+        family_a = repository.get_experiment_family_for_run("equivalent-challenger-a")
+        family_b = repository.get_experiment_family_for_run("equivalent-challenger-b")
         assert family_a == family_b
         assert family_a["baseline_run_id"] == "equivalent-baseline-a"
         assert family_a["head_sequence"] == 2
         assert [item["attempt_sequence"] for item in family_a["attempts"]] == [1, 2]
-        assert family_a["family_id"] == experiment_family_id(
-            family_a["research_baseline_digest"]
-        )
+        assert family_a["family_id"] == experiment_family_id(family_a["research_baseline_digest"])
     finally:
         repository.close()
         pool.close()
@@ -440,9 +436,7 @@ def test_postgres_family_allocates_monotonic_attempts_concurrently(
 ) -> None:
     pool_module = pytest.importorskip("psycopg_pool")
     apply_migrations(postgres_test_connection)
-    pool = pool_module.ConnectionPool(
-        postgres_test_dsn, min_size=1, max_size=3, open=True
-    )
+    pool = pool_module.ConnectionPool(postgres_test_dsn, min_size=1, max_size=3, open=True)
     repository = PostgresBacktestRepository(pool=pool)
     manifest = _manifest()
     repository.upsert_dataset(manifest.to_dict(), "READY")
@@ -506,9 +500,7 @@ def test_postgres_qualification_rejects_run_config_digest_tamper(
 ) -> None:
     pool_module = pytest.importorskip("psycopg_pool")
     apply_migrations(postgres_test_connection)
-    pool = pool_module.ConnectionPool(
-        postgres_test_dsn, min_size=1, max_size=3, open=True
-    )
+    pool = pool_module.ConnectionPool(postgres_test_dsn, min_size=1, max_size=3, open=True)
     repository = PostgresBacktestRepository(pool=pool)
     manifest = _manifest()
     repository.upsert_dataset(manifest.to_dict(), "READY")
@@ -564,9 +556,7 @@ def test_postgres_qualification_rejects_run_row_dataset_identity_tamper(
 ) -> None:
     pool_module = pytest.importorskip("psycopg_pool")
     apply_migrations(postgres_test_connection)
-    pool = pool_module.ConnectionPool(
-        postgres_test_dsn, min_size=1, max_size=3, open=True
-    )
+    pool = pool_module.ConnectionPool(postgres_test_dsn, min_size=1, max_size=3, open=True)
     repository = PostgresBacktestRepository(pool=pool)
     manifest = _manifest()
     replacement = _manifest("replacement-dataset")

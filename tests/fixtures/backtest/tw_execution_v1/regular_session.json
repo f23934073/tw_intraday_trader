@@ -1,0 +1,100 @@
+{
+  "bar": {
+    "amount": null,
+    "close": "602",
+    "high": "605",
+    "low": "598",
+    "lower_limit_price": "540",
+    "market": "",
+    "market_phase": "CONTINUOUS",
+    "name": "",
+    "open": "600",
+    "reference_price": "600",
+    "session_regime": "REGULAR",
+    "symbol": "2330",
+    "timestamp": "2026-08-28T13:00:00+08:00",
+    "upper_limit_price": "660",
+    "volume": 1200000
+  },
+  "cost_policy_snapshot": {
+    "commission_rate": "0.001425",
+    "commission_rate_ceiling": "0.001425",
+    "commission_rounding": "ROUND_HALF_UP_WHOLE_TWD",
+    "commission_sides": [
+      "BUY",
+      "SELL"
+    ],
+    "contract_version": "tw-cost-policy-v1",
+    "min_commission_twd": "20",
+    "no_fixed_bps_fallback": true,
+    "securities_transaction_tax": {
+      "day_trade_reduced_rate": "0.0015",
+      "day_trade_reduction_last_date": "2027-12-31",
+      "rounding": "ROUND_DOWN_WHOLE_TWD",
+      "standard_rate": "0.003",
+      "taxed_side": "SELL"
+    },
+    "slippage_bps": "5",
+    "slippage_calibration_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "slippage_rule": "ADVERSE_PRICE_THEN_OUTWARD_TICK",
+    "snapshot_digest": "5ef629100433a8dfe0a0c7635646b37a61aa939dc6fb78f996a9aef6e410dc89"
+  },
+  "description": "Continuous-session REGULAR-regime v3-tw bar that passes the formal-bar guard; tick band for a 500-1000 price is 1.0.",
+  "engine_version": "backtest-engine-v3-tw",
+  "execution_policy_snapshot": {
+    "auction_close_rule": "closing-auction-only-with-dataset-auction-event-proof",
+    "bar_volume_unit": "SHARES",
+    "board_lot_shares": 1000,
+    "contract_version": "tw-execution-policy-v1",
+    "engine_identity": "backtest-engine-v3-tw",
+    "fill_rule": "signal-bar-N-fills-N+1-or-later-after-quantity-observation",
+    "locked_limit_rule": "UNFILLED_NO_FALLBACK",
+    "max_participation_rate": "0.05",
+    "no_fallback_fill": true,
+    "partial_fill_rule": "FILL_OBSERVED_BOARD_LOTS_AND_RECORD_RESIDUAL",
+    "participation_calibration_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "price_limit_ratio": "0.10",
+    "residual_rule": "OVERNIGHT_BREACH_IF_UNRESOLVED_AT_SESSION_END",
+    "snapshot_digest": "dd7755dddf881a247a67282a803e4edca5b8929f9d74921569cdcfe73c27f577",
+    "special_regime_reasons": {
+      "DISPOSITION_PERIODIC_AUCTION": "UNSUPPORTED_DISPOSITION_PERIODIC_AUCTION",
+      "IPO_NO_LIMIT_WINDOW": "UNSUPPORTED_IPO_NO_LIMIT_WINDOW"
+    },
+    "supported_session_regimes": [
+      "REGULAR"
+    ],
+    "tick_bands": [
+      {
+        "tick": "0.01",
+        "upper_bound_exclusive": "10"
+      },
+      {
+        "tick": "0.05",
+        "upper_bound_exclusive": "50"
+      },
+      {
+        "tick": "0.1",
+        "upper_bound_exclusive": "100"
+      },
+      {
+        "tick": "0.5",
+        "upper_bound_exclusive": "500"
+      },
+      {
+        "tick": "1",
+        "upper_bound_exclusive": "1000"
+      },
+      {
+        "tick": "5",
+        "upper_bound_exclusive": null
+      }
+    ]
+  },
+  "expected": {
+    "board_lot_shares": 1000,
+    "formal_bar_ok": true,
+    "maximum_participating_shares": 60000,
+    "special_regime_reason": null,
+    "tick_size_at_close": "1"
+  }
+}

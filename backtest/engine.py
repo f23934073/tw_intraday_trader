@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Iterable, Iterator, Mapping
 
 from backtest.decision_aggregator import DecisionAggregator
@@ -12,6 +12,8 @@ from backtest.daily_features import DailySmaFeatureState
 from backtest.domain import (
     BacktestRunConfig,
     ClosedTrade,
+    ENGINE_V3_TW,
+    FormalEvidence,
     HistoricalBar,
     HistoricalFill,
     ExecutionHorizon,
@@ -20,6 +22,22 @@ from backtest.domain import (
     TradeDecision,
     digest,
     lot_floor,
+)
+from backtest.cost_policy_tw import (
+    calculate_costs,
+    cost_policy_readiness_reason,
+    verify_cost_policy_snapshot,
+)
+from backtest.execution_policy_tw import (
+    BOARD_LOT_SHARES,
+    adverse_tick_price,
+    available_shares,
+    execution_policy_readiness_reason,
+    formal_bar_reason,
+    has_verified_auction_contract,
+    locked_limit_reason,
+    special_regime_reason,
+    verify_execution_policy_snapshot,
 )
 from backtest.features import BarFeatureState, PositionStrategyContext
 from backtest.strategies import StrategyContext, StrategyRegistry
@@ -45,9 +63,11 @@ class _DayState:
 
     def update(self, bar: HistoricalBar) -> Decimal:
         self.cumulative_volume += bar.volume
-        self.cumulative_amount += (bar.amount or bar.close * bar.volume)
+        self.cumulative_amount += bar.amount or bar.close * bar.volume
         self.bars_seen += 1
-        self.session_high = bar.high if self.session_high is None else max(self.session_high, bar.high)
+        self.session_high = (
+            bar.high if self.session_high is None else max(self.session_high, bar.high)
+        )
         if self.cumulative_volume <= 0:
             return bar.close
         return self.cumulative_amount / self.cumulative_volume
@@ -78,6 +98,69 @@ class _Position:
     entry_signal_atr: Decimal | None = None
 
 
+@dataclass
+class _FormalRunState:
+    coverage_eligible_count: int = 0
+    coverage_evaluable_count: int = 0
+    coverage_unavailable_count: int = 0
+    execution_fallback_count: int = 0
+    execution_locked_limit_count: int = 0
+    execution_partial_fill_count: int = 0
+    execution_residual_count: int = 0
+    execution_auction_close_count: int = 0
+    execution_overnight_breach_count: int = 0
+    special_regime_reason_counts: dict[str, int] = field(default_factory=dict)
+    capacity_before_cost_shares: int = 0
+    capacity_after_cost_shares: int = 0
+    overnight_breach_symbols: set[str] = field(default_factory=set)
+
+    def observe_bar(self, bar: HistoricalBar, reason: str | None) -> None:
+        self.coverage_eligible_count += 1
+        if reason is None:
+            self.coverage_evaluable_count += 1
+        else:
+            self.coverage_unavailable_count += 1
+        regime_reason = special_regime_reason(bar)
+        if regime_reason is not None:
+            self.special_regime_reason_counts[regime_reason] = (
+                self.special_regime_reason_counts.get(regime_reason, 0) + 1
+            )
+
+    def evidence(self, result: "BacktestEngineResult") -> dict[str, object]:
+        eligible = self.coverage_eligible_count
+        ratio = (
+            Decimal("0")
+            if eligible == 0
+            else (Decimal(self.coverage_evaluable_count) / Decimal(eligible)).quantize(
+                Decimal("0.000000000000000001"), rounding=ROUND_DOWN
+            )
+        )
+        active_dates = {trade.exit_fill.filled_at.date() for trade in result.trades}
+        return FormalEvidence(
+            active_dates=len(active_dates),
+            coverage_eligible_count=eligible,
+            coverage_evaluable_count=self.coverage_evaluable_count,
+            coverage_unavailable_count=self.coverage_unavailable_count,
+            coverage_ratio=ratio,
+            coverage_minimum=Decimal("0.95"),
+            execution_fallback_count=self.execution_fallback_count,
+            execution_locked_limit_count=self.execution_locked_limit_count,
+            execution_partial_fill_count=self.execution_partial_fill_count,
+            execution_residual_count=self.execution_residual_count,
+            execution_auction_close_count=self.execution_auction_close_count,
+            execution_overnight_breach_count=self.execution_overnight_breach_count,
+            special_regime_denominator_count=sum(self.special_regime_reason_counts.values()),
+            special_regime_reason_counts=self.special_regime_reason_counts,
+            capacity_before_cost_shares=self.capacity_before_cost_shares,
+            capacity_after_cost_shares=self.capacity_after_cost_shares,
+        ).to_dict()
+
+    def mark_overnight_breach(self, symbol: str) -> None:
+        if symbol not in self.overnight_breach_symbols:
+            self.overnight_breach_symbols.add(symbol)
+            self.execution_overnight_breach_count += 1
+
+
 @dataclass(frozen=True)
 class DailyEquityPoint:
     session_date: date
@@ -103,9 +186,10 @@ class BacktestEngineResult:
     daily_equity: list[DailyEquityPoint] = field(default_factory=list)
     strategy_counts: dict[str, dict[str, int]] = field(default_factory=dict)
     unresolved_positions: list[dict[str, object]] = field(default_factory=list)
+    formal_evidence: dict[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        value: dict[str, object] = {
             "decisions": [item.to_dict() for item in self.decisions],
             "fills": [item.to_dict() for item in self.fills],
             "trades": [item.to_dict() for item in self.trades],
@@ -114,6 +198,9 @@ class BacktestEngineResult:
             "strategy_counts": self.strategy_counts,
             "unresolved_positions": self.unresolved_positions,
         }
+        if self.formal_evidence is not None:
+            value["formal_evidence"] = self.formal_evidence
+        return value
 
 
 class HistoricalBacktestEngine:
@@ -144,9 +231,7 @@ class HistoricalBacktestEngine:
             if total_bars is None or total_bars <= 0:
                 raise ValueError("ordered Kbar replay requires a positive total_bars")
             if not terminal_timestamp_by_symbol:
-                raise ValueError(
-                    "ordered Kbar replay requires terminal timestamps by symbol"
-                )
+                raise ValueError("ordered Kbar replay requires terminal timestamps by symbol")
             ordered_bars = iter(bars)
             all_events = total_bars
             terminal_timestamps = dict(terminal_timestamp_by_symbol)
@@ -160,6 +245,18 @@ class HistoricalBacktestEngine:
             for bar in ordered:
                 terminal_timestamps[bar.symbol] = bar.timestamp
         self._validate_strategy_set(config)
+        formal_state: _FormalRunState | None = None
+        if config.engine_version == ENGINE_V3_TW:
+            assert config.execution_policy_snapshot is not None
+            assert config.cost_policy_snapshot is not None
+            execution_snapshot = verify_execution_policy_snapshot(config.execution_policy_snapshot)
+            cost_snapshot = verify_cost_policy_snapshot(config.cost_policy_snapshot)
+            readiness_reason = execution_policy_readiness_reason(execution_snapshot)
+            if readiness_reason is None:
+                readiness_reason = cost_policy_readiness_reason(cost_snapshot)
+            if readiness_reason is not None:
+                raise ValueError(readiness_reason)
+            formal_state = _FormalRunState()
         selected_strategy_ids = set(config.strategy_set.entry_strategy_ids) | set(
             config.strategy_set.exit_strategy_ids
         )
@@ -186,8 +283,11 @@ class HistoricalBacktestEngine:
             self._raise_if_cancelled(cancelled)
             self._registry.begin_session(session_date)
             last_timestamp_by_symbol: dict[str, datetime] = {}
+            close_signal_timestamp_by_symbol: dict[str, datetime] = {}
             for bar in session_bars:
                 last_timestamp_by_symbol[bar.symbol] = bar.timestamp
+                if bar.market_phase == "CONTINUOUS":
+                    close_signal_timestamp_by_symbol[bar.symbol] = bar.timestamp
             day_states: dict[str, _DayState] = {}
             feature_states: dict[str, BarFeatureState] = {}
             symbol_event_indexes: dict[str, int] = {}
@@ -199,9 +299,39 @@ class HistoricalBacktestEngine:
                 if processed_events % 128 == 0:
                     self._raise_if_cancelled(cancelled)
                     if progress is not None:
-                        progress(processed_events / all_events, f"正在回測 {session_date.isoformat()} {bar.symbol}")
+                        progress(
+                            processed_events / all_events,
+                            f"正在回測 {session_date.isoformat()} {bar.symbol}",
+                        )
 
                 symbol_event_indexes[bar.symbol] = symbol_event_indexes.get(bar.symbol, 0) + 1
+                formal_bar_unavailable: str | None = None
+                if formal_state is not None:
+                    formal_bar_unavailable = formal_bar_reason(bar)
+                    if formal_bar_unavailable is None and bar.market_phase == "CLOSING_AUCTION":
+                        if (
+                            bar.timestamp.hour,
+                            bar.timestamp.minute,
+                            bar.timestamp.second,
+                            bar.timestamp.microsecond,
+                        ) != (13, 30, 0, 0):
+                            formal_bar_unavailable = "INVALID_AUCTION_EVENT_TIME"
+                        assert config.research_truth_snapshot is not None
+                        if formal_bar_unavailable is None and not has_verified_auction_contract(
+                            config.research_truth_snapshot
+                        ):
+                            formal_bar_unavailable = "MISSING_AUCTION_EVENT_PROOF"
+                    formal_state.observe_bar(bar, formal_bar_unavailable)
+                if formal_bar_unavailable is not None:
+                    order = pending.pop(bar.symbol, None)
+                    if order is not None:
+                        self._replace_order_status(
+                            result,
+                            order.order_id,
+                            "UNFILLED_FORMAL_EVIDENCE",
+                            formal_bar_unavailable,
+                        )
+                    continue
                 last_prices[bar.symbol] = bar.close
                 session_closes[bar.symbol] = bar.close
                 cash = self._fill_pending_if_due(
@@ -210,13 +340,15 @@ class HistoricalBacktestEngine:
                     last_prices=last_prices,
                     cash=cash,
                     bar=bar,
-                    is_last_bar=(
-                        bar.timestamp == last_timestamp_by_symbol[bar.symbol]
-                    ),
+                    is_last_bar=(bar.timestamp == last_timestamp_by_symbol[bar.symbol]),
                     symbol_event_index=symbol_event_indexes[bar.symbol],
                     config=config,
                     result=result,
+                    formal_state=formal_state,
                 )
+
+                if formal_state is not None and bar.market_phase == "CLOSING_AUCTION":
+                    continue
 
                 state = day_states.get(bar.symbol)
                 if state is None:
@@ -266,7 +398,11 @@ class HistoricalBacktestEngine:
                     vwap=vwap,
                     cumulative_volume=state.cumulative_volume,
                     bars_seen=state.bars_seen,
-                    is_last_bar=bar.timestamp == last_timestamp_by_symbol[bar.symbol],
+                    is_last_bar=(
+                        bar.timestamp == last_timestamp_by_symbol[bar.symbol]
+                        if formal_state is None
+                        else bar.timestamp == close_signal_timestamp_by_symbol.get(bar.symbol)
+                    ),
                     entry_price=(position.entry_fill.price if position is not None else None),
                     features=features,
                     previous_features=previous_features,
@@ -296,10 +432,11 @@ class HistoricalBacktestEngine:
                 elif (
                     bar.symbol not in pending
                     and not state.entered_today
-                    and (
-                        entry_eligibility is None
-                        or entry_eligibility(session_date, bar.symbol)
+                    and not (
+                        formal_state is not None
+                        and bar.timestamp == close_signal_timestamp_by_symbol.get(bar.symbol)
                     )
+                    and (entry_eligibility is None or entry_eligibility(session_date, bar.symbol))
                 ):
                     decision = self._evaluate_decision(
                         context=context,
@@ -310,15 +447,15 @@ class HistoricalBacktestEngine:
                     if decision is not None:
                         result.decisions.append(decision)
                         pending[bar.symbol] = _PendingOrder(
-                        order_id=self._order_id(
-                            decision,
-                            StrategySide.ENTRY,
-                            (
-                                "DAILY_NEXT_BAR_OPEN"
-                                if decision.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR
-                                else "NEXT_BAR_OPEN"
+                            order_id=self._order_id(
+                                decision,
+                                StrategySide.ENTRY,
+                                (
+                                    "DAILY_NEXT_BAR_OPEN"
+                                    if decision.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR
+                                    else "NEXT_BAR_OPEN"
+                                ),
                             ),
-                        ),
                             decision=decision,
                             side=StrategySide.ENTRY,
                             shares=None,
@@ -338,12 +475,25 @@ class HistoricalBacktestEngine:
                     and order.created_session_date == session_date
                 ):
                     pending.pop(symbol, None)
+                    status = (
+                        "UNFILLED_MISSING_AUCTION_CLOSE"
+                        if formal_state is not None
+                        and order.execution_horizon is ExecutionHorizon.SESSION_CLOSE
+                        else "UNFILLED_END_OF_SESSION"
+                    )
                     self._replace_order_status(
                         result,
                         order.order_id,
-                        "UNFILLED_END_OF_SESSION",
-                        "當日沒有下一根有效 Kbar，禁止 intraday 委託跨交易日成交",
+                        status,
+                        (
+                            "缺少可驗證的 13:30 auction-only 收盤事件"
+                            if status == "UNFILLED_MISSING_AUCTION_CLOSE"
+                            else "當日沒有下一根有效 Kbar，禁止 intraday 委託跨交易日成交"
+                        ),
                     )
+            if formal_state is not None:
+                for symbol in positions:
+                    formal_state.mark_overnight_breach(symbol)
 
             previous_close.update(session_closes)
             market_value = sum(
@@ -371,14 +521,22 @@ class HistoricalBacktestEngine:
                     "資料結束前沒有下一個有效日 Kbar 可成交",
                 )
         for position in positions.values():
+            if formal_state is not None:
+                formal_state.mark_overnight_breach(position.symbol)
             result.unresolved_positions.append(
                 {
                     "symbol": position.symbol,
                     "shares": position.shares,
                     "entry_decision_id": position.entry_decision.decision_id,
-                    "reason": "已選賣出策略未於資料結束前平倉",
+                    "reason": (
+                        "OVERNIGHT_BREACH"
+                        if formal_state is not None
+                        else "已選賣出策略未於資料結束前平倉"
+                    ),
                 }
             )
+        if formal_state is not None:
+            result.formal_evidence = formal_state.evidence(result)
         return result
 
     @staticmethod
@@ -398,9 +556,7 @@ class HistoricalBacktestEngine:
             ):
                 raise ValueError("回測 Kbar 順序或唯一性錯誤")
             previous_key = key
-            if uses_daily_features and (
-                bar.session_date is None or bar.session_open_at is None
-            ):
+            if uses_daily_features and (bar.session_date is None or bar.session_open_at is None):
                 raise ValueError(
                     "daily SMA strategy requires resolved session_date and "
                     "session_open_at on every Kbar"
@@ -429,7 +585,11 @@ class HistoricalBacktestEngine:
             raise ValueError(f"回測資料集缺少 {symbol} terminal timestamp") from error
 
     def _validate_strategy_set(self, config: BacktestRunConfig) -> None:
-        if config.engine_version not in {"backtest-engine-v1", "backtest-engine-v2"}:
+        if config.engine_version not in {
+            "backtest-engine-v1",
+            "backtest-engine-v2",
+            ENGINE_V3_TW,
+        }:
             raise ValueError(f"不支援的回測引擎版本：{config.engine_version}")
         experimental_strategy_ids = {
             "opening_range_breakout_entry_v1",
@@ -445,6 +605,8 @@ class HistoricalBacktestEngine:
         )
         if config.engine_version == "backtest-engine-v1" and selected & experimental_strategy_ids:
             raise ValueError("backtest-engine-v1 不支援新的歷史 feature 策略")
+        if config.engine_version == ENGINE_V3_TW and config.min_lot_shares != BOARD_LOT_SHARES:
+            raise ValueError("backtest-engine-v3-tw 僅支援 1,000 股整張")
         for strategy_id in config.strategy_set.entry_strategy_ids:
             if self._registry.definition(strategy_id).side is not StrategySide.ENTRY:
                 raise ValueError(f"{strategy_id} 不是買入策略")
@@ -531,10 +693,22 @@ class HistoricalBacktestEngine:
         if decision is None:
             return cash
         result.decisions.append(decision)
-        if (
-            decision.execution_horizon is ExecutionHorizon.SESSION_CLOSE
-            or (decision.execution_horizon is None and context.is_last_bar)
-        ):
+        closes_session = decision.execution_horizon is ExecutionHorizon.SESSION_CLOSE or (
+            decision.execution_horizon is None and context.is_last_bar
+        )
+        if config.engine_version == ENGINE_V3_TW and closes_session:
+            pending[context.symbol] = _PendingOrder(
+                order_id=self._order_id(decision, StrategySide.EXIT, "CLOSING_AUCTION"),
+                decision=decision,
+                side=StrategySide.EXIT,
+                shares=position.shares,
+                created_at=context.bar.timestamp,
+                execution_horizon=ExecutionHorizon.SESSION_CLOSE,
+                created_session_date=context.resolved_session_date,
+            )
+            result.orders.append(self._order_payload(pending[context.symbol], status="SUBMITTED"))
+            return cash
+        if closes_session:
             fill = self._make_fill(
                 decision=decision,
                 bar=context.bar,
@@ -582,7 +756,20 @@ class HistoricalBacktestEngine:
         symbol_event_index: int,
         config: BacktestRunConfig,
         result: BacktestEngineResult,
+        formal_state: _FormalRunState | None,
     ) -> Decimal:
+        if formal_state is not None:
+            return self._fill_pending_v3(
+                pending=pending,
+                positions=positions,
+                last_prices=last_prices,
+                cash=cash,
+                bar=bar,
+                symbol_event_index=symbol_event_index,
+                config=config,
+                result=result,
+                formal_state=formal_state,
+            )
         order = pending.get(bar.symbol)
         if order is None or bar.timestamp <= order.created_at:
             return cash
@@ -594,10 +781,7 @@ class HistoricalBacktestEngine:
             ):
                 return cash
         if order.side is StrategySide.ENTRY:
-            if (
-                order.execution_horizon is not ExecutionHorizon.DAILY_NEXT_BAR
-                and is_last_bar
-            ):
+            if order.execution_horizon is not ExecutionHorizon.DAILY_NEXT_BAR and is_last_bar:
                 pending.pop(bar.symbol, None)
                 self._replace_order_status(
                     result,
@@ -630,7 +814,9 @@ class HistoricalBacktestEngine:
             total = fill.price * fill.shares + fill.total_cost
             if fill.shares <= 0 or total > cash:
                 pending.pop(bar.symbol, None)
-                self._replace_order_status(result, order.order_id, "REJECTED", "可用資金不足以買入一張")
+                self._replace_order_status(
+                    result, order.order_id, "REJECTED", "可用資金不足以買入一張"
+                )
                 return cash
             cash -= total
             positions[bar.symbol] = _Position(
@@ -645,7 +831,9 @@ class HistoricalBacktestEngine:
             )
             result.fills.append(fill)
             pending.pop(bar.symbol, None)
-            self._replace_order_status(result, order.order_id, "FILLED", "下一根 Kbar 開盤成交", fill)
+            self._replace_order_status(
+                result, order.order_id, "FILLED", "下一根 Kbar 開盤成交", fill
+            )
             return cash
 
         position = positions.get(bar.symbol)
@@ -671,6 +859,283 @@ class HistoricalBacktestEngine:
         self._replace_order_status(result, order.order_id, "FILLED", "下一根 Kbar 開盤成交", fill)
         return self._close_position(positions, position, order.decision, fill, cash, result)
 
+    def _fill_pending_v3(
+        self,
+        *,
+        pending: dict[str, _PendingOrder],
+        positions: dict[str, _Position],
+        last_prices: dict[str, Decimal],
+        cash: Decimal,
+        bar: HistoricalBar,
+        symbol_event_index: int,
+        config: BacktestRunConfig,
+        result: BacktestEngineResult,
+        formal_state: _FormalRunState,
+    ) -> Decimal:
+        order = pending.get(bar.symbol)
+        if order is None or bar.timestamp <= order.created_at:
+            return cash
+        if order.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR:
+            if (
+                bar.session_date is None
+                or order.created_session_date is None
+                or bar.session_date <= order.created_session_date
+            ):
+                return cash
+        if order.execution_horizon is ExecutionHorizon.SESSION_CLOSE:
+            if bar.market_phase != "CLOSING_AUCTION":
+                return cash
+        elif order.side is StrategySide.ENTRY and bar.market_phase == "CLOSING_AUCTION":
+            pending.pop(bar.symbol, None)
+            self._replace_order_status(
+                result,
+                order.order_id,
+                "UNFILLED_END_OF_SESSION",
+                "entry 不可使用收盤競價事件成交",
+            )
+            return cash
+
+        limit_reason = locked_limit_reason(bar, side=order.side.value)
+        if limit_reason is not None:
+            pending.pop(bar.symbol, None)
+            formal_state.execution_locked_limit_count += 1
+            self._replace_order_status(
+                result,
+                order.order_id,
+                "UNFILLED_LOCKED_LIMIT",
+                limit_reason,
+            )
+            return cash
+
+        assert config.execution_policy_snapshot is not None
+        assert config.cost_policy_snapshot is not None
+        observed_shares = available_shares(bar, config.execution_policy_snapshot)
+        if observed_shares < BOARD_LOT_SHARES:
+            pending.pop(bar.symbol, None)
+            self._replace_order_status(
+                result,
+                order.order_id,
+                "UNFILLED_NO_PARTICIPATION_VOLUME",
+                "observed participation quantity is below one board lot",
+            )
+            return cash
+
+        cost_snapshot = verify_cost_policy_snapshot(config.cost_policy_snapshot)
+        slippage_bps = Decimal(str(cost_snapshot["slippage_bps"]))
+        source = (
+            "CLOSING_AUCTION"
+            if order.execution_horizon is ExecutionHorizon.SESSION_CLOSE
+            else "DAILY_NEXT_BAR_OPEN"
+            if order.execution_horizon is ExecutionHorizon.DAILY_NEXT_BAR
+            else "NEXT_BAR_OPEN"
+        )
+        pre_cost_price = bar.close if source == "CLOSING_AUCTION" else bar.open
+        assert bar.lower_limit_price is not None
+        assert bar.upper_limit_price is not None
+        post_cost_price = adverse_tick_price(
+            pre_cost_price,
+            side=order.side.value,
+            slippage_bps=slippage_bps,
+            lower_limit_price=bar.lower_limit_price,
+            upper_limit_price=bar.upper_limit_price,
+        )
+        if post_cost_price is None:
+            pending.pop(bar.symbol, None)
+            self._replace_order_status(
+                result,
+                order.order_id,
+                "UNFILLED_PRICE_LIMIT",
+                "adverse tick price falls outside PIT price limits",
+            )
+            return cash
+
+        fill_time = self._fill_time(bar, order.execution_horizon)
+        position = positions.get(bar.symbol)
+        if order.side is StrategySide.ENTRY:
+            equity = cash + sum(
+                item.shares * last_prices.get(item.symbol, item.entry_fill.price)
+                for item in positions.values()
+            )
+            before_cost = lot_floor(
+                equity * config.position_fraction / pre_cost_price,
+                BOARD_LOT_SHARES,
+            )
+            after_cost = self._affordable_entry_shares(
+                budget=equity * config.position_fraction,
+                cash=cash,
+                post_cost_price=post_cost_price,
+                pre_cost_price=pre_cost_price,
+                trade_date=fill_time.date(),
+                candidate_shares=before_cost,
+                cost_policy_snapshot=config.cost_policy_snapshot,
+            )
+            formal_state.capacity_before_cost_shares += before_cost
+            formal_state.capacity_after_cost_shares += after_cost
+            requested_shares = after_cost
+        else:
+            if position is None:
+                pending.pop(bar.symbol, None)
+                self._replace_order_status(result, order.order_id, "CANCELLED", "持倉已不存在")
+                return cash
+            requested_shares = position.shares
+        filled_shares = min(requested_shares, observed_shares)
+        filled_shares = lot_floor(Decimal(filled_shares), BOARD_LOT_SHARES)
+        if filled_shares < BOARD_LOT_SHARES:
+            pending.pop(bar.symbol, None)
+            self._replace_order_status(
+                result,
+                order.order_id,
+                "REJECTED",
+                "cost-aware capacity is below one board lot",
+            )
+            return cash
+
+        is_day_trade = (
+            position is not None and position.entry_fill.filled_at.date() == fill_time.date()
+        )
+        fill = self._make_formal_fill(
+            decision=order.decision,
+            bar=bar,
+            requested_shares=requested_shares,
+            filled_shares=filled_shares,
+            side=order.side,
+            config=config,
+            source=source,
+            pre_cost_price=pre_cost_price,
+            post_cost_price=post_cost_price,
+            filled_at=fill_time,
+            is_day_trade=is_day_trade,
+        )
+        partial = filled_shares < requested_shares
+        if partial:
+            formal_state.execution_partial_fill_count += 1
+            formal_state.execution_residual_count += 1
+        if source == "CLOSING_AUCTION":
+            formal_state.execution_auction_close_count += 1
+        result.fills.append(fill)
+        pending.pop(bar.symbol, None)
+        self._replace_order_status(
+            result,
+            order.order_id,
+            "PARTIALLY_FILLED" if partial else "FILLED",
+            "observed quantity partial fill" if partial else "formal next event fill",
+            fill,
+        )
+
+        if order.side is StrategySide.ENTRY:
+            total = fill.price * fill.shares + fill.total_cost
+            if total > cash:
+                raise AssertionError("cost-aware entry capacity exceeded cash")
+            cash -= total
+            positions[bar.symbol] = _Position(
+                symbol=bar.symbol,
+                name=bar.name,
+                shares=fill.shares,
+                entry_fill=fill,
+                entry_decision=order.decision,
+                entry_event_at=fill.filled_at,
+                entry_event_index=symbol_event_index,
+                entry_signal_atr=order.entry_signal_atr,
+            )
+            return cash
+
+        assert position is not None
+        if partial:
+            proceeds = fill.price * fill.shares - fill.total_cost
+            position.shares -= fill.shares
+            return cash + proceeds
+        return self._close_position(positions, position, order.decision, fill, cash, result)
+
+    @staticmethod
+    def _affordable_entry_shares(
+        *,
+        budget: Decimal,
+        cash: Decimal,
+        pre_cost_price: Decimal,
+        post_cost_price: Decimal,
+        trade_date: date,
+        candidate_shares: int,
+        cost_policy_snapshot: Mapping[str, object],
+    ) -> int:
+        shares = candidate_shares
+        available_cash = min(budget, cash)
+        while shares >= BOARD_LOT_SHARES:
+            costs = calculate_costs(
+                pre_cost_price=pre_cost_price,
+                post_cost_price=post_cost_price,
+                shares=shares,
+                side="ENTRY",
+                trade_date=trade_date,
+                is_day_trade=False,
+                cost_policy_snapshot=cost_policy_snapshot,
+            )
+            if post_cost_price * shares + costs.commission <= available_cash:
+                return shares
+            shares -= BOARD_LOT_SHARES
+        return 0
+
+    @staticmethod
+    def _make_formal_fill(
+        *,
+        decision: TradeDecision,
+        bar: HistoricalBar,
+        requested_shares: int,
+        filled_shares: int,
+        side: StrategySide,
+        config: BacktestRunConfig,
+        source: str,
+        pre_cost_price: Decimal,
+        post_cost_price: Decimal,
+        filled_at: datetime,
+        is_day_trade: bool,
+    ) -> HistoricalFill:
+        assert config.execution_policy_snapshot is not None
+        assert config.cost_policy_snapshot is not None
+        costs = calculate_costs(
+            pre_cost_price=pre_cost_price,
+            post_cost_price=post_cost_price,
+            shares=filled_shares,
+            side=side.value,
+            trade_date=filled_at.date(),
+            is_day_trade=is_day_trade,
+            cost_policy_snapshot=config.cost_policy_snapshot,
+        )
+        fill_identity = {
+            "decision_id": decision.decision_id,
+            "symbol": bar.symbol,
+            "side": side.value,
+            "filled_at": filled_at.isoformat(),
+            "requested_shares": requested_shares,
+            "filled_shares": filled_shares,
+            "source": source,
+            "execution_policy_snapshot_digest": config.execution_policy_snapshot["snapshot_digest"],
+            "cost_policy_snapshot_digest": config.cost_policy_snapshot["snapshot_digest"],
+        }
+        return HistoricalFill(
+            fill_id=f"fill-{digest(fill_identity)[:24]}",
+            decision_id=decision.decision_id,
+            symbol=bar.symbol,
+            side=side,
+            filled_at=filled_at,
+            price=post_cost_price,
+            shares=filled_shares,
+            commission=costs.commission,
+            tax=costs.tax,
+            source=source,
+            requested_shares=requested_shares,
+            residual_shares=requested_shares - filled_shares,
+            pre_cost_price=pre_cost_price,
+            slippage=costs.slippage,
+            execution_policy_contract_version=str(
+                config.execution_policy_snapshot["contract_version"]
+            ),
+            execution_policy_snapshot_digest=str(
+                config.execution_policy_snapshot["snapshot_digest"]
+            ),
+            cost_policy_contract_version=str(config.cost_policy_snapshot["contract_version"]),
+            cost_policy_snapshot_digest=str(config.cost_policy_snapshot["snapshot_digest"]),
+        )
+
     @staticmethod
     def _replace_order_status(
         result: BacktestEngineResult,
@@ -687,6 +1152,10 @@ class HistoricalBacktestEngine:
             if fill is not None:
                 order["filled_at"] = fill.filled_at.isoformat()
                 order["fill"] = fill.to_dict()
+                if fill.requested_shares is not None:
+                    order["requested_shares"] = fill.requested_shares
+                    order["filled_shares"] = fill.shares
+                    order["residual_shares"] = fill.residual_shares
             return
 
     @staticmethod
@@ -731,7 +1200,9 @@ class HistoricalBacktestEngine:
         fill_time = filled_at or bar.timestamp
         slippage = config.slippage_bps / Decimal("10000")
         raw_price = bar.close if source == "EOD_CLOSE" else bar.open
-        price = raw_price * (Decimal("1") + slippage if side is StrategySide.ENTRY else Decimal("1") - slippage)
+        price = raw_price * (
+            Decimal("1") + slippage if side is StrategySide.ENTRY else Decimal("1") - slippage
+        )
         gross = price * shares
         commission = gross * config.commission_rate
         tax = gross * config.sell_tax_rate if side is StrategySide.EXIT else Decimal("0")
@@ -768,7 +1239,9 @@ class HistoricalBacktestEngine:
         proceeds = exit_fill.price * exit_fill.shares - exit_fill.total_cost
         gross_pnl = (exit_fill.price - position.entry_fill.price) * position.shares
         net_pnl = gross_pnl - position.entry_fill.total_cost - exit_fill.total_cost
-        holding = max(0, int((exit_fill.filled_at - position.entry_fill.filled_at).total_seconds() // 60))
+        holding = max(
+            0, int((exit_fill.filled_at - position.entry_fill.filled_at).total_seconds() // 60)
+        )
         trade_identity = {
             "entry_decision_id": position.entry_decision.decision_id,
             "exit_decision_id": exit_decision.decision_id,

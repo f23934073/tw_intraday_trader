@@ -301,6 +301,20 @@
         <div class="backtest-body">
           <p class="backtest-intro">選擇已發布的原子策略組合，使用下一根 Kbar 的成交模型模擬。系統會自動鎖定可用的 READY 歷史快照，所有結果、策略版本、成交與調整 lineage 都會保存至回測資料庫。</p>
           <div class="backtest-notice" id="backtest-notice">正在讀取策略組合、歷史快照與回測能力…</div>
+          <div class="backtest-readiness" aria-label="正式研究就緒狀態">
+            <article class="backtest-readiness-card" id="backtest-platform-readiness-card">
+              <span>平台</span><strong id="backtest-platform-readiness">CHECKING</strong>
+              <small id="backtest-platform-readiness-detail">正在確認回測服務。</small>
+            </article>
+            <article class="backtest-readiness-card" id="backtest-data-readiness-card">
+              <span>資料</span><strong id="backtest-data-readiness">CHECKING</strong>
+              <small id="backtest-data-readiness-detail">正在驗證 PIT 與市場制度證據。</small>
+            </article>
+            <article class="backtest-readiness-card" id="backtest-strategy-readiness-card">
+              <span>策略</span><strong id="backtest-strategy-readiness">CHECKING</strong>
+              <small id="backtest-strategy-readiness-detail">正在讀取不可變資格證據。</small>
+            </article>
+          </div>
 
           <div class="workspace-tabs" role="tablist" aria-label="歷史回測工作流程">
             <button class="workspace-tab active" id="backtest-tab-setup" type="button" role="tab" aria-selected="true" aria-controls="backtest-panel-setup" data-backtest-tab="setup">1. 設定策略組合</button>
@@ -346,13 +360,13 @@
               <div class="backtest-actions"><button class="backtest-button secondary" id="backtest-clone" type="button">以目前設定複製並調整</button><button class="backtest-button" id="backtest-compare" type="button">比較兩個已完成 Run</button></div>
               <div id="backtest-comparison"></div>
               <div class="backtest-section-heading"><h3>固定 OOS／Walk-forward 資格判定</h3><span class="panel-count">人工審核 evidence</span></div>
-              <p class="backtest-card-copy">資格判定只讀取已完成的 Atomic Runs，保存固定日期、所有嘗試、成本與 Feature 身分。即使通過，也不會自動啟用策略或啟動 Local Paper。</p>
+              <p class="backtest-card-copy">資格判定只讀取已完成 Run 的不可變證據。Formal v3 唯一採用 summary.formal_evidence，保存固定日期、所有嘗試、成本與資料真實性身分。即使通過，也不會自動啟用策略或啟動 Local Paper。</p>
               <form id="backtest-qualification-form">
                 <div class="backtest-form-grid">
                   <div class="backtest-field wide"><label for="qualification-hypothesis">假設名稱</label><input id="qualification-hypothesis" required maxlength="120" placeholder="例如 v2 優於 v1"></div>
                   <div class="backtest-field wide"><label for="qualification-change-note">研究變更說明</label><input id="qualification-change-note" required maxlength="300" placeholder="例如：只把 VWAP 確認根數由 1 改成 2"></div>
                 </div>
-                <div class="backtest-notice">Family、嘗試序號、完整 Run 歷史、alpha 與門檻由伺服器固定管理。固定 family alpha 5%、最多 20 次；Primary 至少 30 筆／10 個獨立 OOS 日、最大回撤 20%；至少 2 個 Walk-forward folds，正向比例 60%。</div>
+                <div class="backtest-notice">Family、嘗試序號、完整 Run 歷史、alpha 與門檻由伺服器固定管理。Formal v3：family alpha 5%、最多 20 次；Primary 至少 6 個月、120 個 active dates、30 筆交易，最大回撤 20%；至少 4 個 Walk-forward folds、每 fold 20 個 active dates，至少 3/4 正向。Legacy Run 仍依其既有 v2 policy 評估。</div>
                 <div class="qualification-window" data-qualification-window="primary">
                   <strong>Primary 固定切割</strong>
                   <div class="backtest-form-grid">

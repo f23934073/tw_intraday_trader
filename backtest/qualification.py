@@ -20,11 +20,42 @@ from backtest.comparability import (
     run_comparability_diff,
     verified_atomic_snapshot,
 )
-from backtest.domain import decimal, digest
+from backtest.domain import ENGINE_V3_TW, decimal, digest, formal_evidence_from_result
 
 
 SERVER_FAMILY_ALPHA = Decimal("0.05")
 SERVER_FAMILY_PLANNED_ATTEMPTS = 20
+V3_PRIMARY_MINIMUM_ACTIVE_DATES = 120
+V3_PRIMARY_MINIMUM_CALENDAR_DAYS = 183
+V3_MINIMUM_WALK_FORWARD_FOLDS = 4
+V3_FOLD_MINIMUM_ACTIVE_DATES = 20
+V3_MINIMUM_POSITIVE_FOLDS = 3
+V3_MINIMUM_POSITIVE_FOLD_RATIO = Decimal("0.75")
+
+
+def _formal_v3_policy() -> dict[str, Any]:
+    return {
+        "coverage_minimum": "0.95",
+        "primary_minimum_active_dates": V3_PRIMARY_MINIMUM_ACTIVE_DATES,
+        "primary_minimum_calendar_days": V3_PRIMARY_MINIMUM_CALENDAR_DAYS,
+        "minimum_oos_trades": 30,
+        "minimum_profit_factor_exclusive": "1",
+        "minimum_expectancy_exclusive": "0",
+        "maximum_drawdown": "0.20",
+        "minimum_walk_forward_folds": V3_MINIMUM_WALK_FORWARD_FOLDS,
+        "fold_minimum_active_dates": V3_FOLD_MINIMUM_ACTIVE_DATES,
+        "minimum_positive_folds": V3_MINIMUM_POSITIVE_FOLDS,
+        "minimum_positive_fold_ratio": str(V3_MINIMUM_POSITIVE_FOLD_RATIO),
+        "maximum_execution_fallback_count": 0,
+        "maximum_execution_residual_count": 0,
+        "maximum_execution_overnight_breach_count": 0,
+        "maximum_special_regime_denominator_count": 0,
+        "minimum_capacity_before_cost_shares_exclusive": 0,
+        "minimum_capacity_after_cost_shares_exclusive": 0,
+        "family_alpha": str(SERVER_FAMILY_ALPHA),
+        "planned_attempts": SERVER_FAMILY_PLANNED_ATTEMPTS,
+        "multiple_testing_adjustment": "BONFERRONI",
+    }
 
 
 def experiment_family_id(research_baseline_digest: str) -> str:
@@ -61,10 +92,38 @@ def research_protocol_identity() -> dict[str, Any]:
 def research_baseline_identity_digest(config: Mapping[str, Any]) -> str:
     """Stable family owner shared by semantically equivalent Baseline Runs."""
 
+    if config.get("engine_version") == ENGINE_V3_TW:
+        # The formal engine supports ordinary Strategy Set Runs as well as Atomic
+        # Runs.  Reuse the shared comparability verifier for the three frozen v3
+        # seams, then retain the selected Baseline strategy in the family owner.
+        run_comparability_diff(config, config)
+        ignored = {
+            "experiment_id",
+            "baseline_run_id",
+            "research_baseline_digest",
+            "parent_run_id",
+            "change_note",
+            "target_win_rate",
+            "minimum_oos_trades",
+            "max_drawdown_guardrail",
+            "atomic_run_request",
+            "atomic_run_request_digest",
+            "dataset_binding_snapshot",
+        }
+        baseline_config_digest = digest(
+            {key: config.get(key) for key in sorted(set(config) - ignored)}
+        )
+        protocol_identity = {
+            **research_protocol_identity(),
+            "formal_v3_policy": _formal_v3_policy(),
+        }
+    else:
+        baseline_config_digest = baseline_research_config_digest(config)
+        protocol_identity = research_protocol_identity()
     return digest(
         {
-            "baseline_research_config_digest": baseline_research_config_digest(config),
-            "research_protocol_identity": research_protocol_identity(),
+            "baseline_research_config_digest": baseline_config_digest,
+            "research_protocol_identity": protocol_identity,
         }
     )
 
@@ -149,9 +208,7 @@ class EvaluationWindow:
             < self.oos_start
             <= self.oos_end
         ):
-            raise ValueError(
-                "研究區間必須依序且不重疊：train < validation < OOS"
-            )
+            raise ValueError("研究區間必須依序且不重疊：train < validation < OOS")
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -316,9 +373,7 @@ class QualificationPolicy:
         if self.minimum_train_observed_sessions < 20:
             raise ValueError("minimum_train_observed_sessions 不可低於 server floor 20")
         if self.minimum_validation_observed_sessions < 10:
-            raise ValueError(
-                "minimum_validation_observed_sessions 不可低於 server floor 10"
-            )
+            raise ValueError("minimum_validation_observed_sessions 不可低於 server floor 10")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -333,9 +388,7 @@ class QualificationPolicy:
             "minimum_validation_calendar_days": self.minimum_validation_calendar_days,
             "minimum_oos_calendar_days": self.minimum_oos_calendar_days,
             "minimum_train_observed_sessions": self.minimum_train_observed_sessions,
-            "minimum_validation_observed_sessions": (
-                self.minimum_validation_observed_sessions
-            ),
+            "minimum_validation_observed_sessions": (self.minimum_validation_observed_sessions),
             "policy_version": self.policy_version,
         }
 
@@ -344,31 +397,15 @@ class QualificationPolicy:
         return cls(
             minimum_oos_trades=int(value.get("minimum_oos_trades", 30)),
             maximum_oos_drawdown=decimal(value.get("maximum_oos_drawdown", "0.20")),
-            minimum_positive_fold_ratio=decimal(
-                value.get("minimum_positive_fold_ratio", "0.60")
-            ),
-            minimum_walk_forward_folds=int(
-                value.get("minimum_walk_forward_folds", 2)
-            ),
-            minimum_oos_independent_days=int(
-                value.get("minimum_oos_independent_days", 10)
-            ),
+            minimum_positive_fold_ratio=decimal(value.get("minimum_positive_fold_ratio", "0.60")),
+            minimum_walk_forward_folds=int(value.get("minimum_walk_forward_folds", 2)),
+            minimum_oos_independent_days=int(value.get("minimum_oos_independent_days", 10)),
             minimum_fold_oos_trades=int(value.get("minimum_fold_oos_trades", 5)),
-            minimum_fold_independent_days=int(
-                value.get("minimum_fold_independent_days", 3)
-            ),
-            minimum_train_calendar_days=int(
-                value.get("minimum_train_calendar_days", 60)
-            ),
-            minimum_validation_calendar_days=int(
-                value.get("minimum_validation_calendar_days", 20)
-            ),
-            minimum_oos_calendar_days=int(
-                value.get("minimum_oos_calendar_days", 20)
-            ),
-            minimum_train_observed_sessions=int(
-                value.get("minimum_train_observed_sessions", 20)
-            ),
+            minimum_fold_independent_days=int(value.get("minimum_fold_independent_days", 3)),
+            minimum_train_calendar_days=int(value.get("minimum_train_calendar_days", 60)),
+            minimum_validation_calendar_days=int(value.get("minimum_validation_calendar_days", 20)),
+            minimum_oos_calendar_days=int(value.get("minimum_oos_calendar_days", 20)),
+            minimum_train_observed_sessions=int(value.get("minimum_train_observed_sessions", 20)),
             minimum_validation_observed_sessions=int(
                 value.get("minimum_validation_observed_sessions", 10)
             ),
@@ -398,9 +435,7 @@ class QualificationProtocol:
                 raise ValueError("walk-forward OOS 區間不可重疊")
         for window in windows:
             if window.oos_end >= self.primary_window.oos_start:
-                raise ValueError(
-                    "walk-forward OOS 必須在 Primary OOS 開始前結束"
-                )
+                raise ValueError("walk-forward OOS 必須在 Primary OOS 開始前結束")
         for window in (self.primary_window, *windows):
             self._validate_window_duration(window)
         if self.contract_version != "backtest-qualification-protocol-v2":
@@ -420,10 +455,7 @@ class QualificationProtocol:
         }
         for label, duration in durations.items():
             if duration < minimums[label]:
-                raise ValueError(
-                    f"{window.label} {label} 日曆範圍不足："
-                    f"至少 {minimums[label]} 日"
-                )
+                raise ValueError(f"{window.label} {label} 日曆範圍不足：至少 {minimums[label]} 日")
 
     @property
     def protocol_digest(self) -> str:
@@ -433,9 +465,7 @@ class QualificationProtocol:
         return {
             "contract_version": self.contract_version,
             "primary_window": self.primary_window.to_dict(),
-            "walk_forward_windows": [
-                item.to_dict() for item in self.walk_forward_windows
-            ],
+            "walk_forward_windows": [item.to_dict() for item in self.walk_forward_windows],
             "multiple_testing": self.multiple_testing.to_dict(),
             "policy": self.policy.to_dict(),
         }
@@ -451,12 +481,9 @@ class QualificationProtocol:
             ),
             primary_window=EvaluationWindow.from_dict(value["primary_window"]),
             walk_forward_windows=tuple(
-                EvaluationWindow.from_dict(item)
-                for item in value.get("walk_forward_windows", ())
+                EvaluationWindow.from_dict(item) for item in value.get("walk_forward_windows", ())
             ),
-            multiple_testing=MultipleTestingRecord.from_dict(
-                value["multiple_testing"]
-            ),
+            multiple_testing=MultipleTestingRecord.from_dict(value["multiple_testing"]),
             policy=QualificationPolicy.from_dict(value.get("policy", {})),
         )
 
@@ -494,9 +521,20 @@ def build_qualification_evidence(
     )
 
     reasons: list[str] = []
-    comparable_diff = run_comparability_diff(
-        baseline_run["config"], challenger_run["config"]
-    )
+    baseline_v3 = baseline_run.get("config", {}).get("engine_version") == ENGINE_V3_TW
+    challenger_v3 = challenger_run.get("config", {}).get("engine_version") == ENGINE_V3_TW
+    formal_v3 = baseline_v3 or challenger_v3
+    formal_evidence: dict[str, dict[str, Any]] = {}
+    if formal_v3:
+        if not (baseline_v3 and challenger_v3):
+            raise ValueError("formal v3 qualification requires two v3-tw Runs")
+        formal_evidence = {
+            "baseline": formal_evidence_from_result(baseline_result),
+            "challenger": formal_evidence_from_result(challenger_result),
+        }
+        for role, evidence in formal_evidence.items():
+            reasons.extend(_formal_v3_reasons(role, evidence))
+    comparable_diff = run_comparability_diff(baseline_run["config"], challenger_run["config"])
     if comparable_diff:
         reasons.append("Baseline 與 Challenger 的資料、資金、成本或執行設定不同")
     if not dataset_research_eligible:
@@ -510,7 +548,7 @@ def build_qualification_evidence(
             reasons.append(f"attempted Run 尚未完成：{run_id}")
         try:
             snapshot = verified_atomic_snapshot(run["config"])
-            if snapshot is None:
+            if snapshot is None and not formal_v3:
                 raise ValueError("不是 Atomic Run Snapshot v2")
         except ValueError as error:
             reasons.append(f"{run_id}：{error}")
@@ -539,14 +577,10 @@ def build_qualification_evidence(
                     else []
                 ),
                 "feature_adapter_identity": (
-                    snapshot.get("feature_adapter_identity")
-                    if snapshot is not None
-                    else None
+                    snapshot.get("feature_adapter_identity") if snapshot is not None else None
                 ),
                 "feature_requests": (
-                    snapshot.get("feature_requests", [])
-                    if snapshot is not None
-                    else []
+                    snapshot.get("feature_requests", []) if snapshot is not None else []
                 ),
             }
         )
@@ -575,6 +609,15 @@ def build_qualification_evidence(
     confidence_interval = primary["win_rate_delta_ci"]
     if confidence_interval is None or confidence_interval[0] <= 0:
         reasons.append("Bonferroni 調整後勝率差信賴區間下界未大於 0")
+    if formal_v3:
+        primary_days = (
+            protocol.primary_window.oos_end - protocol.primary_window.oos_start
+        ).days + 1
+        if primary_days < V3_PRIMARY_MINIMUM_CALENDAR_DAYS:
+            reasons.append("Formal v3 Primary OOS 未覆蓋至少六個月")
+        for role in ("baseline", "challenger"):
+            if primary[role]["independent_days"] < V3_PRIMARY_MINIMUM_ACTIVE_DATES:
+                reasons.append(f"Formal v3 Primary OOS {role} active dates 少於 120")
 
     folds = [
         _window_evidence(
@@ -600,13 +643,24 @@ def build_qualification_evidence(
     if len(folds) < policy.minimum_walk_forward_folds:
         reasons.append("walk-forward folds 數量不足")
     positive_folds = sum(
-        item["challenger"]["expectancy"] > 0
-        and item["deltas"]["expectancy"] > 0
-        for item in folds
+        item["challenger"]["expectancy"] > 0 and item["deltas"]["expectancy"] > 0 for item in folds
     )
     positive_ratio = positive_folds / len(folds) if folds else 0.0
     if positive_ratio < float(policy.minimum_positive_fold_ratio):
         reasons.append("walk-forward 正向 fold 比例未達門檻")
+    if formal_v3:
+        if len(folds) < V3_MINIMUM_WALK_FORWARD_FOLDS:
+            reasons.append("Formal v3 walk-forward folds 少於 4")
+        for fold in folds:
+            label = fold["window"]["label"]
+            for role in ("baseline", "challenger"):
+                if fold[role]["independent_days"] < V3_FOLD_MINIMUM_ACTIVE_DATES:
+                    reasons.append(f"Formal v3 Walk-forward {label} {role} active dates 少於 20")
+        if (
+            positive_folds < V3_MINIMUM_POSITIVE_FOLDS
+            or Decimal(str(positive_ratio)) < V3_MINIMUM_POSITIVE_FOLD_RATIO
+        ):
+            reasons.append("Formal v3 walk-forward 至少需 3/4 正向")
 
     # Stable ordering is part of the stored evidence contract.
     reasons = list(dict.fromkeys(reasons))
@@ -638,6 +692,11 @@ def build_qualification_evidence(
         },
         "attempted_runs": attempted_evidence,
     }
+    if formal_v3:
+        evidence["formal_v3"] = {
+            "formal_evidence": formal_evidence,
+            "policy": _formal_v3_policy(),
+        }
     evidence["evidence_digest"] = digest(evidence)
     return evidence
 
@@ -695,17 +754,38 @@ def verify_qualification_record(record: Mapping[str, Any]) -> dict[str, Any]:
     verified_family = verify_experiment_family_snapshot(family_snapshot)
     if verified_family.get("family_id") != value.get("family_id"):
         raise ValueError("Qualification family snapshot identity 不一致")
-    if (
-        verified_family.get("family_snapshot_digest")
-        != value.get("family_snapshot_digest")
-    ):
+    if verified_family.get("family_snapshot_digest") != value.get("family_snapshot_digest"):
         raise ValueError("Qualification family snapshot digest 不一致")
-    if (
-        verified_family.get("research_baseline_digest")
-        != multiple_testing.get("research_baseline_digest")
+    if verified_family.get("research_baseline_digest") != multiple_testing.get(
+        "research_baseline_digest"
     ):
         raise ValueError("Qualification research Baseline identity 不一致")
     return value
+
+
+def _formal_v3_reasons(role: str, evidence: Mapping[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    coverage = evidence["coverage"]
+    execution = evidence["execution"]
+    special = evidence["special_regime"]
+    capacity = evidence["capacity"]
+    if decimal(coverage["minimum"]) != Decimal("0.95"):
+        reasons.append(f"Formal v3 {role} coverage minimum 不是 frozen 0.95")
+    if decimal(coverage["ratio"]) < Decimal("0.95"):
+        reasons.append(f"Formal v3 {role} coverage 低於 0.95")
+    if execution["fallback_count"] != 0:
+        reasons.append(f"Formal v3 {role} 存在 fallback execution")
+    if execution["residual_count"] != 0:
+        reasons.append(f"Formal v3 {role} 存在 unresolved residual")
+    if execution["overnight_breach_count"] != 0:
+        reasons.append(f"Formal v3 {role} 存在 OVERNIGHT_BREACH")
+    if special["denominator_count"] != 0:
+        reasons.append(f"Formal v3 {role} 存在 unsupported regime denominator")
+    if capacity["before_cost_shares"] <= 0:
+        reasons.append(f"Formal v3 {role} 缺少 pre-cost capacity")
+    if capacity["after_cost_shares"] <= 0:
+        reasons.append(f"Formal v3 {role} capacity 未能通過成本後門檻")
+    return reasons
 
 
 def _window_evidence(
@@ -821,10 +901,7 @@ def _clustered_win_rate_delta_ci(
 ) -> list[float] | None:
     left = _daily_outcomes(baseline)
     right = _daily_outcomes(challenger)
-    if (
-        len(left) < minimum_independent_days
-        or len(right) < minimum_independent_days
-    ):
+    if len(left) < minimum_independent_days or len(right) < minimum_independent_days:
         return None
     generator = random.Random(seed)
     left_days, right_days = sorted(left), sorted(right)
@@ -842,8 +919,7 @@ def _clustered_win_rate_delta_ci(
         ]
         if left_values and right_values:
             deltas.append(
-                sum(right_values) / len(right_values)
-                - sum(left_values) / len(left_values)
+                sum(right_values) / len(right_values) - sum(left_values) / len(left_values)
             )
     if not deltas:
         return None
@@ -880,9 +956,7 @@ def _validate_dataset_windows(
             )
 
 
-def _segment_coverage(
-    result: Mapping[str, Any], window: EvaluationWindow
-) -> dict[str, int]:
+def _segment_coverage(result: Mapping[str, Any], window: EvaluationWindow) -> dict[str, int]:
     dates = {
         _date(point["date"])
         for point in result.get("daily_equity", ())
@@ -890,16 +964,14 @@ def _segment_coverage(
     }
     return {
         "train_sessions": sum(
-            window.train_start <= session_date <= window.train_end
-            for session_date in dates
+            window.train_start <= session_date <= window.train_end for session_date in dates
         ),
         "validation_sessions": sum(
             window.validation_start <= session_date <= window.validation_end
             for session_date in dates
         ),
         "oos_sessions": sum(
-            window.oos_start <= session_date <= window.oos_end
-            for session_date in dates
+            window.oos_start <= session_date <= window.oos_end for session_date in dates
         ),
     }
 
@@ -916,21 +988,14 @@ def _coverage_reasons(
         coverage = evidence["coverage"][side]
         if coverage["train_sessions"] < policy.minimum_train_observed_sessions:
             reasons.append(f"{label} {side} Train 獨立交易日覆蓋不足")
-        if (
-            coverage["validation_sessions"]
-            < policy.minimum_validation_observed_sessions
-        ):
+        if coverage["validation_sessions"] < policy.minimum_validation_observed_sessions:
             reasons.append(f"{label} {side} Validation 獨立交易日覆蓋不足")
         minimum_oos_sessions = (
-            policy.minimum_oos_independent_days
-            if primary
-            else policy.minimum_fold_independent_days
+            policy.minimum_oos_independent_days if primary else policy.minimum_fold_independent_days
         )
         if coverage["oos_sessions"] < minimum_oos_sessions:
             reasons.append(f"{label} {side} OOS 獨立交易日覆蓋不足")
-    minimum_trades = (
-        policy.minimum_oos_trades if primary else policy.minimum_fold_oos_trades
-    )
+    minimum_trades = policy.minimum_oos_trades if primary else policy.minimum_fold_oos_trades
     if evidence["challenger"]["closed_trades"] < minimum_trades:
         reasons.append(f"{label} Challenger OOS 已平倉交易樣本不足")
     if not evidence["bootstrap"]["eligible"]:

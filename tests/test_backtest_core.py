@@ -22,6 +22,7 @@ from backtest.domain import (
     StrategyEvaluation,
     StrategySetSnapshot,
     StrategySide,
+    digest,
 )
 from backtest.engine import HistoricalBacktestEngine
 from backtest.metrics import summarize_run
@@ -33,7 +34,9 @@ from market_data.provider import MockProvider
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 
-def _bar(day: int, hour: int, minute: int, opened: int, high: int, low: int, close: int) -> HistoricalBar:
+def _bar(
+    day: int, hour: int, minute: int, opened: int, high: int, low: int, close: int
+) -> HistoricalBar:
     return HistoricalBar(
         symbol="2330",
         name="台積電",
@@ -73,27 +76,60 @@ def _config(entry: tuple[str, ...] = ("legacy_gap_volume_vwap_entry_v1",)) -> Ba
 def test_any_all_and_at_least_n_aggregation_are_deterministic() -> None:
     event_at = datetime(2026, 1, 3, 9, 0, tzinfo=TAIPEI)
     evaluations = (
-        StrategyEvaluation("a", "策略 A", "v1", StrategySide.ENTRY, EvaluationStatus.TRIGGERED, "2330", event_at, "達標"),
-        StrategyEvaluation("b", "策略 B", "v1", StrategySide.ENTRY, EvaluationStatus.NOT_TRIGGERED, "2330", event_at, "未達標"),
+        StrategyEvaluation(
+            "a",
+            "策略 A",
+            "v1",
+            StrategySide.ENTRY,
+            EvaluationStatus.TRIGGERED,
+            "2330",
+            event_at,
+            "達標",
+        ),
+        StrategyEvaluation(
+            "b",
+            "策略 B",
+            "v1",
+            StrategySide.ENTRY,
+            EvaluationStatus.NOT_TRIGGERED,
+            "2330",
+            event_at,
+            "未達標",
+        ),
     )
     aggregator = DecisionAggregator()
     any_decision = aggregator.aggregate(
-        symbol="2330", event_at=event_at, side=StrategySide.ENTRY,
-        policy=AggregationPolicy.ANY, minimum_trigger_count=1,
-        selected_strategy_ids=("a", "b"), priority_order=("a", "b"),
-        evaluations=evaluations, strategy_set_digest="set",
+        symbol="2330",
+        event_at=event_at,
+        side=StrategySide.ENTRY,
+        policy=AggregationPolicy.ANY,
+        minimum_trigger_count=1,
+        selected_strategy_ids=("a", "b"),
+        priority_order=("a", "b"),
+        evaluations=evaluations,
+        strategy_set_digest="set",
     )
     all_decision = aggregator.aggregate(
-        symbol="2330", event_at=event_at, side=StrategySide.ENTRY,
-        policy=AggregationPolicy.ALL, minimum_trigger_count=1,
-        selected_strategy_ids=("a", "b"), priority_order=("a", "b"),
-        evaluations=evaluations, strategy_set_digest="set",
+        symbol="2330",
+        event_at=event_at,
+        side=StrategySide.ENTRY,
+        policy=AggregationPolicy.ALL,
+        minimum_trigger_count=1,
+        selected_strategy_ids=("a", "b"),
+        priority_order=("a", "b"),
+        evaluations=evaluations,
+        strategy_set_digest="set",
     )
     at_least_two = aggregator.aggregate(
-        symbol="2330", event_at=event_at, side=StrategySide.ENTRY,
-        policy=AggregationPolicy.AT_LEAST_N, minimum_trigger_count=2,
-        selected_strategy_ids=("a", "b"), priority_order=("a", "b"),
-        evaluations=evaluations, strategy_set_digest="set",
+        symbol="2330",
+        event_at=event_at,
+        side=StrategySide.ENTRY,
+        policy=AggregationPolicy.AT_LEAST_N,
+        minimum_trigger_count=2,
+        selected_strategy_ids=("a", "b"),
+        priority_order=("a", "b"),
+        evaluations=evaluations,
+        strategy_set_digest="set",
     )
 
     assert any_decision is not None
@@ -119,7 +155,10 @@ def test_strategy_set_accepts_single_or_multiple_unique_strategies() -> None:
     assert len(multiple.entry_strategy_ids) == len(multiple.exit_strategy_ids) == 2
     with pytest.raises(ValueError, match="不可重複選擇"):
         StrategySetSnapshot(
-            entry_strategy_ids=("legacy_gap_volume_vwap_entry_v1", "legacy_gap_volume_vwap_entry_v1"),
+            entry_strategy_ids=(
+                "legacy_gap_volume_vwap_entry_v1",
+                "legacy_gap_volume_vwap_entry_v1",
+            ),
             exit_strategy_ids=("end_of_day_exit_v1",),
         )
 
@@ -217,6 +256,35 @@ def test_engine_result_is_reproducible_across_repeated_runs() -> None:
     assert len(set(digests)) == 1
 
 
+def test_legacy_v2_config_result_and_summary_bytes_match_pre_v3_golden() -> None:
+    """The opt-in v3 implementation must not add fields to a legacy run."""
+
+    config = _config()
+    result = HistoricalBacktestEngine().run(config=config, bars=_bars())
+    summary = summarize_run(config=config, result=result, dataset_research_eligible=True)
+
+    assert "formal_evidence" not in result.to_dict()
+    assert "formal_evidence" not in summary
+    assert (
+        not {
+            "execution_policy_snapshot",
+            "cost_policy_snapshot",
+            "research_truth_snapshot",
+        }
+        & config.to_dict().keys()
+    )
+    assert (
+        digest(
+            {
+                "config": config.to_dict(),
+                "result": result.to_dict(),
+                "summary": summary,
+            }
+        )
+        == "6e538fc5de1b32a8854dd98de42fd3112577d2a98168fd84d698cac2d75d4501"
+    )
+
+
 def test_durable_service_persists_run_trade_and_comparison() -> None:
     with TemporaryDirectory() as directory:
         root = Path(directory)
@@ -230,7 +298,10 @@ def test_durable_service_persists_run_trade_and_comparison() -> None:
         )
         repository.upsert_dataset(manifest.to_dict(), "READY")
         service = BacktestApplicationService(
-            MockProvider(), repository=repository, catalog=catalog, workers=1,
+            MockProvider(),
+            repository=repository,
+            catalog=catalog,
+            workers=1,
         )
         try:
             baseline = _create_and_wait(service, manifest.dataset_id, "backtest-test-baseline")
@@ -238,14 +309,19 @@ def test_durable_service_persists_run_trade_and_comparison() -> None:
                 service,
                 manifest.dataset_id,
                 "backtest-test-challenger",
-                entry_strategy_ids=["legacy_gap_volume_vwap_entry_v1", "momentum_breakout_entry_v1"],
+                entry_strategy_ids=[
+                    "legacy_gap_volume_vwap_entry_v1",
+                    "momentum_breakout_entry_v1",
+                ],
                 entry_policy="ANY",
             )
             stored = service.trades(baseline["run_id"], page=1, page_size=10)
             comparison = service.compare(baseline["run_id"], challenger["run_id"])
 
             assert stored["total"] == 1
-            assert stored["trades"][0]["entry_strategies"][0]["strategy_name"] == "跳空＋VWAP 買入策略"
+            assert (
+                stored["trades"][0]["entry_strategies"][0]["strategy_name"] == "跳空＋VWAP 買入策略"
+            )
             assert comparison["comparable"] is True
             assert comparison["comparison_id"].startswith("comparison-")
         finally:

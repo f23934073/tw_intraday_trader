@@ -154,11 +154,7 @@ class _BoundedCadenceEvidence:
             dominant_seconds, dominant_count = self._gap_seconds.most_common(1)[0]
         dominant_ratio = dominant_count / total_gaps if total_gaps else 0.0
         capabilities = ["OHLCV"]
-        if (
-            self._intraday_session_count
-            and self._minute_aligned
-            and self._taipei_timezone
-        ):
+        if self._intraday_session_count and self._minute_aligned and self._taipei_timezone:
             capabilities.extend(("KBAR_INTRADAY", "SESSION_BOUNDARIES"))
         if (
             self._intraday_session_count
@@ -225,6 +221,15 @@ class HistoricalInstrument:
         )
 
 
+def _optional_contract(value: Mapping[str, Any], field_name: str) -> dict[str, Any] | None:
+    contract = value.get(field_name)
+    if contract is None:
+        return None
+    if not isinstance(contract, Mapping):
+        raise ValueError(f"DatasetManifest {field_name} 必須是 object")
+    return dict(contract)
+
+
 @dataclass(frozen=True)
 class DatasetManifest:
     dataset_id: str
@@ -259,6 +264,20 @@ class DatasetManifest:
     source_snapshot_digest: str | None = None
     plan_identity: Mapping[str, Any] | None = None
     plan_identity_digest: str | None = None
+    # Optional immutable research-truth inputs. Legacy manifests omit these
+    # fields and retain their exact serialized bytes; formal v3 readiness is
+    # derived only when every required contract is present and verified.
+    universe_contract: Mapping[str, Any] | None = None
+    listing_contract: Mapping[str, Any] | None = None
+    calendar_contract: Mapping[str, Any] | None = None
+    closing_auction_event_contract: Mapping[str, Any] | None = None
+    corporate_action_contract: Mapping[str, Any] | None = None
+    reference_price_contract: Mapping[str, Any] | None = None
+    price_limit_contract: Mapping[str, Any] | None = None
+    special_regime_contract: Mapping[str, Any] | None = None
+    completeness_contract: Mapping[str, Any] | None = None
+    execution_calibration_contract: Mapping[str, Any] | None = None
+    slippage_calibration_contract: Mapping[str, Any] | None = None
 
     @property
     def manifest_digest(self) -> str:
@@ -316,6 +335,22 @@ class DatasetManifest:
             value["plan_identity"] = dict(self.plan_identity)
         if self.plan_identity_digest is not None:
             value["plan_identity_digest"] = self.plan_identity_digest
+        for field_name in (
+            "universe_contract",
+            "listing_contract",
+            "calendar_contract",
+            "closing_auction_event_contract",
+            "corporate_action_contract",
+            "reference_price_contract",
+            "price_limit_contract",
+            "special_regime_contract",
+            "completeness_contract",
+            "execution_calibration_contract",
+            "slippage_calibration_contract",
+        ):
+            contract = getattr(self, field_name)
+            if contract is not None:
+                value[field_name] = dict(contract)
         if include_digest:
             value["manifest_digest"] = self.manifest_digest
         return value
@@ -339,14 +374,10 @@ class DatasetManifest:
             issues=tuple(str(item) for item in value.get("issues", ())),
             storage_format=str(value.get("storage_format", "JSONL_FULL_V1")),
             payload_order=(
-                str(value["payload_order"])
-                if value.get("payload_order") is not None
-                else None
+                str(value["payload_order"]) if value.get("payload_order") is not None else None
             ),
             parent_dataset_id=(
-                str(value["parent_dataset_id"])
-                if value.get("parent_dataset_id")
-                else None
+                str(value["parent_dataset_id"]) if value.get("parent_dataset_id") else None
             ),
             delta_bar_count=int(value.get("delta_bar_count", 0)),
             symbol_last_timestamps=tuple(
@@ -378,14 +409,10 @@ class DatasetManifest:
                 else None
             ),
             volume_contract=(
-                dict(value["volume_contract"])
-                if value.get("volume_contract") is not None
-                else None
+                dict(value["volume_contract"]) if value.get("volume_contract") is not None else None
             ),
             amount_contract=(
-                dict(value["amount_contract"])
-                if value.get("amount_contract") is not None
-                else None
+                dict(value["amount_contract"]) if value.get("amount_contract") is not None else None
             ),
             source_snapshot_digest=(
                 str(value["source_snapshot_digest"])
@@ -393,14 +420,29 @@ class DatasetManifest:
                 else None
             ),
             plan_identity=(
-                dict(value["plan_identity"])
-                if value.get("plan_identity") is not None
-                else None
+                dict(value["plan_identity"]) if value.get("plan_identity") is not None else None
             ),
             plan_identity_digest=(
                 str(value["plan_identity_digest"])
                 if value.get("plan_identity_digest") is not None
                 else None
+            ),
+            universe_contract=_optional_contract(value, "universe_contract"),
+            listing_contract=_optional_contract(value, "listing_contract"),
+            calendar_contract=_optional_contract(value, "calendar_contract"),
+            closing_auction_event_contract=_optional_contract(
+                value, "closing_auction_event_contract"
+            ),
+            corporate_action_contract=_optional_contract(value, "corporate_action_contract"),
+            reference_price_contract=_optional_contract(value, "reference_price_contract"),
+            price_limit_contract=_optional_contract(value, "price_limit_contract"),
+            special_regime_contract=_optional_contract(value, "special_regime_contract"),
+            completeness_contract=_optional_contract(value, "completeness_contract"),
+            execution_calibration_contract=_optional_contract(
+                value, "execution_calibration_contract"
+            ),
+            slippage_calibration_contract=_optional_contract(
+                value, "slippage_calibration_contract"
             ),
         )
 
@@ -766,9 +808,7 @@ class HistoricalDatasetCatalog:
                     raise ValueError(
                         f"FinMind Dataset {dataset_id} payload is not canonical JSONL"
                     ) from error
-                canonical_line = (
-                    canonical_json(bar.to_dict()) + "\n"
-                ).encode("utf-8")
+                canonical_line = (canonical_json(bar.to_dict()) + "\n").encode("utf-8")
                 if raw_line != canonical_line:
                     raise ValueError(
                         f"FinMind Dataset {dataset_id} payload canonical bytes conflict"
@@ -937,7 +977,11 @@ class HistoricalDatasetCatalog:
             )
             item = coverage.setdefault(
                 symbol,
-                {"resolved_session_count": 0, "first_session_date": session.isoformat(), "last_session_date": session.isoformat()},
+                {
+                    "resolved_session_count": 0,
+                    "first_session_date": session.isoformat(),
+                    "last_session_date": session.isoformat(),
+                },
             )
             item["resolved_session_count"] += 1
             item["first_session_date"] = min(item["first_session_date"], session.isoformat())
@@ -949,9 +993,9 @@ class HistoricalDatasetCatalog:
         temporary_dir.mkdir(parents=True, exist_ok=False)
         try:
             normalized = self._validate_and_sort(daily_bars)
-            payload = "".join(
-                canonical_json(bar.to_dict()) + "\n" for bar in normalized
-            ).encode("utf-8")
+            payload = "".join(canonical_json(bar.to_dict()) + "\n" for bar in normalized).encode(
+                "utf-8"
+            )
             checksum = hashlib.sha256(payload).hexdigest()
             (temporary_dir / "bars.jsonl").write_bytes(payload)
             daily_watermarks = {
@@ -1080,10 +1124,7 @@ class HistoricalDatasetCatalog:
         symbols: Iterable[str] | None = None,
         symbol_limit: int | None = None,
     ) -> tuple[HistoricalInstrument, ...]:
-        stock_by_symbol = {
-            stock.symbol: stock
-            for stock in provider.get_market_stocks()
-        }
+        stock_by_symbol = {stock.symbol: stock for stock in provider.get_market_stocks()}
         selected = sorted(
             {
                 str(item).strip().upper()
@@ -1172,7 +1213,9 @@ class HistoricalDatasetCatalog:
                         elif bar.symbol != partition_symbol:
                             raise ValueError("單一歷史資料分區不可混合多個股票代碼")
                         if previous_timestamp is not None and bar.timestamp <= previous_timestamp:
-                            raise ValueError(f"Kbar 分區順序或唯一性錯誤：{bar.symbol} {bar.timestamp.isoformat()}")
+                            raise ValueError(
+                                f"Kbar 分區順序或唯一性錯誤：{bar.symbol} {bar.timestamp.isoformat()}"
+                            )
                         previous_timestamp = bar.timestamp
                         payload = (canonical_json(bar.to_dict()) + "\n").encode("utf-8")
                         handle.write(payload)
@@ -1181,8 +1224,16 @@ class HistoricalDatasetCatalog:
                         observed_symbols.add(bar.symbol)
                         symbol_last_timestamps[bar.symbol] = bar.timestamp
                         cadence.add(bar)
-                        first_date = bar.timestamp.date() if first_date is None else min(first_date, bar.timestamp.date())
-                        last_date = bar.timestamp.date() if last_date is None else max(last_date, bar.timestamp.date())
+                        first_date = (
+                            bar.timestamp.date()
+                            if first_date is None
+                            else min(first_date, bar.timestamp.date())
+                        )
+                        last_date = (
+                            bar.timestamp.date()
+                            if last_date is None
+                            else max(last_date, bar.timestamp.date())
+                        )
             if bar_count == 0 or first_date is None or last_date is None:
                 raise ValueError("不可建立空的歷史資料集")
             profile, capabilities, cadence_summary = cadence.result()
@@ -1240,9 +1291,7 @@ class HistoricalDatasetCatalog:
     ) -> DatasetManifest:
         """Seal a reviewed FinMind plan as a timestamp-major immutable Dataset."""
 
-        expected_dataset_id = (
-            "dataset-finmind-sponsor-sha256-" + source_snapshot_digest
-        )
+        expected_dataset_id = "dataset-finmind-sponsor-sha256-" + source_snapshot_digest
         if dataset_id != expected_dataset_id:
             raise ValueError("FinMind dataset ID does not match source snapshot digest")
         if len(source_snapshot_digest) != 64 or any(
@@ -1312,9 +1361,7 @@ class HistoricalDatasetCatalog:
                             f"{bar.timestamp.isoformat()}"
                         )
                     if bar.symbol not in requested_symbol_set:
-                        raise ValueError(
-                            f"FinMind Kbar symbol is outside the plan: {bar.symbol}"
-                        )
+                        raise ValueError(f"FinMind Kbar symbol is outside the plan: {bar.symbol}")
                     if not bar.name.strip() or not bar.market.strip():
                         raise ValueError(
                             f"FinMind Kbar reference metadata is incomplete: {bar.symbol}"
@@ -1394,17 +1441,13 @@ class HistoricalDatasetCatalog:
             raw_manifest_bytes = manifest_path.read_bytes()
             raw_manifest = json.loads(raw_manifest_bytes)
         except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
-            raise ValueError(
-                f"FinMind Dataset {dataset_id} has an invalid manifest"
-            ) from error
+            raise ValueError(f"FinMind Dataset {dataset_id} has an invalid manifest") from error
         if not isinstance(raw_manifest, Mapping):
             raise ValueError(f"FinMind Dataset {dataset_id} manifest must be an object")
         manifest = DatasetManifest.from_dict(raw_manifest)
         if raw_manifest.get("manifest_digest") != manifest.manifest_digest:
             raise ValueError(f"FinMind Dataset {dataset_id} manifest digest conflict")
-        expected_manifest_bytes = (
-            canonical_json(manifest.to_dict()) + "\n"
-        ).encode("utf-8")
+        expected_manifest_bytes = (canonical_json(manifest.to_dict()) + "\n").encode("utf-8")
         if raw_manifest_bytes != expected_manifest_bytes:
             raise ValueError(
                 f"FinMind Dataset {dataset_id} manifest schema or canonical bytes conflict"
@@ -1450,9 +1493,7 @@ class HistoricalDatasetCatalog:
             if expected_iterator is not None:
                 expected_bar = next(expected_iterator, missing)
                 if expected_bar is missing or bar != expected_bar:
-                    raise ValueError(
-                        f"FinMind Dataset {dataset_id} payload/source conflict"
-                    )
+                    raise ValueError(f"FinMind Dataset {dataset_id} payload/source conflict")
             key = self._event_key(bar)
             if previous_key is not None and key <= previous_key:
                 raise ValueError(f"FinMind Dataset {dataset_id} order conflict")
@@ -1466,14 +1507,10 @@ class HistoricalDatasetCatalog:
         profile, capabilities, cadence_summary = cadence.result()
         if (
             count != manifest.bar_count
-            or (
-                expected_bars_sha256 is not None
-                and manifest.bars_sha256 != expected_bars_sha256
-            )
+            or (expected_bars_sha256 is not None and manifest.bars_sha256 != expected_bars_sha256)
             or tuple(sorted(observed_symbols)) != manifest.observed_symbols
             or tuple(
-                (symbol, timestamp.isoformat())
-                for symbol, timestamp in sorted(watermarks.items())
+                (symbol, timestamp.isoformat()) for symbol, timestamp in sorted(watermarks.items())
             )
             != manifest.symbol_last_timestamps
             or profile != manifest.profile
@@ -1620,7 +1657,9 @@ class HistoricalDatasetCatalog:
             if existing is not None and existing != bar:
                 raise ValueError(f"重複且不一致的 Kbar：{bar.symbol} {bar.timestamp.isoformat()}")
             by_identity[key] = bar
-        return [by_identity[key] for key in sorted(by_identity, key=lambda item: (item[1], item[0]))]
+        return [
+            by_identity[key] for key in sorted(by_identity, key=lambda item: (item[1], item[0]))
+        ]
 
     def _seal(
         self,

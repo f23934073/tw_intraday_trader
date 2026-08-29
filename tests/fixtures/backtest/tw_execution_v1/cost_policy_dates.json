@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "expected_cost_breakdown": {
+        "commission": "143",
+        "slippage": "500",
+        "tax": "150",
+        "tax_rate": "0.0015",
+        "total": "793"
+      },
+      "expected_sell_stt_rate": "0.0015",
+      "sell_trade_date": "2027-12-31"
+    },
+    {
+      "expected_cost_breakdown": {
+        "commission": "143",
+        "slippage": "500",
+        "tax": "301",
+        "tax_rate": "0.003",
+        "total": "944"
+      },
+      "expected_sell_stt_rate": "0.003",
+      "sell_trade_date": "2028-01-01"
+    }
+  ],
+  "cost_policy_snapshot": {
+    "commission_rate": "0.001425",
+    "commission_rate_ceiling": "0.001425",
+    "commission_rounding": "ROUND_HALF_UP_WHOLE_TWD",
+    "commission_sides": [
+      "BUY",
+      "SELL"
+    ],
+    "contract_version": "tw-cost-policy-v1",
+    "min_commission_twd": "20",
+    "no_fixed_bps_fallback": true,
+    "securities_transaction_tax": {
+      "day_trade_reduced_rate": "0.0015",
+      "day_trade_reduction_last_date": "2027-12-31",
+      "rounding": "ROUND_DOWN_WHOLE_TWD",
+      "standard_rate": "0.003",
+      "taxed_side": "SELL"
+    },
+    "slippage_bps": "5",
+    "slippage_calibration_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "slippage_rule": "ADVERSE_PRICE_THEN_OUTWARD_TICK",
+    "snapshot_digest": "5ef629100433a8dfe0a0c7635646b37a61aa939dc6fb78f996a9aef6e410dc89"
+  },
+  "description": "Day-trade securities-transaction-tax date boundary resolved from the sealed cost-policy snapshot: on/before 2027-12-31 the reduced 0.0015 rate applies; from 2028-01-01 it reverts to the standard 0.003. Buys incur no STT.",
+  "engine_version": "backtest-engine-v3-tw",
+  "fill_input": {
+    "is_day_trade": true,
+    "post_cost_price": "100.5",
+    "pre_cost_price": "100",
+    "shares": 1000,
+    "side": "EXIT"
+  },
+  "expected": {
+    "day_trade_reduced_rate": "0.0015",
+    "day_trade_reduction_last_date": "2027-12-31",
+    "standard_sell_stt_rate": "0.003",
+    "taxed_side": "SELL"
+  }
+}
