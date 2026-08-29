@@ -519,7 +519,7 @@ class MomentumStateMachine:
             symbol=symbol,
             as_of=snapshot.as_of,
             previous_stage=previous_stage,
-            current_stage=closed.current_stage,
+            current_stage=MomentumStage.WATCH,
             episode=closed,
             evidence_snapshot_id=signal.digest,
             episode_closed_status=status,

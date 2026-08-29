@@ -20,6 +20,7 @@ from dashboard.momentum import (
     RealtimeMomentumDashboardService,
 )
 from runtime.momentum_shadow import MomentumShadowReadView
+from signals.models import EpisodeStatus, MomentumStage
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -142,8 +143,10 @@ def candidate(symbol: str, *, score: int, name: str) -> dict:
 
 def test_live_service_evaluates_all_dashboard_candidates_and_exposes_values():
     clock = MutableClock(datetime(2026, 8, 18, 9, 18, tzinfo=TAIPEI))
-    replay_projection = MomentumDashboardService()._store.get("8039")
+    replay_service = MomentumDashboardService()
+    replay_projection = replay_service._store.get("8039")
     assert replay_projection is not None
+    expected_episode = replay_service.snapshot()["items"][0]["episode"]
     runtime = FakeLiveRuntime(replay_projection, clock)
     snapshots = [
         {"candidates": [candidate("8039", score=40, name="台虹"), candidate("2330", score=20, name="台積電")]},
@@ -172,6 +175,8 @@ def test_live_service_evaluates_all_dashboard_candidates_and_exposes_values():
     assert first["summary"]["candidate_count"] == 2
     assert first["summary"]["evaluated_candidate_count"] == 1
     assert evaluated["symbol"] == "8039"
+    assert evaluated["episode"] == expected_episode
+    assert evaluated["episode"]["status"] == "ACTIVE"
     assert evaluated["signal"]["evidence_score"] == 100
     assert evaluated["signal"]["momentum_acceleration_confirmed"] is True
     assert evaluated["signal"]["details"][0]["observed_value"] is not None
@@ -187,6 +192,7 @@ def test_live_service_evaluates_all_dashboard_candidates_and_exposes_values():
     )
     assert unavailable["symbol"] == "2330"
     assert unavailable["availability"] == "CAPACITY_EVICTED"
+    assert unavailable["episode"] is None
     assert unavailable["intraday"] is None
     assert unavailable["signal"] is None
     assert {item.symbol for item in runtime.discoveries[0]} == {"8039", "2330"}
@@ -199,6 +205,47 @@ def test_live_service_evaluates_all_dashboard_candidates_and_exposes_values():
     assert [item["symbol"] for item in refreshed["items"]] == ["8039"]
     assert len(runtime.discoveries) == 2
     assert runtime.read_view_calls == 2
+    service.close()
+    assert runtime.closed is True
+
+
+def test_live_service_serializes_terminal_episode_with_full_shape():
+    clock = MutableClock(datetime(2026, 8, 18, 9, 19, tzinfo=TAIPEI))
+    replay_service = MomentumDashboardService()
+    projection = replay_service._store.get("8039")
+    assert projection is not None
+    assert projection.episode is not None
+    active_episode_payload = replay_service.snapshot()["items"][0]["episode"]
+    closed_episode = projection.episode.close(
+        status=EpisodeStatus.EXPIRED,
+        occurred_at=clock.now(),
+        reason="episode_progress_ttl_elapsed",
+        cooldown_until=None,
+    )
+    projection = replace(
+        projection,
+        as_of=clock.now(),
+        current_stage=MomentumStage.WATCH,
+        episode=closed_episode,
+    )
+    runtime = FakeLiveRuntime(projection, clock)
+    service = RealtimeMomentumDashboardService(
+        runtime,
+        candidate_snapshot_loader=lambda: {
+            "candidates": [candidate("8039", score=40, name="台虹")]
+        },
+        clock=clock,
+    )
+
+    item = service.symbol("8039")
+
+    assert item["current_stage"] == "WATCH"
+    assert item["episode"] is not None
+    assert set(item["episode"]) == set(active_episode_payload)
+    assert item["episode"]["status"] == "EXPIRED"
+    assert item["episode"]["closed_at"] == clock.now().isoformat()
+    assert item["episode"]["close_reason"] == "episode_progress_ttl_elapsed"
+    assert item["episode"]["transitions"] == active_episode_payload["transitions"]
     service.close()
     assert runtime.closed is True
 

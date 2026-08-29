@@ -379,6 +379,7 @@ class RealtimeMomentumDashboardService:
                 "as_of": None,
                 "current_stage": None,
                 "current_stage_label": "等待資料",
+                "episode": None,
                 "intraday": None,
                 "execution_book": None,
                 "requested_features": [],
@@ -394,6 +395,7 @@ class RealtimeMomentumDashboardService:
             "as_of": projection.as_of.isoformat(),
             "current_stage": projection.current_stage.value,
             "current_stage_label": _STAGE_LABELS[projection.current_stage.value],
+            "episode": _serialize_episode(projection.episode),
             "intraday": _serialize_intraday(projection.feature_snapshot),
             "execution_book": _serialize_execution_book(book),
             "requested_features": [

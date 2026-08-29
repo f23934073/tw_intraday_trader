@@ -376,7 +376,10 @@ def test_false_breakout_requires_confirmation_then_cooldown_and_new_episode():
     )
     closed = machine.evaluate(bad_feature_2, bad_signal_2)
     assert closed.episode is not None
+    assert closed.previous_stage is MomentumStage.ACCELERATING
+    assert closed.current_stage is MomentumStage.WATCH
     assert closed.episode.status is EpisodeStatus.INVALIDATED
+    assert closed.episode.current_stage is MomentumStage.ACCELERATING
     assert closed.episode.cooldown_until == at(9, 21, 1)
 
     rebound_feature, rebound_signal = move_pair(
@@ -423,11 +426,35 @@ def test_data_health_block_closes_active_episode_immediately():
     update = machine.evaluate(blocked_feature, blocked_signal)
 
     assert update.episode is not None
+    assert update.previous_stage is MomentumStage.ACCELERATING
+    assert update.current_stage is MomentumStage.WATCH
     assert update.episode.status is EpisodeStatus.DATA_BLOCKED
+    assert update.episode.current_stage is MomentumStage.ACCELERATING
     assert update.episode.evidence_updates[-1].evidence_snapshot_id == (
         blocked_signal.digest
     )
     assert update.episode_closed_status is EpisodeStatus.DATA_BLOCKED
+
+
+def test_episode_ttl_closes_public_stage_without_rewriting_episode_history():
+    snapshot, signal = enriched_pair()
+    machine = MomentumStateMachine(snapshot.as_of.date())
+    machine.evaluate(snapshot, signal)
+    expired_feature, expired_signal = move_pair(
+        snapshot,
+        signal,
+        at(9, 28),
+    )
+
+    update = machine.evaluate(expired_feature, expired_signal)
+
+    assert update.episode is not None
+    assert update.previous_stage is MomentumStage.ACCELERATING
+    assert update.current_stage is MomentumStage.WATCH
+    assert update.episode.status is EpisodeStatus.EXPIRED
+    assert update.episode.current_stage is MomentumStage.ACCELERATING
+    assert update.episode.highest_stage is MomentumStage.ACCELERATING
+    assert update.episode_closed_status is EpisodeStatus.EXPIRED
 
 
 def test_exact_duplicate_is_idempotent_and_out_of_order_is_rejected():

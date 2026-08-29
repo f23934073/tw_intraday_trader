@@ -198,9 +198,14 @@ def test_episode_closure_emits_one_reason_specific_alert():
         at(9, 19, 1),
     )
     closed = machine.evaluate(final_feature, final_signal)
-    store.apply(final_feature, final_signal, closed)
+    projection = store.apply(final_feature, final_signal, closed)
 
     assert closed.episode_closed_status is EpisodeStatus.INVALIDATED
+    assert closed.current_stage is MomentumStage.WATCH
+    assert projection.current_stage is MomentumStage.WATCH
+    assert projection.episode is not None
+    assert projection.episode.status is EpisodeStatus.INVALIDATED
+    assert projection.episode.current_stage is MomentumStage.ACCELERATING
     assert [item.event_type for item in store.alerts_for(feature.symbol)] == [
         MomentumAlertEventType.STAGE_ADVANCED,
         MomentumAlertEventType.EPISODE_INVALIDATED,
@@ -230,9 +235,14 @@ def test_data_block_alert_and_ten_run_projection_digest_are_deterministic():
             evaluation_status=SignalEvaluationStatus.INSUFFICIENT_DATA,
         )
         blocked = machine.evaluate(blocked_feature, blocked_signal)
-        store.apply(blocked_feature, blocked_signal, blocked)
+        projection = store.apply(blocked_feature, blocked_signal, blocked)
         digests.append(store.digest)
 
+        assert blocked.current_stage is MomentumStage.WATCH
+        assert projection.current_stage is MomentumStage.WATCH
+        assert projection.episode is not None
+        assert projection.episode.status is EpisodeStatus.DATA_BLOCKED
+        assert projection.episode.current_stage is MomentumStage.ACCELERATING
         assert store.alerts_for(feature.symbol)[-1].event_type is (
             MomentumAlertEventType.DATA_BLOCKED
         )
@@ -253,14 +263,20 @@ def test_episode_ttl_emits_expired_alert_with_closing_evidence():
     )
 
     expired = machine.evaluate(expired_feature, expired_signal)
-    store.apply(expired_feature, expired_signal, expired)
+    projection = store.apply(expired_feature, expired_signal, expired)
 
     assert expired.episode_closed_status is EpisodeStatus.EXPIRED
+    assert expired.current_stage is MomentumStage.WATCH
     assert expired.episode is not None
     assert expired.episode.cooldown_until is None
+    assert expired.episode.current_stage is MomentumStage.ACCELERATING
     assert expired.episode.evidence_updates[-1].evidence_snapshot_id == (
         expired_signal.digest
     )
+    assert projection.current_stage is MomentumStage.WATCH
+    assert projection.episode is not None
+    assert projection.episode.status is EpisodeStatus.EXPIRED
+    assert projection.episode.current_stage is MomentumStage.ACCELERATING
     assert store.alerts_for(feature.symbol)[-1].event_type is (
         MomentumAlertEventType.EPISODE_EXPIRED
     )

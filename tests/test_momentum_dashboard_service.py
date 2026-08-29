@@ -49,6 +49,7 @@ def test_dashboard_projection_preserves_opening_to_limit_family_provenance():
     episode = MomentumDashboardService().snapshot()["items"][0]["episode"]
 
     assert episode["episode_id"] == "8039-20260818-001"
+    assert episode["status"] == "ACTIVE"
     assert episode["created_by_signal_family"] == "OPENING_MOMENTUM"
     assert episode["current_signal_family"] == "LIMIT_UP_MOMENTUM"
     assert [item["to_stage"] for item in episode["transitions"]] == [
