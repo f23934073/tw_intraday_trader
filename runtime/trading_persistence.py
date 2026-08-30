@@ -9,10 +9,32 @@ from config.trading_persistence import (
 from trading.journal import InMemoryJournalRepository, JournalRepository
 from trading.migrations import apply_migrations
 from trading.postgres_journal import PostgresJournalRepository
+from runtime.no_overnight_guard import PostgresNoOvernightControllerGuard
 
 
 class TradingPersistenceUnavailable(RuntimeError):
     """The explicitly selected durable Journal cannot be initialized."""
+
+
+def build_postgres_no_overnight_guard(
+    config: TradingPersistenceConfig,
+    *,
+    account_scope_id: str,
+    policy_family_id: str,
+) -> PostgresNoOvernightControllerGuard:
+    """Open the dedicated guard connection against the configured Journal DB."""
+
+    if config.backend is not TradingJournalBackend.POSTGRESQL:
+        raise TradingPersistenceUnavailable(
+            "PostgreSQL no-overnight guard requires the PostgreSQL Journal backend"
+        )
+    assert config.database_url is not None
+    return PostgresNoOvernightControllerGuard.connect(
+        database_url=config.database_url,
+        connect_timeout_seconds=config.connect_timeout_seconds,
+        account_scope_id=account_scope_id,
+        policy_family_id=policy_family_id,
+    )
 
 
 def build_journal_repository(
@@ -51,9 +73,7 @@ def build_journal_repository(
     except Exception as error:
         if pool is not None:
             pool.close()
-        raise TradingPersistenceUnavailable(
-            "PostgreSQL Journal initialization failed"
-        ) from error
+        raise TradingPersistenceUnavailable("PostgreSQL Journal initialization failed") from error
 
     try:
         repository = PostgresJournalRepository(
@@ -70,7 +90,5 @@ def build_journal_repository(
         repository.check_health()
     except Exception as error:
         repository.close()
-        raise TradingPersistenceUnavailable(
-            "PostgreSQL Journal health check failed"
-        ) from error
+        raise TradingPersistenceUnavailable("PostgreSQL Journal health check failed") from error
     return repository

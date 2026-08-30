@@ -129,6 +129,14 @@ DATABASE_URL=postgresql://user:password@127.0.0.1:5432/tw_intraday_trader
 
 若收盤無法以 terminal SELL、managed quantity=0、fresh reconciliation `MATCH` 與 durable proof 證明 strict flat，系統會寫入 CRITICAL durable breach。每次 late/recovered fact 或 reconciliation digest 改變都會增加 `breach_revision`，舊 resolution／ack 隨即失效。只有 latest revision 再次取得 strict-flat proof、寫入 resolution、由 loopback Dashboard 以 exact revision＋digest acknowledgement，且下一個 reviewed trading session 開始後，exposure-increasing BUY latch 才會解除；SELL、cancel、reconciliation 與 recovery 仍允許。操作與證據流程見 `architecture/no_overnight_operational_runbook.md` 與 `architecture/no_overnight_evidence_campaign_runbook.md`。
 
+### 收盤風控（No Overnight）
+
+左側「收盤風控」工作區顯示模式、monotonic state/revision、persistent breach、嚴格平倉證據與 managed/excluded exposure。狀態使用獨立的 2 秒 loopback HTTP poll；缺少或不完整投影會顯示「⚠ 狀態不可用」，保留最後有效 breach 並關閉不安全操作，不會把 unavailable 當成空持倉。手動 BUY 必須選擇 `INTRADAY`／`SWING`／`LONG_TERM` horizon；SELL 必須指定 managed `target_exposure_id`。
+
+目前交付只允許 `DISABLED` 與明確注入、`PROVISIONAL` 的 `OBSERVE_ONLY`，沒有網頁或環境變數可以啟用 `ENFORCING`。DISABLED/OBSERVE_ONLY 不會改變既有 Local Paper 進出場語意或呼叫 order handler。違約 ACK 必須使用最新 revision、matching reconciliation digest 與逐字短語；ACK 不解除 latch，仍須等待下一個已審核 session 完成 true → false。操作與復原細節見 [`architecture/no_overnight_operational_runbook.md`](architecture/no_overnight_operational_runbook.md)。
+
+Evidence 工具只封存 injected cached snapshot，離線執行且不呼叫 Provider、不修改 Journal、不建立委託；它們不會產生 activation/qualification artifact，也不能宣稱 auction fill。準備與檢查格式見 [`architecture/no_overnight_evidence_campaign_runbook.md`](architecture/no_overnight_evidence_campaign_runbook.md)。正式 PostgreSQL guard/restart 驗收必須提供可丟棄的 `TEST_POSTGRES_DSN` 且零 skip；沒有 DSN 時只能報告環境 gate。
+
 Phase 5 的 operator UAT 不允許 memory fallback。請把一次性測試資料庫填入
 `TEST_POSTGRES_DSN`，再執行：
 

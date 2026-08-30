@@ -31,6 +31,47 @@ class CloseTrackingJournal(InMemoryJournalRepository):
         self.closed = True
 
 
+class CountingMutationJournal(InMemoryJournalRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.append_calls = 0
+        self.save_checkpoint_calls = 0
+        self.start_session_calls = 0
+
+    def append(self, record):
+        self.append_calls += 1
+        return super().append(record)
+
+    def start_session(self, session) -> None:
+        self.start_session_calls += 1
+        super().start_session(session)
+
+    def save_checkpoint(self, checkpoint) -> None:
+        self.save_checkpoint_calls += 1
+        super().save_checkpoint(checkpoint)
+
+
+def test_v2_composition_rejects_non_fixed_predecessor_before_journal_write() -> None:
+    journal = CountingMutationJournal()
+
+    with pytest.raises(
+        ValueError,
+        match="requires the fixed local-paper-runtime-v1 predecessor",
+    ):
+        RuntimeComposition.create(
+            MockProvider(),
+            journal=journal,
+            local_paper_session_id="local-paper-runtime-non-v1",
+            sealed_execution_policy_digest="a" * 64,
+            sealed_cost_policy_digest="b" * 64,
+            start_simulation_streaming=False,
+        )
+
+    assert journal.start_session_calls == 0
+    assert journal.append_calls == 0
+    assert journal.save_checkpoint_calls == 0
+
+
 def test_composition_reuses_one_provider_without_provider_io() -> None:
     provider = MockProvider()
     artifacts = InMemoryPremarketArtifactRepository()
@@ -48,9 +89,10 @@ def test_composition_reuses_one_provider_without_provider_io() -> None:
     )
     assert checkpoint is not None
     assert checkpoint.journal_sequence == 1
-    assert composition.journal.records(
-        composition.local_paper_commands.session_id
-    )[0].record.kind == "local_paper_daily_baseline.v1"
+    assert (
+        composition.journal.records(composition.local_paper_commands.session_id)[0].record.kind
+        == "local_paper_daily_baseline.v1"
+    )
     assert composition.kill_switch.status()["durability"] == "EPHEMERAL_MEMORY"
     assert composition.kill_switch.status()["restart_safe"] is False
 
