@@ -16,6 +16,10 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = REPO_ROOT / "Makefile"
 SCRIPT = REPO_ROOT / "scripts" / "run_local_dashboard.sh"
+DEFAULT_DATA_DIR = REPO_ROOT / "data" / "backtest"
+# Sealed local Datasets are gitignored, so the default directory may be absent
+# (fresh clone / CI); the two default-path tests are complementary.
+DEFAULT_DATA_DIR_PRESENT = DEFAULT_DATA_DIR.is_dir()
 
 UNSET_VARS = (
     "BACKTEST_DATABASE_BACKEND",
@@ -31,6 +35,8 @@ FORCED_VARS = {
 }
 # Deliberately recognisable secret: must never reach the child env or stdout.
 LEAKY_DSN = "postgresql://leak_user:leak_pass@127.0.0.1:5432/leak_db"
+# Inherited BACKTEST_DATA_DIR must be replaced, never honoured.
+POISONED_DATA_DIR = "/nonexistent/poisoned-backtest-data"
 
 
 @pytest.fixture
@@ -51,7 +57,9 @@ def stub_python(tmp_path: Path) -> dict[str, Path]:
     return {"bin": stub, "args": args_file, "env": env_file, "cwd": cwd_file}
 
 
-def _run_launcher(tmp_path: Path, python_bin: Path | str) -> subprocess.CompletedProcess[str]:
+def _run_launcher(
+    tmp_path: Path, python_bin: Path | str, extra_env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "HOME": str(tmp_path),
@@ -67,7 +75,10 @@ def _run_launcher(tmp_path: Path, python_bin: Path | str) -> subprocess.Complete
         "PROVIDER": "shioaji",
         "TRADING_JOURNAL_BACKEND": "postgresql",
         "BACKTEST_INCREMENTAL_SYNC_ENABLED": "true",
+        "BACKTEST_DATA_DIR": POISONED_DATA_DIR,
     }
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         ["bash", str(SCRIPT)],
         cwd=tmp_path,  # not the repo: the script must derive the repo root itself
@@ -83,6 +94,22 @@ def _run_launcher(tmp_path: Path, python_bin: Path | str) -> subprocess.Complete
 def _child_env(stub: dict[str, Path]) -> dict[str, str]:
     lines = stub["env"].read_text(encoding="utf-8").splitlines()
     return dict(line.split("=", 1) for line in lines if "=" in line)
+
+
+def _any_data_dir(tmp_path: Path) -> dict[str, str]:
+    """Override env for tests that only need *some* valid data dir."""
+    return {"TW_DASHBOARD_BACKTEST_DATA_DIR": str(_make_dataset_root(tmp_path / "any-datasets", ("dataset-a",)))}
+
+
+def _make_dataset_root(root: Path, dataset_ids: tuple[str, ...]) -> Path:
+    """A fake BACKTEST_DATA_DIR holding <dataset-id>/manifest.json entries."""
+    root.mkdir(parents=True, exist_ok=True)
+    for dataset_id in dataset_ids:
+        (root / dataset_id).mkdir()
+        (root / dataset_id / "manifest.json").write_text(
+            f'{{"dataset_id": "{dataset_id}"}}\n', encoding="utf-8"
+        )
+    return root
 
 
 # --- static shape ----------------------------------------------------------
@@ -124,7 +151,7 @@ def test_make_dry_run_invokes_script_without_running_it() -> None:
 
 
 def test_launcher_unsets_process_db_overrides_so_dotenv_wins(tmp_path: Path, stub_python: dict[str, Path]) -> None:
-    result = _run_launcher(tmp_path, stub_python["bin"])
+    result = _run_launcher(tmp_path, stub_python["bin"], _any_data_dir(tmp_path))
     assert result.returncode == 0, result.stderr
     env = _child_env(stub_python)
     for name in UNSET_VARS:
@@ -135,29 +162,115 @@ def test_launcher_unsets_process_db_overrides_so_dotenv_wins(tmp_path: Path, stu
 def test_launcher_forces_mock_provider_memory_journal_and_no_incremental_sync(
     tmp_path: Path, stub_python: dict[str, Path]
 ) -> None:
-    result = _run_launcher(tmp_path, stub_python["bin"])
+    result = _run_launcher(tmp_path, stub_python["bin"], _any_data_dir(tmp_path))
     assert result.returncode == 0, result.stderr
     env = _child_env(stub_python)
     for name, expected in FORCED_VARS.items():
         assert env.get(name) == expected, name
 
 
-def test_launcher_uses_fresh_temp_settings_and_data_dirs(tmp_path: Path, stub_python: dict[str, Path]) -> None:
-    result = _run_launcher(tmp_path, stub_python["bin"])
+def test_launcher_keeps_settings_in_fresh_temp_dir(tmp_path: Path, stub_python: dict[str, Path]) -> None:
+    data_root = _make_dataset_root(tmp_path / "datasets", ("dataset-a",))
+    result = _run_launcher(
+        tmp_path, stub_python["bin"], {"TW_DASHBOARD_BACKTEST_DATA_DIR": str(data_root)}
+    )
     assert result.returncode == 0, result.stderr
     env = _child_env(stub_python)
     settings_path = Path(env["LOCAL_PAPER_SETTINGS_PATH"])
-    data_dir = Path(env["BACKTEST_DATA_DIR"])
     assert settings_path.name == "settings-v1.json"
-    assert settings_path.parent == data_dir.parent
-    assert data_dir.is_dir()
-    assert str(data_dir).startswith(str(tmp_path)), "throwaway data must live under TMPDIR"
-    assert REPO_ROOT not in data_dir.parents and data_dir != REPO_ROOT
-    assert str(settings_path) in result.stdout or str(settings_path.parent) in result.stdout
+    assert str(settings_path).startswith(str(tmp_path)), "throwaway settings must live under TMPDIR"
+    assert settings_path.parent.is_dir()
+    assert REPO_ROOT not in settings_path.parents
+    # Settings and historical data are deliberately decoupled now.
+    assert data_root not in settings_path.parents
+    assert str(settings_path.parent) in result.stdout
+
+
+@pytest.mark.skipif(not DEFAULT_DATA_DIR_PRESENT, reason="repo data/backtest not present")
+def test_launcher_defaults_backtest_data_dir_to_repo_data_backtest(
+    tmp_path: Path, stub_python: dict[str, Path]
+) -> None:
+    result = _run_launcher(tmp_path, stub_python["bin"])
+    assert result.returncode == 0, result.stderr
+    env = _child_env(stub_python)
+    assert Path(env["BACKTEST_DATA_DIR"]) == DEFAULT_DATA_DIR.resolve()
+    assert env["BACKTEST_DATA_DIR"] != POISONED_DATA_DIR, "inherited BACKTEST_DATA_DIR must not win"
+    assert "TW_DASHBOARD_BACKTEST_DATA_DIR" not in env
+    assert str(DEFAULT_DATA_DIR.resolve()) in result.stdout
+    expected_manifests = len(list(DEFAULT_DATA_DIR.glob("*/manifest.json")))
+    assert f"manifest 數量：{expected_manifests}" in result.stdout
+
+
+@pytest.mark.skipif(DEFAULT_DATA_DIR_PRESENT, reason="repo data/backtest is present")
+def test_launcher_fails_clearly_when_default_data_dir_missing(
+    tmp_path: Path, stub_python: dict[str, Path]
+) -> None:
+    result = _run_launcher(tmp_path, stub_python["bin"])
+    assert result.returncode == 1
+    assert str(DEFAULT_DATA_DIR) in result.stderr
+    assert "TW_DASHBOARD_BACKTEST_DATA_DIR" in result.stderr
+    assert not stub_python["env"].exists(), "stub interpreter must not have been executed"
+
+
+def test_launcher_honours_explicit_data_dir_override_and_counts_manifests(
+    tmp_path: Path, stub_python: dict[str, Path]
+) -> None:
+    data_root = _make_dataset_root(
+        tmp_path / "datasets", ("dataset-finmind-sponsor-sha256-aaaa", "dataset-finmind-sponsor-sha256-bbbb")
+    )
+    (data_root / "backtest.sqlite3").write_bytes(b"")  # sibling files must not be counted
+    result = _run_launcher(
+        tmp_path, stub_python["bin"], {"TW_DASHBOARD_BACKTEST_DATA_DIR": str(data_root)}
+    )
+    assert result.returncode == 0, result.stderr
+    env = _child_env(stub_python)
+    assert Path(env["BACKTEST_DATA_DIR"]) == data_root.resolve()
+    assert "TW_DASHBOARD_BACKTEST_DATA_DIR" not in env, "launcher-only override must not leak to the dashboard"
+    assert "TW_DASHBOARD_BACKTEST_DATA_DIR" in result.stdout
+    assert "manifest 數量：2" in result.stdout
+    assert "警告" not in result.stderr
+
+
+def test_launcher_resolves_relative_override_against_invoking_directory(
+    tmp_path: Path, stub_python: dict[str, Path]
+) -> None:
+    data_root = _make_dataset_root(tmp_path / "rel-datasets", ("dataset-a",))
+    result = _run_launcher(
+        tmp_path, stub_python["bin"], {"TW_DASHBOARD_BACKTEST_DATA_DIR": "rel-datasets"}
+    )
+    assert result.returncode == 0, result.stderr
+    env = _child_env(stub_python)
+    assert Path(env["BACKTEST_DATA_DIR"]).is_absolute()
+    assert Path(env["BACKTEST_DATA_DIR"]) == data_root.resolve()
+
+
+def test_launcher_warns_when_data_dir_has_no_manifests(tmp_path: Path, stub_python: dict[str, Path]) -> None:
+    data_root = _make_dataset_root(tmp_path / "empty-datasets", ())
+    result = _run_launcher(
+        tmp_path, stub_python["bin"], {"TW_DASHBOARD_BACKTEST_DATA_DIR": str(data_root)}
+    )
+    assert result.returncode == 0, result.stderr  # empty is allowed, but loudly
+    assert "manifest 數量：0" in result.stdout
+    assert "manifest.json" in result.stderr
+
+
+@pytest.mark.parametrize("kind", ["missing", "file"])
+def test_launcher_fails_clearly_when_override_data_dir_invalid(
+    tmp_path: Path, stub_python: dict[str, Path], kind: str
+) -> None:
+    target = tmp_path / "bad-datasets"
+    if kind == "file":
+        target.write_text("not a directory", encoding="utf-8")
+    result = _run_launcher(tmp_path, stub_python["bin"], {"TW_DASHBOARD_BACKTEST_DATA_DIR": str(target)})
+    assert result.returncode == 1
+    assert str(target) in result.stderr
+    assert "TW_DASHBOARD_BACKTEST_DATA_DIR" in result.stderr
+    assert "leak_pass" not in result.stdout + result.stderr
+    assert not stub_python["env"].exists(), "stub interpreter must not have been executed"
 
 
 def test_launcher_runs_dashboard_module_from_repo_root(tmp_path: Path, stub_python: dict[str, Path]) -> None:
-    result = _run_launcher(tmp_path, stub_python["bin"])
+    result = _run_launcher(tmp_path, stub_python["bin"], _any_data_dir(tmp_path))
     assert result.returncode == 0, result.stderr
     argv = stub_python["args"].read_text(encoding="utf-8").split()
     assert argv == ["-m", "dashboard"]
@@ -166,11 +279,13 @@ def test_launcher_runs_dashboard_module_from_repo_root(tmp_path: Path, stub_pyth
 
 
 def test_launcher_never_prints_credentials(tmp_path: Path, stub_python: dict[str, Path]) -> None:
-    result = _run_launcher(tmp_path, stub_python["bin"])
+    result = _run_launcher(tmp_path, stub_python["bin"], _any_data_dir(tmp_path))
     output = result.stdout + result.stderr
     assert LEAKY_DSN not in output
     assert "leak_pass" not in output
     assert "http://127.0.0.1:8000/" in result.stdout
+    env = _child_env(stub_python)
+    assert env["BACKTEST_DATA_DIR"] != POISONED_DATA_DIR
 
 
 def test_launcher_fails_clearly_when_python_missing(tmp_path: Path, stub_python: dict[str, Path]) -> None:
