@@ -1,0 +1,8 @@
+{
+  "launch_delay_seconds": 125.108639,
+  "now": "2026-08-30T09:17:05.108639+08:00",
+  "reason": "reviewed TWSE calendar marks this date closed",
+  "scheduled_for": "2026-08-30T09:15:00+08:00",
+  "session_window": "opening",
+  "status": "NO_CAPTURE_NON_TRADING_DAY"
+}

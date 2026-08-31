@@ -1,0 +1,8 @@
+{
+  "now": "2026-08-29T11:30:05.950653+08:00",
+  "provider_called": false,
+  "reason": "reviewed TWSE calendar marks this date closed",
+  "status": "NO_CAPTURE_NON_TRADING_DAY",
+  "threshold_candidates": null,
+  "window_label": "continuous"
+}
