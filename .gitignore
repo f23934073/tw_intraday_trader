@@ -19,6 +19,8 @@ __pycache__/
 .coverage
 htmlcov/
 build/
+*.egg-info/
+:memory:.ses
 
 # IDE / Editor files
 .vscode/
