@@ -159,9 +159,10 @@ def test_backtest_qualification_ui_uses_fixed_windows_and_durable_mutation() -> 
     assert "feature_adapter_identity" in BACKTEST
     assert "walk_forward_windows:" in BACKTEST
     assert "只供人工審核，不會自動啟用策略" in BACKTEST
-    assert "display_status" in BACKTEST
+    assert "display_status" not in BACKTEST
     assert "persisted verdict" in BACKTEST
-    assert "NO_QUALIFYING_STRATEGY" in BACKTEST
+    assert "NO_QUALIFYING_STRATEGY" not in BACKTEST
+    assert 'statusEnvelopes.renderWorkspaceEnvelope("strategy_qualification")' in BACKTEST
     assert "Formal v3" in BACKTEST
 
 

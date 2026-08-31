@@ -1,7 +1,7 @@
 import { createMutationKeyStore } from "../mutation_keys.js?v=20260821-atomic-strategy-v2";
 
 export function createBacktestWorkspace(context) {
-  const { state, escapeHtml, formatNumber, newIdempotencyKey, setWorkspace } = context;
+  const { state, statusEnvelopes, escapeHtml, formatNumber, newIdempotencyKey, setWorkspace } = context;
   const strategyToggle = document.getElementById("strategy-toggle");
   const strategyCatalogDrawer = document.getElementById("strategy-catalog-drawer");
   const strategyCatalogPanel = document.getElementById("strategy-catalog-panel");
@@ -87,60 +87,41 @@ export function createBacktestWorkspace(context) {
   let pendingAtomicBacktestRequest = null;
   let editingStrategySetVersionId = null;
   let qualificationFoldSequence = 0;
+  let atomicDatasetGeneration = 0;
+  let activeComparison = null;
 
       function formatBacktestPercent(value, digits = 2) {
         if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
         return `${formatNumber(Number(value) * 100, digits)}%`;
       }
 
-      function backtestStatusLabel(value) {
-        return {
-          QUEUED: "排隊中", PREFLIGHT: "預檢中", RUNNING: "執行中", CANCELLING: "取消中",
-          COMPLETED: "已完成", CANCELLED: "已取消", FAILED: "失敗"
-        }[value] || value || "—";
-      }
-
-      function renderReadinessCard(card, statusElement, detailElement, projection, detail) {
-        const ready = projection?.ready === true;
-        card?.classList.toggle("ready", ready);
-        card?.classList.toggle("not-ready", projection?.ready === false);
-        if (statusElement) statusElement.textContent = projection?.status || "CHECKING";
-        if (detailElement) detailElement.textContent = detail;
+      function renderReadinessCard(card, statusElement, detailElement, subject) {
+        const envelope = statusEnvelopes.getCurrentStatusEnvelope(subject);
+        card.className = `backtest-readiness-card ${envelope ? `token-${envelope.status.toLowerCase().replaceAll("_", "-")}` : "token-unavailable"}`;
+        statusElement.innerHTML = statusEnvelopes.renderInlineStatus(subject);
+        detailElement.innerHTML = envelope
+          ? `${statusEnvelopes.renderBlockerList(envelope)}${statusEnvelopes.renderProvenanceStrip(envelope)}`
+          : statusEnvelopes.renderWorkspaceEnvelope(subject);
       }
 
       function renderBacktestReadiness() {
-        const readiness = state.backtest.capabilities?.readiness || {};
-        const selectedData = state.backtest.atomicDataset?.formal_research_readiness;
-        const data = selectedData || readiness.data;
-        const dataReasons = data?.reason_codes?.length
-          ? `Fail closed：${data.reason_codes.join("、")}`
-          : data?.ready
-            ? "PIT、session、auction、actions、limits、units 與 completeness 已驗證。"
-            : "尚無通過 formal research truth 的 Dataset。";
-        const strategy = readiness.strategy;
-        const qualificationCount = strategy?.qualification_ids?.length || 0;
         renderReadinessCard(
           backtestPlatformReadinessCard,
           backtestPlatformReadiness,
           backtestPlatformReadinessDetail,
-          readiness.platform,
-          readiness.platform?.ready ? "回測服務與不可變結果儲存可用。" : "回測平台未啟用。"
+          "backtest_platform"
         );
         renderReadinessCard(
           backtestDataReadinessCard,
           backtestDataReadiness,
           backtestDataReadinessDetail,
-          data,
-          dataReasons
+          "formal_dataset"
         );
         renderReadinessCard(
           backtestStrategyReadinessCard,
           backtestStrategyReadiness,
           backtestStrategyReadinessDetail,
-          strategy,
-          strategy?.ready
-            ? `${qualificationCount} 份資格證據通過；仍只供人工審核。`
-            : "目前沒有符合 frozen formal 門檻的策略；不會改變 lifecycle。"
+          "strategy_qualification"
         );
       }
 
@@ -452,7 +433,10 @@ export function createBacktestWorkspace(context) {
         const sets = state.strategyCatalog.strategySets;
         const latestVersionByFamily = new Map();
         sets.forEach((set) => {
-          latestVersionByFamily.set(set.strategy_set_id, Math.max(latestVersionByFamily.get(set.strategy_set_id) || 0, set.version_number));
+          const priorVersion = latestVersionByFamily.has(set.strategy_set_id)
+            ? latestVersionByFamily.get(set.strategy_set_id)
+            : 0;
+          latestVersionByFamily.set(set.strategy_set_id, Math.max(priorVersion, set.version_number));
         });
         strategySetList.innerHTML = sets.length ? sets.map((set) => `
           <article class="strategy-catalog-card">
@@ -478,37 +462,48 @@ export function createBacktestWorkspace(context) {
           atomicBacktestSet.value = selectedSet;
         }
         const projection = state.backtest.atomicDataset;
-        if (projection?.available) {
+        const envelope = statusEnvelopes.getCurrentStatusEnvelope("formal_dataset");
+        const scopeMatches = envelope?.identity?.strategy_set_version_id === atomicBacktestSet.value;
+        if (projection?.available && scopeMatches) {
           const mode = projection.resolution_mode === "BASELINE_DATASET" ? "沿用 Baseline" : `binding r${projection.binding_revision}`;
           const amount = projection.amount_kind
             ? ` · VWAP：${escapeHtml(projection.vwap_semantic || projection.amount_kind)}`
             : "";
-          const formal = projection.formal_research_readiness || {};
-          const formalReasons = formal.reason_codes?.length ? ` · ${formal.reason_codes.join("、")}` : "";
-          atomicBacktestDatasetStatus.innerHTML = `<strong>歷史資料已就緒</strong> · ${escapeHtml(mode)}<br><span>${escapeHtml(projection.start_date)} ～ ${escapeHtml(projection.end_date)} · ${Number(projection.symbol_count || 0).toLocaleString("zh-TW")} 檔 · ${Number(projection.bar_count || 0).toLocaleString("zh-TW")} 根 Kbar · ${projection.research_eligible ? "研究資料" : "探索資料"}${amount}<br>Formal v3：${escapeHtml(formal.status || "DATA_NOT_READY")}${escapeHtml(formalReasons)}</span>`;
+          atomicBacktestDatasetStatus.innerHTML = `${statusEnvelopes.renderWorkspaceEnvelope("formal_dataset")}<p class="status-envelope-secondary">Raw Dataset detail：${escapeHtml(mode)} · ${escapeHtml(projection.start_date ?? "—")} ～ ${escapeHtml(projection.end_date ?? "—")} · ${projection.symbol_count ?? "—"} 檔 · ${projection.bar_count ?? "—"} 根 Kbar · ${projection.research_eligible ? "研究資料" : "探索資料"}${amount}</p>`;
         } else if (projection) {
-          atomicBacktestDatasetStatus.innerHTML = `<strong>目前不可建立回測</strong> · ${escapeHtml(projection.message || "Dataset binding 尚未就緒")}`;
+          atomicBacktestDatasetStatus.innerHTML = `${statusEnvelopes.renderWorkspaceEnvelope("formal_dataset")}<p class="status-envelope-secondary">Raw Dataset detail：${escapeHtml(projection.message || "—")}</p>`;
         } else {
-          atomicBacktestDatasetStatus.innerHTML = "<strong>正在確認 ATOMIC_BACKTEST_DEFAULT…</strong>";
+          atomicBacktestDatasetStatus.innerHTML = statusEnvelopes.renderWorkspaceEnvelope("formal_dataset");
         }
-        atomicBacktestSubmit.disabled = !state.strategyCatalog.atomicAvailable || !state.strategyCatalog.strategySets.length || !projection?.available;
+        atomicBacktestSubmit.disabled = !statusEnvelopes.areActionsAllowed([
+            ["backtest_platform", "create_formal_backtest"],
+            ["formal_dataset", "create_formal_backtest"]
+          ]);
         renderBacktestReadiness();
       }
 
       async function refreshAtomicDatasetProjection() {
+        const generation = ++atomicDatasetGeneration;
+        const selectedSetId = atomicBacktestSet.value || null;
+        const envelopePromise = statusEnvelopes.setStrategySetVersionId(selectedSetId);
         if (!atomicBacktestSet.value) {
           state.backtest.atomicDataset = null;
           renderAtomicLauncherOptions();
+          await envelopePromise.catch(() => {});
           return;
         }
         const query = new URLSearchParams({ strategy_set_version_id: atomicBacktestSet.value });
         if (atomicBacktestBaseline.value) query.set("baseline_run_id", atomicBacktestBaseline.value);
         try {
           const payload = await backtestFetch(`/api/backtests/atomic-dataset?${query.toString()}`);
+          if (generation !== atomicDatasetGeneration || atomicBacktestSet.value !== selectedSetId) return;
           state.backtest.atomicDataset = payload.binding;
         } catch (error) {
+          if (generation !== atomicDatasetGeneration || atomicBacktestSet.value !== selectedSetId) return;
           state.backtest.atomicDataset = { available: false, message: error.message };
         }
+        await envelopePromise.catch(() => {});
+        if (generation !== atomicDatasetGeneration || atomicBacktestSet.value !== selectedSetId) return;
         renderAtomicLauncherOptions();
       }
 
@@ -806,28 +801,31 @@ export function createBacktestWorkspace(context) {
       function renderBacktestNotice() {
         const capabilities = state.backtest.capabilities;
         if (!capabilities) return;
-        const projection = state.backtest.atomicDataset;
-        const readiness = projection?.available ? `已鎖定 ${escapeHtml(projection.dataset_id)}` : "預設 Dataset binding 尚未就緒";
-        backtestNotice.innerHTML = `<strong>${escapeHtml(capabilities.database)}</strong> 保存 immutable run、策略版本、資料快照與交易紀錄。${readiness}。<br>${escapeHtml(capabilities.safety)}`;
+        const datasetId = statusEnvelopes.getCurrentStatusEnvelope("formal_dataset")?.identity?.dataset_id;
+        const sourceDetail = datasetId ? `StatusEnvelope 綁定 Dataset ${escapeHtml(datasetId)}` : "Current scoped Dataset identity 尚未驗證";
+        backtestNotice.innerHTML = `<strong>${escapeHtml(capabilities.database)}</strong> 保存 immutable run、策略版本、資料快照與交易紀錄。${sourceDetail}。<br>${escapeHtml(capabilities.safety)}`;
         renderBacktestReadiness();
       }
 
       function renderBacktestRuns() {
         const runs = state.backtest.runs;
         backtestRunCount.textContent = `${runs.length} 個 Run`;
-        backtestRunList.innerHTML = runs.length ? runs.map((run) => `
-          <button class="backtest-list-item ${run.run_id === state.backtest.activeRunId ? "selected" : ""}" type="button" data-backtest-run="${escapeHtml(run.run_id)}">
-            <strong>${escapeHtml(run.run_id.slice(0, 24))}…</strong>
-            <span class="backtest-status ${String(run.status).toLowerCase()}">${escapeHtml(backtestStatusLabel(run.status))}</span>
-            <span>${escapeHtml(run.progress_message || "等待處理")} · ${formatNumber((run.progress || 0) * 100, 0)}%</span>
-            <span>${escapeHtml(run.created_at || "")} · ${escapeHtml(run.config?.change_note || "原始設定")}</span>
-          </button>
-        `).join("") : '<p class="backtest-empty">尚未建立回測。回到「設定策略組合」即可開始。</p>';
+        backtestRunList.innerHTML = runs.length ? runs.map((run) => {
+          const envelope = statusEnvelopes.getCurrentEntityEnvelope("backtest_run", run.run_id);
+          const progress = envelope?.identity?.progress;
+          return `
+            <button class="backtest-list-item ${run.run_id === state.backtest.activeRunId ? "selected" : ""}" type="button" data-backtest-run="${escapeHtml(run.run_id)}">
+              <strong>${escapeHtml(run.run_id.slice(0, 24))}…</strong>
+              <span class="backtest-status">${envelope ? statusEnvelopes.renderStatusSummary(envelope) : '<span class="status-envelope-summary token-unavailable">⚠ 狀態不可用</span>'}</span>
+              <span>progress ${escapeHtml(progress === null || progress === undefined ? "—" : progress)} · ${escapeHtml(envelope?.identity?.progress_message ?? "—")}</span>
+              <span>${escapeHtml(run.created_at ?? "—")} · ${escapeHtml(run.config?.change_note ?? "原始設定")}</span>
+            </button>`;
+        }).join("") : '<p class="backtest-empty">尚未建立回測。回到「設定策略組合」即可開始。</p>';
         backtestRunList.querySelectorAll("[data-backtest-run]").forEach((button) => {
           button.addEventListener("click", () => loadBacktestRunDetails(button.dataset.backtestRun));
         });
 
-        const completed = runs.filter((run) => run.status === "COMPLETED");
+        const completed = runs.filter((run) => statusEnvelopes.isEntityActionAllowed("backtest_run", run.run_id, "compare_runs"));
         const oldBaseline = backtestBaseline.value;
         const oldChallenger = backtestChallenger.value;
         const options = completed.length
@@ -843,6 +841,13 @@ export function createBacktestWorkspace(context) {
         const selectedAtomicBaseline = atomicBacktestBaseline.value;
         atomicBacktestBaseline.innerHTML = '<option value="">不加入 qualification family</option>' + completedAtomic.map((run) => `<option value="${escapeHtml(run.run_id)}">${escapeHtml(run.run_id.slice(0, 24))}… · ${escapeHtml(run.config?.change_note || "原始設定")}</option>`).join("");
         if (completedAtomic.some((run) => run.run_id === selectedAtomicBaseline)) atomicBacktestBaseline.value = selectedAtomicBaseline;
+        backtestCloneButton.disabled = !state.backtest.activeRunId
+          || !statusEnvelopes.isEntityActionAllowed("backtest_run", state.backtest.activeRunId, "clone_run");
+        backtestCompareButton.disabled = !backtestBaseline.value
+          || !backtestChallenger.value
+          || backtestBaseline.value === backtestChallenger.value
+          || !statusEnvelopes.isEntityActionAllowed("backtest_run", backtestBaseline.value, "compare_runs")
+          || !statusEnvelopes.isEntityActionAllowed("backtest_run", backtestChallenger.value, "compare_runs");
         renderQualifications();
       }
 
@@ -903,11 +908,10 @@ export function createBacktestWorkspace(context) {
         }).join("<br>");
         const reasons = evidence.reasons?.length ? evidence.reasons.join("；") : "所有固定門檻通過，等待人工 Review。";
         const persistedVerdict = record?.verdict || evidence.verdict || "—";
-        const displayStatus = record?.display_status || (persistedVerdict === "ELIGIBLE_FOR_PROMOTION_REVIEW" ? "STRATEGY_QUALIFIED" : "NO_QUALIFYING_STRATEGY");
         const policySummary = formalPolicy
           ? `Formal v3：Primary ≥ ${formalPolicy.primary_minimum_calendar_days} 日／${formalPolicy.primary_minimum_active_dates} active dates／${formalPolicy.minimum_oos_trades} 筆；folds ≥ ${formalPolicy.minimum_walk_forward_folds}，每 fold ≥ ${formalPolicy.fold_minimum_active_dates} active dates，至少 ${formalPolicy.minimum_positive_folds}/${formalPolicy.minimum_walk_forward_folds} 正向；coverage ≥ ${formalPolicy.coverage_minimum}；回撤 ≤ ${formatBacktestPercent(formalPolicy.maximum_drawdown)}`
           : `Legacy v2：Train/Validation ≥ ${policy.minimum_train_observed_sessions || "—"}/${policy.minimum_validation_observed_sessions || "—"} sessions；OOS ≥ ${policy.minimum_oos_trades || "—"} 筆/${policy.minimum_oos_independent_days || "—"} 日；回撤 ≤ ${formatBacktestPercent(policy.maximum_oos_drawdown)}；folds ≥ ${policy.minimum_walk_forward_folds || "—"}；正向比例 ≥ ${formatBacktestPercent(policy.minimum_positive_fold_ratio)}`;
-        qualificationResult.innerHTML = `<div class="backtest-trade-detail"><strong>${escapeHtml(displayStatus)}</strong> · persisted verdict ${escapeHtml(persistedVerdict)} · ${escapeHtml(reasons)}<br><strong>Authoritative family</strong>：${escapeHtml(multiple.family_id || record?.family_id || "—")} · research baseline ${escapeHtml(String(multiple.research_baseline_digest || familySnapshot.research_baseline_digest || "—").slice(0, 16))}… · attempt ${escapeHtml(multiple.attempt_number || record?.attempt_number || "—")}/${escapeHtml(multiple.planned_attempts || "—")} · head ${escapeHtml(multiple.family_head_sequence || record?.family_head_sequence || "—")} · adjusted alpha ${escapeHtml(multiple.adjusted_alpha || "—")}<br><strong>Server policy</strong>：${escapeHtml(policySummary)}<br><strong>固定日期窗</strong><br>${windowRows || "—"}<br><strong>Run／Strategy／Feature／adapter history</strong><br>${attempts || "—"}<br><strong>Historical family linkage（建立證據時）</strong><br>${familyLinks(familySnapshot)}<br><strong>Current family linkage</strong><br>${familyLinks(currentFamilySnapshot)}<br>Primary OOS：${challenger.closed_trades || 0} 筆/${challenger.independent_days || 0} 日；Expectancy ${formatNumber(challenger.expectancy || 0, 0)}；最大回撤 ${formatBacktestPercent(challenger.max_drawdown)}<br>Walk-forward 正向比例：${formatBacktestPercent(walkForward.positive_fold_ratio)}；Family snapshot ${escapeHtml(String(record?.family_snapshot_digest || multiple.family_snapshot_digest || "").slice(0, 16))}…；Current ${escapeHtml(String(currentFamilySnapshot.family_snapshot_digest || "").slice(0, 16))}…；Evidence ${escapeHtml(String(record?.evidence_digest || evidence.evidence_digest || "").slice(0, 16))}…<br><strong>只供人工審核，不會自動啟用策略。</strong></div>`;
+        qualificationResult.innerHTML = `${statusEnvelopes.renderWorkspaceEnvelope("strategy_qualification")}<div class="backtest-trade-detail">persisted verdict ${escapeHtml(persistedVerdict)} · ${escapeHtml(reasons)}<br><strong>Authoritative family</strong>：${escapeHtml(multiple.family_id || record?.family_id || "—")} · research baseline ${escapeHtml(String(multiple.research_baseline_digest || familySnapshot.research_baseline_digest || "—").slice(0, 16))}… · attempt ${escapeHtml(multiple.attempt_number ?? record?.attempt_number ?? "—")}/${escapeHtml(multiple.planned_attempts ?? "—")} · head ${escapeHtml(multiple.family_head_sequence ?? record?.family_head_sequence ?? "—")} · adjusted alpha ${escapeHtml(multiple.adjusted_alpha ?? "—")}<br><strong>Server policy</strong>：${escapeHtml(policySummary)}<br><strong>固定日期窗</strong><br>${windowRows || "—"}<br><strong>Run／Strategy／Feature／adapter history</strong><br>${attempts || "—"}<br><strong>Historical family linkage（建立證據時）</strong><br>${familyLinks(familySnapshot)}<br><strong>Current family linkage</strong><br>${familyLinks(currentFamilySnapshot)}<br>Primary OOS：${escapeHtml(challenger.closed_trades ?? "—")} 筆/${escapeHtml(challenger.independent_days ?? "—")} 日；Expectancy ${formatNumber(challenger.expectancy, 0)}；最大回撤 ${formatBacktestPercent(challenger.max_drawdown)}<br>Walk-forward 正向比例：${formatBacktestPercent(walkForward.positive_fold_ratio)}；Family snapshot ${escapeHtml(String(record?.family_snapshot_digest || multiple.family_snapshot_digest || "").slice(0, 16))}…；Current ${escapeHtml(String(currentFamilySnapshot.family_snapshot_digest || "").slice(0, 16))}…；Evidence ${escapeHtml(String(record?.evidence_digest || evidence.evidence_digest || "").slice(0, 16))}…<br><strong>只供人工審核，不會自動啟用策略。</strong></div>`;
       }
 
       function renderQualifications() {
@@ -918,7 +922,7 @@ export function createBacktestWorkspace(context) {
         const rows = state.backtest.qualifications || [];
         qualificationList.innerHTML = rows.length ? rows.map((item) => `
           <button class="backtest-list-item" type="button" data-qualification-id="${escapeHtml(item.qualification_id)}">
-            <strong>${escapeHtml(item.display_status || "NO_QUALIFYING_STRATEGY")}</strong>
+            <strong>Evidence ${escapeHtml(item.qualification_id)}</strong>
             <span>${escapeHtml(item.baseline_run_id.slice(0, 18))}… → ${escapeHtml(item.challenger_run_id.slice(0, 18))}…</span>
             <span>persisted verdict ${escapeHtml(item.verdict)} · ${escapeHtml(item.change_note)} · ${escapeHtml(item.created_at)}</span>
           </button>
@@ -946,7 +950,10 @@ export function createBacktestWorkspace(context) {
         const x = (index) => padding + index / Math.max(1, values.length - 1) * (width - padding * 2);
         const y = (value) => height - padding - (value - low) / span * (height - padding * 2);
         const path = values.map((value, index) => `${index ? "L" : "M"}${x(index).toFixed(1)} ${y(value).toFixed(1)}`).join(" ");
-        const maxDrawdown = Math.max(0, ...drawdown.map((point) => Number(point.drawdown || 0)));
+        const numericDrawdowns = drawdown
+          .map((point) => point.drawdown)
+          .filter((value) => typeof value === "number" && Number.isFinite(value));
+        const maxDrawdown = numericDrawdowns.length ? Math.max(0, ...numericDrawdowns) : null;
         return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="每日權益曲線，最大回撤 ${formatBacktestPercent(maxDrawdown)}"><line x1="${padding}" x2="${width - padding}" y1="${padding}" y2="${padding}" stroke="var(--line)"/><line x1="${padding}" x2="${width - padding}" y1="${height - padding}" y2="${height - padding}" stroke="var(--line)"/><path d="${path}" fill="none" stroke="var(--blue)" stroke-linejoin="round" stroke-width="2"/><text x="${padding}" y="12" fill="var(--muted)" font-size="10">${formatNumber(high, 0)}</text><text x="${padding}" y="${height - 3}" fill="var(--muted)" font-size="10">${formatNumber(low, 0)}</text></svg>`;
       }
 
@@ -988,17 +995,28 @@ export function createBacktestWorkspace(context) {
       }
 
       function renderBacktestResult() {
+        const runId = state.backtest.activeRunId;
+        if (!runId) {
+          backtestResult.innerHTML = "";
+          return;
+        }
+        const statusMarkup = `${statusEnvelopes.renderEntityEnvelope("backtest_run", runId)}${statusEnvelopes.renderEntityEnvelope("cost_snapshot", runId)}`;
+        const envelope = statusEnvelopes.getCurrentEntityEnvelope("backtest_run", runId);
         const data = state.backtest.activeResult;
-        if (!data) {
-          if (state.backtest.activeRunId) backtestResult.innerHTML = '<p class="backtest-empty">正在讀取回測結果…</p>';
+        if (!envelope || !data?.run) {
+          backtestResult.innerHTML = `${statusMarkup}<p class="backtest-empty">${envelope ? "正在讀取 raw Run detail…" : "Entity current state 未驗證；不讀取 raw result routes。"}</p>`;
           return;
         }
         const { run, summary, equity, drawdown, trades, attribution } = data;
-        if (run.status !== "COMPLETED") {
-          const canCancel = ["QUEUED", "PREFLIGHT", "RUNNING"].includes(run.status);
-          const canRetry = ["FAILED", "CANCELLED"].includes(run.status);
-          backtestResult.innerHTML = `<div class="backtest-trade-detail"><strong>${escapeHtml(backtestStatusLabel(run.status))}</strong> · ${escapeHtml(run.progress_message || "等待處理")}${run.error_message ? `<br><span class="negative">${escapeHtml(run.error_message)}</span>` : ""}<div class="backtest-actions">${canCancel ? `<button class="backtest-button danger" type="button" data-backtest-cancel="${escapeHtml(run.run_id)}">取消回測</button>` : ""}${canRetry ? `<button class="backtest-button secondary" type="button" data-backtest-retry="${escapeHtml(run.run_id)}">重試原設定</button>` : ""}</div></div>`;
+        if (!statusEnvelopes.isEntityActionAllowed("backtest_run", runId, "view_results")) {
+          const canCancel = statusEnvelopes.isEntityActionAllowed("backtest_run", runId, "cancel_run");
+          const canRetry = statusEnvelopes.isEntityActionAllowed("backtest_run", runId, "retry_run");
+          backtestResult.innerHTML = `${statusMarkup}<div class="backtest-actions">${canCancel ? `<button class="backtest-button danger" type="button" data-backtest-cancel="${escapeHtml(runId)}">取消回測</button>` : ""}${canRetry ? `<button class="backtest-button secondary" type="button" data-backtest-retry="${escapeHtml(runId)}">重試原設定</button>` : ""}</div>`;
           bindBacktestResultButtons();
+          return;
+        }
+        if (!summary || !equity || !drawdown || !trades || !attribution) {
+          backtestResult.innerHTML = `${statusMarkup}<p class="backtest-empty">StatusEnvelope 已允許 view_results；正在讀取 raw result detail…</p>`;
           return;
         }
         const oos = summary.oos || {};
@@ -1013,30 +1031,26 @@ export function createBacktestWorkspace(context) {
         const metrics = [
           ["OOS 勝率", formatBacktestPercent(oos.win_rate)],
           ["OOS 95% CI", Array.isArray(oos.win_rate_ci) ? `${formatBacktestPercent(oos.win_rate_ci[0], 1)} ～ ${formatBacktestPercent(oos.win_rate_ci[1], 1)}` : "—"],
-          ["淨損益", `${Number(oos.net_pnl || 0) >= 0 ? "+" : ""}${formatNumber(oos.net_pnl || 0, 0)}`],
+          ["淨損益", `${oos.net_pnl !== null && oos.net_pnl !== undefined && Number(oos.net_pnl) >= 0 ? "+" : ""}${formatNumber(oos.net_pnl, 0)}`],
           ["最大回撤", formatBacktestPercent(summary.equity?.max_drawdown)]
         ].map(([label, value]) => `<div class="backtest-metric"><span>${label}</span><strong>${value}</strong></div>`).join("");
-        const resultReadiness = summary.readiness || null;
-        const readinessSummary = resultReadiness
-          ? `<div class="backtest-trade-detail"><strong>Formal readiness</strong>：${escapeHtml(resultReadiness.platform?.status || "PLATFORM_NOT_READY")} · ${escapeHtml(resultReadiness.data?.status || "DATA_NOT_READY")} · ${escapeHtml(resultReadiness.strategy?.status || "NO_QUALIFYING_STRATEGY")}<br><span>策略狀態只由不可變 qualification evidence 衍生顯示，不會改變 persisted verdict 或 lifecycle。</span></div>`
-          : "";
         // Formal v3 UI has one downstream source: summary.formal_evidence.
         const formalEvidence = summary.formal_evidence || null;
         const formalEvidenceSummary = formalEvidence
-          ? `<div class="backtest-trade-detail"><strong>summary.formal_evidence</strong> · ${escapeHtml(formalEvidence.version)} · ${formalEvidence.active_dates || 0} active dates<br><span>Coverage ${formatBacktestPercent(formalEvidence.coverage?.ratio)}（minimum ${formatBacktestPercent(formalEvidence.coverage?.minimum)}）；fallback ${formalEvidence.execution?.fallback_count || 0}、residual ${formalEvidence.execution?.residual_count || 0}、overnight breach ${formalEvidence.execution?.overnight_breach_count || 0}、unsupported regime ${formalEvidence.special_regime?.denominator_count || 0}；capacity ${Number(formalEvidence.capacity?.before_cost_shares || 0).toLocaleString("zh-TW")} → ${Number(formalEvidence.capacity?.after_cost_shares || 0).toLocaleString("zh-TW")} shares after cost。</span></div>`
+          ? `<div class="backtest-trade-detail"><strong>summary.formal_evidence</strong> · ${escapeHtml(formalEvidence.version)} · ${escapeHtml(formalEvidence.active_dates ?? "—")} active dates<br><span>Coverage ${formatBacktestPercent(formalEvidence.coverage?.ratio)}（minimum ${formatBacktestPercent(formalEvidence.coverage?.minimum)}）；fallback ${escapeHtml(formalEvidence.execution?.fallback_count ?? "—")}、residual ${escapeHtml(formalEvidence.execution?.residual_count ?? "—")}、overnight breach ${escapeHtml(formalEvidence.execution?.overnight_breach_count ?? "—")}、unsupported regime ${escapeHtml(formalEvidence.special_regime?.denominator_count ?? "—")}；capacity ${escapeHtml(formalEvidence.capacity?.before_cost_shares ?? "—")} → ${escapeHtml(formalEvidence.capacity?.after_cost_shares ?? "—")} shares after cost。</span></div>`
           : "";
         const tradeRows = (trades.trades || []).map((trade) => `
           <tr><td><button class="backtest-trade-button" type="button" data-backtest-trade="${escapeHtml(trade.trade_id)}">${escapeHtml(trade.symbol)} ${escapeHtml(trade.name || "")}</button></td><td>${escapeHtml(formatOrderTime(trade.entry.filled_at))}</td><td>${escapeHtml(trade.entry_decision.primary_strategy_id)}</td><td>${escapeHtml(trade.exit_decision.primary_strategy_id)}</td><td class="${Number(trade.net_pnl) >= 0 ? "positive" : "negative"}">${Number(trade.net_pnl) >= 0 ? "+" : ""}${formatNumber(trade.net_pnl, 0)}</td></tr>
         `).join("") || '<tr><td colspan="5" class="backtest-empty">沒有已平倉交易。</td></tr>';
-        const attributionRows = (attribution.rows || []).filter((row) => row.role !== "EVALUATION").map((row) => `<tr><td>${escapeHtml(row.role)}</td><td>${escapeHtml(row.strategy_id)}</td><td>${row.primary_trades || 0}</td><td>${row.participated_in_trades || 0}</td><td class="${Number(row.primary_net_pnl || 0) >= 0 ? "positive" : "negative"}">${formatNumber(row.primary_net_pnl || 0, 0)}</td></tr>`).join("") || '<tr><td colspan="5" class="backtest-empty">尚無交易歸因。</td></tr>';
+        const attributionRows = (attribution.rows || []).filter((row) => row.role !== "EVALUATION").map((row) => `<tr><td>${escapeHtml(row.role)}</td><td>${escapeHtml(row.strategy_id)}</td><td>${escapeHtml(row.primary_trades ?? "—")}</td><td>${escapeHtml(row.participated_in_trades ?? "—")}</td><td class="${row.primary_net_pnl !== null && row.primary_net_pnl !== undefined && Number(row.primary_net_pnl) >= 0 ? "positive" : "negative"}">${formatNumber(row.primary_net_pnl, 0)}</td></tr>`).join("") || '<tr><td colspan="5" class="backtest-empty">尚無交易歸因。</td></tr>';
         backtestResult.innerHTML = `
-          <div class="backtest-trade-detail"><strong>${escapeHtml(summary.verdict)}</strong> · ${summary.reasons?.length ? escapeHtml(summary.reasons.join("；")) : "資料與 OOS 檢核通過"}<br><span>${escapeHtml(strategySummary)}<br>完整已平倉 ${full.closed_trades || 0} 筆；OOS ${oos.closed_trades || 0} 筆；Profit Factor ${oos.profit_factor_display || (oos.profit_factor === null ? "—" : formatNumber(oos.profit_factor))}；Expectancy ${formatNumber(oos.expectancy || 0, 0)}</span></div>
-          ${readinessSummary}
+          ${statusMarkup}
+          <div class="backtest-trade-detail"><strong>${escapeHtml(summary.verdict)}</strong> · ${summary.reasons?.length ? escapeHtml(summary.reasons.join("；")) : "資料與 OOS 檢核通過"}<br><span>${escapeHtml(strategySummary)}<br>完整已平倉 ${escapeHtml(full.closed_trades ?? "—")} 筆；OOS ${escapeHtml(oos.closed_trades ?? "—")} 筆；Profit Factor ${escapeHtml(oos.profit_factor_display ?? (oos.profit_factor === null || oos.profit_factor === undefined ? "—" : formatNumber(oos.profit_factor)))}；Expectancy ${formatNumber(oos.expectancy, 0)}</span></div>
           ${formalEvidenceSummary}
           <div class="backtest-metrics">${metrics}</div>
           <div class="backtest-chart">${renderBacktestEquityChart(equity.daily_equity, drawdown.drawdown)}</div>
           <div class="backtest-actions"><a class="backtest-button secondary" href="/api/backtests/runs/${encodeURIComponent(run.run_id)}/trades.csv">匯出交易 CSV</a></div>
-          <div class="backtest-section-heading"><h3>交易明細</h3><span class="panel-count">${trades.total || 0} 筆</span></div>
+          <div class="backtest-section-heading"><h3>交易明細</h3><span class="panel-count">${escapeHtml(trades.total ?? "—")} 筆</span></div>
           <div class="backtest-table-wrap"><table class="backtest-table"><thead><tr><th>標的</th><th>進場</th><th>主要買入策略</th><th>主要賣出策略</th><th>淨損益</th></tr></thead><tbody>${tradeRows}</tbody></table></div>
           <div id="backtest-trade-detail"></div>
           <div class="backtest-section-heading"><h3>策略歸因</h3><span class="panel-count">primary／參與交易分開統計</span></div>
@@ -1069,6 +1083,9 @@ export function createBacktestWorkspace(context) {
         await refreshStrategyCatalog();
         renderAtomicLauncherOptions();
         await refreshAtomicDatasetProjection();
+        await Promise.all(state.backtest.runs.map((run) => (
+          statusEnvelopes.loadEntityStatus("backtest_run", run.run_id, { activate: false }).catch(() => null)
+        )));
         renderBacktestNotice();
         renderBacktestRuns();
         const active = state.backtest.runs.find((run) => run.run_id === state.backtest.activeRunId);
@@ -1076,8 +1093,7 @@ export function createBacktestWorkspace(context) {
           state.backtest.activeRunId = null;
           state.backtest.activeResult = null;
           backtestResult.innerHTML = "";
-        } else if (active.status !== "COMPLETED") {
-          state.backtest.activeResult = { run: active };
+        } else {
           renderBacktestResult();
         }
       }
@@ -1089,10 +1105,15 @@ export function createBacktestWorkspace(context) {
         renderBacktestRuns();
         renderBacktestResult();
         try {
+          await statusEnvelopes.loadEntityStatus("backtest_run", runId, { activate: true });
+          if (state.backtest.activeRunId !== runId
+            || !statusEnvelopes.getCurrentEntityEnvelope("backtest_run", runId)) return;
           const run = await backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}`);
-          if (run.status !== "COMPLETED") {
-            state.backtest.activeResult = { run };
-            renderBacktestResult();
+          if (state.backtest.activeRunId !== runId) return;
+          if (run.run_id !== runId) throw new Error("raw Run identity 不符");
+          state.backtest.activeResult = { run };
+          renderBacktestResult();
+          if (!statusEnvelopes.isEntityActionAllowed("backtest_run", runId, "view_results")) {
             return;
           }
           const [summary, equity, drawdown, trades, attribution] = await Promise.all([
@@ -1102,17 +1123,19 @@ export function createBacktestWorkspace(context) {
             backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/trades?page=1&page_size=100`),
             backtestFetch(`/api/backtests/runs/${encodeURIComponent(runId)}/strategy-attribution`)
           ]);
+          if (state.backtest.activeRunId !== runId
+            || !statusEnvelopes.isEntityActionAllowed("backtest_run", runId, "view_results")) return;
           state.backtest.activeResult = { run, summary, equity, drawdown, trades, attribution };
           renderBacktestResult();
         } catch (error) {
-          backtestResult.innerHTML = `<p class="backtest-empty">無法讀取回測結果：${escapeHtml(error.message)}</p>`;
+          backtestResult.innerHTML = `${statusEnvelopes.renderEntityEnvelope("backtest_run", runId)}<p class="backtest-empty">無法讀取回測 detail：${escapeHtml(error.message)}</p>`;
         }
       }
 
       async function loadBacktestTrade(tradeId) {
         const runId = state.backtest.activeRunId;
         const target = document.getElementById("backtest-trade-detail");
-        if (!runId || !tradeId || !target) return;
+        if (!runId || !tradeId || !target || !statusEnvelopes.isEntityActionAllowed("backtest_run", runId, "view_results")) return;
         target.innerHTML = '<p class="backtest-empty">正在讀取交易決策、策略證據與 Kbar…</p>';
         try {
           const [trade, chart] = await Promise.all([
@@ -1132,6 +1155,13 @@ export function createBacktestWorkspace(context) {
         event.preventDefault();
         if (!atomicBacktestSet.value) {
           atomicBacktestMessage.textContent = "請先選擇策略組合。";
+          return;
+        }
+        if (!statusEnvelopes.areActionsAllowed([
+          ["backtest_platform", "create_formal_backtest"],
+          ["formal_dataset", "create_formal_backtest"]
+        ])) {
+          atomicBacktestMessage.textContent = "Current scoped StatusEnvelope 未允許建立 Formal Backtest。";
           return;
         }
         atomicBacktestSubmit.disabled = true;
@@ -1170,6 +1200,8 @@ export function createBacktestWorkspace(context) {
       }
 
       async function changeBacktestRun(runId, action) {
+        const envelopeAction = action === "cancel" ? "cancel_run" : "retry_run";
+        if (!statusEnvelopes.isEntityActionAllowed("backtest_run", runId, envelopeAction)) return;
         try {
           const path = action === "cancel" ? `/api/backtests/runs/${encodeURIComponent(runId)}/cancel` : `/api/backtests/runs/${encodeURIComponent(runId)}/retry`;
           const activeRun = state.backtest.activeResult?.run;
@@ -1191,6 +1223,7 @@ export function createBacktestWorkspace(context) {
         const runId = state.backtest.activeRunId;
         const changeNote = document.getElementById("backtest-change-note").value.trim();
         if (!runId) { atomicBacktestMessage.textContent = "請先選擇一個既有回測。"; return; }
+        if (!statusEnvelopes.isEntityActionAllowed("backtest_run", runId, "clone_run")) { atomicBacktestMessage.textContent = "Current Run StatusEnvelope 未允許複製。"; return; }
         if (!changeNote) { atomicBacktestMessage.textContent = "請填寫調整說明，才能建立可比較的 challenger。"; return; }
         try {
           const activeRun = state.backtest.activeResult?.run;
@@ -1219,11 +1252,27 @@ export function createBacktestWorkspace(context) {
       async function compareBacktestRuns() {
         if (!backtestBaseline.value || !backtestChallenger.value) { backtestComparison.innerHTML = '<p class="backtest-empty">請選擇兩個已完成 Run。</p>'; return; }
         if (backtestBaseline.value === backtestChallenger.value) { backtestComparison.innerHTML = '<p class="backtest-empty">Baseline 與 Challenger 必須不同。</p>'; return; }
+        if (![backtestBaseline.value, backtestChallenger.value].every((runId) => statusEnvelopes.isEntityActionAllowed("backtest_run", runId, "compare_runs"))) {
+          backtestComparison.innerHTML = '<p class="backtest-empty">Current Run StatusEnvelope 未允許比較。</p>';
+          return;
+        }
         try {
           const comparison = await backtestFetch("/api/backtests/comparisons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ baseline_run_id: backtestBaseline.value, challenger_run_id: backtestChallenger.value }) });
+          if (!comparison.comparison_id) throw new Error("comparison_id 缺失");
+          await statusEnvelopes.loadEntityStatus("backtest_comparison", comparison.comparison_id, { activate: true });
+          const envelope = statusEnvelopes.getCurrentEntityEnvelope("backtest_comparison", comparison.comparison_id);
+          if (!envelope) throw new Error("Comparison StatusEnvelope 不可用");
+          activeComparison = comparison;
           const deltas = comparison.deltas || {};
-          backtestComparison.innerHTML = `<div class="backtest-trade-detail"><strong>${escapeHtml(comparison.verdict)}</strong> · ${escapeHtml(comparison.message)}<br>勝率差：${formatBacktestPercent(deltas.win_rate)}；期望值差：${formatNumber(deltas.expectancy || 0, 0)}；最大回撤差：${formatBacktestPercent(deltas.max_drawdown)}${comparison.win_rate_delta_ci ? `<br>群集 bootstrap 勝率差 95% CI：${formatBacktestPercent(comparison.win_rate_delta_ci[0])} ～ ${formatBacktestPercent(comparison.win_rate_delta_ci[1])}` : ""}${comparison.config_diff?.length ? `<br>不可比較欄位：${escapeHtml(comparison.config_diff.map((item) => item.field).join("、"))}` : ""}</div>`;
+          const mayViewDeltas = statusEnvelopes.isEntityActionAllowed("backtest_comparison", comparison.comparison_id, "view_outcome_deltas");
+          const deltaDetail = mayViewDeltas
+            ? `<br>勝率差：${formatBacktestPercent(deltas.win_rate)}；期望值差：${formatNumber(deltas.expectancy, 0)}；最大回撤差：${formatBacktestPercent(deltas.max_drawdown)}${comparison.win_rate_delta_ci ? `<br>群集 bootstrap 勝率差 95% CI：${formatBacktestPercent(comparison.win_rate_delta_ci[0])} ～ ${formatBacktestPercent(comparison.win_rate_delta_ci[1])}` : ""}`
+            : "";
+          backtestComparison.innerHTML = `${statusEnvelopes.renderEntityEnvelope("backtest_comparison", comparison.comparison_id)}<div class="backtest-trade-detail">Raw comparison detail：${escapeHtml(comparison.message ?? "—")}${deltaDetail}${comparison.config_diff?.length ? `<br>不可比較欄位：${escapeHtml(comparison.config_diff.map((item) => item.field).join("、"))}` : ""}</div>`;
+          qualificationSubmit.disabled = !statusEnvelopes.isEntityActionAllowed("backtest_comparison", comparison.comparison_id, "create_qualification_evidence");
         } catch (error) {
+          activeComparison = null;
+          qualificationSubmit.disabled = true;
           backtestComparison.innerHTML = `<p class="backtest-empty">無法比較：${escapeHtml(error.message)}</p>`;
         }
       }
@@ -1234,6 +1283,13 @@ export function createBacktestWorkspace(context) {
         const challengerRunId = backtestChallenger.value;
         if (!baselineRunId || !challengerRunId || baselineRunId === challengerRunId) {
           qualificationMessage.textContent = "請選擇兩個不同的已完成 Run。";
+          return;
+        }
+        if (!activeComparison
+          || activeComparison.baseline_run_id !== baselineRunId
+          || activeComparison.challenger_run_id !== challengerRunId
+          || !statusEnvelopes.isEntityActionAllowed("backtest_comparison", activeComparison.comparison_id, "create_qualification_evidence")) {
+          qualificationMessage.textContent = "Current Comparison StatusEnvelope 未允許建立資格證據。";
           return;
         }
         try {
@@ -1268,7 +1324,9 @@ export function createBacktestWorkspace(context) {
         state.backtest.polling = true;
         refreshBacktestWorkspace().then(async () => {
           const active = state.backtest.runs.find((run) => run.run_id === state.backtest.activeRunId);
-          if (active?.status === "COMPLETED" && state.backtest.activeResult?.run?.status !== "COMPLETED") await loadBacktestRunDetails(active.run_id);
+          if (active
+            && statusEnvelopes.isEntityActionAllowed("backtest_run", active.run_id, "view_results")
+            && !state.backtest.activeResult?.summary) await loadBacktestRunDetails(active.run_id);
         }).catch((error) => { backtestNotice.textContent = `回測工作區更新失敗：${error.message}`; }).finally(() => { state.backtest.polling = false; });
       }
 
@@ -1294,11 +1352,29 @@ export function createBacktestWorkspace(context) {
       atomicBacktestForm?.addEventListener("submit", submitAtomicBacktestRun);
       atomicBacktestSet?.addEventListener("change", refreshAtomicDatasetProjection);
       atomicBacktestBaseline?.addEventListener("change", refreshAtomicDatasetProjection);
+      [backtestBaseline, backtestChallenger].forEach((select) => select?.addEventListener("change", () => {
+        activeComparison = null;
+        qualificationSubmit.disabled = true;
+        backtestComparison.innerHTML = "";
+        renderBacktestRuns();
+      }));
       qualificationForm?.addEventListener("submit", submitBacktestQualification);
       qualificationAddFold?.addEventListener("click", addQualificationFold);
       addQualificationFold();
       addQualificationFold();
       setStrategyManagementView(state.strategyCatalog.activeView || "editor");
+
+      statusEnvelopes.subscribe((event) => {
+        if (["set", "unavailable", "scope"].includes(event.type)) {
+          renderBacktestReadiness();
+          renderAtomicLauncherOptions();
+          renderBacktestNotice();
+        }
+        if (["entity", "entity-unavailable"].includes(event.type)) {
+          renderBacktestRuns();
+          if (state.backtest.activeRunId) renderBacktestResult();
+        }
+      });
 
 
   return { refreshStrategyCatalog, setStrategyCatalogDrawer, setBacktestDrawer, refreshBacktestWorkspace, cloneBacktestRun, compareBacktestRuns, pollBacktestWorkspace };

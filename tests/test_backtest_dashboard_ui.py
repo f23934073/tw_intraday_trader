@@ -77,11 +77,13 @@ def test_mobile_navigation_keeps_aria_state_in_sync_with_the_hidden_sidebar() ->
 
 def test_atomic_launcher_reports_server_managed_dataset_readiness() -> None:
     assert "/api/backtests/atomic-dataset" in BACKTEST
-    assert "ATOMIC_BACKTEST_DEFAULT" in BACKTEST
+    assert "ATOMIC_BACKTEST_DEFAULT" not in BACKTEST
     assert "expected_binding_revision" in BACKTEST
     assert "expected_dataset_digest" in BACKTEST
     assert 'dataset.status === "READY"' not in BACKTEST
     assert '/api/backtests/datasets"' not in BACKTEST
+    assert 'statusEnvelopes.setStrategySetVersionId(selectedSetId)' in BACKTEST
+    assert '["formal_dataset", "create_formal_backtest"]' in BACKTEST
 
 
 def test_formal_readiness_is_split_into_platform_data_and_strategy() -> None:
@@ -91,10 +93,12 @@ def test_formal_readiness_is_split_into_platform_data_and_strategy() -> None:
         "backtest-strategy-readiness",
     ):
         assert f'id="{readiness_id}"' in HTML
-    assert "projection?.status" in BACKTEST
-    assert "NO_QUALIFYING_STRATEGY" in BACKTEST
-    assert "formal_research_readiness" in BACKTEST
-    assert "不會改變 lifecycle" in BACKTEST
+    assert '"backtest_platform"\n        );' in BACKTEST
+    assert '"formal_dataset"\n        );' in BACKTEST
+    assert '"strategy_qualification"\n        );' in BACKTEST
+    assert "NO_QUALIFYING_STRATEGY" not in BACKTEST
+    assert "formal_research_readiness" not in BACKTEST
+    assert "不會改變 lifecycle" not in BACKTEST
 
 
 def test_formal_result_ui_consumes_summary_formal_evidence_only() -> None:

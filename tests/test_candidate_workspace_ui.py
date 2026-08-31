@@ -29,8 +29,9 @@ def test_snapshot_refresh_is_in_the_overview_data_status_card() -> None:
 
 
 def test_simulation_ui_exposes_reserved_cash_and_fail_closed_quote_health() -> None:
-    assert 'session.stream_health === "BLOCKED"' in SIMULATION
-    assert "行情保護已阻擋下單" in SIMULATION
+    assert 'statusEnvelopes.renderInlineStatus("quote_ingress")' in SIMULATION
+    assert 'statusEnvelopes.isActionAllowed("quote_ingress", "submit_order")' in SIMULATION
+    assert 'session.stream_health === "BLOCKED"' not in SIMULATION
     assert "commissionInclusiveCashReservation" in SIMULATION
     assert "含手續費現金保留" in SIMULATION
 

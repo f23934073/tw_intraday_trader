@@ -1,5 +1,5 @@
 export function createCandidateWorkspace(context) {
-  const { state, services, escapeHtml, formatNumber, formatPercent, formatVolume, formatQuoteTime, formatRule, formatSource } = context;
+  const { state, services, statusEnvelopes, escapeHtml, formatNumber, formatPercent, formatVolume, formatQuoteTime, formatRule, formatSource } = context;
   const detailPanel = document.getElementById("detail-panel");
 
       function percentage(numerator, denominator) {
@@ -47,42 +47,6 @@ export function createCandidateWorkspace(context) {
             const scoreDifference = Number(right.score.total) - Number(left.score.total);
             return scoreDifference || left.symbol.localeCompare(right.symbol, "en");
           });
-      }
-
-      function renderStatus(snapshot) {
-        const timestamp = new Date(snapshot.generated_at).toLocaleTimeString("zh-TW", {
-          hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
-        });
-        statusElement.innerHTML = `<span class="status-dot" aria-hidden="true"></span>單次快照 · ${escapeHtml(snapshot.provider.name)} · ${timestamp}`;
-      }
-
-      function renderSimulation(simulation) {
-        const session = simulation.session || {};
-        const label = session.label || "本機紙上模擬";
-        const subscribedCount = (session.subscribed_symbols || []).length;
-        const stateLabel = session.stream_health === "BLOCKED"
-          ? "行情保護已阻擋下單"
-          : session.stream_health === "DEGRADED"
-            ? "行情待復原"
-            : session.stream_error
-          ? "行情異常"
-          : session.streaming && subscribedCount && session.last_quote_received_at
-            ? `即時 ${formatQuoteTime(session.last_quote_received_at)}`
-            : session.streaming && subscribedCount
-              ? "等待行情"
-              : session.streaming
-                ? "串流待命"
-                : "Snapshot";
-        simulationStatus.classList.toggle("degraded", Boolean(session.stream_error) || session.stream_health !== "HEALTHY");
-        simulationStatus.classList.toggle("waiting", !session.stream_error && session.stream_health === "HEALTHY" && !session.last_quote_received_at);
-        simulationStatus.innerHTML = `<span class="status-dot" aria-hidden="true"></span>${escapeHtml(label)} · ${escapeHtml(stateLabel)}`;
-        document.getElementById("position-count").textContent = String((simulation.positions || []).length);
-        document.getElementById("order-count").textContent = String((simulation.orders || []).filter((order) => ["SUBMITTED", "PENDING", "PARTIALLY_FILLED"].includes(order.status)).length);
-        document.getElementById("overview-position-count").textContent = String((simulation.positions || []).length);
-        document.getElementById("overview-order-count").textContent = String((simulation.orders || []).filter((order) => ["SUBMITTED", "PENDING", "PARTIALLY_FILLED"].includes(order.status)).length);
-        document.getElementById("order-preview").textContent = session.available_cash === null || session.available_cash === undefined
-          ? "買進以賣一、賣出以買一判斷模擬成交；未達限價則保留在委託清單。"
-          : `可用虛擬現金：${formatNumber(session.available_cash, 0)} 元${Number(session.reserved_cash || 0) > 0 ? `（已保留 ${formatNumber(session.reserved_cash, 0)} 元掛單額度）` : ""}。買進以賣一、賣出以買一判斷模擬成交。`;
       }
 
       function renderCandidates(candidates) {
@@ -156,6 +120,7 @@ export function createCandidateWorkspace(context) {
         const matchedRules = candidate.matched_rules.length
           ? candidate.matched_rules.map(formatRule).join(" · ")
           : "無自動選股規則";
+        const orderAllowed = statusEnvelopes.isActionAllowed("quote_ingress", "submit_order");
 
         detail.innerHTML = `
           <div class="kicker">評估</div>
@@ -165,7 +130,7 @@ export function createCandidateWorkspace(context) {
             <span class="source-badge">${escapeHtml(formatSource(candidate.sources))}</span>
           </div>
           <p class="rule-line">符合規則：<strong>${escapeHtml(matchedRules)}</strong></p>
-          <button class="order-ticket-button detail-order-button" type="button" data-order-symbol="${escapeHtml(candidate.symbol)}" data-order-price="${escapeHtml(stock.price)}">以 ${formatNumber(stock.price)} 模擬買進</button>
+          <button class="order-ticket-button detail-order-button" type="button" data-order-symbol="${escapeHtml(candidate.symbol)}" data-order-price="${escapeHtml(stock.price)}" ${orderAllowed ? "" : 'disabled aria-describedby="status-envelope-last-valid"'}>以 ${formatNumber(stock.price)} 模擬買進</button>
           <div class="metrics" aria-label="${escapeHtml(candidate.symbol)} 最新市場快照">
             <div class="metric">
               <div class="metric-label">目前價格</div>
@@ -505,6 +470,11 @@ export function createCandidateWorkspace(context) {
         }
       }
 
+      statusEnvelopes.subscribe((event) => {
+        if (!["set", "unavailable", "scope"].includes(event.type)) return;
+        const candidate = state.snapshot?.candidates.find((item) => item.symbol === state.selectedSymbol);
+        if (candidate) renderCandidateDetail(candidate);
+      });
 
   return { getVisibleCandidates, renderCandidates, selectCandidate, renderCandidateDetail, loadSelectedHistory };
 }

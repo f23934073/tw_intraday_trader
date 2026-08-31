@@ -833,6 +833,68 @@
       .backtest-trade-detail strong { color: var(--text); }
       .backtest-empty { color: var(--muted); font-size: 12px; padding: 8px 0; }
 
+      /* StatusEnvelope shared renderer (task170 R1): icon + text, never colour-only. */
+      .status-envelope-panel { margin-bottom: 14px; }
+      .status-envelope-panel.stale .status-envelope-cards, .status-envelope-panel.stale .status-envelope-matrix-wrap { filter: saturate(.45); opacity: .82; }
+      .status-envelope-last-valid { background: color-mix(in srgb, var(--amber) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line)); border-radius: 9px; color: var(--amber); font-weight: 600; margin: 10px 0; padding: 8px 10px; }
+      .mobile-read-only-banner { background: color-mix(in srgb, var(--red) 9%, var(--surface)); border: 1px solid color-mix(in srgb, var(--red) 48%, var(--line)); border-radius: 9px; color: var(--text); display: grid; font-size: 13px; gap: 4px; margin: 10px 0; padding: 10px 12px; }
+      .mobile-read-only-banner[hidden] { display: none; }
+      .mobile-read-only-banner strong { color: var(--red); }
+      .status-envelope-alert:empty { display: none; }
+      .status-envelope-matrix-wrap { overflow-x: auto; }
+      .status-envelope-matrix { border-collapse: collapse; font-size: 13px; width: 100%; }
+      .status-envelope-matrix caption { caption-side: bottom; color: var(--muted); font-size: 12px; padding-top: 6px; text-align: left; }
+      .status-envelope-matrix th, .status-envelope-matrix td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; vertical-align: top; }
+      .status-envelope-matrix th[scope="row"] { font-weight: 600; white-space: nowrap; }
+      .status-envelope-summary { align-items: center; border: 1px solid var(--line); border-radius: 999px; display: inline-flex; font-size: 12px; font-weight: 700; gap: 5px; padding: 3px 9px; white-space: nowrap; }
+      .status-envelope-glyph { font-family: ui-monospace, monospace; }
+      .status-envelope-raw { font-size: 11px; }
+      .status-envelope-raw.unknown { color: var(--muted); font-style: italic; }
+      .token-ready, .token-terminal-success { color: var(--green); }
+      .token-empty, .token-not-evaluated, .token-loading, .token-terminal-cancelled { color: var(--muted); }
+      .token-running { color: var(--blue); }
+      .token-degraded { color: var(--amber); }
+      .token-blocked, .token-critical, .token-unavailable, .token-terminal-failed { color: var(--red); }
+      .status-envelope-topbar.token-ready .status-dot, .status-envelope-topbar.token-terminal-success .status-dot { background: var(--green); }
+      .status-envelope-topbar.token-running .status-dot { background: var(--blue); }
+      .status-envelope-topbar.token-degraded .status-dot { background: var(--amber); }
+      .status-envelope-topbar.token-empty .status-dot, .status-envelope-topbar.token-not-evaluated .status-dot, .status-envelope-topbar.token-loading .status-dot, .status-envelope-topbar.token-terminal-cancelled .status-dot { background: var(--muted); }
+      .status-envelope-topbar.token-blocked .status-dot, .status-envelope-topbar.token-critical .status-dot, .status-envelope-topbar.token-unavailable .status-dot, .status-envelope-topbar.token-terminal-failed .status-dot { background: var(--red); }
+      .status-envelope-topbar.stale { border-style: dashed; }
+      .status-envelope-cards { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; }
+      .status-envelope-card { background: var(--surface-soft); border: 1px solid var(--line); border-left-width: 4px; border-radius: 11px; min-width: 0; padding: 11px 13px; }
+      .status-envelope-card.token-blocked, .status-envelope-card.token-critical, .status-envelope-card.token-unavailable, .status-envelope-card.token-terminal-failed { border-left-color: var(--red); }
+      .status-envelope-card.token-degraded { border-left-color: var(--amber); }
+      .status-envelope-card.token-ready, .status-envelope-card.token-terminal-success { border-left-color: var(--green); }
+      .status-envelope-card.token-running { border-left-color: var(--blue); }
+      .status-envelope-card-head { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; margin-bottom: 8px; }
+      .status-envelope-card-head h3 { font-size: 14px; margin: 0; }
+      .status-envelope-advisory { border-left: 3px solid var(--amber); list-style: none; margin: 0 0 8px; padding: 0 0 0 9px; }
+      .status-envelope-advisory li { color: var(--text); font-size: 13px; margin: 3px 0; }
+      .status-envelope-advisory li[data-a11y="A-INFO"] { color: var(--muted); }
+      .status-envelope-reasons { list-style: none; margin: 0 0 8px; padding: 0; }
+      .status-envelope-reason { border-top: 1px dashed var(--line); font-size: 13px; padding: 6px 0; }
+      .status-envelope-reason.unmapped .status-envelope-unmapped { color: var(--amber); font-size: 11px; }
+      .status-envelope-code { font-size: 11px; user-select: all; }
+      .status-envelope-impact, .status-envelope-next, .status-envelope-no-reasons { color: var(--muted); font-size: 12px; }
+      .status-envelope-actions { display: grid; font-size: 12px; gap: 3px 10px; grid-template-columns: auto 1fr; margin: 0 0 8px; }
+      .status-envelope-actions dt { color: var(--muted); }
+      .status-envelope-actions dd { margin: 0; overflow-wrap: anywhere; }
+      .status-envelope-provenance { color: var(--muted); display: flex; flex-wrap: wrap; font-size: 11px; gap: 4px 12px; }
+      .status-envelope-provenance code, .status-envelope-identity-item code { user-select: all; }
+      .status-envelope-muted { color: var(--muted); }
+      @media (max-width: 700px) {
+        .status-envelope-cards { grid-template-columns: 1fr; }
+        .status-envelope-card-head h3 { font-size: 15px; }
+        .status-envelope-summary { min-height: 44px; }
+        .status-envelope-provenance { flex-direction: column; gap: 3px; }
+        .mobile-read-only-banner { position: sticky; top: 8px; z-index: 4; }
+        [data-mobile-read-only="true"] { cursor: not-allowed; opacity: .58; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .status-envelope-panel.stale .status-envelope-cards { transition: none; }
+      }
+
       @media (max-width: 760px) {
         .backtest-grid { grid-template-columns: 1fr; }
         .backtest-card.wide { grid-column: auto; }
