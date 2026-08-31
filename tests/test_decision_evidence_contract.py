@@ -225,7 +225,13 @@ def test_structural_enum_has_no_legacy_or_qualification_level_members():
 def test_m_t7_ast_import_firewall_allows_only_stdlib_and_two_named_repo_imports():
     allowed_repo_imports = {
         "signals.models": {"MomentumStage"},
-        "strategy_catalog.parameter_schema": {"canonical_digest"},
+        "signals._contract_wire": {
+            "UNDECIDED",
+            "UNDECIDED_WIRE",
+            "Undecided",
+            "digest",
+            "to_wire",
+        },
     }
     forbidden_roots = {
         "simulation",
@@ -234,6 +240,7 @@ def test_m_t7_ast_import_firewall_allows_only_stdlib_and_two_named_repo_imports(
         "dashboard",
         "config",
         "features",
+        "strategy_catalog",
     }
     for module in PURE_MODULES:
         path = Path(module.__file__ or "")
@@ -253,7 +260,7 @@ def test_m_t7_ast_import_firewall_allows_only_stdlib_and_two_named_repo_imports(
                 else:
                     assert imported_module == "__future__" or root in sys.stdlib_module_names
                 if root == "signals":
-                    assert imported_module == "signals.models"
+                    assert imported_module in {"signals.models", "signals._contract_wire"}
 
 
 @dataclass(frozen=True)
@@ -264,6 +271,25 @@ class WireFixture:
     status: StructuralCompleteness
     values: tuple[str, ...]
     metadata: dict[str, object]
+
+
+# Regression lock for the shared canonical wire of WIRE_FIXTURE. The four
+# contract modules now delegate to the single signals._contract_wire helper, so
+# this digest must stay byte-identical across all of them and across edits.
+WIRE_FIXTURE_DIGEST = (
+    "301441422bc16e600c0c7095ffc8346a27052d33948b3adb60f567090ecd4e53"
+)
+
+# Frozen public contract digests that Slice 2 must not disturb.
+GATE_TAXONOMY_DIGEST_FROZEN = (
+    "a294aecb7466a046001b8ad41d2a559ae4b77f3b81fbaff594d6c3f161a1b035"
+)
+LEGACY_MOMENTUM_V0_DIGEST_FROZEN = (
+    "f2f0c7fcbdcfdc9d520c8650341dbd72cd0b34ddd1b26abe8920706339356c6b"
+)
+LEGACY_ATOMIC_V0_DIGEST_FROZEN = (
+    "ffe5e892132de0f10020076b25895334a9e153a32a9626be832d3519944330f8"
+)
 
 
 def test_m_t8_four_way_to_wire_identity_and_m_t9_idempotence():
@@ -280,6 +306,33 @@ def test_m_t8_four_way_to_wire_identity_and_m_t9_idempotence():
     assert outputs[1:] == outputs[:-1]
     for module, output in zip(PURE_MODULES, outputs, strict=True):
         assert module._to_wire(output) == output
+
+    # All four modules now share one Undecided class and one UNDECIDED instance.
+    sentinels = tuple(module.UNDECIDED for module in PURE_MODULES)
+    classes = tuple(module.Undecided for module in PURE_MODULES)
+    assert all(sentinel is sentinels[0] for sentinel in sentinels)
+    assert all(cls is classes[0] for cls in classes)
+
+    # Every module accepts every other module's singleton (cross-composition).
+    for producer in PURE_MODULES:
+        for consumer in PURE_MODULES:
+            assert consumer._to_wire(producer.UNDECIDED) == "__UNDECIDED__"
+
+    # The fixture wire and its hard-coded digest remain byte-identical.
+    digests = tuple(module._digest(fixture) for module in PURE_MODULES)
+    assert all(digest == digests[0] for digest in digests)
+    assert digests[0] == WIRE_FIXTURE_DIGEST
+
+    # The three public contract digests remain unchanged.
+    assert gate_module.GATE_TAXONOMY_DIGEST == GATE_TAXONOMY_DIGEST_FROZEN
+    assert (
+        selection_module.LEGACY_MOMENTUM_V0.policy_digest
+        == LEGACY_MOMENTUM_V0_DIGEST_FROZEN
+    )
+    assert (
+        selection_module.LEGACY_ATOMIC_V0.policy_digest
+        == LEGACY_ATOMIC_V0_DIGEST_FROZEN
+    )
 
 
 def test_m_t10_key_order_is_digest_independent_and_tuple_order_is_significant():

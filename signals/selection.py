@@ -3,67 +3,18 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
-from dataclasses import dataclass, fields, is_dataclass
-from datetime import date, datetime
-from decimal import Decimal
-from enum import Enum, StrEnum
+from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
 from functools import cmp_to_key
 from typing import Any, Literal, cast
 
-from strategy_catalog.parameter_schema import canonical_digest
+from signals._contract_wire import UNDECIDED, Undecided
+from signals._contract_wire import digest as _digest
+from signals._contract_wire import to_wire as _to_wire
 
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_UNDECIDED_WIRE = "__UNDECIDED__"
-
-
-class Undecided:
-    """Singleton marker for a selection value that has not been decided."""
-
-    _instance: Undecided | None = None
-
-    def __new__(cls) -> Undecided:
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __repr__(self) -> str:
-        return "UNDECIDED"
-
-
-UNDECIDED = Undecided()
-
-
-def _to_wire(value: object) -> object:
-    if isinstance(value, Undecided):
-        return _UNDECIDED_WIRE
-    if is_dataclass(value) and not isinstance(value, type):
-        return {item.name: _to_wire(getattr(value, item.name)) for item in fields(value)}
-    if isinstance(value, Mapping):
-        return {key: _to_wire(item) for key, item in value.items()}
-    if isinstance(value, (tuple, list)):
-        return [_to_wire(item) for item in value]
-    if isinstance(value, Decimal):
-        return str(value)
-    if isinstance(value, datetime):
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("datetime must be timezone-aware")
-        return value.isoformat()
-    if isinstance(value, date):
-        return value.isoformat()
-    if isinstance(value, Enum):
-        return _to_wire(value.value)
-    if value is None or isinstance(value, (str, int, bool)):
-        return value
-    if isinstance(value, float):
-        raise ValueError("float values are forbidden in canonical wire contracts")
-    raise ValueError(f"unsupported canonical wire type: {type(value).__name__}")
-
-
-def _digest(value: object) -> str:
-    wire = cast(Mapping[str, Any] | list[Any], _to_wire(value))
-    return canonical_digest(wire)
 
 
 def _require_non_empty(value: str, field_name: str) -> None:
